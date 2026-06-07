@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using YooAsset;
 namespace GamerFrameWork.UIFrameWork
 {
     public enum UIPrefabLoadType
@@ -71,7 +72,7 @@ namespace GamerFrameWork.UIFrameWork
         /// </summary>
         public void Initialize()
         {
-            GameObject uiParent =GameObject.Instantiate(Resources.Load<GameObject>("Window/UIParent"));
+            GameObject uiParent = GameObject.Instantiate(Resources.Load<GameObject>("Window/UIParent"));
 
             mUICamera = uiParent.transform.Find("UICamera").GetComponent<Camera>();
             mUIRoot = uiParent.transform.Find("UIRoot").transform;
@@ -103,7 +104,7 @@ namespace GamerFrameWork.UIFrameWork
             //1.生成对应的窗口预制体
             GameObject nWnd = null;
             nWnd = LoadWindow(wndName, loadType);
-           
+
             //2.初始出对应管理类
             if (nWnd != null)
             {
@@ -165,7 +166,7 @@ namespace GamerFrameWork.UIFrameWork
         private WindowBase InitializeWindow(WindowBase windowBase, string wndName, UIPrefabLoadType loadType)
         {
             //1.生成对应的窗口预制体
-            GameObject nWnd = LoadWindow(wndName,loadType);
+            GameObject nWnd = LoadWindow(wndName, loadType);
             //2.初始化出对应管理类
             if (nWnd != null)
             {
@@ -298,7 +299,7 @@ namespace GamerFrameWork.UIFrameWork
                 DestroyWindow2FrameWork(window.gameObject);
                 //在出栈的情况下，上一个界面销毁时,自动打开堆栈中的下一个界面
                 PopNextStackWindow(window);
-                window =null;
+                window = null;
                 //Resources.UnloadUnusedAssets();
             }
         }
@@ -363,11 +364,25 @@ namespace GamerFrameWork.UIFrameWork
         /// <returns></returns>
         private GameObject LoadWindow2AB(string wndName)
         {
-            //调用资源加载框架加载资源
-            //GameObject go = GamerFrameWork.HotUpdate.HotFixAssetsFrame.InstantiateObject(mWindowConfig.GetWindowData(wndName).path, mUIRoot);
-            //return go;
-            return null;
+            var path = mWindowConfig.GetWindowData(wndName)?.path;
+            if (string.IsNullOrEmpty(path))
+            {
+                Debug.LogError($"[LoadWindow] path is null, wndName={wndName}");
+                return null;
+            }
+
+            var handle = YooAssets.LoadAssetSync<GameObject>(path);
+            if (handle == null || handle.AssetObject == null)
+            {
+                Debug.LogError($"[LoadWindow] load failed, path={path}");
+                return null;
+            }
+
+            GameObject go = GameObject.Instantiate(handle.AssetObject as GameObject);
+            handle.Release(); // 实例化后释放 handle，资源引用计数 -1
+            return go;
         }
+
 
         private void DestroyWindow2FrameWork(GameObject windowObj)
         {
@@ -382,7 +397,7 @@ namespace GamerFrameWork.UIFrameWork
         #region 渲染帧更新接口(为节省性能不默认开启,需要在外部调用)
         public void OnUpdate()
         {
-            for (int i = 0; i < mVisibleWindowList.Count; i++)  
+            for (int i = 0; i < mVisibleWindowList.Count; i++)
             {
                 WindowBase win = mVisibleWindowList[i];
                 if (win.IsUpdate)

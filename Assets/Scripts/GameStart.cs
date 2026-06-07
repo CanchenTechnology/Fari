@@ -32,20 +32,21 @@ public class GameStart : MonoBehaviour
         // 加载更新页面
         var go = Resources.Load<GameObject>("PatchWindow");
         GameObject.Instantiate(go);
-        // 开始补丁更新流程
 
+
+        // 开始补丁更新流程
         var operation = new PatchOperation("DefaultPackage", PlayMode);
         YooAssets.StartOperation(operation);
         yield return operation;
 
-        
+        // 设置默认的资源包
+        var gamePackage = YooAssets.GetPackage("DefaultPackage");
+        YooAssets.SetDefaultPackage(gamePackage);
+
         UIModule.Instance.Initialize();
-        UIModule.Instance.PopUpWindow<LoginUI>();
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
+        // 切换到主页面场景
+        SceneEventDefine.ChangeToAppScene.SendEventMessage();
 
     }
+
 }

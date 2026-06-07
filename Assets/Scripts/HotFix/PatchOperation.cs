@@ -109,4 +109,11 @@ public class PatchOperation : GameAsyncOperation
             throw new System.NotImplementedException($"{message.GetType()}");
         }
     }
+    public void SetFinish()
+    {
+        _steps = ESteps.Done;
+        _eventGroup.RemoveAllListener();
+        Status = EOperationStatus.Succeed;
+        Debug.Log($"Package {_packageName} patch done !");
+    }
 }

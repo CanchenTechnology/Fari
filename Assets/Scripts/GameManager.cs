@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UniFramework.Event;
 using YooAsset;
+using System;
 
 public class GameManager
 {
@@ -27,7 +28,17 @@ public class GameManager
 
     private GameManager()
     {
-       
+        // 注册监听事件
+        _eventGroup.AddListener<SceneEventDefine.ChangeToAppScene>(OnHandleEventMessage);
+
+    }
+
+    private void OnHandleEventMessage(IEventMessage message)
+    {
+        if (message is SceneEventDefine.ChangeToAppScene)
+        {
+            YooAssets.LoadSceneAsync("App");
+        }
     }
 
     /// <summary>

@@ -1,26 +1,25 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
 using UniFramework.Machine;
-/// <summary>
-/// 资源加载完毕,开始游戏
-/// </summary>
-public class FsmStartGame : IStateNode
+
+internal class FsmStartGame : IStateNode
 {
-    public void OnCreate(StateMachine machine)
-    {
+    private PatchOperation _owner;
 
+    void IStateNode.OnCreate(StateMachine machine)
+    {
+        _owner = machine.Owner as PatchOperation;
     }
-
-    public void OnEnter()
+    void IStateNode.OnEnter()
     {
-
+        PatchEventDefine.PatchStepsChange.SendEventMessage("开始游戏！");
+        _owner.SetFinish();
     }
-
-    public void OnExit()
+    void IStateNode.OnUpdate()
     {
-
     }
-
-    public void OnUpdate()
+    void IStateNode.OnExit()
     {
-
     }
 }

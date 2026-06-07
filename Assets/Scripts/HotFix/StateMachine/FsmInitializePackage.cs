@@ -17,7 +17,7 @@ public class FsmInitializePackage : IStateNode
     {
         //热更步骤发生变化
         PatchEventDefine.PatchStepsChange.SendEventMessage("正在初始化包体...");  //在UI界面上进行监听，赋值给text显示出来
-
+        GameManager.Instance.StartCoroutine(InitPackage());
     }
 
     public void OnExit()
