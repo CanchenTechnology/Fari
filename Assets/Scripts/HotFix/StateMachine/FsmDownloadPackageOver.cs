@@ -1,26 +1,27 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
 using UniFramework.Machine;
 /// <summary>
-/// 下载包体完成
+/// 包体下载结束
 /// </summary>
-public class FsmDownloadPackageOver: IStateNode
+internal class FsmDownloadPackageOver : IStateNode
 {
-    public void OnCreate(StateMachine machine)
-    {
+    private StateMachine _machine;
 
+    void IStateNode.OnCreate(StateMachine machine)
+    {
+        _machine = machine;
     }
-
-    public void OnEnter()
+    void IStateNode.OnEnter()
     {
-
+        PatchEventDefine.PatchStepsChange.SendEventMessage("资源文件下载完毕！");
+        _machine.ChangeState<FsmClearCacheBundle>();
     }
-
-    public void OnExit()
+    void IStateNode.OnUpdate()
     {
-
     }
-
-    public void OnUpdate()
+    void IStateNode.OnExit()
     {
-
     }
 }

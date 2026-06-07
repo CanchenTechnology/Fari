@@ -71,11 +71,11 @@ public class PatchOperation : GameAsyncOperation
         _machine.AddNode<FsmInitializePackage>(); //初始化包体
         _machine.AddNode<FsmRequestPackageVersion>(); //获取包体的版本号
         _machine.AddNode<FsmUpdatePackageManifest>(); //更新包体清单
-        _machine.AddNode<FsmCreateDownloader>();
-        _machine.AddNode<FsmDownloadPackageFiles>();
-        _machine.AddNode<FsmDownloadPackageOver>();
-        _machine.AddNode<FsmClearCacheBundle>();
-        _machine.AddNode<FsmStartGame>();
+        _machine.AddNode<FsmCreateDownloader>(); //创建下载器
+        _machine.AddNode<FsmDownloadPackageFiles>();//下载资源文件
+        _machine.AddNode<FsmDownloadPackageOver>(); //包体下载结束
+        _machine.AddNode<FsmClearCacheBundle>(); //清理未使用的缓存文件
+        _machine.AddNode<FsmStartGame>();  //开始游戏
 
         _machine.SetBlackboardValue("PackageName", packageName);
         _machine.SetBlackboardValue("PlayMode", playMode);

@@ -1,26 +1,34 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
 using UniFramework.Machine;
-/// <summary>
-///  清理包体缓存完成,准备开始下载包体
-/// </summary>
-public class FsmClearCacheBundle : IStateNode
+using YooAsset;
+
+internal class FsmClearCacheBundle : IStateNode
 {
-    public void OnCreate(StateMachine machine)
-    {
+    private StateMachine _machine;
 
+    void IStateNode.OnCreate(StateMachine machine)
+    {
+        _machine = machine;
+    }
+    void IStateNode.OnEnter()
+    {
+        PatchEventDefine.PatchStepsChange.SendEventMessage("清理未使用的缓存文件！");
+        var packageName = (string)_machine.GetBlackboardValue("PackageName");
+        var package = YooAssets.GetPackage(packageName);
+        var operation = package.ClearCacheFilesAsync(EFileClearMode.ClearUnusedBundleFiles);
+        operation.Completed += Operation_Completed;
+    }
+    void IStateNode.OnUpdate()
+    {
+    }
+    void IStateNode.OnExit()
+    {
     }
 
-    public void OnEnter()
+    private void Operation_Completed(YooAsset.AsyncOperationBase obj)
     {
-
-    }
-
-    public void OnExit()
-    {
-
-    }
-
-    public void OnUpdate()
-    {
-
+        _machine.ChangeState<FsmStartGame>();
     }
 }
