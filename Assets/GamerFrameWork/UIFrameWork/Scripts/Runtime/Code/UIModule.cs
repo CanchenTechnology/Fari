@@ -378,7 +378,7 @@ namespace GamerFrameWork.UIFrameWork
                 return null;
             }
 
-            GameObject go = GameObject.Instantiate(handle.AssetObject as GameObject);
+            GameObject go = GameObject.Instantiate(handle.AssetObject as GameObject, mUIRoot);
             handle.Release(); // 实例化后释放 handle，资源引用计数 -1
             return go;
         }

@@ -46,6 +46,8 @@ public class LoginUI : WindowBase
 	#region UI组件事件
 	public void OnGooglePlaySignInButtonClick()
 	{
+		UIModule.Instance.HideWindow<LoginUI>();
+		UIModule.Instance.PopUpWindow<NavigationUI>();
 	}
 	public void OnGameCenterSignInButtonClick()
 	{
