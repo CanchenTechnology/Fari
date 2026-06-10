@@ -1,0 +1,389 @@
+{
+  "screenName": "DrawCardHome",
+  "resolution": {
+    "x": 750,
+    "y": 1334
+  },
+  "matchWidthOrHeight": 0.5,
+  "includeMask": true,
+  "maskColor": {
+    "r": 0,
+    "g": 0,
+    "b": 0,
+    "a": 0.67
+  },
+  "defaultFont": "",
+  "elements": [
+    {
+      "name": "Header",
+      "type": "Panel",
+      "anchorMin": {
+        "x": 0,
+        "y": 1
+      },
+      "anchorMax": {
+        "x": 1,
+        "y": 1
+      },
+      "size": {
+        "x": 0,
+        "y": 108
+      },
+      "position": {
+        "x": 0,
+        "y": -54
+      },
+      "children": [
+        {
+          "name": "Title",
+          "type": "Text",
+          "text": "抽牌",
+          "fontSize": 32,
+          "fontStyle": "Bold",
+          "textAlignment": "Left",
+          "textColor": {
+            "r": 0.15,
+            "g": 0.15,
+            "b": 0.15,
+            "a": 1
+          },
+          "anchorMin": {
+            "x": 0,
+            "y": 0.5
+          },
+          "anchorMax": {
+            "x": 0,
+            "y": 0.5
+          },
+          "position": {
+            "x": 40,
+            "y": 0
+          },
+          "size": {
+            "x": 200,
+            "y": 50
+          }
+        },
+        {
+          "name": "HelpButton",
+          "type": "Button",
+          "text": "?",
+          "fontSize": 24,
+          "anchorMin": {
+            "x": 1,
+            "y": 0.5
+          },
+          "anchorMax": {
+            "x": 1,
+            "y": 0.5
+          },
+          "position": {
+            "x": -40,
+            "y": 0
+          },
+          "size": {
+            "x": 48,
+            "y": 48
+          }
+        }
+      ]
+    },
+    {
+      "name": "Content",
+      "type": "Panel",
+      "color": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 0
+      },
+      "anchorMin": {
+        "x": 0,
+        "y": 0
+      },
+      "anchorMax": {
+        "x": 1,
+        "y": 1
+      },
+      "size": {
+        "x": 0,
+        "y": 0
+      },
+      "children": [
+        {
+          "name": "PageTitle",
+          "type": "Text",
+          "text": "选择牌阵 ✨",
+          "fontSize": 38,
+          "fontStyle": "Bold",
+          "textAlignment": "Center",
+          "anchorMin": {
+            "x": 0.5,
+            "y": 1
+          },
+          "anchorMax": {
+            "x": 0.5,
+            "y": 1
+          },
+          "position": {
+            "x": 0,
+            "y": -180
+          },
+          "size": {
+            "x": 500,
+            "y": 60
+          }
+        },
+        {
+          "name": "PageDesc",
+          "type": "Text",
+          "text": "选择适合你的牌阵，开启指引与洞见",
+          "fontSize": 22,
+          "textAlignment": "Center",
+          "anchorMin": {
+            "x": 0.5,
+            "y": 1
+          },
+          "anchorMax": {
+            "x": 0.5,
+            "y": 1
+          },
+          "position": {
+            "x": 0,
+            "y": -230
+          },
+          "size": {
+            "x": 600,
+            "y": 40
+          }
+        },
+
+        {
+          "name": "SingleCardPanel",
+          "type": "Button",
+          "text": "",
+          "anchorMin": {
+            "x": 0.5,
+            "y": 1
+          },
+          "anchorMax": {
+            "x": 0.5,
+            "y": 1
+          },
+          "position": {
+            "x": 0,
+            "y": -370
+          },
+          "size": {
+            "x": 650,
+            "y": 160
+          }
+        },
+
+        {
+          "name": "ThreeCardPanel",
+          "type": "Button",
+          "text": "",
+          "anchorMin": {
+            "x": 0.5,
+            "y": 1
+          },
+          "anchorMax": {
+            "x": 0.5,
+            "y": 1
+          },
+          "position": {
+            "x": 0,
+            "y": -560
+          },
+          "size": {
+            "x": 650,
+            "y": 160
+          }
+        },
+
+        {
+          "name": "RelationPanel",
+          "type": "Button",
+          "text": "",
+          "anchorMin": {
+            "x": 0.5,
+            "y": 1
+          },
+          "anchorMax": {
+            "x": 0.5,
+            "y": 1
+          },
+          "position": {
+            "x": 0,
+            "y": -750
+          },
+          "size": {
+            "x": 650,
+            "y": 160
+          }
+        },
+
+        {
+          "name": "QuestionTitle",
+          "type": "Text",
+          "text": "你的问题（可选）",
+          "fontSize": 24,
+          "fontStyle": "Bold",
+          "textAlignment": "Left",
+          "anchorMin": {
+            "x": 0,
+            "y": 1
+          },
+          "anchorMax": {
+            "x": 0,
+            "y": 1
+          },
+          "position": {
+            "x": 50,
+            "y": -890
+          },
+          "size": {
+            "x": 300,
+            "y": 40
+          }
+        },
+
+        {
+          "name": "QuestionInputArea",
+          "type": "Panel",
+          "anchorMin": {
+            "x": 0.5,
+            "y": 1
+          },
+          "anchorMax": {
+            "x": 0.5,
+            "y": 1
+          },
+          "position": {
+            "x": 0,
+            "y": -1020
+          },
+          "size": {
+            "x": 650,
+            "y": 130
+          }
+        },
+
+        {
+          "name": "StartDrawButton",
+          "type": "Button",
+          "text": "开始抽牌",
+          "fontSize": 30,
+          "anchorMin": {
+            "x": 0.5,
+            "y": 1
+          },
+          "anchorMax": {
+            "x": 0.5,
+            "y": 1
+          },
+          "position": {
+            "x": 0,
+            "y": -1170
+          },
+          "size": {
+            "x": 650,
+            "y": 88
+          }
+        },
+
+        {
+          "name": "SwipeHint",
+          "type": "Text",
+          "text": "向上滑动，查看更多牌阵",
+          "fontSize": 18,
+          "textAlignment": "Center",
+          "anchorMin": {
+            "x": 0.5,
+            "y": 0
+          },
+          "anchorMax": {
+            "x": 0.5,
+            "y": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 160
+          },
+          "size": {
+            "x": 400,
+            "y": 30
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "BottomNav",
+      "type": "Panel",
+      "anchorMin": {
+        "x": 0,
+        "y": 0
+      },
+      "anchorMax": {
+        "x": 1,
+        "y": 0
+      },
+      "size": {
+        "x": 0,
+        "y": 160
+      },
+      "position": {
+        "x": 0,
+        "y": 80
+      },
+      "children": [
+        {
+          "name": "BottomTabs",
+          "type": "ToggleGroup",
+          "spacing": 40,
+          "allowSwitchOff": false,
+          "anchorMin": {
+            "x": 0,
+            "y": 0
+          },
+          "anchorMax": {
+            "x": 1,
+            "y": 1
+          },
+          "children": [
+            {
+              "name": "TabDivination",
+              "type": "Toggle",
+              "text": "每日占卜",
+              "fontSize": 18,
+              "isOn": true
+            },
+            {
+              "name": "TabChat",
+              "type": "Toggle",
+              "text": "对话",
+              "fontSize": 18,
+              "isOn": false
+            },
+            {
+              "name": "TabFriends",
+              "type": "Toggle",
+              "text": "朋友",
+              "fontSize": 18,
+              "isOn": false
+            },
+            {
+              "name": "TabMine",
+              "type": "Toggle",
+              "text": "我的",
+              "fontSize": 18,
+              "isOn": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -44,6 +44,7 @@ public class SwitchRoleItem : MonoBehaviour, IGamerUIViewListItem, IGamerUIListV
     private int mItemIndex = -1;
 
     private int roleIndex;
+    private RoleDataSO roleData;
 
     #region IGamerUIViewListItem 实现
 
@@ -122,7 +123,7 @@ public class SwitchRoleItem : MonoBehaviour, IGamerUIViewListItem, IGamerUIListV
     private void BindRoleData(RoleDataSO roleData)
     {
         if (roleData == null) return;
-
+        this.roleData = roleData;
         // 基础信息
         if (roleNameText != null)
             roleNameText.text = roleData.roleName;
@@ -160,6 +161,7 @@ public class SwitchRoleItem : MonoBehaviour, IGamerUIViewListItem, IGamerUIListV
         if (mItemIndex >= 0)
         {
             RoleManager.Instance.ChangeRole(mItemIndex);
+            ToastManager.ShowToast($"已切换为:{roleData.name}");
         }
     }
 

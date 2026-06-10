@@ -1,0 +1,86 @@
+{
+  "screenName": "NavigationUI",
+  "resolution": { "x": 750, "y": 1334 },
+  "matchWidthOrHeight": 0.5,
+  "includeMask": true,
+  "maskColor": { "r": 0, "g": 0, "b": 0, "a": 0.67 },
+  "defaultFont": "",
+  "elements": [
+    {
+      "name": "Bottom",
+      "type": "Panel",
+      "color": { "r": 0, "g": 0, "b": 0, "a": 1 },
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 0 },
+      "position": { "x": 0, "y": 104.21 },
+      "size": { "x": 0, "y": 208.42 },
+      "children": [
+        {
+          "name": "ToggleGroup",
+          "type": "ToggleGroup",
+          "spacing": 0,
+          "paddingLeft": 69,
+          "paddingRight": 0,
+          "paddingTop": 30,
+          "paddingBottom": 0,
+          "allowSwitchOff": false,
+          "anchorMin": { "x": 0, "y": 0 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "position": { "x": 8.15, "y": 14.41 },
+          "size": { "x": -16.3, "y": -28.81 },
+          "children": [
+            {
+              "name": "todayOracle",
+              "type": "Toggle",
+              "size": { "x": 75, "y": 75 },
+              "backgroundSprite": "bg_oracle",
+              "checkmarkSprite": "check_oracle",
+              "text": "今日神谕",
+              "fontSize": 20,
+              "isOn": true,
+              "outlineColor": { "r": 0.903, "g": 0.005, "b": 1, "a": 0.5 },
+              "outlineDistance": { "x": 1, "y": -1 }
+            },
+            {
+              "name": "dialogue",
+              "type": "Toggle",
+              "size": { "x": 75, "y": 75 },
+              "backgroundSprite": "bg_dialogue",
+              "checkmarkSprite": "check_dialogue",
+              "text": "对话",
+              "fontSize": 20,
+              "isOn": false,
+              "outlineColor": { "r": 0.903, "g": 0.005, "b": 1, "a": 0.5 },
+              "outlineDistance": { "x": 1, "y": -1 }
+            },
+            {
+              "name": "friend",
+              "type": "Toggle",
+              "size": { "x": 75, "y": 75 },
+              "backgroundSprite": "bg_friend",
+              "checkmarkSprite": "check_friend",
+              "text": "一起玩",
+              "fontSize": 20,
+              "isOn": false,
+              "outlineColor": { "r": 0.903, "g": 0.005, "b": 1, "a": 0.5 },
+              "outlineDistance": { "x": 1, "y": -1 }
+            },
+            {
+              "name": "my",
+              "type": "Toggle",
+              "size": { "x": 75, "y": 75 },
+              "backgroundSprite": "bg_my",
+              "checkmarkSprite": "check_my",
+              "text": "我的",
+              "fontSize": 20,
+              "isOn": false,
+              "outlineColor": { "r": 0.903, "g": 0.005, "b": 1, "a": 0.5 },
+              "outlineDistance": { "x": 1, "y": -1 }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
