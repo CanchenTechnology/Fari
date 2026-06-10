@@ -24,7 +24,7 @@ public class SwitchRoleItem : MonoBehaviour, IGamerUIViewListItem
     public CanvasGroup contentCanvasGroup;
 
     [Header("动画参数")]
-    public float minHeight = 150f;
+    public float minHeight = 307f;
     public float itemGap = 30f;
     public float expandDuration = 0.3f;
 
@@ -56,7 +56,6 @@ public class SwitchRoleItem : MonoBehaviour, IGamerUIViewListItem
         roleTypeText.text = roleData.RoleType;
         roleInfoText.text = roleData.RoleDesc;
         */
-
         RefreshHeight();
 
         // 默认收起
