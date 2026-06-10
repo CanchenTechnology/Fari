@@ -17,12 +17,12 @@ namespace UGUIBuilder
     {
         #region JSON Data Classes
 
-        [Serializable]
-        public class ColorData
-        {
-            public float r = 1, g = 1, b = 1, a = 1;
-            public Color ToColor() => new Color(r, g, b, a);
-        }
+    [Serializable]
+    public class ColorData
+    {
+        public float r = 0, g = 0, b = 0, a = 1;
+        public Color ToColor() => new Color(r, g, b, a);
+    }
 
         [Serializable]
         public class Vector2Data
@@ -89,8 +89,8 @@ namespace UGUIBuilder
             // Layout 组件
             public string layoutType;
             public string childAlignment = "MiddleCenter";
-            public bool childControlWidth = true;
-            public bool childControlHeight = true;
+            public bool childControlWidth = false;
+            public bool childControlHeight = false;
             public bool childForceExpandWidth = true;
             public bool childForceExpandHeight = true;
             public Vector2Data gridCellSize;
@@ -505,6 +505,9 @@ namespace UGUIBuilder
             txt.fontSize = elem.fontSize > 0 ? elem.fontSize : 14;
             txt.raycastTarget = elem.raycastTarget;
             txt.color = elem.textColor != null ? elem.textColor.ToColor() : Color.black;
+            // 强制保护：文字颜色不能为白色/近白色
+            if (txt.color.r > 0.95f && txt.color.g > 0.95f && txt.color.b > 0.95f)
+                txt.color = Color.black;
             txt.font = defaultFont ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
 
             txt.fontStyle = elem.fontStyle switch
@@ -674,7 +677,7 @@ namespace UGUIBuilder
         private static GameObject BuildScrollRect(LayoutElement elem)
         {
             GameObject go = new GameObject(elem.name,
-                typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(ScrollRect), typeof(Mask));
+                typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(ScrollRect));
             go.layer = LayerMask.NameToLayer("UI");
 
             // 配置 ScrollRect 背景
@@ -800,6 +803,9 @@ namespace UGUIBuilder
             Text txt = textGO.GetComponent<Text>();
             txt.fontSize = elem.fontSize > 0 ? elem.fontSize : 14;
             txt.color = elem.textColor != null ? elem.textColor.ToColor() : Color.black;
+            // 强制保护：文字颜色不能为白色/近白色
+            if (txt.color.r > 0.95f && txt.color.g > 0.95f && txt.color.b > 0.95f)
+                txt.color = Color.black;
             txt.horizontalOverflow = HorizontalWrapMode.Wrap;
             txt.font = defaultFont ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
             SetFullStretch(textGO.GetComponent<RectTransform>());
@@ -867,6 +873,9 @@ namespace UGUIBuilder
             Text txt = textGO.GetComponent<Text>();
             txt.fontSize = elem.fontSize > 0 ? elem.fontSize : 14;
             txt.color = elem.textColor != null ? elem.textColor.ToColor() : Color.black;
+            // 强制保护：文字颜色不能为白色/近白色
+            if (txt.color.r > 0.95f && txt.color.g > 0.95f && txt.color.b > 0.95f)
+                txt.color = Color.black;
             txt.font = defaultFont ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
             txt.alignment = TextAnchor.MiddleLeft;
             SetFullStretch(textGO.GetComponent<RectTransform>());

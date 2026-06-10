@@ -67,6 +67,7 @@
 
 ```json
 // ColorData - RGBA 分量，范围 0.0 ~ 1.0
+// 默认值：纯黑 { "r": 0, "g": 0, "b": 0, "a": 1 }
 { "r": 0.5, "g": 0.2, "b": 0.8, "a": 1.0 }
 
 // Vector2Data
@@ -173,7 +174,7 @@
 | `fontSize` | int | 14 | 字号 |
 | `fontStyle` | string | `"Normal"` | Normal / Bold / Italic / BoldItalic |
 | `textAlignment` | string | `"Center"` | 文本对齐 |
-| `textColor` | ColorData | 黑色 | 文字颜色 |
+| `textColor` | ColorData | `{r:0,g:0,b:0,a:1}` 纯黑 | 文字颜色 |
 | `outlineColor` | ColorData | null | 描边颜色（有值才添加 Outline 组件） |
 | `outlineDistance` | Vector2Data | `{x:1,y:-1}` | 描边偏移 |
 | `useTMP` | bool | false | 是否使用 TextMeshPro 渲染 |
@@ -202,7 +203,7 @@
   "fontSize": 32,
   "fontStyle": "Bold",
   "textAlignment": "Center",
-  "textColor": { "r": 0.9, "g": 0.9, "b": 0.9, "a": 1 },
+  "textColor": { "r": 0, "g": 0, "b": 0, "a": 1 },
   "outlineColor": { "r": 0, "g": 0, "b": 0, "a": 0.5 },
   "outlineDistance": { "x": 1, "y": -1 }
 }
@@ -303,7 +304,7 @@
 |------|------|--------|------|
 | `text` | string | `""` | 默认文本 |
 | `fontSize` | int | 14 | 字号 |
-| `textColor` | ColorData | 黑色 | 文字颜色 |
+| `textColor` | ColorData | `{r:0,g:0,b:0,a:1}` 纯黑 | 文字颜色 |
 | `placeholderText` | string | `"Enter text..."` | 占位提示文字 |
 | `characterLimit` | int | 0 | 字数限制（0=无限制） |
 | `contentType` | string | `"Standard"` | 输入内容类型 |
@@ -343,8 +344,8 @@
 | `paddingRight` | int | 0 | 右内边距 |
 | `paddingTop` | int | 0 | 上内边距 |
 | `paddingBottom` | int | 0 | 下内边距 |
-| `childControlWidth` | bool | true | 控制子元素宽度 |
-| `childControlHeight` | bool | true | 控制子元素高度 |
+| `childControlWidth` | bool | false | 控制子元素宽度 |
+| `childControlHeight` | bool | false | 控制子元素高度 |
 | `childForceExpandWidth` | bool | true | 强制扩展子宽度 |
 | `childForceExpandHeight` | bool | true | 强制扩展子高度 |
 
