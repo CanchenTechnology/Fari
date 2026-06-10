@@ -1,7 +1,9 @@
 using System.Collections.Generic;
 using System;
 using UnityEngine;
-
+namespace GamerFrameWork.XFGameFrameWork
+{
+    
 public static class Ease
 {
     public static float Linear(float t) => t;
@@ -118,7 +120,9 @@ public class SequenceAction : ActionBase
         }
     }
 
-    // ✅ 供 Parallel(ActionSequence) 使用
+    // 供 Parallel(ActionSequence) 使用
     public List<IAction> GetActions() => actions;
 }
 
+
+}

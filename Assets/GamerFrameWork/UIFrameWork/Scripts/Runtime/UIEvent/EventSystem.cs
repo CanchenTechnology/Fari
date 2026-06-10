@@ -63,6 +63,7 @@ namespace GamerFrameWork
             {
                 eventList = mEventDic[eventName];
             }
+            if(eventList==null)return;
             for (int i = 0; i < eventList.Count; i++)
             {
                 eventList[i]?.Invoke(data);

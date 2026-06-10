@@ -31,9 +31,9 @@ public class SwitchRoleUI : WindowBase
 		uiComponent.roleGamerUIListView.RefreshListView(true, 10, GetRoleItemDataByIndex);
 	}
 
-    private object GetRoleItemDataByIndex(int index)
+    private object GetRoleItemDataByIndex(int id)
     {
-        return RoleManager.Instance.GetRoleDataByIndex(index);
+        return RoleManager.Instance.GetRoleDataById(id);
     }
 
     // 物体隐藏时执行

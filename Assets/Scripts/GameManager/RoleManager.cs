@@ -1,47 +1,52 @@
-using System.Collections;
 using System.Collections.Generic;
-using UnityEngine;
-using XFGameFrameWork;
 using GamerFrameWork;
-using System;
-/// <summary>
-/// 角色数据管理器
-/// </summary>
+using XFGameFrameWork;
+
 public class RoleManager : MonoSingleton<RoleManager>
 {
     public List<RoleDataSO> roleDataList = new List<RoleDataSO>();
 
-    private int currentRoleIndex = 0; //当前角色下标，默认为0
+    private Dictionary<int, RoleDataSO> roleDict = new Dictionary<int, RoleDataSO>();
 
-    private void Start()
+    private int currentRoleId = 0;
+
+    protected void Awake()
     {
+        base.Awake();
+        InitRoleDict();
+    }
+
+    private void InitRoleDict()
+    {
+        roleDict.Clear();
+
+        foreach (var role in roleDataList)
+        {
+            if (role != null && !roleDict.ContainsKey(role.roleId))
+            {
+                roleDict.Add(role.roleId, role);
+            }
+        }
     }
 
     public RoleDataSO GetCurrentRoleData()
     {
-        if (roleDataList != null && roleDataList.Count > 0)
-        {
-            return roleDataList[currentRoleIndex];
-        }
-        return null;
-    }
-    public void ChangeRole(int index)
-    {
-        if (index >= 0 && index < roleDataList.Count)
-        {
-            currentRoleIndex = index;
-            //这里可以添加其他需要更新角色信息的逻辑
-            EventSystem.DispatchEvent(GameDataStr.UpdateRoleInfo, currentRoleIndex);
-        }
-    }
-    public RoleDataSO GetRoleDataByIndex(int index)
-    {
-        if (index >= 0 && index < roleDataList.Count)
-        {
-            return roleDataList[index];
-        }
-        return null;
+        return GetRoleDataById(currentRoleId);
     }
 
+    public void ChangeRole(int roleId)
+    {
+        if (roleDict.ContainsKey(roleId))
+        {
+            currentRoleId = roleId;
 
+            EventSystem.DispatchEvent(GameDataStr.UpdateRoleInfo, roleId);
+        }
+    }
+
+    public RoleDataSO GetRoleDataById(int roleId)
+    {
+        roleDict.TryGetValue(roleId, out var role);
+        return role;
+    }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using UnityEngine;
+using GamerFrameWork.XFGameFrameWork;
 namespace XFGameFrameWork.ActionXF
 {
     public class ActionSequence
@@ -44,7 +45,7 @@ namespace XFGameFrameWork.ActionXF
         {
             var nested = new ActionSequence();
             sequenceBuilder.Invoke(nested);
-            sequence.Add(nested.sequence); // ¼ÓÈëÄÚ²¿µÄÐòÁÐ¶¯×÷
+            sequence.Add(nested.sequence); // ï¿½ï¿½ï¿½ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½ï¿½ï¿½
             return this;
         }
         public ActionSequence Append(ActionSequence nested)
@@ -58,8 +59,8 @@ namespace XFGameFrameWork.ActionXF
             if (bindTo != null)
                 sequence.BindTo(bindTo);
 
-            sequence.Start(); // ÏÈÆô¶¯ÐòÁÐ
-            runner.StartCoroutine(UpdateRoutine(onComplete)); // ÔÙ¿ªÆô¸üÐÂ
+            sequence.Start(); // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+            runner.StartCoroutine(UpdateRoutine(onComplete)); // ï¿½Ù¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         }
 
         private IEnumerator UpdateRoutine(Action onComplete)
@@ -70,7 +71,7 @@ namespace XFGameFrameWork.ActionXF
                 yield return null;
             }
 
-            onComplete?.Invoke(); // ¶¯×÷½áÊøºóµ÷ÓÃ
+            onComplete?.Invoke(); // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         }
 
     }

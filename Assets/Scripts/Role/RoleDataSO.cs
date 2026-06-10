@@ -5,13 +5,13 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "RoleDataSO", menuName = "ScriptableObjects/RoleDataSO", order = 1)]
 public class RoleDataSO : ScriptableObject
 {
+    public int roleId;
     public string roleName;
     public string roleType;
     public string roleDescription;
     public Sprite roleImage;
 
     public RoleExtraData extraData;
-
 }
 
 

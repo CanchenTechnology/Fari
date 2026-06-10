@@ -80,6 +80,14 @@ namespace GamerFrameWork.UIFrameWork
             }
             //设置item脚本数据
             itemScript.SetItemListData(index, itemData);
+
+            // 为需要 ListView 上下文的 Item 传入 LoopListView2 引用和索引
+            // （如展开/收起动画需要通知列表重新排版）
+            if (itemScript is IGamerUIListViewItemContext contextItem)
+            {
+                contextItem.SetListViewContext(listView, index);
+            }
+
             return item;
         }
 
