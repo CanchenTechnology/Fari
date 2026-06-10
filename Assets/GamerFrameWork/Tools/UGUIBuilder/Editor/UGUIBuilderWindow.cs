@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEditor;
 using System.IO;
+using TMPro;
 
 namespace UGUIBuilder
 {
@@ -10,18 +11,31 @@ namespace UGUIBuilder
     /// </summary>
     public class UGUIBuilderWindow : EditorWindow
     {
+        private const string PREF_SPRITE_FOLDER = "UGUIBuilder_SpriteFolder";
+        private const string PREF_PREFAB_PATH  = "UGUIBuilder_PrefabPath";
+        private const string PREF_FONT_PATH    = "UGUIBuilder_FontPath";
+        private const string PREF_TMP_FONT_PATH= "UGUIBuilder_TMPFontPath";
+
         private TextAsset jsonFile;
         private string spriteFolder = "Assets/Art/UI/Sprites";
         private string prefabOutputPath = "Assets/UI/Generated/NewScreen.prefab";
         private Font selectedFont;
+        private TMP_FontAsset tmpSelectedFont;
 
         private Vector2 scrollPos;
         private string statusMsg = "";
         private MessageType statusType = MessageType.None;
 
+        // 校验与预览
+        private System.Collections.Generic.List<string> validationMessages = new System.Collections.Generic.List<string>();
+        private Vector2 validationScrollPos;
+        private GameObject previewRoot;
+
         private bool foldoutJSON = true;
         private bool foldoutPaths = true;
         private bool foldoutBuild = true;
+
+        private GUIStyle headerStyle;
 
         [MenuItem("Tools/UGUI Builder/Open Window", priority = 100)]
         public static void ShowWindow()
@@ -34,14 +48,28 @@ namespace UGUIBuilder
         private void OnEnable()
         {
             // 从 EditorPrefs 恢复上次的路径
-            spriteFolder = EditorPrefs.GetString("UGUIBuilder_SpriteFolder", "Assets/Art/UI/Sprites");
-            prefabOutputPath = EditorPrefs.GetString("UGUIBuilder_PrefabPath", "Assets/UI/Generated/NewScreen.prefab");
+            spriteFolder = EditorPrefs.GetString(PREF_SPRITE_FOLDER, "Assets/Art/UI/Sprites");
+            prefabOutputPath = EditorPrefs.GetString(PREF_PREFAB_PATH, "Assets/UI/Generated/NewScreen.prefab");
+
+            // 缓存 GUIStyle，避免 OnGUI 中每帧创建
+            headerStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                fontSize = 16,
+                alignment = TextAnchor.MiddleCenter
+            };
 
             // 恢复上次选择的字体
-            string savedFontPath = EditorPrefs.GetString("UGUIBuilder_FontPath", "");
+            string savedFontPath = EditorPrefs.GetString(PREF_FONT_PATH, "");
             if (!string.IsNullOrEmpty(savedFontPath))
             {
                 selectedFont = AssetDatabase.LoadAssetAtPath<Font>(savedFontPath);
+            }
+
+            // 恢复 TMP 字体
+            string savedTMPFontPath = EditorPrefs.GetString(PREF_TMP_FONT_PATH, "");
+            if (!string.IsNullOrEmpty(savedTMPFontPath))
+            {
+                tmpSelectedFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(savedTMPFontPath);
             }
         }
 
@@ -66,11 +94,7 @@ namespace UGUIBuilder
         private void DrawHeader()
         {
             GUILayout.Space(10);
-            EditorGUILayout.LabelField("UGUI Prefab Builder", new GUIStyle(EditorStyles.boldLabel)
-            {
-                fontSize = 16,
-                alignment = TextAnchor.MiddleCenter
-            });
+            EditorGUILayout.LabelField("UGUI Prefab Builder", headerStyle);
             GUILayout.Space(5);
             EditorGUILayout.HelpBox(
                 "JSON → Canvas → UIMask + UIContent → Prefab\n" +
@@ -151,6 +175,25 @@ namespace UGUIBuilder
 
                 GUILayout.Space(4);
 
+                // TMP 字体选择
+                EditorGUILayout.BeginHorizontal();
+                tmpSelectedFont = (TMP_FontAsset)EditorGUILayout.ObjectField(
+                    new GUIContent("TMP 字体", "TextMeshPro 字体（优先于 Legacy 字体）"),
+                    tmpSelectedFont, typeof(TMP_FontAsset), false);
+                if (tmpSelectedFont != null && GUILayout.Button("✕", GUILayout.Width(24), GUILayout.Height(18)))
+                {
+                    tmpSelectedFont = null;
+                }
+                EditorGUILayout.EndHorizontal();
+
+                if (tmpSelectedFont != null)
+                {
+                    string tmpFontPath = AssetDatabase.GetAssetPath(tmpSelectedFont);
+                    EditorGUILayout.LabelField("  TMP 路径: " + tmpFontPath, EditorStyles.miniLabel);
+                }
+
+                GUILayout.Space(4);
+
                 // 输出路径
                 EditorGUILayout.BeginHorizontal();
                 prefabOutputPath = EditorGUILayout.TextField(
@@ -171,11 +214,74 @@ namespace UGUIBuilder
 
         private void DrawBuildSection()
         {
-            foldoutBuild = EditorGUILayout.BeginFoldoutHeaderGroup(foldoutBuild, "3. 生成");
+            foldoutBuild = EditorGUILayout.BeginFoldoutHeaderGroup(foldoutBuild, "3. 校验 · 预览 · 生成");
             if (foldoutBuild)
             {
                 EditorGUI.indentLevel++;
 
+                // ---- 校验按钮 ----
+                GUI.enabled = jsonFile != null;
+                GUI.backgroundColor = jsonFile != null ? new Color(0.45f, 0.6f, 0.85f) : Color.gray;
+                if (GUILayout.Button("🔍 校验 JSON", GUILayout.Height(28)))
+                {
+                    RunValidation();
+                }
+                GUI.backgroundColor = Color.white;
+                GUI.enabled = true;
+
+                // ---- 校验结果面板 ----
+                if (validationMessages.Count > 0)
+                {
+                    GUILayout.Space(4);
+                    EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                    validationScrollPos = EditorGUILayout.BeginScrollView(validationScrollPos, GUILayout.MaxHeight(140));
+                    foreach (var msg in validationMessages)
+                    {
+                        if (msg.StartsWith("[ERROR]"))
+                        {
+                            GUI.color = new Color(0.95f, 0.3f, 0.25f);
+                            EditorGUILayout.LabelField("  ✕ " + msg.Substring(8), EditorStyles.miniLabel);
+                        }
+                        else if (msg.StartsWith("[WARN]"))
+                        {
+                            GUI.color = new Color(0.95f, 0.75f, 0.1f);
+                            EditorGUILayout.LabelField("  ⚠ " + msg.Substring(7), EditorStyles.miniLabel);
+                        }
+                        else
+                        {
+                            GUI.color = Color.gray;
+                            EditorGUILayout.LabelField("  " + msg.Substring(7), EditorStyles.miniLabel);
+                        }
+                    }
+                    GUI.color = Color.white;
+                    EditorGUILayout.EndScrollView();
+                    EditorGUILayout.EndVertical();
+                }
+
+                GUILayout.Space(6);
+
+                // ---- 预览 / 清除按钮 ----
+                EditorGUILayout.BeginHorizontal();
+                bool canPreview = jsonFile != null && !string.IsNullOrEmpty(spriteFolder);
+                GUI.enabled = canPreview && previewRoot == null;
+                if (GUILayout.Button("👁 预览到场景", GUILayout.Height(30)))
+                {
+                    RunPreview();
+                }
+
+                GUI.enabled = previewRoot != null;
+                GUI.backgroundColor = previewRoot != null ? new Color(0.85f, 0.4f, 0.4f) : Color.gray;
+                if (GUILayout.Button("✕ 清除预览", GUILayout.Height(30)))
+                {
+                    ClearPreviewInScene();
+                }
+                GUI.backgroundColor = Color.white;
+                GUI.enabled = true;
+                EditorGUILayout.EndHorizontal();
+
+                GUILayout.Space(6);
+
+                // ---- 生成按钮 ----
                 bool canBuild = jsonFile != null
                     && !string.IsNullOrEmpty(spriteFolder)
                     && !string.IsNullOrEmpty(prefabOutputPath);
@@ -259,23 +365,34 @@ namespace UGUIBuilder
             }
 
             // 保存路径到 EditorPrefs
-            EditorPrefs.SetString("UGUIBuilder_SpriteFolder", spriteFolder);
-            EditorPrefs.SetString("UGUIBuilder_PrefabPath", prefabOutputPath);
+            EditorPrefs.SetString(PREF_SPRITE_FOLDER, spriteFolder);
+            EditorPrefs.SetString(PREF_PREFAB_PATH, prefabOutputPath);
 
             // 保存字体路径
             if (selectedFont != null)
             {
                 string fontPath = AssetDatabase.GetAssetPath(selectedFont);
-                EditorPrefs.SetString("UGUIBuilder_FontPath", fontPath);
+                EditorPrefs.SetString(PREF_FONT_PATH, fontPath);
             }
             else
             {
-                EditorPrefs.SetString("UGUIBuilder_FontPath", "");
+                EditorPrefs.SetString(PREF_FONT_PATH, "");
+            }
+
+            // 保存 TMP 字体路径
+            if (tmpSelectedFont != null)
+            {
+                string tmpFontPath = AssetDatabase.GetAssetPath(tmpSelectedFont);
+                EditorPrefs.SetString(PREF_TMP_FONT_PATH, tmpFontPath);
+            }
+            else
+            {
+                EditorPrefs.SetString(PREF_TMP_FONT_PATH, "");
             }
 
             try
             {
-                UGUIBuilderTool.BuildUGUIFromJSON(jsonPath, spriteFolder, prefabOutputPath, selectedFont);
+                UGUIBuilderTool.BuildUGUIFromJSON(jsonPath, spriteFolder, prefabOutputPath, selectedFont, tmpSelectedFont);
 
                 SetStatus($"✅ Prefab 生成成功: {prefabOutputPath}", MessageType.Info);
 
@@ -286,8 +403,6 @@ namespace UGUIBuilder
                     EditorGUIUtility.PingObject(prefab);
                     Selection.activeObject = prefab;
                 }
-
-                AssetDatabase.Refresh();
             }
             catch (System.Exception e)
             {
@@ -356,84 +471,132 @@ namespace UGUIBuilder
             if (string.IsNullOrEmpty(picked)) return;
 
             string json = @"{
-  ""screenName"": ""NavigationUI"",
+  ""screenName"": ""SampleLayout"",
   ""resolution"": { ""x"": 750, ""y"": 1334 },
   ""matchWidthOrHeight"": 0.5,
-  ""includeMask"": true,
-  ""maskColor"": { ""r"": 0, ""g"": 0, ""b"": 0, ""a"": 0.67 },
+  ""includeMask"": false,
   ""defaultFont"": """",
   ""elements"": [
     {
-      ""name"": ""Bottom"",
+      ""name"": ""FullBg"",
       ""type"": ""Panel"",
-      ""color"": { ""r"": 0, ""g"": 0, ""b"": 0, ""a"": 1 },
-      ""raycastTarget"": false,
+      ""color"": { ""r"": 0.08, ""g"": 0.08, ""b"": 0.12, ""a"": 1 },
       ""anchorMin"": { ""x"": 0, ""y"": 0 },
-      ""anchorMax"": { ""x"": 1, ""y"": 0 },
-      ""position"": { ""x"": 0, ""y"": 104.21 },
-      ""size"": { ""x"": 0, ""y"": 208.42 },
+      ""anchorMax"": { ""x"": 1, ""y"": 1 },
+      ""size"": { ""x"": 0, ""y"": 0 },
       ""children"": [
         {
-          ""name"": ""ToggleGroup"",
-          ""type"": ""ToggleGroup"",
-          ""spacing"": 0,
-          ""paddingLeft"": 69,
-          ""paddingRight"": 0,
-          ""paddingTop"": 30,
-          ""paddingBottom"": 0,
-          ""allowSwitchOff"": false,
-          ""anchorMin"": { ""x"": 0, ""y"": 0 },
-          ""anchorMax"": { ""x"": 1, ""y"": 1 },
-          ""position"": { ""x"": 8.15, ""y"": 14.41 },
-          ""size"": { ""x"": -16.3, ""y"": -28.81 },
+          ""name"": ""Title"",
+          ""type"": ""Text"",
+          ""text"": ""示例页面"",
+          ""fontSize"": 32,
+          ""fontStyle"": ""Bold"",
+          ""textAlignment"": ""Center"",
+          ""textColor"": { ""r"": 0.91, ""g"": 0.91, ""b"": 0.94, ""a"": 1 },
+          ""position"": { ""x"": 0, ""y"": 200 }
+        },
+        {
+          ""name"": ""DescText"",
+          ""type"": ""Text"",
+          ""text"": ""涵盖 Image / Text / Button / InputField / ScrollRect / ToggleGroup"",
+          ""fontSize"": 16,
+          ""textAlignment"": ""Center"",
+          ""textColor"": { ""r"": 0.6, ""g"": 0.6, ""b"": 0.69, ""a"": 1 },
+          ""position"": { ""x"": 0, ""y"": 150 }
+        },
+        {
+          ""name"": ""FilledBar"",
+          ""type"": ""Image"",
+          ""imageType"": ""Filled"",
+          ""fillMethod"": ""Horizontal"",
+          ""fillAmount"": 0.65,
+          ""color"": { ""r"": 0.27, ""g"": 0.55, ""b"": 0.91, ""a"": 1 },
+          ""size"": { ""x"": 500, ""y"": 24 },
+          ""position"": { ""x"": 0, ""y"": 80 }
+        },
+        {
+          ""name"": ""InputArea"",
+          ""type"": ""InputField"",
+          ""placeholderText"": ""随便写点什么..."",
+          ""contentType"": ""Standard"",
+          ""fontSize"": 20,
+          ""sprite"": ""input_bg"",
+          ""size"": { ""x"": 600, ""y"": 56 },
+          ""position"": { ""x"": 0, ""y"": 0 }
+        },
+        {
+          ""name"": ""CardScroll"",
+          ""type"": ""ScrollRect"",
+          ""verticalScroll"": true,
+          ""horizontalScroll"": false,
+          ""layoutType"": ""Vertical"",
+          ""spacing"": 10,
+          ""paddingTop"": 12,
+          ""paddingBottom"": 12,
+          ""paddingLeft"": 20,
+          ""paddingRight"": 20,
+          ""color"": { ""r"": 0.12, ""g"": 0.12, ""b"": 0.18, ""a"": 1 },
+          ""size"": { ""x"": 680, ""y"": 400 },
+          ""position"": { ""x"": 0, ""y"": -280 },
           ""children"": [
             {
-              ""name"": ""todayOracle"",
-              ""type"": ""Toggle"",
-              ""size"": { ""x"": 75, ""y"": 75 },
-              ""backgroundSprite"": ""bg_oracle"",
-              ""checkmarkSprite"": ""check_oracle"",
-              ""text"": ""今日神谕"",
-              ""fontSize"": 20,
-              ""isOn"": true,
-              ""outlineColor"": { ""r"": 0.903, ""g"": 0.005, ""b"": 1, ""a"": 0.5 },
-              ""outlineDistance"": { ""x"": 1, ""y"": -1 }
+              ""name"": ""Card1"",
+              ""type"": ""Panel"",
+              ""size"": { ""x"": 640, ""y"": 100 },
+              ""color"": { ""r"": 0.15, ""g"": 0.15, ""b"": 0.25, ""a"": 1 }
             },
             {
-              ""name"": ""dialogue"",
-              ""type"": ""Toggle"",
-              ""size"": { ""x"": 75, ""y"": 75 },
-              ""backgroundSprite"": ""bg_dialogue"",
-              ""checkmarkSprite"": ""check_dialogue"",
-              ""text"": ""对话"",
-              ""fontSize"": 20,
-              ""isOn"": false,
-              ""outlineColor"": { ""r"": 0.903, ""g"": 0.005, ""b"": 1, ""a"": 0.5 },
-              ""outlineDistance"": { ""x"": 1, ""y"": -1 }
+              ""name"": ""Card2"",
+              ""type"": ""Panel"",
+              ""size"": { ""x"": 640, ""y"": 100 },
+              ""color"": { ""r"": 0.15, ""g"": 0.15, ""b"": 0.25, ""a"": 1 }
             },
             {
-              ""name"": ""friend"",
-              ""type"": ""Toggle"",
-              ""size"": { ""x"": 75, ""y"": 75 },
-              ""backgroundSprite"": ""bg_friend"",
-              ""checkmarkSprite"": ""check_friend"",
-              ""text"": ""一起玩"",
-              ""fontSize"": 20,
-              ""isOn"": false,
-              ""outlineColor"": { ""r"": 0.903, ""g"": 0.005, ""b"": 1, ""a"": 0.5 },
-              ""outlineDistance"": { ""x"": 1, ""y"": -1 }
+              ""name"": ""Card3"",
+              ""type"": ""Panel"",
+              ""size"": { ""x"": 640, ""y"": 100 },
+              ""color"": { ""r"": 0.15, ""g"": 0.15, ""b"": 0.25, ""a"": 1 }
             },
             {
-              ""name"": ""my"",
+              ""name"": ""Card4"",
+              ""type"": ""Panel"",
+              ""size"": { ""x"": 640, ""y"": 100 },
+              ""color"": { ""r"": 0.15, ""g"": 0.15, ""b"": 0.25, ""a"": 1 }
+            }
+          ]
+        },
+        {
+          ""name"": ""BottomBar"",
+          ""type"": ""ToggleGroup"",
+          ""allowSwitchOff"": false,
+          ""spacing"": 40,
+          ""paddingTop"": 12,
+          ""anchorMin"": { ""x"": 0, ""y"": 0 },
+          ""anchorMax"": { ""x"": 1, ""y"": 0 },
+          ""size"": { ""x"": 0, ""y"": 90 },
+          ""position"": { ""x"": 0, ""y"": 0 },
+          ""color"": { ""r"": 0.06, ""g"": 0.06, ""b"": 0.1, ""a"": 1 },
+          ""children"": [
+            {
+              ""name"": ""Tab1"",
               ""type"": ""Toggle"",
-              ""size"": { ""x"": 75, ""y"": 75 },
-              ""backgroundSprite"": ""bg_my"",
-              ""checkmarkSprite"": ""check_my"",
+              ""text"": ""首页"",
+              ""fontSize"": 14,
+              ""isOn"": true
+            },
+            {
+              ""name"": ""Tab2"",
+              ""type"": ""Toggle"",
+              ""text"": ""发现"",
+              ""fontSize"": 14,
+              ""isOn"": false
+            },
+            {
+              ""name"": ""Tab3"",
+              ""type"": ""Toggle"",
               ""text"": ""我的"",
-              ""fontSize"": 20,
-              ""isOn"": false,
-              ""outlineColor"": { ""r"": 0.903, ""g"": 0.005, ""b"": 1, ""a"": 0.5 },
-              ""outlineDistance"": { ""x"": 1, ""y"": -1 }
+              ""fontSize"": 14,
+              ""isOn"": false
             }
           ]
         }
@@ -449,6 +612,75 @@ namespace UGUIBuilder
             // 自动关联
             jsonFile = AssetDatabase.LoadAssetAtPath<TextAsset>(writePath);
             SetStatus($"✅ 示例 JSON 已生成: {writePath}", MessageType.Info);
+        }
+
+        // ============================================================
+        // 校验 & 预览
+        // ============================================================
+
+        private void RunValidation()
+        {
+            if (jsonFile == null) return;
+
+            string jsonPath = AssetDatabase.GetAssetPath(jsonFile);
+            string text = File.ReadAllText(jsonPath);
+            UGUIBuilderTool.LayoutRoot layout;
+            try
+            {
+                layout = JsonUtility.FromJson<UGUIBuilderTool.LayoutRoot>(text);
+            }
+            catch (System.Exception e)
+            {
+                validationMessages = new System.Collections.Generic.List<string>
+                    { $"[ERROR] JSON 解析失败: {e.Message}" };
+                Repaint();
+                return;
+            }
+
+            var result = UGUIBuilderTool.ValidateLayout(layout);
+            validationMessages = result.messages;
+            Repaint();
+        }
+
+        private void RunPreview()
+        {
+            // 先清除旧预览
+            if (previewRoot != null)
+            {
+                UGUIBuilderTool.ClearPreview(previewRoot);
+                previewRoot = null;
+            }
+
+            string jsonPath = AssetDatabase.GetAssetPath(jsonFile);
+            EditorPrefs.SetString(PREF_SPRITE_FOLDER, spriteFolder);
+            EditorPrefs.SetString(PREF_FONT_PATH,
+                selectedFont != null ? AssetDatabase.GetAssetPath(selectedFont) : "");
+            EditorPrefs.SetString(PREF_TMP_FONT_PATH,
+                tmpSelectedFont != null ? AssetDatabase.GetAssetPath(tmpSelectedFont) : "");
+
+            try
+            {
+                previewRoot = UGUIBuilderTool.BuildPreviewFromJSON(jsonPath, spriteFolder, selectedFont, tmpSelectedFont);
+                if (previewRoot != null)
+                {
+                    Selection.activeObject = previewRoot;
+                    EditorGUIUtility.PingObject(previewRoot);
+                    SetStatus($"✅ 预览已生成: {previewRoot.name}", MessageType.Info);
+                }
+            }
+            catch (System.Exception e)
+            {
+                SetStatus($"❌ 预览失败: {e.Message}", MessageType.Error);
+                Debug.LogException(e);
+            }
+        }
+
+        private void ClearPreviewInScene()
+        {
+            if (previewRoot == null) return;
+            UGUIBuilderTool.ClearPreview(previewRoot);
+            previewRoot = null;
+            SetStatus("预览已清除", MessageType.Info);
         }
     }
 }

@@ -1,0 +1,212 @@
+{
+  "screenName": "FriendsScreen",
+  "resolution": { "x": 402, "y": 874 },
+  "matchWidthOrHeight": 0.5,
+  "includeMask": false,
+  "elements": [
+    {
+      "name": "Background",
+      "type": "Panel",
+      "color": { "r": 0.98, "g": 0.98, "b": 0.98, "a": 1.0 },
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "size": { "x": 0, "y": 0 },
+      "position": { "x": 0, "y": 0 },
+      "children": [
+        {
+          "name": "Header",
+          "type": "Panel",
+          "color": { "r": 1, "g": 1, "b": 1, "a": 0 },
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "pivot": { "x": 0.5, "y": 1 },
+          "size": { "x": -48, "y": 64 },
+          "position": { "x": 0, "y": -44 },
+          "children": [
+            {
+              "name": "Title",
+              "type": "Text",
+              "text": "朋友",
+              "fontSize": 24,
+              "fontStyle": "Bold",
+              "textAlignment": "Left",
+              "textColor": { "r": 0.1, "g": 0.1, "b": 0.1, "a": 1 },
+              "anchorMin": { "x": 0, "y": 0.5 },
+              "anchorMax": { "x": 0, "y": 0.5 },
+              "pivot": { "x": 0, "y": 0.5 },
+              "size": { "x": 120, "y": 40 },
+              "position": { "x": 0, "y": 0 }
+            },
+            {
+              "name": "AddFriendBtn",
+              "type": "Image",
+              "sprite": "icon_add_user",
+              "anchorMin": { "x": 1, "y": 0.5 },
+              "anchorMax": { "x": 1, "y": 0.5 },
+              "pivot": { "x": 1, "y": 0.5 },
+              "size": { "x": 24, "y": 24 },
+              "position": { "x": 0, "y": 0 }
+            }
+          ]
+        },
+        {
+          "name": "SearchBar",
+          "type": "InputField",
+          "placeholderText": "搜索朋友或用户名",
+          "contentType": "Standard",
+          "fontSize": 15,
+          "sprite": "search_bg",
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "pivot": { "x": 0.5, "y": 1 },
+          "size": { "x": -48, "y": 40 },
+          "position": { "x": 0, "y": -108 }
+        },
+        {
+          "name": "ActionCards",
+          "type": "Panel",
+          "color": { "r": 1, "g": 1, "b": 1, "a": 0 },
+          "layoutType": "Horizontal",
+          "spacing": 16,
+          "childForceExpandWidth": true,
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "pivot": { "x": 0.5, "y": 1 },
+          "size": { "x": -48, "y": 96 },
+          "position": { "x": 0, "y": -168 },
+          "children": [
+            {
+              "name": "CardAddFriend",
+              "type": "Panel",
+              "color": { "r": 1, "g": 1, "b": 1, "a": 1 },
+              "children": [
+                { "name": "Icon", "type": "Image", "sprite": "icon_add", "size": { "x": 32, "y": 32 }, "position": { "x": 0, "y": 18 } },
+                { "name": "Title", "type": "Text", "text": "添加朋友", "fontSize": 15, "fontStyle": "Bold", "textAlignment": "Center", "position": { "x": 0, "y": -12 } },
+                { "name": "SubTitle", "type": "Text", "text": "发现更多朋友", "fontSize": 12, "textColor": { "r": 0.6, "g": 0.6, "b": 0.6, "a": 1 }, "textAlignment": "Center", "position": { "x": 0, "y": -30 } }
+              ]
+            },
+            {
+              "name": "CardGroupChat",
+              "type": "Panel",
+              "color": { "r": 1, "g": 1, "b": 1, "a": 1 },
+              "children": [
+                { "name": "Icon", "type": "Image", "sprite": "icon_group", "size": { "x": 32, "y": 32 }, "position": { "x": 0, "y": 18 } },
+                { "name": "Title", "type": "Text", "text": "群聊", "fontSize": 15, "fontStyle": "Bold", "textAlignment": "Center", "position": { "x": 0, "y": -12 } },
+                { "name": "SubTitle", "type": "Text", "text": "与朋友一起聊", "fontSize": 12, "textColor": { "r": 0.6, "g": 0.6, "b": 0.6, "a": 1 }, "textAlignment": "Center", "position": { "x": 0, "y": -30 } }
+              ]
+            },
+            {
+              "name": "CardUpdates",
+              "type": "Panel",
+              "color": { "r": 1, "g": 1, "b": 1, "a": 1 },
+              "children": [
+                { "name": "Icon", "type": "Image", "sprite": "icon_star", "size": { "x": 32, "y": 32 }, "position": { "x": 0, "y": 18 } },
+                { "name": "Title", "type": "Text", "text": "关注动态", "fontSize": 15, "fontStyle": "Bold", "textAlignment": "Center", "position": { "x": 0, "y": -12 } },
+                { "name": "SubTitle", "type": "Text", "text": "查看好友更新", "fontSize": 12, "textColor": { "r": 0.6, "g": 0.6, "b": 0.6, "a": 1 }, "textAlignment": "Center", "position": { "x": 0, "y": -30 } }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "SectionHeader",
+          "type": "Panel",
+          "color": { "r": 1, "g": 1, "b": 1, "a": 0 },
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "pivot": { "x": 0.5, "y": 1 },
+          "size": { "x": -48, "y": 40 },
+          "position": { "x": 0, "y": -280 },
+          "children": [
+            {
+              "name": "TitleLeft",
+              "type": "Text",
+              "text": "我的朋友",
+              "fontSize": 16,
+              "fontStyle": "Bold",
+              "textAlignment": "Left",
+              "anchorMin": { "x": 0, "y": 0.5 },
+              "anchorMax": { "x": 0, "y": 0.5 },
+              "pivot": { "x": 0, "y": 0.5 },
+              "size": { "x": 120, "y": 30 },
+              "position": { "x": 0, "y": 0 }
+            },
+            {
+              "name": "TitleRight",
+              "type": "Text",
+              "text": "全部好友 >",
+              "fontSize": 14,
+              "textColor": { "r": 0.6, "g": 0.6, "b": 0.6, "a": 1 },
+              "textAlignment": "Right",
+              "anchorMin": { "x": 1, "y": 0.5 },
+              "anchorMax": { "x": 1, "y": 0.5 },
+              "pivot": { "x": 1, "y": 0.5 },
+              "size": { "x": 100, "y": 30 },
+              "position": { "x": 0, "y": 0 }
+            }
+          ]
+        },
+        {
+          "name": "FriendList",
+          "type": "ScrollRect",
+          "verticalScroll": true,
+          "horizontalScroll": false,
+          "scrollMovementType": "Elastic",
+          "layoutType": "Vertical",
+          "spacing": 16,
+          "color": { "r": 1, "g": 1, "b": 1, "a": 0 },
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "pivot": { "x": 0.5, "y": 1 },
+          "size": { "x": -48, "y": 420 },
+          "position": { "x": 0, "y": -336 },
+          "children": [
+            {
+              "name": "FriendItem_1",
+              "type": "Panel",
+              "color": { "r": 1, "g": 1, "b": 1, "a": 1 },
+              "size": { "x": 354, "y": 88 },
+              "children": [
+                { "name": "Avatar", "type": "Image", "sprite": "avatar_1", "anchorMin": { "x": 0, "y": 0.5 }, "anchorMax": { "x": 0, "y": 0.5 }, "pivot": { "x": 0, "y": 0.5 }, "size": { "x": 48, "y": 48 }, "position": { "x": 16, "y": 0 } },
+                { "name": "Name", "type": "Text", "text": "星星", "fontSize": 16, "fontStyle": "Bold", "textAlignment": "Left", "anchorMin": { "x": 0, "y": 1 }, "anchorMax": { "x": 0, "y": 1 }, "pivot": { "x": 0, "y": 1 }, "size": { "x": 100, "y": 24 }, "position": { "x": 76, "y": -16 } },
+                { "name": "Tag", "type": "Text", "text": "在线", "fontSize": 12, "textColor": { "r": 0.4, "g": 0.4, "b": 0.4, "a": 1 }, "textAlignment": "Left", "anchorMin": { "x": 0, "y": 1 }, "anchorMax": { "x": 0, "y": 1 }, "pivot": { "x": 0, "y": 1 }, "size": { "x": 40, "y": 20 }, "position": { "x": 120, "y": -18 } },
+                { "name": "Signature", "type": "Text", "text": "今天抽到了很棒的牌 ✨", "fontSize": 14, "textColor": { "r": 0.3, "g": 0.3, "b": 0.3, "a": 1 }, "textAlignment": "Left", "anchorMin": { "x": 0, "y": 1 }, "anchorMax": { "x": 0, "y": 1 }, "pivot": { "x": 0, "y": 1 }, "size": { "x": 200, "y": 20 }, "position": { "x": 76, "y": -40 } },
+                { "name": "Time", "type": "Text", "text": "刚刚在线", "fontSize": 12, "textColor": { "r": 0.6, "g": 0.6, "b": 0.6, "a": 1 }, "textAlignment": "Left", "anchorMin": { "x": 0, "y": 1 }, "anchorMax": { "x": 0, "y": 1 }, "pivot": { "x": 0, "y": 1 }, "size": { "x": 200, "y": 20 }, "position": { "x": 76, "y": -60 } },
+                { "name": "Arrow", "type": "Image", "sprite": "icon_arrow_right", "anchorMin": { "x": 1, "y": 0.5 }, "anchorMax": { "x": 1, "y": 0.5 }, "pivot": { "x": 1, "y": 0.5 }, "size": { "x": 16, "y": 16 }, "position": { "x": -16, "y": 0 } }
+              ]
+            },
+            {
+              "name": "FriendItem_2",
+              "type": "Panel",
+              "color": { "r": 1, "g": 1, "b": 1, "a": 1 },
+              "size": { "x": 354, "y": 104 },
+              "children": [
+                { "name": "Avatar", "type": "Image", "sprite": "avatar_2", "anchorMin": { "x": 0, "y": 0.5 }, "anchorMax": { "x": 0, "y": 0.5 }, "pivot": { "x": 0, "y": 0.5 }, "size": { "x": 48, "y": 48 }, "position": { "x": 16, "y": 0 } },
+                { "name": "Name", "type": "Text", "text": "太阳", "fontSize": 16, "fontStyle": "Bold", "textAlignment": "Left", "anchorMin": { "x": 0, "y": 1 }, "anchorMax": { "x": 0, "y": 1 }, "pivot": { "x": 0, "y": 1 }, "size": { "x": 100, "y": 24 }, "position": { "x": 76, "y": -16 } },
+                { "name": "Tag", "type": "Text", "text": "在线", "fontSize": 12, "textColor": { "r": 0.4, "g": 0.4, "b": 0.4, "a": 1 }, "textAlignment": "Left", "anchorMin": { "x": 0, "y": 1 }, "anchorMax": { "x": 0, "y": 1 }, "pivot": { "x": 0, "y": 1 }, "size": { "x": 40, "y": 20 }, "position": { "x": 120, "y": -18 } },
+                { "name": "Signature", "type": "Text", "text": "专注当下，好运自然来 ☀️", "fontSize": 14, "textColor": { "r": 0.3, "g": 0.3, "b": 0.3, "a": 1 }, "textAlignment": "Left", "anchorMin": { "x": 0, "y": 1 }, "anchorMax": { "x": 0, "y": 1 }, "pivot": { "x": 0, "y": 1 }, "size": { "x": 200, "y": 20 }, "position": { "x": 76, "y": -40 } },
+                { "name": "Time", "type": "Text", "text": "10 分钟前在线", "fontSize": 12, "textColor": { "r": 0.6, "g": 0.6, "b": 0.6, "a": 1 }, "textAlignment": "Left", "anchorMin": { "x": 0, "y": 1 }, "anchorMax": { "x": 0, "y": 1 }, "pivot": { "x": 0, "y": 1 }, "size": { "x": 200, "y": 20 }, "position": { "x": 76, "y": -60 } },
+                { "name": "Arrow", "type": "Image", "sprite": "icon_arrow_right", "anchorMin": { "x": 1, "y": 0.5 }, "anchorMax": { "x": 1, "y": 0.5 }, "pivot": { "x": 1, "y": 0.5 }, "size": { "x": 16, "y": 16 }, "position": { "x": -16, "y": 0 } }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "TabBarGroup",
+          "type": "ToggleGroup",
+          "allowSwitchOff": false,
+          "anchorMin": { "x": 0, "y": 0 },
+          "anchorMax": { "x": 1, "y": 0 },
+          "pivot": { "x": 0.5, "y": 0 },
+          "size": { "x": 0, "y": 88 },
+          "position": { "x": 0, "y": 34 },
+          "children": [
+            { "name": "TabDivination", "type": "Toggle", "text": "每日占卜", "fontSize": 12, "backgroundSprite": "tab_divination_normal", "checkmarkSprite": "tab_divination_active", "isOn": false },
+            { "name": "TabChat", "type": "Toggle", "text": "对话", "fontSize": 12, "backgroundSprite": "tab_chat_normal", "checkmarkSprite": "tab_chat_active", "isOn": false },
+            { "name": "TabFriends", "type": "Toggle", "text": "朋友", "fontSize": 12, "backgroundSprite": "tab_friends_normal", "checkmarkSprite": "tab_friends_active", "isOn": true },
+            { "name": "TabMine", "type": "Toggle", "text": "我的", "fontSize": 12, "backgroundSprite": "tab_mine_normal", "checkmarkSprite": "tab_mine_active", "isOn": false }
+          ]
+        }
+      ]
+    }
+  ]
+}
