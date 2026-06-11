@@ -1,0 +1,655 @@
+{
+  "screenName": "MyProfileScreen",
+  "resolution": { "x": 750, "y": 1334 },
+  "matchWidthOrHeight": 0.5,
+  "includeMask": false,
+  "elements": [
+    {
+      "name": "Background",
+      "type": "Panel",
+      "color": { "r": 0.08, "g": 0.06, "b": 0.14, "a": 1 },
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "size": { "x": 0, "y": 0 },
+      "children": [
+        {
+          "name": "MainScroll",
+          "type": "ScrollRect",
+          "verticalScroll": true,
+          "horizontalScroll": false,
+          "scrollMovementType": "Clamped",
+          "scrollInertia": true,
+          "scrollSensitivity": 20,
+          "layoutType": "Vertical",
+          "spacing": 0,
+          "paddingTop": 50,
+          "paddingBottom": 130,
+          "paddingLeft": 0,
+          "paddingRight": 0,
+          "childControlWidth": true,
+          "childControlHeight": false,
+          "childForceExpandWidth": true,
+          "childForceExpandHeight": false,
+          "anchorMin": { "x": 0, "y": 0 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "size": { "x": 0, "y": 0 },
+          "color": { "r": 0.08, "g": 0.06, "b": 0.14, "a": 0 },
+          "children": [
+            {
+              "name": "HeaderPanel",
+              "type": "Panel",
+              "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+              "layoutType": "Vertical",
+              "spacing": 4,
+              "paddingLeft": 30,
+              "paddingRight": 30,
+              "paddingTop": 0,
+              "paddingBottom": 20,
+              "childControlWidth": true,
+              "childControlHeight": false,
+              "childForceExpandWidth": true,
+              "childForceExpandHeight": false,
+              "size": { "x": 690, "y": 120 },
+              "children": [
+                {
+                  "name": "AppNameText",
+                  "type": "Text",
+                  "text": "Nocturne Oracle",
+                  "fontSize": 13,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.96, "g": 0.78, "b": 0.45, "a": 1 },
+                  "size": { "x": 630, "y": 20 }
+                },
+                {
+                  "name": "TitleText",
+                  "type": "Text",
+                  "text": "我的",
+                  "fontSize": 36,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 1, "g": 1, "b": 1, "a": 1 },
+                  "size": { "x": 630, "y": 48 }
+                },
+                {
+                  "name": "SubtitleText",
+                  "type": "Text",
+                  "text": "探索内在，连接宇宙的指引。",
+                  "fontSize": 14,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.65, "g": 0.55, "b": 0.78, "a": 1 },
+                  "size": { "x": 630, "y": 22 }
+                }
+              ]
+            },
+            {
+              "name": "ProfileCard",
+              "type": "Panel",
+              "color": { "r": 0.12, "g": 0.09, "b": 0.20, "a": 1 },
+              "layoutType": "Horizontal",
+              "spacing": 14,
+              "paddingLeft": 24,
+              "paddingRight": 24,
+              "paddingTop": 20,
+              "paddingBottom": 20,
+              "childAlignment": "MiddleLeft",
+              "childControlWidth": false,
+              "childControlHeight": true,
+              "childForceExpandWidth": false,
+              "childForceExpandHeight": false,
+              "size": { "x": 690, "y": 110 },
+              "children": [
+                {
+                  "name": "AvatarImage",
+                  "type": "Image",
+                  "sprite": "avatar_placeholder",
+                  "imageType": "Simple",
+                  "color": { "r": 0.35, "g": 0.25, "b": 0.55, "a": 1 },
+                  "size": { "x": 70, "y": 70 }
+                },
+                {
+                  "name": "UserInfoPanel",
+                  "type": "Panel",
+                  "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                  "layoutType": "Vertical",
+                  "spacing": 4,
+                  "childAlignment": "MiddleLeft",
+                  "childControlWidth": true,
+                  "childControlHeight": false,
+                  "childForceExpandWidth": true,
+                  "childForceExpandHeight": false,
+                  "size": { "x": 0, "y": 50 },
+                  "children": [
+                    {
+                      "name": "UsernameText",
+                      "type": "Text",
+                      "text": "Luna",
+                      "fontSize": 22,
+                      "fontStyle": "Bold",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 1, "g": 1, "b": 1, "a": 1 },
+                      "size": { "x": 440, "y": 30 }
+                    },
+                    {
+                      "name": "UserSubtitleText",
+                      "type": "Text",
+                      "text": "探索内在，连接宇宙的指引。",
+                      "fontSize": 12,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.55, "g": 0.50, "b": 0.60, "a": 1 },
+                      "size": { "x": 440, "y": 18 }
+                    }
+                  ]
+                },
+                {
+                  "name": "ProfileBadgeBtn",
+                  "type": "Button",
+                  "text": "PRO",
+                  "fontSize": 12,
+                  "textColor": { "r": 0.96, "g": 0.78, "b": 0.45, "a": 1 },
+                  "color": { "r": 0.18, "g": 0.12, "b": 0.30, "a": 1 },
+                  "size": { "x": 48, "y": 26 }
+                }
+              ]
+            },
+            {
+              "name": "StatsSection",
+              "type": "Panel",
+              "color": { "r": 0.12, "g": 0.09, "b": 0.20, "a": 1 },
+              "layoutType": "Horizontal",
+              "spacing": 0,
+              "paddingLeft": 16,
+              "paddingRight": 16,
+              "paddingTop": 16,
+              "paddingBottom": 16,
+              "childAlignment": "MiddleCenter",
+              "childControlWidth": true,
+              "childControlHeight": true,
+              "childForceExpandWidth": true,
+              "childForceExpandHeight": false,
+              "size": { "x": 690, "y": 80 },
+              "children": [
+                {
+                  "name": "StatTodayCard",
+                  "type": "Panel",
+                  "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                  "layoutType": "Vertical",
+                  "spacing": 2,
+                  "childAlignment": "MiddleCenter",
+                  "childControlWidth": true,
+                  "childControlHeight": false,
+                  "childForceExpandWidth": true,
+                  "childForceExpandHeight": false,
+                  "size": { "x": 219, "y": 48 },
+                  "children": [
+                    {
+                      "name": "StatTodayCardValue",
+                      "type": "Text",
+                      "text": "0/15",
+                      "fontSize": 20,
+                      "fontStyle": "Bold",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 1, "g": 1, "b": 1, "a": 1 },
+                      "size": { "x": 200, "y": 28 }
+                    },
+                    {
+                      "name": "StatTodayCardLabel",
+                      "type": "Text",
+                      "text": "今日占卡",
+                      "fontSize": 11,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.55, "g": 0.50, "b": 0.60, "a": 1 },
+                      "size": { "x": 200, "y": 16 }
+                    }
+                  ]
+                },
+                {
+                  "name": "StatTodayChat",
+                  "type": "Panel",
+                  "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                  "layoutType": "Vertical",
+                  "spacing": 2,
+                  "childAlignment": "MiddleCenter",
+                  "childControlWidth": true,
+                  "childControlHeight": false,
+                  "childForceExpandWidth": true,
+                  "childForceExpandHeight": false,
+                  "size": { "x": 219, "y": 48 },
+                  "children": [
+                    {
+                      "name": "StatTodayChatValue",
+                      "type": "Text",
+                      "text": "0/100",
+                      "fontSize": 20,
+                      "fontStyle": "Bold",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 1, "g": 1, "b": 1, "a": 1 },
+                      "size": { "x": 200, "y": 28 }
+                    },
+                    {
+                      "name": "StatTodayChatLabel",
+                      "type": "Text",
+                      "text": "今日对话",
+                      "fontSize": 11,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.55, "g": 0.50, "b": 0.60, "a": 1 },
+                      "size": { "x": 200, "y": 16 }
+                    }
+                  ]
+                },
+                {
+                  "name": "StatRecent",
+                  "type": "Panel",
+                  "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                  "layoutType": "Vertical",
+                  "spacing": 2,
+                  "childAlignment": "MiddleCenter",
+                  "childControlWidth": true,
+                  "childControlHeight": false,
+                  "childForceExpandWidth": true,
+                  "childForceExpandHeight": false,
+                  "size": { "x": 219, "y": 48 },
+                  "children": [
+                    {
+                      "name": "StatRecentValue",
+                      "type": "Text",
+                      "text": "今日神谕",
+                      "fontSize": 18,
+                      "fontStyle": "Bold",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.96, "g": 0.78, "b": 0.45, "a": 1 },
+                      "size": { "x": 200, "y": 28 }
+                    },
+                    {
+                      "name": "StatRecentLabel",
+                      "type": "Text",
+                      "text": "最近一次",
+                      "fontSize": 11,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.55, "g": 0.50, "b": 0.60, "a": 1 },
+                      "size": { "x": 200, "y": 16 }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "MenuSection",
+              "type": "Panel",
+              "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+              "layoutType": "Vertical",
+              "spacing": 10,
+              "paddingLeft": 28,
+              "paddingRight": 28,
+              "paddingTop": 16,
+              "paddingBottom": 0,
+              "childControlWidth": true,
+              "childControlHeight": false,
+              "childForceExpandWidth": true,
+              "childForceExpandHeight": false,
+              "size": { "x": 694, "y": 0 },
+              "children": [
+                {
+                  "name": "MenuItem_DivinationHistory",
+                  "type": "Panel",
+                  "color": { "r": 0.12, "g": 0.09, "b": 0.20, "a": 1 },
+                  "layoutType": "Horizontal",
+                  "spacing": 14,
+                  "paddingLeft": 22,
+                  "paddingRight": 22,
+                  "paddingTop": 18,
+                  "paddingBottom": 18,
+                  "childAlignment": "MiddleLeft",
+                  "childControlWidth": false,
+                  "childControlHeight": true,
+                  "childForceExpandWidth": false,
+                  "childForceExpandHeight": false,
+                  "size": { "x": 638, "y": 64 },
+                  "children": [
+                    {
+                      "name": "Icon_Divination",
+                      "type": "Image",
+                      "sprite": "icon_divination",
+                      "imageType": "Simple",
+                      "color": { "r": 0.70, "g": 0.60, "b": 0.85, "a": 1 },
+                      "size": { "x": 28, "y": 28 }
+                    },
+                    {
+                      "name": "MenuTextPanel_Divination",
+                      "type": "Panel",
+                      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                      "layoutType": "Vertical",
+                      "spacing": 2,
+                      "childAlignment": "MiddleLeft",
+                      "childControlWidth": true,
+                      "childControlHeight": false,
+                      "childForceExpandWidth": true,
+                      "childForceExpandHeight": false,
+                      "size": { "x": 0, "y": 44 },
+                      "children": [
+                        {
+                          "name": "MenuTitle_Divination",
+                          "type": "Text",
+                          "text": "占卜历史",
+                          "fontSize": 17,
+                          "fontStyle": "Normal",
+                          "textAlignment": "Left",
+                          "textColor": { "r": 1, "g": 1, "b": 1, "a": 1 },
+                          "size": { "x": 440, "y": 24 }
+                        },
+                        {
+                          "name": "MenuDesc_Divination",
+                          "type": "Text",
+                          "text": "回顾你过去的占卜记录",
+                          "fontSize": 12,
+                          "fontStyle": "Normal",
+                          "textAlignment": "Left",
+                          "textColor": { "r": 0.50, "g": 0.45, "b": 0.55, "a": 1 },
+                          "size": { "x": 440, "y": 18 }
+                        }
+                      ]
+                    },
+                    {
+                      "name": "Arrow_Divination",
+                      "type": "Image",
+                      "sprite": "icon_arrow_right",
+                      "imageType": "Simple",
+                      "color": { "r": 0.40, "g": 0.35, "b": 0.45, "a": 1 },
+                      "size": { "x": 16, "y": 16 }
+                    }
+                  ]
+                },
+                {
+                  "name": "MenuItem_MyProfile",
+                  "type": "Panel",
+                  "color": { "r": 0.12, "g": 0.09, "b": 0.20, "a": 1 },
+                  "layoutType": "Horizontal",
+                  "spacing": 14,
+                  "paddingLeft": 22,
+                  "paddingRight": 22,
+                  "paddingTop": 18,
+                  "paddingBottom": 18,
+                  "childAlignment": "MiddleLeft",
+                  "childControlWidth": false,
+                  "childControlHeight": true,
+                  "childForceExpandWidth": false,
+                  "childForceExpandHeight": false,
+                  "size": { "x": 638, "y": 64 },
+                  "children": [
+                    {
+                      "name": "Icon_Profile",
+                      "type": "Image",
+                      "sprite": "icon_profile",
+                      "imageType": "Simple",
+                      "color": { "r": 0.70, "g": 0.60, "b": 0.85, "a": 1 },
+                      "size": { "x": 28, "y": 28 }
+                    },
+                    {
+                      "name": "MenuTextPanel_Profile",
+                      "type": "Panel",
+                      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                      "layoutType": "Vertical",
+                      "spacing": 2,
+                      "childAlignment": "MiddleLeft",
+                      "childControlWidth": true,
+                      "childControlHeight": false,
+                      "childForceExpandWidth": true,
+                      "childForceExpandHeight": false,
+                      "size": { "x": 0, "y": 44 },
+                      "children": [
+                        {
+                          "name": "MenuTitle_Profile",
+                          "type": "Text",
+                          "text": "我的个人资料",
+                          "fontSize": 17,
+                          "fontStyle": "Normal",
+                          "textAlignment": "Left",
+                          "textColor": { "r": 1, "g": 1, "b": 1, "a": 1 },
+                          "size": { "x": 440, "y": 24 }
+                        },
+                        {
+                          "name": "MenuDesc_Profile",
+                          "type": "Text",
+                          "text": "编辑你的个人资料和偏好",
+                          "fontSize": 12,
+                          "fontStyle": "Normal",
+                          "textAlignment": "Left",
+                          "textColor": { "r": 0.50, "g": 0.45, "b": 0.55, "a": 1 },
+                          "size": { "x": 440, "y": 18 }
+                        }
+                      ]
+                    },
+                    {
+                      "name": "Arrow_Profile",
+                      "type": "Image",
+                      "sprite": "icon_arrow_right",
+                      "imageType": "Simple",
+                      "color": { "r": 0.40, "g": 0.35, "b": 0.45, "a": 1 },
+                      "size": { "x": 16, "y": 16 }
+                    }
+                  ]
+                },
+                {
+                  "name": "MenuItem_MemoryMgmt",
+                  "type": "Panel",
+                  "color": { "r": 0.18, "g": 0.10, "b": 0.32, "a": 1 },
+                  "layoutType": "Horizontal",
+                  "spacing": 14,
+                  "paddingLeft": 22,
+                  "paddingRight": 22,
+                  "paddingTop": 18,
+                  "paddingBottom": 18,
+                  "childAlignment": "MiddleLeft",
+                  "childControlWidth": false,
+                  "childControlHeight": true,
+                  "childForceExpandWidth": false,
+                  "childForceExpandHeight": false,
+                  "size": { "x": 638, "y": 64 },
+                  "children": [
+                    {
+                      "name": "Icon_Memory",
+                      "type": "Image",
+                      "sprite": "icon_memory",
+                      "imageType": "Simple",
+                      "color": { "r": 0.55, "g": 0.40, "b": 0.95, "a": 1 },
+                      "size": { "x": 28, "y": 28 }
+                    },
+                    {
+                      "name": "MenuTextPanel_Memory",
+                      "type": "Panel",
+                      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                      "layoutType": "Vertical",
+                      "spacing": 2,
+                      "childAlignment": "MiddleLeft",
+                      "childControlWidth": true,
+                      "childControlHeight": false,
+                      "childForceExpandWidth": true,
+                      "childForceExpandHeight": false,
+                      "size": { "x": 0, "y": 44 },
+                      "children": [
+                        {
+                          "name": "MenuTitle_Memory",
+                          "type": "Text",
+                          "text": "记忆管理",
+                          "fontSize": 17,
+                          "fontStyle": "Normal",
+                          "textAlignment": "Left",
+                          "textColor": { "r": 1, "g": 1, "b": 1, "a": 1 },
+                          "size": { "x": 440, "y": 24 }
+                        },
+                        {
+                          "name": "MenuDesc_Memory",
+                          "type": "Text",
+                          "text": "管理你的个人记忆与偏好设置",
+                          "fontSize": 12,
+                          "fontStyle": "Normal",
+                          "textAlignment": "Left",
+                          "textColor": { "r": 0.55, "g": 0.45, "b": 0.65, "a": 1 },
+                          "size": { "x": 440, "y": 18 }
+                        }
+                      ]
+                    },
+                    {
+                      "name": "Arrow_Memory",
+                      "type": "Image",
+                      "sprite": "icon_arrow_right",
+                      "imageType": "Simple",
+                      "color": { "r": 0.55, "g": 0.40, "b": 0.95, "a": 1 },
+                      "size": { "x": 16, "y": 16 }
+                    }
+                  ]
+                },
+                {
+                  "name": "MenuItem_UnlockAll",
+                  "type": "Panel",
+                  "color": { "r": 0.12, "g": 0.09, "b": 0.20, "a": 1 },
+                  "layoutType": "Horizontal",
+                  "spacing": 14,
+                  "paddingLeft": 22,
+                  "paddingRight": 22,
+                  "paddingTop": 18,
+                  "paddingBottom": 18,
+                  "childAlignment": "MiddleLeft",
+                  "childControlWidth": false,
+                  "childControlHeight": true,
+                  "childForceExpandWidth": false,
+                  "childForceExpandHeight": false,
+                  "size": { "x": 638, "y": 64 },
+                  "children": [
+                    {
+                      "name": "Icon_Unlock",
+                      "type": "Image",
+                      "sprite": "icon_unlock",
+                      "imageType": "Simple",
+                      "color": { "r": 0.96, "g": 0.78, "b": 0.45, "a": 1 },
+                      "size": { "x": 28, "y": 28 }
+                    },
+                    {
+                      "name": "MenuTextPanel_Unlock",
+                      "type": "Panel",
+                      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                      "layoutType": "Vertical",
+                      "spacing": 2,
+                      "childAlignment": "MiddleLeft",
+                      "childControlWidth": true,
+                      "childControlHeight": false,
+                      "childForceExpandWidth": true,
+                      "childForceExpandHeight": false,
+                      "size": { "x": 0, "y": 44 },
+                      "children": [
+                        {
+                          "name": "MenuTitle_Unlock",
+                          "type": "Text",
+                          "text": "解锁所有功能",
+                          "fontSize": 17,
+                          "fontStyle": "Normal",
+                          "textAlignment": "Left",
+                          "textColor": { "r": 1, "g": 1, "b": 1, "a": 1 },
+                          "size": { "x": 380, "y": 24 }
+                        },
+                        {
+                          "name": "MenuDesc_Unlock",
+                          "type": "Text",
+                          "text": "升级 PRO 以获得完整功能体验",
+                          "fontSize": 12,
+                          "fontStyle": "Normal",
+                          "textAlignment": "Left",
+                          "textColor": { "r": 0.50, "g": 0.45, "b": 0.55, "a": 1 },
+                          "size": { "x": 380, "y": 18 }
+                        }
+                      ]
+                    },
+                    {
+                      "name": "ProActiveBadge",
+                      "type": "Button",
+                      "text": "PRO 已开通",
+                      "fontSize": 11,
+                      "textColor": { "r": 0.96, "g": 0.78, "b": 0.45, "a": 1 },
+                      "color": { "r": 0.18, "g": 0.12, "b": 0.30, "a": 1 },
+                      "size": { "x": 80, "y": 26 }
+                    }
+                  ]
+                },
+                {
+                  "name": "MenuItem_AccountInfo",
+                  "type": "Panel",
+                  "color": { "r": 0.12, "g": 0.09, "b": 0.20, "a": 1 },
+                  "layoutType": "Horizontal",
+                  "spacing": 14,
+                  "paddingLeft": 22,
+                  "paddingRight": 22,
+                  "paddingTop": 18,
+                  "paddingBottom": 18,
+                  "childAlignment": "MiddleLeft",
+                  "childControlWidth": false,
+                  "childControlHeight": true,
+                  "childForceExpandWidth": false,
+                  "childForceExpandHeight": false,
+                  "size": { "x": 638, "y": 64 },
+                  "children": [
+                    {
+                      "name": "Icon_Account",
+                      "type": "Image",
+                      "sprite": "icon_account",
+                      "imageType": "Simple",
+                      "color": { "r": 0.70, "g": 0.60, "b": 0.85, "a": 1 },
+                      "size": { "x": 28, "y": 28 }
+                    },
+                    {
+                      "name": "MenuTextPanel_Account",
+                      "type": "Panel",
+                      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                      "layoutType": "Vertical",
+                      "spacing": 2,
+                      "childAlignment": "MiddleLeft",
+                      "childControlWidth": true,
+                      "childControlHeight": false,
+                      "childForceExpandWidth": true,
+                      "childForceExpandHeight": false,
+                      "size": { "x": 0, "y": 44 },
+                      "children": [
+                        {
+                          "name": "MenuTitle_Account",
+                          "type": "Text",
+                          "text": "账户信息",
+                          "fontSize": 17,
+                          "fontStyle": "Normal",
+                          "textAlignment": "Left",
+                          "textColor": { "r": 1, "g": 1, "b": 1, "a": 1 },
+                          "size": { "x": 440, "y": 24 }
+                        },
+                        {
+                          "name": "MenuDesc_Account",
+                          "type": "Text",
+                          "text": "查看和管理你的账户信息",
+                          "fontSize": 12,
+                          "fontStyle": "Normal",
+                          "textAlignment": "Left",
+                          "textColor": { "r": 0.50, "g": 0.45, "b": 0.55, "a": 1 },
+                          "size": { "x": 440, "y": 18 }
+                        }
+                      ]
+                    },
+                    {
+                      "name": "Arrow_Account",
+                      "type": "Image",
+                      "sprite": "icon_arrow_right",
+                      "imageType": "Simple",
+                      "color": { "r": 0.40, "g": 0.35, "b": 0.45, "a": 1 },
+                      "size": { "x": 16, "y": 16 }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
