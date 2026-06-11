@@ -17,8 +17,8 @@ public class DialogUI : WindowBase
 
 	private LoopListView2 chatListView;
 
-	private string userItemPrefabName = "UserChatItem";
-	private string aiItemPrefabName = "AIChatItem";
+	private string userItemPrefabName = "ChatRootRight";
+	private string aiItemPrefabName = "MessageItem";
 
 	private DialogSystem dialogSystem;
 
