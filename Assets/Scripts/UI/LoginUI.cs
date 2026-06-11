@@ -43,7 +43,16 @@ public class LoginUI : WindowBase
 
 	#endregion
 
-	#region UI组件事件
+	#region UI组件事件		 
+	public void OnFaceBookSignInButtonClick()
+	{
+
+	}
+	public void OnAppleSignInButtonClick()
+	{
+
+	}
+
 	public void OnGooglePlaySignInButtonClick()
 	{
 		UIModule.Instance.HideWindow<LoginUI>();

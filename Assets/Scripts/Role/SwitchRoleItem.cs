@@ -161,7 +161,7 @@ public class SwitchRoleItem : MonoBehaviour, IGamerUIViewListItem, IGamerUIListV
         if (mItemIndex >= 0)
         {
             RoleManager.Instance.ChangeRole(mItemIndex);
-            ToastManager.ShowToast($"已切换为:{roleData.name}");
+            ToastManager.ShowToast($"已切换为:{roleData.roleName}");
         }
     }
 

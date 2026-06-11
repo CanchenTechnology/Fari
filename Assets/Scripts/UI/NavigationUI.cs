@@ -75,10 +75,12 @@ public class NavigationUI : WindowBase
 		if(state)
 		{
 			Debug.Log("friendToggle is on");
+			UIModule.Instance.PopUpWindow<FriendUI>();
 		}
 		else
 		{
 			Debug.Log("friendToggle is off");
+			UIModule.Instance.HideWindow<FriendUI>();
 		}
 	}
 	public void OnmyToggleChange(bool state, Toggle toggle)
@@ -86,10 +88,12 @@ public class NavigationUI : WindowBase
 		if(state)
 		{
 			Debug.Log("myToggle is on");
+			UIModule.Instance.PopUpWindow<MyUI>();
 		}
 		else
 		{
 			Debug.Log("myToggle is off");
+			UIModule.Instance.HideWindow<MyUI>();
 		}
 	}
 	#endregion
