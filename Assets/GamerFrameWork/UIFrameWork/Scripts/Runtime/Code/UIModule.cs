@@ -252,6 +252,30 @@ namespace GamerFrameWork.UIFrameWork
             Debug.LogError($"该窗口没有获取到:{type.Name}");
             return null;
         }
+        /// <summary>
+        /// 获取当前最顶层打开的界面(最后一个弹出的可见窗口)
+        /// </summary>
+        /// <returns></returns>
+        public WindowBase GetTopWindow()
+        {
+            if (mVisibleWindowList.Count > 0)
+            {
+                return mVisibleWindowList[mVisibleWindowList.Count - 1];
+            }
+            return null;
+        }
+        /// <summary>
+        /// 获取上一个当前打开的界面(倒数第二个可见窗口)
+        /// </summary>
+        /// <returns></returns>
+        public WindowBase GetPreviousVisibleWindow()
+        {
+            if (mVisibleWindowList.Count >= 2)
+            {
+                return mVisibleWindowList[mVisibleWindowList.Count - 2];
+            }
+            return null;
+        }
         private void HideWindow(WindowBase window)
         {
             if (window != null && window.Visible)

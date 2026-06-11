@@ -316,6 +316,7 @@ public class FriendUI : WindowBase
 		ForceRebuildLayout(uiComponent.RealFriendContentTransform);
 
 		UpdateCountText();
+		UIModule.Instance.PopUpWindow<AddFriendUI>();
 	}
 	public void OnCreateFriendButtonClick()
 	{

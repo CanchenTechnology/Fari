@@ -9,6 +9,7 @@ using GamerFrameWork.UIFrameWork;
 using TMPro;
 using UnityEngine.UI;
 using UnityEngine;
+using SuperScrollView;
 
 public class DialogUIComponent:MonoBehaviour
 {
@@ -21,6 +22,8 @@ public class DialogUIComponent:MonoBehaviour
 	public Button questionButton;
 	public Button sendButton;
 	public InputField questionInputField;
+
+	public LoopListView2 ChatScrollViewLoopListView2;
 	public void InitComponent(WindowBase target)
 	{
 	    //组件事件绑定

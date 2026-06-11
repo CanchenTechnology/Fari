@@ -29,6 +29,13 @@ namespace GamerFrameWork.UIFrameWork
             }
             mToast.ShowToast(code,scale);
         }
+        /// <summary>
+        /// 显示正在开发中
+        /// </summary>
+        public static void ShowDebug()
+        {
+            ShowToast("功能待开发。。。");
+        }
         
     }
 }

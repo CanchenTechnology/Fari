@@ -13,6 +13,11 @@ public class NavigationUI : WindowBase
 {
 	public NavigationUIComponent uiComponent;
 
+	/// <summary>
+	/// 当前活跃的导航窗口名称，用于防止重复点击同一导航栏
+	/// </summary>
+	private string mCurrentActiveWindow = "";
+
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
 	public override void OnAwake()
@@ -22,6 +27,7 @@ public class NavigationUI : WindowBase
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		base.OnAwake();
 		uiComponent.todayOracleToggle.isOn = true;
+		mCurrentActiveWindow = nameof(TodayOracleUI);
 		UIModule.Instance.PopUpWindow<TodayOracleUI>();
 		
 	}
@@ -51,11 +57,13 @@ public class NavigationUI : WindowBase
 	{
 		if(state)
 		{
-			UIModule.Instance.PopUpWindow<TodayOracleUI>();	
-			Debug.Log("todayOracleToggle is on");
+			if (mCurrentActiveWindow == nameof(TodayOracleUI)) return;
+			mCurrentActiveWindow = nameof(TodayOracleUI);
+			UIModule.Instance.PopUpWindow<TodayOracleUI>();
 		}
 		else
 		{
+			if (mCurrentActiveWindow == nameof(TodayOracleUI)) mCurrentActiveWindow = "";
 			UIModule.Instance.HideWindow<TodayOracleUI>();
 		}
 	}
@@ -63,10 +71,13 @@ public class NavigationUI : WindowBase
 	{
 		if(state)
 		{
-			UIModule.Instance.PopUpWindow<DialogUI>();	
+			if (mCurrentActiveWindow == nameof(DialogUI)) return;
+			mCurrentActiveWindow = nameof(DialogUI);
+			UIModule.Instance.PopUpWindow<DialogUI>();
 		}
 		else
 		{
+			if (mCurrentActiveWindow == nameof(DialogUI)) mCurrentActiveWindow = "";
 			UIModule.Instance.HideWindow<DialogUI>();
 		}
 	}
@@ -74,12 +85,13 @@ public class NavigationUI : WindowBase
 	{
 		if(state)
 		{
-			Debug.Log("friendToggle is on");
+			if (mCurrentActiveWindow == nameof(FriendUI)) return;
+			mCurrentActiveWindow = nameof(FriendUI);
 			UIModule.Instance.PopUpWindow<FriendUI>();
 		}
 		else
 		{
-			Debug.Log("friendToggle is off");
+			if (mCurrentActiveWindow == nameof(FriendUI)) mCurrentActiveWindow = "";
 			UIModule.Instance.HideWindow<FriendUI>();
 		}
 	}
@@ -87,12 +99,14 @@ public class NavigationUI : WindowBase
 	{
 		if(state)
 		{
-			Debug.Log("myToggle is on");
+			if (mCurrentActiveWindow == nameof(MyUI)) return;
+			mCurrentActiveWindow = nameof(MyUI);
 			UIModule.Instance.PopUpWindow<MyUI>();
 		}
 		else
 		{
-			Debug.Log("myToggle is off");
+			if (mCurrentActiveWindow == nameof(MyUI)) mCurrentActiveWindow = "";
+			UIModule.Instance.GetTopWindow().HideWindow();
 			UIModule.Instance.HideWindow<MyUI>();
 		}
 	}

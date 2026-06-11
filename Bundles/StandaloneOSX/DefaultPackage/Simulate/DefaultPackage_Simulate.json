@@ -10,7 +10,7 @@
     "BuildPipeline": "EditorSimulateBuildPipeline",
     "PackageName": "DefaultPackage",
     "PackageVersion": "Simulate",
-    "PackageNote": "6/11/2026 1:32:19 PM",
+    "PackageNote": "6/11/2026 7:25:21 PM",
     "AssetList": [
         {
             "Address": "Astrologer",
@@ -37,11 +37,19 @@
             "DependBundleIDs": []
         },
         {
+            "Address": "AccountUI",
+            "AssetPath": "Assets/GameData/UI/AccountUI.prefab",
+            "AssetGUID": "",
+            "AssetTags": [],
+            "BundleID": 1,
+            "DependBundleIDs": []
+        },
+        {
             "Address": "AddEmailUI 1",
             "AssetPath": "Assets/GameData/UI/AddEmailUI 1.prefab",
             "AssetGUID": "",
             "AssetTags": [],
-            "BundleID": 2,
+            "BundleID": 3,
             "DependBundleIDs": []
         },
         {
@@ -49,7 +57,15 @@
             "AssetPath": "Assets/GameData/UI/AddEmailUI.prefab",
             "AssetGUID": "",
             "AssetTags": [],
-            "BundleID": 1,
+            "BundleID": 2,
+            "DependBundleIDs": []
+        },
+        {
+            "Address": "AddFriendUI",
+            "AssetPath": "Assets/GameData/UI/AddFriendUI.prefab",
+            "AssetGUID": "",
+            "AssetTags": [],
+            "BundleID": 4,
             "DependBundleIDs": []
         },
         {
@@ -57,31 +73,7 @@
             "AssetPath": "Assets/GameData/UI/DialogUI.prefab",
             "AssetGUID": "",
             "AssetTags": [],
-            "BundleID": 3,
-            "DependBundleIDs": []
-        },
-        {
-            "Address": "FriendsActionButtonsItem",
-            "AssetPath": "Assets/GameData/UI/FriendsActionButtonsItem.prefab",
-            "AssetGUID": "",
-            "AssetTags": [],
-            "BundleID": 4,
-            "DependBundleIDs": []
-        },
-        {
-            "Address": "FriendsChildItem",
-            "AssetPath": "Assets/GameData/UI/FriendsChildItem.prefab",
-            "AssetGUID": "",
-            "AssetTags": [],
             "BundleID": 5,
-            "DependBundleIDs": []
-        },
-        {
-            "Address": "FriendsGroupItem",
-            "AssetPath": "Assets/GameData/UI/FriendsGroupItem.prefab",
-            "AssetGUID": "",
-            "AssetTags": [],
-            "BundleID": 6,
             "DependBundleIDs": []
         },
         {
@@ -89,7 +81,7 @@
             "AssetPath": "Assets/GameData/UI/FriendUI.prefab",
             "AssetGUID": "",
             "AssetTags": [],
-            "BundleID": 7,
+            "BundleID": 6,
             "DependBundleIDs": []
         },
         {
@@ -97,7 +89,7 @@
             "AssetPath": "Assets/GameData/UI/LoginUI.prefab",
             "AssetGUID": "",
             "AssetTags": [],
-            "BundleID": 8,
+            "BundleID": 7,
             "DependBundleIDs": []
         },
         {
@@ -105,7 +97,7 @@
             "AssetPath": "Assets/GameData/UI/MyUI.prefab",
             "AssetGUID": "",
             "AssetTags": [],
-            "BundleID": 9,
+            "BundleID": 8,
             "DependBundleIDs": []
         },
         {
@@ -113,7 +105,23 @@
             "AssetPath": "Assets/GameData/UI/NavigationUI.prefab",
             "AssetGUID": "",
             "AssetTags": [],
+            "BundleID": 9,
+            "DependBundleIDs": []
+        },
+        {
+            "Address": "NotionUI",
+            "AssetPath": "Assets/GameData/UI/NotionUI.prefab",
+            "AssetGUID": "",
+            "AssetTags": [],
             "BundleID": 10,
+            "DependBundleIDs": []
+        },
+        {
+            "Address": "PersonalProfileUI",
+            "AssetPath": "Assets/GameData/UI/PersonalProfileUI.prefab",
+            "AssetGUID": "",
+            "AssetTags": [],
+            "BundleID": 11,
             "DependBundleIDs": []
         },
         {
@@ -121,7 +129,7 @@
             "AssetPath": "Assets/GameData/UI/SwitchRoleUI.prefab",
             "AssetGUID": "",
             "AssetTags": [],
-            "BundleID": 11,
+            "BundleID": 12,
             "DependBundleIDs": []
         },
         {
@@ -129,7 +137,15 @@
             "AssetPath": "Assets/GameData/UI/TodayOracleUI.prefab",
             "AssetGUID": "",
             "AssetTags": [],
-            "BundleID": 12,
+            "BundleID": 13,
+            "DependBundleIDs": []
+        },
+        {
+            "Address": "UnlockProUI",
+            "AssetPath": "Assets/GameData/UI/UnlockProUI.prefab",
+            "AssetGUID": "",
+            "AssetTags": [],
+            "BundleID": 14,
             "DependBundleIDs": []
         },
         {
@@ -137,7 +153,7 @@
             "AssetPath": "Assets/Scenes/App.unity",
             "AssetGUID": "",
             "AssetTags": [],
-            "BundleID": 13,
+            "BundleID": 15,
             "DependBundleIDs": []
         },
         {
@@ -145,7 +161,7 @@
             "AssetPath": "Assets/Scenes/Start.unity",
             "AssetGUID": "",
             "AssetTags": [],
-            "BundleID": 14,
+            "BundleID": 16,
             "DependBundleIDs": []
         }
     ],
@@ -156,6 +172,16 @@
             "FileHash": "6b5203173286215f6e449cc2c99c592f",
             "FileCRC": 0,
             "FileSize": 4064,
+            "Encrypted": false,
+            "Tags": [],
+            "DependBundleIDs": []
+        },
+        {
+            "BundleName": "assets_gamedata_ui_accountui.bundle",
+            "UnityCRC": 0,
+            "FileHash": "56b60ef87180f5a2eff8524c330f9bd3",
+            "FileCRC": 0,
+            "FileSize": 108878,
             "Encrypted": false,
             "Tags": [],
             "DependBundleIDs": []
@@ -181,41 +207,21 @@
             "DependBundleIDs": []
         },
         {
+            "BundleName": "assets_gamedata_ui_addfriendui.bundle",
+            "UnityCRC": 0,
+            "FileHash": "95ee50549e479ff74535f1b84791649e",
+            "FileCRC": 0,
+            "FileSize": 88001,
+            "Encrypted": false,
+            "Tags": [],
+            "DependBundleIDs": []
+        },
+        {
             "BundleName": "assets_gamedata_ui_dialogui.bundle",
             "UnityCRC": 0,
             "FileHash": "1561162ad23dd3d80c450470c746172c",
             "FileCRC": 0,
-            "FileSize": 89933,
-            "Encrypted": false,
-            "Tags": [],
-            "DependBundleIDs": []
-        },
-        {
-            "BundleName": "assets_gamedata_ui_friendsactionbuttonsitem.bundle",
-            "UnityCRC": 0,
-            "FileHash": "2616776c7a7bdbce40b05f9b0a5a7fc4",
-            "FileCRC": 0,
-            "FileSize": 16559,
-            "Encrypted": false,
-            "Tags": [],
-            "DependBundleIDs": []
-        },
-        {
-            "BundleName": "assets_gamedata_ui_friendschilditem.bundle",
-            "UnityCRC": 0,
-            "FileHash": "94b8561c61bab8762d3ec3551184f770",
-            "FileCRC": 0,
-            "FileSize": 27332,
-            "Encrypted": false,
-            "Tags": [],
-            "DependBundleIDs": []
-        },
-        {
-            "BundleName": "assets_gamedata_ui_friendsgroupitem.bundle",
-            "UnityCRC": 0,
-            "FileHash": "113b229c98be0f9675cd5f6c71564092",
-            "FileCRC": 0,
-            "FileSize": 16993,
+            "FileSize": 100391,
             "Encrypted": false,
             "Tags": [],
             "DependBundleIDs": []
@@ -225,7 +231,7 @@
             "UnityCRC": 0,
             "FileHash": "483847791d60f22f8fa2160dcee350cb",
             "FileCRC": 0,
-            "FileSize": 104848,
+            "FileSize": 105712,
             "Encrypted": false,
             "Tags": [],
             "DependBundleIDs": []
@@ -235,7 +241,7 @@
             "UnityCRC": 0,
             "FileHash": "8b1ec938b75371055142249ab8544d84",
             "FileCRC": 0,
-            "FileSize": 31442,
+            "FileSize": 32306,
             "Encrypted": false,
             "Tags": [],
             "DependBundleIDs": []
@@ -245,7 +251,7 @@
             "UnityCRC": 0,
             "FileHash": "3d2128cef6efff56a6948d524a144d02",
             "FileCRC": 0,
-            "FileSize": 325280,
+            "FileSize": 326034,
             "Encrypted": false,
             "Tags": [],
             "DependBundleIDs": []
@@ -255,7 +261,27 @@
             "UnityCRC": 0,
             "FileHash": "12e6d6e8c9a9292cce11051f9947ab74",
             "FileCRC": 0,
-            "FileSize": 53454,
+            "FileSize": 54316,
+            "Encrypted": false,
+            "Tags": [],
+            "DependBundleIDs": []
+        },
+        {
+            "BundleName": "assets_gamedata_ui_notionui.bundle",
+            "UnityCRC": 0,
+            "FileHash": "15330d204b7f743d30a6fa352e980c58",
+            "FileCRC": 0,
+            "FileSize": 111876,
+            "Encrypted": false,
+            "Tags": [],
+            "DependBundleIDs": []
+        },
+        {
+            "BundleName": "assets_gamedata_ui_personalprofileui.bundle",
+            "UnityCRC": 0,
+            "FileHash": "364942761774aee864d47d8c737f61db",
+            "FileCRC": 0,
+            "FileSize": 105411,
             "Encrypted": false,
             "Tags": [],
             "DependBundleIDs": []
@@ -265,7 +291,7 @@
             "UnityCRC": 0,
             "FileHash": "164c23e73b1b397181e41e24c2c2cefc",
             "FileCRC": 0,
-            "FileSize": 92267,
+            "FileSize": 93131,
             "Encrypted": false,
             "Tags": [],
             "DependBundleIDs": []
@@ -275,7 +301,17 @@
             "UnityCRC": 0,
             "FileHash": "85c981c903e48794bf4812e3a4f6599c",
             "FileCRC": 0,
-            "FileSize": 38544,
+            "FileSize": 39408,
+            "Encrypted": false,
+            "Tags": [],
+            "DependBundleIDs": []
+        },
+        {
+            "BundleName": "assets_gamedata_ui_unlockproui.bundle",
+            "UnityCRC": 0,
+            "FileHash": "e3d95e94ffa09d28fec6116a767ea8bd",
+            "FileCRC": 0,
+            "FileSize": 104966,
             "Encrypted": false,
             "Tags": [],
             "DependBundleIDs": []
@@ -285,7 +321,7 @@
             "UnityCRC": 0,
             "FileHash": "168b6771ae9527e5d7c022a858362824",
             "FileCRC": 0,
-            "FileSize": 11281,
+            "FileSize": 11303,
             "Encrypted": false,
             "Tags": [],
             "DependBundleIDs": []
@@ -295,7 +331,7 @@
             "UnityCRC": 0,
             "FileHash": "39a324aa9a660f5f60c9643f7b852331",
             "FileCRC": 0,
-            "FileSize": 187117,
+            "FileSize": 196982,
             "Encrypted": false,
             "Tags": [],
             "DependBundleIDs": []

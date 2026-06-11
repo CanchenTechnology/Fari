@@ -1,0 +1,358 @@
+{
+  "screenName": "TarotMainChatScreen",
+  "resolution": {
+    "x": 750,
+    "y": 1334
+  },
+  "matchWidthOrHeight": 0.5,
+  "includeMask": false,
+  "elements": [
+    {
+      "name": "Background",
+      "type": "Panel",
+      "color": { "r": 0.05, "g": 0.02, "b": 0.08, "a": 1.0 },
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "size": { "x": 0, "y": 0 },
+      "position": { "x": 0, "y": 0 },
+      "children": [
+        {
+          "name": "BgPatternImage",
+          "type": "Image",
+          "sprite": "bg_tarot_magic",
+          "anchorMin": { "x": 0, "y": 0 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "size": { "x": 0, "y": 0 }
+        },
+        {
+          "name": "HeaderPanel",
+          "type": "Panel",
+          "color": { "r": 0.0, "g": 0.0, "b": 0.0, "a": 0.0 },
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "size": { "x": 0, "y": 180 },
+          "position": { "x": 0, "y": -90 },
+          "children": [
+            {
+              "name": "AvatarImage",
+              "type": "Image",
+              "sprite": "avatar_nocturne",
+              "size": { "x": 100, "y": 100 },
+              "position": { "x": -260, "y": 0 }
+            },
+            {
+              "name": "NameText",
+              "type": "Text",
+              "text": "Nocturne Oracle",
+              "fontSize": 32,
+              "fontStyle": "Bold",
+              "textAlignment": "Left",
+              "textColor": { "r": 0.95, "g": 0.78, "b": 0.45, "a": 1.0 },
+              "size": { "x": 300, "y": 40 },
+              "position": { "x": -40, "y": 20 }
+            },
+            {
+              "name": "SubtitleText",
+              "type": "Text",
+              "text": "夜色为引，真相自现 ✦",
+              "fontSize": 20,
+              "fontStyle": "Normal",
+              "textAlignment": "Left",
+              "textColor": { "r": 0.65, "g": 0.58, "b": 0.68, "a": 1.0 },
+              "size": { "x": 300, "y": 30 },
+              "position": { "x": -40, "y": -20 }
+            },
+            {
+              "name": "[Button]SwitchOracle",
+              "type": "Button",
+              "text": "✦ 切换神谕师",
+              "sprite": "btn_bg_dark_round",
+              "fontSize": 22,
+              "textColor": { "r": 0.95, "g": 0.78, "b": 0.45, "a": 1.0 },
+              "size": { "x": 200, "y": 64 },
+              "position": { "x": 240, "y": 0 }
+            }
+          ]
+        },
+        {
+          "name": "[ScrollRect]ChatArea",
+          "type": "ScrollRect",
+          "horizontalScroll": false,
+          "verticalScroll": true,
+          "layoutType": "Vertical",
+          "spacing": 40,
+          "paddingTop": 20,
+          "paddingBottom": 20,
+          "anchorMin": { "x": 0, "y": 0.21 },
+          "anchorMax": { "x": 1, "y": 0.86 },
+          "size": { "x": 750, "y": 0 },
+          "position": { "x": 0, "y": 0 },
+          "children": [
+            {
+              "name": "AIMessage1",
+              "type": "Panel",
+              "color": { "r": 0.12, "g": 0.08, "b": 0.16, "a": 0.85 },
+              "size": { "x": 620, "y": 320 },
+              "position": { "x": -40, "y": 0 },
+              "children": [
+                {
+                  "name": "RegenerateVoiceTag",
+                  "type": "Text",
+                  "text": "重新生成声音",
+                  "fontSize": 20,
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.65, "g": 0.58, "b": 0.68, "a": 1.0 },
+                  "size": { "x": 160, "y": 40 },
+                  "position": { "x": -200, "y": 120 }
+                },
+                {
+                  "name": "ContentText",
+                  "type": "Text",
+                  "text": "小夜，第三次“你好”——像潮汐第三次退回原点，但岸边已经不一样了。这次你没有推开，只是抵达。",
+                  "fontSize": 26,
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.83, "g": 0.78, "b": 0.86, "a": 1.0 },
+                  "size": { "x": 540, "y": 100 },
+                  "position": { "x": 0, "y": 30 }
+                },
+                {
+                  "name": "[Button]OptionCycle",
+                  "type": "Button",
+                  "text": "看这段关系的周期",
+                  "sprite": "btn_outline_gold",
+                  "fontSize": 22,
+                  "textColor": { "r": 0.83, "g": 0.78, "b": 0.86, "a": 1.0 },
+                  "size": { "x": 260, "y": 56 },
+                  "position": { "x": -130, "y": -50 }
+                },
+                {
+                  "name": "[Button]OptionAstro",
+                  "type": "Button",
+                  "text": "分析今日星象",
+                  "sprite": "btn_outline_gold",
+                  "fontSize": 22,
+                  "textColor": { "r": 0.83, "g": 0.78, "b": 0.86, "a": 1.0 },
+                  "size": { "x": 220, "y": 56 },
+                  "position": { "x": 130, "y": -50 }
+                },
+                {
+                  "name": "[Button]OptionTrend",
+                  "type": "Button",
+                  "text": "看下一周趋势",
+                  "sprite": "btn_outline_gold",
+                  "fontSize": 22,
+                  "textColor": { "r": 0.83, "g": 0.78, "b": 0.86, "a": 1.0 },
+                  "size": { "x": 220, "y": 56 },
+                  "position": { "x": -150, "y": -120 }
+                },
+                {
+                  "name": "[Button]OptionSave",
+                  "type": "Button",
+                  "text": "保存明日回看",
+                  "sprite": "btn_outline_gold",
+                  "fontSize": 22,
+                  "textColor": { "r": 0.83, "g": 0.78, "b": 0.86, "a": 1.0 },
+                  "size": { "x": 220, "y": 56 },
+                  "position": { "x": 90, "y": -120 }
+                }
+              ]
+            },
+            {
+              "name": "UserMessage1",
+              "type": "Panel",
+              "color": { "r": 0.25, "g": 0.13, "b": 0.35, "a": 1.0 },
+              "size": { "x": 160, "y": 80 },
+              "position": { "x": 250, "y": 0 },
+              "children": [
+                {
+                  "name": "MsgText",
+                  "type": "Text",
+                  "text": "你好",
+                  "fontSize": 26,
+                  "textAlignment": "Center",
+                  "textColor": { "r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0 },
+                  "size": { "x": 120, "y": 60 },
+                  "position": { "x": 0, "y": 0 }
+                }
+              ]
+            },
+            {
+              "name": "AIMessage2",
+              "type": "Panel",
+              "color": { "r": 0.12, "g": 0.08, "b": 0.16, "a": 0.85 },
+              "size": { "x": 620, "y": 320 },
+              "position": { "x": -40, "y": 0 },
+              "children": [
+                {
+                  "name": "RegenerateVoiceTag2",
+                  "type": "Text",
+                  "text": "重新生成声音",
+                  "fontSize": 20,
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.65, "g": 0.58, "b": 0.68, "a": 1.0 },
+                  "size": { "x": 160, "y": 40 },
+                  "position": { "x": -200, "y": 120 }
+                },
+                {
+                  "name": "ContentText2",
+                  "type": "Text",
+                  "text": "你又回到了“你好”——这是一种温柔的确认：确认我还在这里，确认你没有走远。今天宝剑一逆位的能量不需要你推进任何事，只要知道这个空间还在就够了。",
+                  "fontSize": 26,
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.83, "g": 0.78, "b": 0.86, "a": 1.0 },
+                  "size": { "x": 540, "y": 140 },
+                  "position": { "x": 0, "y": 20 }
+                },
+                {
+                  "name": "[Button]OptionCardSpread",
+                  "type": "Button",
+                  "text": "为这个问题选牌阵",
+                  "sprite": "btn_outline_gold",
+                  "fontSize": 22,
+                  "textColor": { "r": 0.83, "g": 0.78, "b": 0.86, "a": 1.0 },
+                  "size": { "x": 260, "y": 56 },
+                  "position": { "x": -130, "y": -70 }
+                },
+                {
+                  "name": "[Button]OptionAskMore",
+                  "type": "Button",
+                  "text": "继续追问",
+                  "sprite": "btn_outline_gold",
+                  "fontSize": 22,
+                  "textColor": { "r": 0.83, "g": 0.78, "b": 0.86, "a": 1.0 },
+                  "size": { "x": 180, "y": 56 },
+                  "position": { "x": 110, "y": -70 }
+                },
+                {
+                  "name": "[Button]OptionTomorrow",
+                  "type": "Button",
+                  "text": "明天再看这条线索",
+                  "sprite": "btn_outline_gold",
+                  "fontSize": 22,
+                  "textColor": { "r": 0.83, "g": 0.78, "b": 0.86, "a": 1.0 },
+                  "size": { "x": 260, "y": 56 },
+                  "position": { "x": -130, "y": -140 }
+                }
+              ]
+            },
+            {
+              "name": "UserMessage2",
+              "type": "Panel",
+              "color": { "r": 0.25, "g": 0.13, "b": 0.35, "a": 1.0 },
+              "size": { "x": 180, "y": 80 },
+              "position": { "x": 240, "y": 0 },
+              "children": [
+                {
+                  "name": "MsgText2",
+                  "type": "Text",
+                  "text": "继续追问",
+                  "fontSize": 26,
+                  "textAlignment": "Center",
+                  "textColor": { "r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0 },
+                  "size": { "x": 140, "y": 60 },
+                  "position": { "x": 0, "y": 0 }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "FooterInputPanel",
+          "type": "Panel",
+          "color": { "r": 0.0, "g": 0.0, "b": 0.0, "a": 0.0 },
+          "anchorMin": { "x": 0, "y": 0 },
+          "anchorMax": { "x": 1, "y": 0 },
+          "size": { "x": 0, "y": 140 },
+          "position": { "x": 0, "y": 210 },
+          "children": [
+            {
+              "name": "[Button]MenuLeft",
+              "type": "Button",
+              "sprite": "icon_star_circle",
+              "text": "",
+              "size": { "x": 80, "y": 80 },
+              "position": { "x": -290, "y": 0 }
+            },
+            {
+              "name": "[InputField]ChatInput",
+              "type": "InputField",
+              "placeholderText": "向塔罗师提问...",
+              "contentType": "Standard",
+              "fontSize": 26,
+              "textColor": { "r": 0.83, "g": 0.78, "b": 0.86, "a": 1.0 },
+              "sprite": "input_bg_pill",
+              "size": { "x": 460, "y": 80 },
+              "position": { "x": 0, "y": 0 }
+            },
+            {
+              "name": "[Button]ActionRight",
+              "type": "Button",
+              "sprite": "icon_diamond_circle",
+              "text": "",
+              "size": { "x": 80, "y": 80 },
+              "position": { "x": 290, "y": 0 }
+            }
+          ]
+        },
+        {
+          "name": "BottomNavPanel",
+          "type": "Panel",
+          "color": { "r": 0.08, "g": 0.06, "b": 0.12, "a": 0.95 },
+          "anchorMin": { "x": 0, "y": 0 },
+          "anchorMax": { "x": 1, "y": 0 },
+          "size": { "x": 0, "y": 140 },
+          "position": { "x": 0, "y": 70 },
+          "children": [
+            {
+              "name": "[ToggleGroup]MainNavigation",
+              "type": "ToggleGroup",
+              "allowSwitchOff": false,
+              "anchorMin": { "x": 0, "y": 0 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "size": { "x": 0, "y": 0 },
+              "position": { "x": 0, "y": 0 },
+              "children": [
+                {
+                  "name": "[Toggle]Today",
+                  "type": "Toggle",
+                  "text": "今日神谕",
+                  "fontSize": 22,
+                  "backgroundSprite": "tab_today_normal",
+                  "checkmarkSprite": "tab_today_active",
+                  "isOn": false
+                },
+                {
+                  "name": "[Toggle]Chat",
+                  "type": "Toggle",
+                  "text": "对话",
+                  "fontSize": 22,
+                  "backgroundSprite": "tab_chat_normal",
+                  "checkmarkSprite": "tab_chat_active",
+                  "isOn": true
+                },
+                {
+                  "name": "[Toggle]Friends",
+                  "type": "Toggle",
+                  "text": "朋友",
+                  "fontSize": 22,
+                  "backgroundSprite": "tab_friends_normal",
+                  "checkmarkSprite": "tab_friends_active",
+                  "isOn": false
+                },
+                {
+                  "name": "[Toggle]Mine",
+                  "type": "Toggle",
+                  "text": "我的",
+                  "fontSize": 22,
+                  "backgroundSprite": "tab_mine_normal",
+                  "checkmarkSprite": "tab_mine_active",
+                  "isOn": false
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

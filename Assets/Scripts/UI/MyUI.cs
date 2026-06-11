@@ -43,14 +43,19 @@ public class MyUI : WindowBase
 
 	#endregion
 
-	#region UI组件事件
+	#region UI组件事件		 
+	public void OnnoticeButtonClick()
+	{
+		UIModule.Instance.PopUpWindow<NotionUI>();
+	}
+
 	public void Onbtn_divinationButtonClick()
 	{
 		ToastManager.ShowToast("功能待开发。。。");
 	}
 	public void Onbtn_myinfoButtonClick()
 	{
-		ToastManager.ShowToast("功能待开发。。。");
+		UIModule.Instance.PopUpWindow<PersonalProfileUI>();
 	}
 	public void OnmemoryButtonClick()
 	{
@@ -58,11 +63,11 @@ public class MyUI : WindowBase
 	}
 	public void OnproButtonClick()
 	{
-		ToastManager.ShowToast("功能待开发。。。");
+		UIModule.Instance.PopUpWindow<UnlockProUI>();
 	}
 	public void OnaccountButtonClick()
 	{
-		ToastManager.ShowToast("功能待开发。。。");
+		UIModule.Instance.PopUpWindow<AccountUI>();
 	}
 	public void OnfeedbackButtonClick()
 	{

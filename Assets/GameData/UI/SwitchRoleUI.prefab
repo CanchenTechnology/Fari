@@ -1569,6 +1569,8 @@ GameObject:
   m_Component:
   - component: {fileID: 3194704879996691860}
   - component: {fileID: 2327810965822633711}
+  - component: {fileID: 7359908358418398436}
+  - component: {fileID: 6709812442160892999}
   m_Layer: 5
   m_Name: UIContent
   m_TagString: Untagged
@@ -1607,6 +1609,31 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5040497190704556203}
   m_CullTransparentMesh: 1
+--- !u!114 &7359908358418398436
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5040497190704556203}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fb2fb6a15c8239c40bb3db6d4b8eb343, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &6709812442160892999
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5040497190704556203}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 88a560f2784d40d40a9deb0598ec4b4b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  offsetValue: 0.01
 --- !u!1 &5155649456371900630
 GameObject:
   m_ObjectHideFlags: 0
@@ -1984,7 +2011,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 087361cad8f67438fa9950e7ece5604e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  windowLayer: 200
+  windowLayer: 100
   exitButton: {fileID: 8878740175368814781}
   roleGamerUIListView: {fileID: 5239344021416010819}
 --- !u!1 &6074893359938485324

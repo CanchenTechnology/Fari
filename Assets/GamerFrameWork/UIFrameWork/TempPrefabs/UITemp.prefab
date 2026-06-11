@@ -13,7 +13,7 @@ GameObject:
   - component: {fileID: 1689888731884959088}
   - component: {fileID: 8645578038536779947}
   - component: {fileID: 8221525727022373520}
-  - component: {fileID: 2467452844012594013}
+  - component: {fileID: 694635898707856142}
   m_Layer: 5
   m_Name: UITemp
   m_TagString: Untagged
@@ -117,7 +117,7 @@ CanvasGroup:
   m_Interactable: 1
   m_BlocksRaycasts: 1
   m_IgnoreParentGroups: 0
---- !u!114 &2467452844012594013
+--- !u!114 &694635898707856142
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -126,15 +126,15 @@ MonoBehaviour:
   m_GameObject: {fileID: 5653751868623125667}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6a0a131136a9e4c54b1684f60d58ee2b, type: 3}
+  m_Script: {fileID: 11500000, guid: 9c39d0a0fe23f4b6a8af394c7775b5a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  windowLayer: 300
-  navigationToggleGroup: {fileID: 0}
-  todayOracleToggle: {fileID: 0}
-  dialogueToggle: {fileID: 0}
-  friendToggle: {fileID: 0}
-  myToggle: {fileID: 0}
+  windowLayer: 100
+  BackButtonButton: {fileID: 0}
+  ValidityLabelText: {fileID: 0}
+  ValidityValueText: {fileID: 0}
+  ManageSubscriptionBtnButton: {fileID: 0}
+  RestorePurchaseBtnButton: {fileID: 0}
 --- !u!1 &6646469122451061427
 GameObject:
   m_ObjectHideFlags: 0
@@ -145,6 +145,8 @@ GameObject:
   m_Component:
   - component: {fileID: 946443804896872436}
   - component: {fileID: 8229740940852710559}
+  - component: {fileID: 1070626730242652241}
+  - component: {fileID: 1925799242101254574}
   m_Layer: 5
   m_Name: UIContent
   m_TagString: Untagged
@@ -179,6 +181,31 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 6646469122451061427}
   m_CullTransparentMesh: 1
+--- !u!114 &1070626730242652241
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6646469122451061427}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fb2fb6a15c8239c40bb3db6d4b8eb343, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &1925799242101254574
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6646469122451061427}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 88a560f2784d40d40a9deb0598ec4b4b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  offsetValue: 0.01
 --- !u!1 &8911140680064693890
 GameObject:
   m_ObjectHideFlags: 0
