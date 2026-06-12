@@ -19,7 +19,10 @@ public enum LoginType
     Email,      // 邮箱登录
     Phone,      // 手机登录
     Guest,      // 游客登录
-    ThirdParty  // 第三方登录
+    ThirdParty, // 第三方登录
+    Google,     // Google 登录
+    Apple,      // Apple 登录
+    Facebook    // Facebook 登录
 }
 
 /// <summary>
@@ -73,6 +76,20 @@ public class UserDataManager : MonoSingleton<UserDataManager>
     /// <summary>账号状态</summary>
     public AccountStatus Status { get; private set; } = AccountStatus.Normal;
 
+    // ========== Firebase Auth 扩展字段 ==========
+
+    /// <summary>头像 URL</summary>
+    public string PhotoUrl { get; private set; } = string.Empty;
+
+    /// <summary> Firebase UID</summary>
+    public string FirebaseUid { get; private set; } = string.Empty;
+
+    /// <summary>认证提供商 ID（如 google.com, apple.com, facebook.com）</summary>
+    public string AuthProviderId { get; private set; } = string.Empty;
+
+    /// <summary>是否已通过 Firebase 认证</summary>
+    public bool IsFirebaseAuthenticated { get; private set; } = false;
+
     #endregion
 
     #region 常量
@@ -89,6 +106,12 @@ public class UserDataManager : MonoSingleton<UserDataManager>
     private const string KEY_REG_TIME = "UserData_RegTime";
     private const string KEY_LOGIN_TYPE = "UserData_LoginType";
     private const string KEY_STATUS = "UserData_Status";
+
+    // Firebase Auth 扩展 Key
+    private const string KEY_PHOTO_URL = "UserData_PhotoUrl";
+    private const string KEY_FIREBASE_UID = "UserData_FirebaseUid";
+    private const string KEY_AUTH_PROVIDER_ID = "UserData_AuthProviderId";
+    private const string KEY_IS_FIREBASE_AUTH = "UserData_IsFirebaseAuth";
 
     #endregion
 
@@ -194,6 +217,40 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         Status = status;
     }
 
+    // ========== Firebase Auth 扩展操作方法 ==========
+
+    /// <summary>
+    /// 设置头像 URL
+    /// </summary>
+    public void SetPhotoUrl(string photoUrl)
+    {
+        PhotoUrl = photoUrl ?? string.Empty;
+    }
+
+    /// <summary>
+    /// 设置 Firebase UID
+    /// </summary>
+    public void SetFirebaseUid(string firebaseUid)
+    {
+        FirebaseUid = firebaseUid ?? string.Empty;
+    }
+
+    /// <summary>
+    /// 设置认证提供商 ID
+    /// </summary>
+    public void SetAuthProviderId(string providerId)
+    {
+        AuthProviderId = providerId ?? string.Empty;
+    }
+
+    /// <summary>
+    /// 设置是否已通过 Firebase 认证
+    /// </summary>
+    public void SetFirebaseAuthenticated(bool authenticated)
+    {
+        IsFirebaseAuthenticated = authenticated;
+    }
+
     #endregion
 
     #region 持久化
@@ -216,6 +273,12 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         PlayerPrefs.SetString(KEY_REG_TIME, RegTime);
         PlayerPrefs.SetInt(KEY_LOGIN_TYPE, (int)CurrentLoginType);
         PlayerPrefs.SetInt(KEY_STATUS, (int)Status);
+
+        // Firebase Auth 扩展
+        PlayerPrefs.SetString(KEY_PHOTO_URL, PhotoUrl);
+        PlayerPrefs.SetString(KEY_FIREBASE_UID, FirebaseUid);
+        PlayerPrefs.SetString(KEY_AUTH_PROVIDER_ID, AuthProviderId);
+        PlayerPrefs.SetInt(KEY_IS_FIREBASE_AUTH, IsFirebaseAuthenticated ? 1 : 0);
 
         PlayerPrefs.Save();
 
@@ -241,6 +304,12 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         CurrentLoginType = (LoginType)PlayerPrefs.GetInt(KEY_LOGIN_TYPE, (int)LoginType.Email);
         Status = (AccountStatus)PlayerPrefs.GetInt(KEY_STATUS, (int)AccountStatus.Normal);
 
+        // Firebase Auth 扩展
+        PhotoUrl = PlayerPrefs.GetString(KEY_PHOTO_URL, string.Empty);
+        FirebaseUid = PlayerPrefs.GetString(KEY_FIREBASE_UID, string.Empty);
+        AuthProviderId = PlayerPrefs.GetString(KEY_AUTH_PROVIDER_ID, string.Empty);
+        IsFirebaseAuthenticated = PlayerPrefs.GetInt(KEY_IS_FIREBASE_AUTH, 0) == 1;
+
         Debug.Log("[UserDataManager] 用户数据已加载");
     }
 
@@ -261,6 +330,11 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         CurrentLoginType = LoginType.Email;
         Status = AccountStatus.Normal;
 
+        PhotoUrl = string.Empty;
+        FirebaseUid = string.Empty;
+        AuthProviderId = string.Empty;
+        IsFirebaseAuthenticated = false;
+
         PlayerPrefs.DeleteKey(KEY_USER_NAME);
         PlayerPrefs.DeleteKey(KEY_BIRTHDAY);
         PlayerPrefs.DeleteKey(KEY_BIRTH_TIME);
@@ -271,6 +345,10 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         PlayerPrefs.DeleteKey(KEY_REG_TIME);
         PlayerPrefs.DeleteKey(KEY_LOGIN_TYPE);
         PlayerPrefs.DeleteKey(KEY_STATUS);
+        PlayerPrefs.DeleteKey(KEY_PHOTO_URL);
+        PlayerPrefs.DeleteKey(KEY_FIREBASE_UID);
+        PlayerPrefs.DeleteKey(KEY_AUTH_PROVIDER_ID);
+        PlayerPrefs.DeleteKey(KEY_IS_FIREBASE_AUTH);
         PlayerPrefs.Save();
 
         Debug.Log("[UserDataManager] 用户数据已清除");
@@ -306,6 +384,9 @@ public class UserDataManager : MonoSingleton<UserDataManager>
             LoginType.Phone => "手机登录",
             LoginType.Guest => "游客登录",
             LoginType.ThirdParty => "第三方登录",
+            LoginType.Google => "Google 登录",
+            LoginType.Apple => "Apple 登录",
+            LoginType.Facebook => "Facebook 登录",
             _ => "未知登录"
         };
     }
@@ -373,6 +454,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
 
     /// <summary>
     /// 退出登录（清除账户相关数据但保留基础用户资料）
+    /// 同时调用 FirebaseAuthManager 登出
     /// </summary>
     public void Logout()
     {
@@ -382,14 +464,85 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         CurrentLoginType = LoginType.Email;
         Status = AccountStatus.Normal;
 
+        PhotoUrl = string.Empty;
+        FirebaseUid = string.Empty;
+        AuthProviderId = string.Empty;
+        IsFirebaseAuthenticated = false;
+
         PlayerPrefs.DeleteKey(KEY_EMAIL);
         PlayerPrefs.DeleteKey(KEY_USER_ID);
         PlayerPrefs.DeleteKey(KEY_REG_TIME);
         PlayerPrefs.DeleteKey(KEY_LOGIN_TYPE);
         PlayerPrefs.DeleteKey(KEY_STATUS);
+        PlayerPrefs.DeleteKey(KEY_PHOTO_URL);
+        PlayerPrefs.DeleteKey(KEY_FIREBASE_UID);
+        PlayerPrefs.DeleteKey(KEY_AUTH_PROVIDER_ID);
+        PlayerPrefs.DeleteKey(KEY_IS_FIREBASE_AUTH);
         PlayerPrefs.Save();
 
+        // 同步调用 Firebase 登出
+        if (FirebaseAuthManager.Instance != null && FirebaseAuthManager.Instance.IsLoggedIn)
+        {
+            FirebaseAuthManager.Instance.SignOut();
+        }
+
         Debug.Log("[UserDataManager] 已退出登录");
+    }
+
+    /// <summary>
+    /// 从 Firebase 用户同步数据到本地
+    /// 在 Firebase 登录成功后由 FirebaseAuthManager 调用
+    /// </summary>
+    public void SyncFromFirebaseUser(UserInfo userInfo, AuthProvider authProvider)
+    {
+        if (userInfo == null) return;
+
+        // 设置 Firebase UID
+        SetFirebaseUid(userInfo.uid);
+
+        // 设置邮箱
+        if (!string.IsNullOrEmpty(userInfo.email))
+        {
+            SetEmail(userInfo.email);
+        }
+
+        // 设置用户名（如果本地没有的话）
+        if (!string.IsNullOrEmpty(userInfo.displayName) && string.IsNullOrWhiteSpace(UserName))
+        {
+            SetUserName(userInfo.displayName);
+        }
+
+        // 设置头像 URL
+        if (!string.IsNullOrEmpty(userInfo.photoUrl))
+        {
+            SetPhotoUrl(userInfo.photoUrl);
+        }
+
+        // 设置认证提供商
+        SetAuthProviderId(userInfo.providerId);
+        SetFirebaseAuthenticated(true);
+
+        // 设置登录类型
+        LoginType loginType = authProvider switch
+        {
+            AuthProvider.Google => LoginType.Google,
+            AuthProvider.Apple => LoginType.Apple,
+            AuthProvider.Facebook => LoginType.Facebook,
+            AuthProvider.Anonymous => LoginType.Guest,
+            _ => LoginType.ThirdParty
+        };
+        SetLoginType(loginType);
+
+        // 设置用户ID（使用 Firebase UID）
+        SetUserId(userInfo.uid);
+
+        // 初始化注册时间
+        InitRegTime();
+
+        // 保存
+        SaveData();
+
+        Debug.Log($"[UserDataManager] Firebase 用户数据已同步: UID={userInfo.uid}, Name={userInfo.displayName}, Provider={authProvider}");
     }
 
     #endregion

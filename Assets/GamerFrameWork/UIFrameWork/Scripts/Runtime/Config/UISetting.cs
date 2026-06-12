@@ -42,29 +42,29 @@ namespace GamerFrameWork.UIFrameWork
 #if ODIN_INSPECTOR && UNITY_EDITOR
         [TitleGroup("脚本自动化生成路径", "自定义生成脚本后缀")]
         [LabelText("自定义生成脚本后缀名")]
-        public string GenerateCSharpSuffix = "UIComponent";
 #endif
+        public string GenerateCSharpSuffix = "UIComponent";
 
 #if ODIN_INSPECTOR && UNITY_EDITOR
         [TitleGroup("脚本自动化生成路径配置", "自定义生成路径")]
         [LabelText("组件绑定脚本生成路径")]
         [FolderPath]
-        public string BindComponentGeneratorPath = "";
 #endif
+        public string BindComponentGeneratorPath = "";
 
 #if ODIN_INSPECTOR && UNITY_EDITOR
         [TitleGroup("脚本自动化生成路径配置")]
         [LabelText("窗口交互脚本生成路径")]
         [FolderPath]
-        public string WindowGeneratorPath = "";
 #endif
+        public string WindowGeneratorPath = "";
 
 #if ODIN_INSPECTOR && UNITY_EDITOR
         [TitleGroup("脚本自动化生成路径配置")]
         [LabelText("Item脚本生成路径")]
         [FolderPath]
-        public string ItemScriptsGeneratorPath = "";
 #endif
+        public string ItemScriptsGeneratorPath = "";
 
         //——— Namespace 配置 ————————————————
 
@@ -72,14 +72,13 @@ namespace GamerFrameWork.UIFrameWork
         [TitleGroup("自动生成脚本命名空间引入配置",
             "生成脚本时框架自动 using 以下命名空间")]
         [LabelText("命名空间配置")]
-
+#endif
         public string[] UsingNameSpaceArr = new string[]
             {
                 "GamerFrameWork.UIFrameWork",
                 "UnityEngine.UI",
                 "UnityEngine",
             };
-#endif
 
 
         //——— Prefab 路径配置 ————————————————
@@ -87,9 +86,9 @@ namespace GamerFrameWork.UIFrameWork
 #if ODIN_INSPECTOR && UNITY_EDITOR
         [TitleGroup("Prefabs资源加载路径")]
         [FolderPath]
-
-        public string[] WindowPrefabFolderPathArr;
 #endif
+        public string[] WindowPrefabFolderPathArr;
+
 
 
         //——— WindowConfig 路径 ————————————————
@@ -97,9 +96,8 @@ namespace GamerFrameWork.UIFrameWork
 #if ODIN_INSPECTOR && UNITY_EDITOR
         [TitleGroup("加载WindowConfig配置文件的路径")]
         [FolderPath]
-
-        public string windowConfigPath;
 #endif
+        public string windowConfigPath;
 
 
         //——— 生成 WindowConfig ————————————————

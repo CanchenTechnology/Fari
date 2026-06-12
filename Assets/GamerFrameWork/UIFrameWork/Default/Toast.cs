@@ -45,6 +45,9 @@ namespace GamerFrameWork.UIFrameWork
 
             ContentTextPro.text = key;
 
+            // 限制Toast宽度，防止内容超出屏幕
+            ConstrainToastWidth();
+
             ContentRootTrans.localScale = new Vector3(0.8f, 0.8f, 0.8f)*scale;
             ContentRootTrans.DOScale(Vector3.one*scale, 0.3f).SetEase(Ease.OutBack);
 
@@ -52,6 +55,30 @@ namespace GamerFrameWork.UIFrameWork
 
             CancelInvoke();
             Invoke(nameof(HideToast), mShowTime);
+        }
+
+        /// <summary>
+        /// 限制Toast最大宽度，防止长文本超出屏幕
+        /// </summary>
+        private void ConstrainToastWidth()
+        {
+            // 参考分辨率 750，留给Toast的最大文字宽度（减去左右padding 20+20 后约480）
+            float maxTextWidth = 480f;
+
+            // 让文本在超出宽度时自动换行
+            ContentTextPro.horizontalOverflow = HorizontalWrapMode.Wrap;
+
+            // 通过 LayoutElement 给文本一个固定首选宽度，这样 HorizontalLayoutGroup +
+            // ContentSizeFitter 才能正确计算出 ContentRoot 应有的宽高
+            var layoutElement = ContentTextPro.GetComponent<LayoutElement>();
+            if (layoutElement == null)
+                layoutElement = ContentTextPro.gameObject.AddComponent<LayoutElement>();
+            layoutElement.preferredWidth = maxTextWidth;
+
+            // 确保 ContentSizeFitter 垂直也自适应，让背景在文本多行时能拉高
+            var rootFitter = ContentRootTrans.GetComponent<ContentSizeFitter>();
+            if (rootFitter != null)
+                rootFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
         }
 
         /// <summary>

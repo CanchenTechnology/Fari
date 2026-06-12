@@ -10,6 +10,7 @@ using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 using SuperScrollView;
 using System.Collections.Generic;
+using System.Collections;
 
 public class DialogUI : WindowBase
 {
@@ -168,32 +169,22 @@ public class DialogUI : WindowBase
 	/// </summary>
 	private void SendUserMessage(string content)
 	{
-		if(dialogSystem == null)
-		{
-			Debug.Log("??22");
-		}
-		if(chatListView == null)
-		{
-			Debug.Log("??33");
-		}
 		if (dialogSystem == null || chatListView == null)
 		{
-			Debug.Log("??");
+			Debug.LogError("DialogSystem or ChatListView is null!");
 			return;
 		}
-		
-		Debug.Log("ss");
+
 		// 添加用户消息到数据层
 		dialogSystem.AddUserMessage(content);
 
-		// 更新列表
+		// 更新列表 - 移除 RefreshAllShownItem，让 ScrollView 自动处理
 		int msgCount = dialogSystem.GetMessageCount();
-		Debug.Log($"当前消息数量：{msgCount}");
+		Debug.Log($"发送用户消息后，当前消息数量：{msgCount}");
 		chatListView.SetListItemCount(msgCount, false);
-		chatListView.RefreshAllShownItem();
 
-		// 滚动到底部
-		ScrollToBottom();
+		// 延迟一帧滚动到底部，确保布局已更新
+		uiComponent.StartCoroutine(ScrollToBottomNextFrame());
 
 		// 发送消息到AI
 		SendMessageToAI();
@@ -220,15 +211,15 @@ public class DialogUI : WindowBase
 					List<string> options = dialogSystem.GetCurrentDivinerOptions();
 					dialogSystem.AddAIMessage(aiResponse, options);
 
-					// 更新列表
+					// 更新列表 - 移除 RefreshAllShownItem
 					if (chatListView != null)
 					{
 						int msgCount = dialogSystem.GetMessageCount();
+						Debug.Log($"接收AI消息后，当前消息数量：{msgCount}");
 						chatListView.SetListItemCount(msgCount, false);
-						chatListView.RefreshAllShownItem();
 
-						// 滚动到底部
-						ScrollToBottom();
+						// 延迟一帧滚动到底部，确保布局已更新
+						uiComponent.StartCoroutine(ScrollToBottomNextFrame());
 					}
 				},
 			(error) =>
@@ -247,13 +238,22 @@ public class DialogUI : WindowBase
 	/// </summary>
 	private void ScrollToBottom()
 	{
-		if (chatListView == null) return;
+		if (chatListView == null || dialogSystem == null) return;
 
 		int msgCount = dialogSystem.GetMessageCount();
 		if (msgCount > 0)
 		{
 			chatListView.MovePanelToItemIndex(msgCount - 1, 0);
 		}
+	}
+
+	/// <summary>
+	/// 延迟一帧滚动到底部，确保布局已更新
+	/// </summary>
+	private IEnumerator ScrollToBottomNextFrame()
+	{
+		yield return null; // 等待一帧
+		ScrollToBottom();
 	}
 
 	#endregion

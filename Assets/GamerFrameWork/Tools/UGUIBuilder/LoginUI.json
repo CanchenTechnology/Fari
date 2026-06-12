@@ -1,0 +1,184 @@
+{
+  "screenName": "LoginUI",
+  "resolution": { "x": 750, "y": 1334 },
+  "matchWidthOrHeight": 0.5,
+  "includeMask": false,
+  "defaultFont": "",
+  "elements": [
+    {
+      "name": "Background",
+      "type": "Image",
+      "sprite": "bg",
+      "imageType": "Simple",
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "size": { "x": 0, "y": 0 }
+    },
+    {
+      "name": "MainPanel",
+      "type": "Panel",
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "size": { "x": 0, "y": 0 },
+      "children": [
+        {
+          "name": "LogoArea",
+          "type": "Panel",
+          "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+          "raycastTarget": false,
+          "anchorMin": { "x": 0.5, "y": 1 },
+          "anchorMax": { "x": 0.5, "y": 1 },
+          "position": { "x": 0, "y": -200 },
+          "size": { "x": 300, "y": 180 },
+          "children": [
+            {
+              "name": "AppLogo",
+              "type": "Image",
+              "sprite": "",
+              "imageType": "Simple",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": 0 },
+              "size": { "x": 120, "y": 120 }
+            },
+            {
+              "name": "AppTitle",
+              "type": "Text",
+              "text": "Moonly",
+              "fontSize": 36,
+              "fontStyle": "Bold",
+              "textAlignment": "Center",
+              "textColor": { "r": 1, "g": 1, "b": 1, "a": 1 },
+              "anchorMin": { "x": 0.5, "y": 0 },
+              "anchorMax": { "x": 0.5, "y": 0 },
+              "position": { "x": 0, "y": 20 },
+              "size": { "x": 300, "y": 50 }
+            }
+          ]
+        },
+        {
+          "name": "SocialLoginArea",
+          "type": "Panel",
+          "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+          "raycastTarget": false,
+          "anchorMin": { "x": 0.5, "y": 0.5 },
+          "anchorMax": { "x": 0.5, "y": 0.5 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 600, "y": 400 },
+          "children": [
+            {
+              "name": "[Button]GooglePlaySignInButton",
+              "type": "Button",
+              "text": "Google 登录",
+              "fontSize": 22,
+              "textColor": { "r": 1, "g": 1, "b": 1, "a": 1 },
+              "color": { "r": 0.26, "g": 0.52, "b": 0.96, "a": 1 },
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": 0 },
+              "size": { "x": 560, "y": 56 }
+            },
+            {
+              "name": "[Button]AppleSignInButton",
+              "type": "Button",
+              "text": "Apple 登录",
+              "fontSize": 22,
+              "textColor": { "r": 1, "g": 1, "b": 1, "a": 1 },
+              "color": { "r": 0, "g": 0, "b": 0, "a": 1 },
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -76 },
+              "size": { "x": 560, "y": 56 }
+            },
+            {
+              "name": "[Button]FaceBookSignInButton",
+              "type": "Button",
+              "text": "Facebook 登录",
+              "fontSize": 22,
+              "textColor": { "r": 1, "g": 1, "b": 1, "a": 1 },
+              "color": { "r": 0.14, "g": 0.40, "b": 0.76, "a": 1 },
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -152 },
+              "size": { "x": 560, "y": 56 }
+            },
+            {
+              "name": "[Button]GameCenterSignInButton",
+              "type": "Button",
+              "text": "Game Center 登录",
+              "fontSize": 22,
+              "textColor": { "r": 1, "g": 1, "b": 1, "a": 1 },
+              "color": { "r": 0.2, "g": 0.2, "b": 0.2, "a": 1 },
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -228 },
+              "size": { "x": 560, "y": 56 }
+            },
+            {
+              "name": "[Button]EmailSignInButton",
+              "type": "Button",
+              "text": "邮箱登录",
+              "fontSize": 22,
+              "textColor": { "r": 1, "g": 1, "b": 1, "a": 1 },
+              "color": { "r": 0.27, "g": 0.55, "b": 0.91, "a": 1 },
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -304 },
+              "size": { "x": 560, "y": 56 }
+            }
+          ]
+        },
+        {
+          "name": "BottomArea",
+          "type": "Panel",
+          "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+          "raycastTarget": false,
+          "anchorMin": { "x": 0.5, "y": 0 },
+          "anchorMax": { "x": 0.5, "y": 0 },
+          "position": { "x": 0, "y": 60 },
+          "size": { "x": 600, "y": 120 },
+          "children": [
+            {
+              "name": "[Button]CreateAccountButton",
+              "type": "Button",
+              "text": "创建账号",
+              "fontSize": 20,
+              "textColor": { "r": 0.27, "g": 0.55, "b": 0.91, "a": 1 },
+              "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": 0 },
+              "size": { "x": 200, "y": 44 }
+            },
+            {
+              "name": "[Button]AnonymousSignInButton",
+              "type": "Button",
+              "text": "游客登录",
+              "fontSize": 18,
+              "textColor": { "r": 0.6, "g": 0.6, "b": 0.6, "a": 1 },
+              "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+              "anchorMin": { "x": 0.5, "y": 0 },
+              "anchorMax": { "x": 0.5, "y": 0 },
+              "position": { "x": 0, "y": 20 },
+              "size": { "x": 200, "y": 40 }
+            },
+            {
+              "name": "[Button]DontSignInButton",
+              "type": "Button",
+              "text": "跳过登录 >>",
+              "fontSize": 16,
+              "textColor": { "r": 0.5, "g": 0.5, "b": 0.5, "a": 1 },
+              "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+              "anchorMin": { "x": 0.5, "y": 0 },
+              "anchorMax": { "x": 0.5, "y": 0 },
+              "position": { "x": 0, "y": 60 },
+              "size": { "x": 200, "y": 36 }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
