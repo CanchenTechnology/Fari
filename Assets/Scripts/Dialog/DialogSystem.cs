@@ -15,10 +15,17 @@ public enum DivinerType
 /// <summary>
 /// 消息类型
 /// </summary>
-public enum DiaMessageType
+public enum DialogRoleType
 {
     User,       // 用户消息
     AI,         // AI回复
+}
+public enum MsgType
+{
+    Str,  //普通消息
+    PopupWindow,// 弹窗
+    Picture,
+    Voice,
 }
 
 /// <summary>
@@ -28,10 +35,9 @@ public enum DiaMessageType
 public class ChatMessageData
 {
     public int id;
-    public DiaMessageType messageType;
+    public DialogRoleType roleType;
+    public MsgType messageType;
     public string content;
-    public string speakerName;
-    public string headIconName;
     public List<string> options; // AI回复的选项按钮文本
     public DivinerType divinerType; // 当messageType为AI时使用
 }
@@ -42,7 +48,6 @@ public class ChatMessageData
 /// </summary>
 public class DialogSystem : MonoSingleton<DialogSystem>
 {
-    public static DialogSystem Instance;
 
     [Header("当前占卜师类型")]
     public DivinerType CurrentDivinerType = DivinerType.Tarot;
@@ -76,17 +81,9 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     // 消息ID计数器
     private int mMessageIdCounter = 0;
 
-    void Awake()
+    protected override void Awake()
     {
-        if (Instance == null)
-        {
-            Instance = this;
-        }
-        else
-        {
-            Destroy(gameObject);
-        }
-
+        base.Awake();
         if (deepSeekAPI == null)
         {
             deepSeekAPI = gameObject.GetComponent<DeepSeekAPI>();
@@ -138,10 +135,9 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         ChatMessageData data = new ChatMessageData
         {
             id = mMessageIdCounter++,
-            messageType = DiaMessageType.User,
+            roleType = DialogRoleType.User,
+            messageType = MsgType.Str,
             content = content,
-            speakerName = UserName,
-            headIconName = UserHeadIcon,
             options = null,
             divinerType = CurrentDivinerType
         };
@@ -161,10 +157,10 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         ChatMessageData data = new ChatMessageData
         {
             id = mMessageIdCounter++,
-            messageType = DiaMessageType.AI,
+            roleType = DialogRoleType.AI,
+
+            //messageType = MsgType.Str,
             content = content,
-            speakerName = GetCurrentDivinerName(),
-            headIconName = GetCurrentDivinerHeadIcon(),
             options = options,
             divinerType = CurrentDivinerType
         };

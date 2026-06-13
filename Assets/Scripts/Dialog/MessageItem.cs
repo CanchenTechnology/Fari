@@ -100,23 +100,7 @@ public class MessageItem : MonoBehaviour
         mOnOptionClick = onOptionClick;
         mOnRegenerateVoiceClick = onRegenerateVoiceClick;
 
-        // 设置发言者名字
-        if (speakerName != null)
-        {
-            speakerName.text = data.speakerName;
-        }
 
-        // 设置消息内容
-        if (contentText != null)
-        {
-            contentText.text = data.content;
-        }
-
-        // 设置头像
-        if (headImage != null && !string.IsNullOrEmpty(data.headIconName))
-        {
-            LoadHeadIcon(data.headIconName);
-        }
 
         // 设置选项按钮
         SetOptions(data.options, data.divinerType);

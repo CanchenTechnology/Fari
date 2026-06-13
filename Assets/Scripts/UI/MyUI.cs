@@ -51,7 +51,7 @@ public class MyUI : WindowBase
 
 	public void Onbtn_divinationButtonClick()
 	{
-		ToastManager.ShowToast("功能待开发。。。");
+		UIModule.Instance.PopUpWindow<HistoryUI>();
 	}
 	public void Onbtn_myinfoButtonClick()
 	{
@@ -59,7 +59,7 @@ public class MyUI : WindowBase
 	}
 	public void OnmemoryButtonClick()
 	{
-		ToastManager.ShowToast("功能待开发。。。");
+		UIModule.Instance.PopUpWindow<MemoryManagementUI>();
 	}
 	public void OnproButtonClick()
 	{
@@ -71,11 +71,11 @@ public class MyUI : WindowBase
 	}
 	public void OnfeedbackButtonClick()
 	{
-		ToastManager.ShowToast("功能待开发。。。");
+		UIModule.Instance.PopUpWindow<FeedbackUI>();
 	}
 	public void OnshareButtonClick()
 	{
-		ToastManager.ShowToast("功能待开发。。。");
+		UIModule.Instance.PopUpWindow<FollowusUI>();
 	}
 	#endregion
 }

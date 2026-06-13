@@ -43,15 +43,23 @@ public class TodayOracleUI : WindowBase
 
 	#endregion
 
-	#region UI组件事件
+	#region UI组件事件		 
+	public void OnDeepChatButtonClick()
+	{
+		UIModule.Instance.GetWindow<NavigationUI>().FlipCard();
+	}
+		
 	public void OnswitchDivinerButtonClick()
 	{
-		UIModule.Instance.PopUpWindow<SwitchRoleUI>();	
-		Debug.Log("switchDivinerButton is clicked");
+	
+		UIModule.Instance.PopUpWindow<SwitchRoleUI>();
+		
 	}
+
 	public void OnflipCardButtonClick()
 	{
-		Debug.Log("flipCardButton is clicked");
+		uiComponent.flipCardButton.gameObject.SetActive(false);
+		uiComponent.ReadingCardContainerTransform.gameObject.SetActive(true);
 	}
 	#endregion
 }

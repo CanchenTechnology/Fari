@@ -285,7 +285,7 @@ public class FriendUI : WindowBase
 	}
 	public void OnAddRelationButtonClick()
 	{
-		ToastManager.ShowToast("功能待开发。。。");
+		UIModule.Instance.PopUpWindow<AddFriendUI>();
 	}
 	public void OnExpandRealFriendButtonClick()
 	{
@@ -320,6 +320,7 @@ public class FriendUI : WindowBase
 	}
 	public void OnCreateFriendButtonClick()
 	{
+		UIModule.Instance.PopUpWindow<CreateFriendUI>();
 		// 通过 DataManager 添加虚拟好友数据
 		FriendDataManager.FriendData data = FriendDataManager.Instance.AddVirtualFriend("AI好友", "创建好友·AI好友");
 

@@ -391,7 +391,7 @@ namespace GamerFrameWork.UIFrameWork
             var path = mWindowConfig.GetWindowData(wndName)?.path;
             if (string.IsNullOrEmpty(path))
             {
-                Debug.LogError($"[LoadWindow] path is null, wndName={wndName}");
+                    Debug.LogError($"[LoadWindow] path is null, wndName={wndName}");
                 return null;
             }
 

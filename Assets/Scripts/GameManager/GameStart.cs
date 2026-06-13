@@ -22,7 +22,7 @@ public class GameStart : MonoBehaviour
     IEnumerator Start()
     {
         // 游戏管理器
-        GameManager.Instance.Behaviour = this;
+        YooManager.Instance.Behaviour = this;
         // 初始化事件系统
         UniEvent.Initalize();
 

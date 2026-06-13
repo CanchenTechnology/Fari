@@ -1,0 +1,491 @@
+{
+  "screenName": "FollowUsScreen",
+  "resolution": {
+    "x": 750,
+    "y": 1334
+  },
+  "matchWidthOrHeight": 0.5,
+  "includeMask": false,
+  "elements": [
+    {
+      "name": "Background",
+      "type": "Panel",
+      "color": { "r": 0.05, "g": 0.03, "b": 0.08, "a": 1.0 },
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "size": { "x": 0, "y": 0 },
+      "children": [
+        {
+          "name": "[Button]Back",
+          "type": "Button",
+          "sprite": "btn_round_outline_gold",
+          "text": "<",
+          "fontSize": 24,
+          "textColor": { "r": 0.85, "g": 0.65, "b": 0.35, "a": 1.0 },
+          "color": { "r": 0.05, "g": 0.03, "b": 0.08, "a": 1.0 },
+          "size": { "x": 70, "y": 70 },
+          "position": { "x": -300, "y": 550 }
+        },
+        {
+          "name": "HeaderTitles",
+          "type": "Panel",
+          "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+          "size": { "x": 500, "y": 120 },
+          "position": { "x": -10, "y": 540 },
+          "children": [
+            {
+              "name": "SubtitleText",
+              "type": "Text",
+              "text": "Nocturne Oracle",
+              "fontSize": 14,
+              "textAlignment": "Left",
+              "textColor": { "r": 0.85, "g": 0.65, "b": 0.35, "a": 1.0 },
+              "size": { "x": 500, "y": 25 },
+              "position": { "x": 0, "y": 40 }
+            },
+            {
+              "name": "TitleText",
+              "type": "Text",
+              "text": "关注我们",
+              "fontSize": 42,
+              "fontStyle": "Bold",
+              "textAlignment": "Left",
+              "textColor": { "r": 0.95, "g": 0.95, "b": 0.95, "a": 1.0 },
+              "size": { "x": 500, "y": 55 },
+              "position": { "x": 0, "y": 0 }
+            },
+            {
+              "name": "DescriptionText",
+              "type": "Text",
+              "text": "在这些平台获取灵感、更新与活动。",
+              "fontSize": 16,
+              "textAlignment": "Left",
+              "textColor": { "r": 0.65, "g": 0.60, "b": 0.75, "a": 1.0 },
+              "size": { "x": 500, "y": 30 },
+              "position": { "x": 0, "y": -40 }
+            }
+          ]
+        },
+        {
+          "name": "[ScrollRect]SocialListScroll",
+          "type": "ScrollRect",
+          "horizontalScroll": false,
+          "verticalScroll": true,
+          "layoutType": "Vertical",
+          "childAlignment": "UpperCenter",
+          "spacing": 20,
+          "paddingTop": 20,
+          "paddingBottom": 40,
+          "size": { "x": 680, "y": 860 },
+          "position": { "x": 0, "y": 0 },
+          "children": [
+            {
+              "name": "SocialItem_Instagram",
+              "type": "Panel",
+              "sprite": "panel_rounded_outline",
+              "color": { "r": 0.08, "g": 0.06, "b": 0.12, "a": 1.0 },
+              "size": { "x": 680, "y": 120 },
+              "children": [
+                {
+                  "name": "IconBox",
+                  "type": "Panel",
+                  "sprite": "badge_pill_outline_gold",
+                  "color": { "r": 0.10, "g": 0.08, "b": 0.15, "a": 1.0 },
+                  "size": { "x": 60, "y": 60 },
+                  "position": { "x": -270, "y": 0 },
+                  "children": [
+                    {
+                      "name": "IconLetter",
+                      "type": "Text",
+                      "text": "I",
+                      "fontSize": 24,
+                      "fontStyle": "Bold",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.85, "g": 0.65, "b": 0.35, "a": 1.0 },
+                      "position": { "x": 0, "y": 0 }
+                    }
+                  ]
+                },
+                {
+                  "name": "PlatformName",
+                  "type": "Text",
+                  "text": "Instagram",
+                  "fontSize": 20,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.95, "g": 0.95, "b": 0.95, "a": 1.0 },
+                  "size": { "x": 300, "y": 30 },
+                  "position": { "x": -60, "y": 15 }
+                },
+                {
+                  "name": "PlatformHandle",
+                  "type": "Text",
+                  "text": "@fari.oracle",
+                  "fontSize": 14,
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.60, "g": 0.60, "b": 0.65, "a": 1.0 },
+                  "size": { "x": 300, "y": 30 },
+                  "position": { "x": -60, "y": -15 }
+                },
+                {
+                  "name": "StatusText",
+                  "type": "Text",
+                  "text": "Soon",
+                  "fontSize": 16,
+                  "textAlignment": "Right",
+                  "textColor": { "r": 0.85, "g": 0.65, "b": 0.35, "a": 1.0 },
+                  "size": { "x": 100, "y": 30 },
+                  "position": { "x": 260, "y": 0 }
+                },
+                {
+                  "name": "[Button]OpenLink_Insta",
+                  "type": "Button",
+                  "text": "",
+                  "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                  "size": { "x": 680, "y": 120 },
+                  "position": { "x": 0, "y": 0 }
+                }
+              ]
+            },
+            {
+              "name": "SocialItem_Facebook",
+              "type": "Panel",
+              "sprite": "panel_rounded_outline",
+              "color": { "r": 0.08, "g": 0.06, "b": 0.12, "a": 1.0 },
+              "size": { "x": 680, "y": 120 },
+              "children": [
+                {
+                  "name": "IconBox",
+                  "type": "Panel",
+                  "sprite": "badge_pill_outline_gold",
+                  "color": { "r": 0.10, "g": 0.08, "b": 0.15, "a": 1.0 },
+                  "size": { "x": 60, "y": 60 },
+                  "position": { "x": -270, "y": 0 },
+                  "children": [
+                    {
+                      "name": "IconLetter",
+                      "type": "Text",
+                      "text": "F",
+                      "fontSize": 24,
+                      "fontStyle": "Bold",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.85, "g": 0.65, "b": 0.35, "a": 1.0 },
+                      "position": { "x": 0, "y": 0 }
+                    }
+                  ]
+                },
+                {
+                  "name": "PlatformName",
+                  "type": "Text",
+                  "text": "Facebook",
+                  "fontSize": 20,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.95, "g": 0.95, "b": 0.95, "a": 1.0 },
+                  "size": { "x": 300, "y": 30 },
+                  "position": { "x": -60, "y": 15 }
+                },
+                {
+                  "name": "PlatformHandle",
+                  "type": "Text",
+                  "text": "fari.ai",
+                  "fontSize": 14,
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.60, "g": 0.60, "b": 0.65, "a": 1.0 },
+                  "size": { "x": 300, "y": 30 },
+                  "position": { "x": -60, "y": -15 }
+                },
+                {
+                  "name": "StatusText",
+                  "type": "Text",
+                  "text": "Soon",
+                  "fontSize": 16,
+                  "textAlignment": "Right",
+                  "textColor": { "r": 0.85, "g": 0.65, "b": 0.35, "a": 1.0 },
+                  "size": { "x": 100, "y": 30 },
+                  "position": { "x": 260, "y": 0 }
+                },
+                {
+                  "name": "[Button]OpenLink_FB",
+                  "type": "Button",
+                  "text": "",
+                  "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                  "size": { "x": 680, "y": 120 },
+                  "position": { "x": 0, "y": 0 }
+                }
+              ]
+            },
+            {
+              "name": "SocialItem_Twitter",
+              "type": "Panel",
+              "sprite": "panel_rounded_outline",
+              "color": { "r": 0.08, "g": 0.06, "b": 0.12, "a": 1.0 },
+              "size": { "x": 680, "y": 120 },
+              "children": [
+                {
+                  "name": "IconBox",
+                  "type": "Panel",
+                  "sprite": "badge_pill_outline_gold",
+                  "color": { "r": 0.10, "g": 0.08, "b": 0.15, "a": 1.0 },
+                  "size": { "x": 60, "y": 60 },
+                  "position": { "x": -270, "y": 0 },
+                  "children": [
+                    {
+                      "name": "IconLetter",
+                      "type": "Text",
+                      "text": "T",
+                      "fontSize": 24,
+                      "fontStyle": "Bold",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.85, "g": 0.65, "b": 0.35, "a": 1.0 },
+                      "position": { "x": 0, "y": 0 }
+                    }
+                  ]
+                },
+                {
+                  "name": "PlatformName",
+                  "type": "Text",
+                  "text": "Twitter",
+                  "fontSize": 20,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.95, "g": 0.95, "b": 0.95, "a": 1.0 },
+                  "size": { "x": 300, "y": 30 },
+                  "position": { "x": -60, "y": 15 }
+                },
+                {
+                  "name": "PlatformHandle",
+                  "type": "Text",
+                  "text": "@fari_ai",
+                  "fontSize": 14,
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.60, "g": 0.60, "b": 0.65, "a": 1.0 },
+                  "size": { "x": 300, "y": 30 },
+                  "position": { "x": -60, "y": -15 }
+                },
+                {
+                  "name": "StatusText",
+                  "type": "Text",
+                  "text": "Soon",
+                  "fontSize": 16,
+                  "textAlignment": "Right",
+                  "textColor": { "r": 0.85, "g": 0.65, "b": 0.35, "a": 1.0 },
+                  "size": { "x": 100, "y": 30 },
+                  "position": { "x": 260, "y": 0 }
+                },
+                {
+                  "name": "[Button]OpenLink_Twitter",
+                  "type": "Button",
+                  "text": "",
+                  "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                  "size": { "x": 680, "y": 120 },
+                  "position": { "x": 0, "y": 0 }
+                }
+              ]
+            },
+            {
+              "name": "SocialItem_TikTok",
+              "type": "Panel",
+              "sprite": "panel_rounded_outline",
+              "color": { "r": 0.08, "g": 0.06, "b": 0.12, "a": 1.0 },
+              "size": { "x": 680, "y": 120 },
+              "children": [
+                {
+                  "name": "IconBox",
+                  "type": "Panel",
+                  "sprite": "badge_pill_outline_gold",
+                  "color": { "r": 0.10, "g": 0.08, "b": 0.15, "a": 1.0 },
+                  "size": { "x": 60, "y": 60 },
+                  "position": { "x": -270, "y": 0 },
+                  "children": [
+                    {
+                      "name": "IconLetter",
+                      "type": "Text",
+                      "text": "T",
+                      "fontSize": 24,
+                      "fontStyle": "Bold",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.85, "g": 0.65, "b": 0.35, "a": 1.0 },
+                      "position": { "x": 0, "y": 0 }
+                    }
+                  ]
+                },
+                {
+                  "name": "PlatformName",
+                  "type": "Text",
+                  "text": "TikTok",
+                  "fontSize": 20,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.95, "g": 0.95, "b": 0.95, "a": 1.0 },
+                  "size": { "x": 300, "y": 30 },
+                  "position": { "x": -60, "y": 15 }
+                },
+                {
+                  "name": "PlatformHandle",
+                  "type": "Text",
+                  "text": "@fari.oracle",
+                  "fontSize": 14,
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.60, "g": 0.60, "b": 0.65, "a": 1.0 },
+                  "size": { "x": 300, "y": 30 },
+                  "position": { "x": -60, "y": -15 }
+                },
+                {
+                  "name": "StatusText",
+                  "type": "Text",
+                  "text": "Soon",
+                  "fontSize": 16,
+                  "textAlignment": "Right",
+                  "textColor": { "r": 0.85, "g": 0.65, "b": 0.35, "a": 1.0 },
+                  "size": { "x": 100, "y": 30 },
+                  "position": { "x": 260, "y": 0 }
+                },
+                {
+                  "name": "[Button]OpenLink_TikTok",
+                  "type": "Button",
+                  "text": "",
+                  "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                  "size": { "x": 680, "y": 120 },
+                  "position": { "x": 0, "y": 0 }
+                }
+              ]
+            },
+            {
+              "name": "SocialItem_Pinterest",
+              "type": "Panel",
+              "sprite": "panel_rounded_outline",
+              "color": { "r": 0.08, "g": 0.06, "b": 0.12, "a": 1.0 },
+              "size": { "x": 680, "y": 120 },
+              "children": [
+                {
+                  "name": "IconBox",
+                  "type": "Panel",
+                  "sprite": "badge_pill_outline_gold",
+                  "color": { "r": 0.10, "g": 0.08, "b": 0.15, "a": 1.0 },
+                  "size": { "x": 60, "y": 60 },
+                  "position": { "x": -270, "y": 0 },
+                  "children": [
+                    {
+                      "name": "IconLetter",
+                      "type": "Text",
+                      "text": "P",
+                      "fontSize": 24,
+                      "fontStyle": "Bold",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.85, "g": 0.65, "b": 0.35, "a": 1.0 },
+                      "position": { "x": 0, "y": 0 }
+                    }
+                  ]
+                },
+                {
+                  "name": "PlatformName",
+                  "type": "Text",
+                  "text": "Pinterest",
+                  "fontSize": 20,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.95, "g": 0.95, "b": 0.95, "a": 1.0 },
+                  "size": { "x": 300, "y": 30 },
+                  "position": { "x": -60, "y": 15 }
+                },
+                {
+                  "name": "PlatformHandle",
+                  "type": "Text",
+                  "text": "fari oracle",
+                  "fontSize": 14,
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.60, "g": 0.60, "b": 0.65, "a": 1.0 },
+                  "size": { "x": 300, "y": 30 },
+                  "position": { "x": -60, "y": -15 }
+                },
+                {
+                  "name": "StatusText",
+                  "type": "Text",
+                  "text": "Soon",
+                  "fontSize": 16,
+                  "textAlignment": "Right",
+                  "textColor": { "r": 0.85, "g": 0.65, "b": 0.35, "a": 1.0 },
+                  "size": { "x": 100, "y": 30 },
+                  "position": { "x": 260, "y": 0 }
+                },
+                {
+                  "name": "[Button]OpenLink_Pinterest",
+                  "type": "Button",
+                  "text": "",
+                  "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                  "size": { "x": 680, "y": 120 },
+                  "position": { "x": 0, "y": 0 }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "BottomNavBarContainer",
+          "type": "Panel",
+          "sprite": "nav_bar_bg",
+          "color": { "r": 0.05, "g": 0.03, "b": 0.08, "a": 1.0 },
+          "size": { "x": 750, "y": 140 },
+          "position": { "x": 0, "y": -597 },
+          "children": [
+            {
+              "name": "[ToggleGroup]BottomNav",
+              "type": "ToggleGroup",
+              "allowSwitchOff": false,
+              "spacing": 40,
+              "size": { "x": 700, "y": 100 },
+              "position": { "x": 0, "y": 10 },
+              "children": [
+                {
+                  "name": "[Toggle]TabOracle",
+                  "type": "Toggle",
+                  "isOn": false,
+                  "text": "今日神谕",
+                  "fontSize": 16,
+                  "textColor": { "r": 0.55, "g": 0.55, "b": 0.55, "a": 1.0 },
+                  "backgroundSprite": "tab_icon_oracle_normal",
+                  "checkmarkSprite": "tab_icon_oracle_active",
+                  "size": { "x": 120, "y": 90 }
+                },
+                {
+                  "name": "[Toggle]TabChat",
+                  "type": "Toggle",
+                  "isOn": false,
+                  "text": "对话",
+                  "fontSize": 16,
+                  "textColor": { "r": 0.55, "g": 0.55, "b": 0.55, "a": 1.0 },
+                  "backgroundSprite": "tab_icon_chat_normal",
+                  "checkmarkSprite": "tab_icon_chat_active",
+                  "size": { "x": 120, "y": 90 }
+                },
+                {
+                  "name": "[Toggle]TabFriends",
+                  "type": "Toggle",
+                  "isOn": false,
+                  "text": "朋友",
+                  "fontSize": 16,
+                  "textColor": { "r": 0.55, "g": 0.55, "b": 0.55, "a": 1.0 },
+                  "backgroundSprite": "tab_icon_friends_normal",
+                  "checkmarkSprite": "tab_icon_friends_active",
+                  "size": { "x": 120, "y": 90 }
+                },
+                {
+                  "name": "[Toggle]TabProfile",
+                  "type": "Toggle",
+                  "isOn": true,
+                  "text": "我的",
+                  "fontSize": 16,
+                  "textColor": { "r": 0.85, "g": 0.75, "b": 0.90, "a": 1.0 },
+                  "backgroundSprite": "tab_icon_profile_normal",
+                  "checkmarkSprite": "tab_icon_profile_active",
+                  "size": { "x": 120, "y": 90 }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

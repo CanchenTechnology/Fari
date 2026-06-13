@@ -16,7 +16,7 @@ public class FsmRequestPackageVersion : IStateNode
     public void OnEnter()
     {
         PatchEventDefine.PatchStepsChange.SendEventMessage("请求资源版本 !");
-        GameManager.Instance.StartCoroutine(UpdatePackageVersion());
+        YooManager.Instance.StartCoroutine(UpdatePackageVersion());
     }
 
     public void OnExit()

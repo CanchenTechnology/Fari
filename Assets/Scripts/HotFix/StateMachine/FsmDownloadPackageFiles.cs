@@ -18,7 +18,7 @@ public class FsmDownloadPackageFiles : IStateNode
     void IStateNode.OnEnter()
     {
         PatchEventDefine.PatchStepsChange.SendEventMessage("开始下载资源文件！");
-        GameManager.Instance.StartCoroutine(BeginDownload());
+        YooManager.Instance.StartCoroutine(BeginDownload());
     }
     void IStateNode.OnUpdate()
     {

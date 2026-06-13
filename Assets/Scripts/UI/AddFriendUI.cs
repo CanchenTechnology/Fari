@@ -54,15 +54,19 @@ public class AddFriendUI : WindowBase
 	}
 	public void OnBtnSearchUserButtonClick()
 	{
+		UIModule.Instance.PopUpWindow<UserSearchUI>();
 	}
 	public void OnBtnContactsButtonClick()
 	{
+		UIModule.Instance.PopUpWindow<ContactsInviteUI>();
 	}
 	public void OnBtnFacebookButtonClick()
 	{
+		UIModule.Instance.PopUpWindow<FacebookInviteUI>();
 	}
 	public void OnCreateProfileButtonClick()
 	{
+		UIModule.Instance.PopUpWindow<CreateFriendUI>();
 	}
 	#endregion
 }

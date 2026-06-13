@@ -75,10 +75,17 @@ public class LoginUI : WindowBase
 		string providerName = FirebaseAuthManager.Instance.GetProviderDisplayName(provider);
 		ToastManager.ShowToast($"{providerName} 登录成功");
 
-		// 跳转到主界面
-		UIModule.Instance.HideWindow<LoginUI>();
-		UIModule.Instance.PopUpWindow<NavigationUI>();
-	}
+		if (GameManager.Instance.isRegister)
+		{
+			UIModule.Instance.HideWindow<LoginUI>();
+			UIModule.Instance.PopUpWindow<NavigationUI>();
+		}
+        else
+		{
+			UIModule.Instance.PopUpWindow<SetBirthDateUI>();
+        }
+
+    }
 
 	/// <summary>
 	/// Firebase 登录失败回调
