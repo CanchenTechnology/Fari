@@ -158,7 +158,8 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
     #region 登录入口
 
     /// <summary>
-    /// Google 登录
+    /// Google 登录（通过原生 Google Sign-In API）
+    /// 流程：AndroidJavaClass → Google Sign-In → ID Token → GoogleAuthProvider → Firebase
     /// </summary>
     public void SignInWithGoogle()
     {
@@ -168,11 +169,11 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
         CurrentAuthProvider = AuthProvider.Google;
         IsLoggingIn = true;
 
-        // 使用 GoogleSignInHelper 获取 Google ID Token
+        // 使用 GoogleSignInHelper 获取 ID Token
         GoogleSignInHelper.Instance.SignIn(
             onSuccess: (idToken) =>
             {
-                // 用 Google ID Token 创建 Firebase credential
+                // 用 ID Token 创建 Firebase credential
                 Credential credential = GoogleAuthProvider.GetCredential(idToken, null);
                 SignInWithCredential(credential, AuthProvider.Google);
             },

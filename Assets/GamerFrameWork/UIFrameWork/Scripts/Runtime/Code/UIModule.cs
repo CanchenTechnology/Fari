@@ -83,7 +83,6 @@ namespace GamerFrameWork.UIFrameWork
                 Debug.LogError("mWindowConfig is null,请先配置生成");
                 return;
             }
-            AdaptationBangs.InitializeAdaptation();
 #if UNITY_EDITOR
             mWindowConfig.GeneratorWindowConfig();
 #endif

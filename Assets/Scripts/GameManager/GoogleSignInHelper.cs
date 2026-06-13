@@ -1,34 +1,34 @@
 using System;
-using System.Reflection;
-using System.Collections;
 using UnityEngine;
 using XFGameFrameWork;
+using System.Runtime.InteropServices;
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+using Firebase.Auth;
+#endif
 
 /// <summary>
 /// Google 登录辅助类
-/// 封装 Google Sign-In SDK 的调用流程
+/// 通过原生插件调用 Google Sign-In API（Android: Java 插件 / iOS: Objective-C++ 插件）
+/// 不依赖 Play Games SDK，适用于非游戏类 App
 ///
 /// 依赖：
-/// 1. Google Sign-In Unity 插件（https://github.com/googlesamples/google-signin-unity）
-/// 2. 在 Firebase 控制台启用 Google 登录提供商
-/// 3. 在 Google Cloud Console 创建 OAuth 2.0 客户端 ID
+/// Android:
+///   1. MoonlyGoogleSignIn.androidlib（Assets/Plugins/Android/MoonlyGoogleSignIn.androidlib/）
+///   2. com.google.android.gms:play-services-auth:21.2.0（mainTemplate.gradle）
+/// iOS:
+///   1. MoonlyGoogleSignIn.mm（Assets/Plugins/iOS/MoonlyGoogleSignIn.mm）
+///   2. GoogleSignIn (~> 7.0) CocoaPod（MoonlyGoogleSignInDependencies.xml）
+///   3. GoogleService-Info.plist 已配置（Firebase 控制台下载）
+/// 共用:
+///   4. Firebase Auth SDK
+///   5. Firebase 控制台启用 Google 登录
 ///
-/// 安装步骤：
-/// 1. 下载 Google Sign-In Unity 插件 .unitypackage
-/// 2. 导入到 Unity 项目
-/// 3. 在 GameObject 上配置 Google Sign-In 设置（Web Client ID）
-/// 4. 确保 ExternalDependencyManager 已安装 Google Play Services 相关依赖
-///
-/// 注意：Google Sign-In 仅支持 Android 和 iOS 真机，
-///       Unity Editor 中点击登录会走模拟模式。
-///
-/// 使用示例：
-/// <code>
-/// GoogleSignInHelper.Instance.SignIn(
-///     idToken => Debug.Log($"登录成功: {idToken}"),
-///     error => Debug.LogError($"登录失败: {error}")
-/// );
-/// </code>
+/// 登录流程（双平台一致）：
+/// 1. 尝试静默登录 — 已授权用户直接获取 ID Token
+/// 2. 静默失败 → 启动原生插件的交互式登录
+/// 3. 原生插件通过 UnitySendMessage 回传 ID Token
+/// 4. ID Token → GoogleAuthProvider.GetCredential → Firebase
 /// </summary>
 public class GoogleSignInHelper : MonoSingleton<GoogleSignInHelper>
 {
@@ -37,35 +37,21 @@ public class GoogleSignInHelper : MonoSingleton<GoogleSignInHelper>
     /// <summary>登录状态</summary>
     public enum SignInState
     {
-        /// <summary>空闲</summary> 
         Idle,
-        /// <summary>登录中</summary> 
         SigningIn,
-        /// <summary>登出中</summary> 
         SigningOut,
     }
 
-    [Header("Google Sign-In 配置")]
-    [Tooltip("Google OAuth 2.0 Web Client ID（从 Firebase 控制台获取）")]
+    [Header("Google 登录配置")]
+    [Tooltip("Firebase 控制台 → Authentication → Google → Web Client ID\n" +
+             "格式类似: 86394...ffm.apps.googleusercontent.com")]
     public string WebClientId = "";
-
-    [Tooltip("是否请求 ID Token（Firebase 认证必需）")]
-    public bool RequestIdToken = true;
-
-    [Tooltip("是否请求授权码（服务端验证用）")]
-    public bool RequestAuthCode = false;
-
-    [Tooltip("是否请求邮箱权限")]
-    public bool RequestEmail = true;
-
-    [Tooltip("是否请求个人资料权限")]
-    public bool RequestProfile = true;
 
     [Header("Editor 模拟设置")]
     [Tooltip("Editor 模拟延迟（秒）")]
     public float EditorSimulateDelay = 1f;
 
-    [Tooltip("Editor 模拟时是否模拟成功（关闭可测试失败链路）")]
+    [Tooltip("Editor 模拟时是否模拟成功")]
     public bool EditorSimulateSuccess = true;
 
     [Tooltip("Editor 模拟失败时的错误信息")]
@@ -81,26 +67,16 @@ public class GoogleSignInHelper : MonoSingleton<GoogleSignInHelper>
     /// <summary>是否正在登录中</summary>
     public bool IsSigningIn => State == SignInState.SigningIn;
 
-    /// <summary>当前运行的登录协程（用于取消）</summary>
-    private Coroutine _signInCoroutine;
+    /// <summary>挂起的成功回调</summary>
+    private Action<string> _pendingOnSuccess;
 
-    #endregion
+    /// <summary>挂起的失败回调</summary>
+    private Action<string> _pendingOnError;
 
-    #region 反射缓存（readonly 保证初始化后不被篡改）
-
-    private readonly Type[] _googleTypes = new Type[2];
-    private readonly MethodInfo[] _cachedMethods = new MethodInfo[4]; // [0]SignIn, [1]SignOut, [2]SignInSilently, [3]Configure
-    private PropertyInfo _defaultInstanceProp;
-    private PropertyInfo _configurationProp;
-    private volatile bool _reflectionInitialized = false;
-    private string _reflectionError;
-
-    // 类型索引常量
-    private const int IDX_SIGN_IN_TYPE = 0;
-    private const int IDX_CONFIG_TYPE = 1;
-    private const int MTH_SIGN_IN = 0;
-    private const int MTH_SIGN_OUT = 1;
-    private const int MTH_SIGN_IN_SILENTLY = 2;
+#if UNITY_ANDROID && !UNITY_EDITOR
+    /// <summary>GoogleSignInClient 实例（缓存复用，用于登出和静默登录）</summary>
+    private AndroidJavaObject _signInClient;
+#endif
 
     #endregion
 
@@ -109,8 +85,6 @@ public class GoogleSignInHelper : MonoSingleton<GoogleSignInHelper>
     /// <summary>
     /// 发起 Google 登录
     /// </summary>
-    /// <param name="onSuccess">登录成功回调，参数为 ID Token</param>
-    /// <param name="onError">登录失败回调，参数为错误信息</param>
     public void SignIn(Action<string> onSuccess, Action<string> onError)
     {
         if (IsSigningIn)
@@ -119,30 +93,38 @@ public class GoogleSignInHelper : MonoSingleton<GoogleSignInHelper>
             return;
         }
 
+#if UNITY_EDITOR
+        Debug.Log("[GoogleSignInHelper] Editor 模拟模式");
+        StartEditorSimulation(onSuccess, onError);
+        return;
+#elif UNITY_ANDROID
         if (string.IsNullOrEmpty(WebClientId))
         {
-            onError?.Invoke("WebClientId 未配置，请在 Inspector 中设置 Google OAuth Web Client ID");
-            Debug.LogError("[GoogleSignInHelper] WebClientId 未配置！");
+            onError?.Invoke("WebClientId 未配置！请在 Inspector 中填写");
             return;
         }
 
-        // 取消之前的登录协程（如果有）
-        CancelActiveSignIn();
+        State = SignInState.SigningIn;
+        _pendingOnSuccess = onSuccess;
+        _pendingOnError = onError;
 
-#if UNITY_EDITOR
-        Debug.Log("[GoogleSignInHelper] Editor 模拟模式：模拟 Google 登录（当前平台: " +
-            (Application.platform == RuntimePlatform.OSXEditor ? "macOS" :
-             Application.platform == RuntimePlatform.WindowsEditor ? "Windows" : "Linux") + "）");
-        StartEditorSimulation(onSuccess, onError);
-        return;
-#elif !UNITY_ANDROID && !UNITY_IOS
-        Debug.Log("[GoogleSignInHelper] 非移动端平台：模拟 Google 登录");
-        StartEditorSimulation(onSuccess, onError);
-        return;
-#endif
+        // 先尝试静默登录，失败则启动 Java 插件的交互式登录
+        TrySilentSignIn();
+#elif UNITY_IOS
+        if (string.IsNullOrEmpty(WebClientId))
+        {
+            onError?.Invoke("WebClientId 未配置！请在 Inspector 中填写");
+            return;
+        }
 
         State = SignInState.SigningIn;
-        _signInCoroutine = StartCoroutine(SignInCoroutine(onSuccess, onError));
+        _pendingOnSuccess = onSuccess;
+        _pendingOnError = onError;
+
+        TrySilentSignInIOS();
+#else
+        onError?.Invoke($"Google 登录不支持当前平台 ({Application.platform})");
+#endif
     }
 
     /// <summary>
@@ -151,8 +133,8 @@ public class GoogleSignInHelper : MonoSingleton<GoogleSignInHelper>
     public void CancelSignIn()
     {
         if (!IsSigningIn) return;
-
-        CancelActiveSignIn();
+        ClearPendingCallbacks();
+        State = SignInState.Idle;
         Debug.Log("[GoogleSignInHelper] 用户取消了 Google 登录");
     }
 
@@ -161,474 +143,393 @@ public class GoogleSignInHelper : MonoSingleton<GoogleSignInHelper>
     /// </summary>
     public void SignOut()
     {
-        if (!InitReflectionIfNeeded()) return;
-
+#if UNITY_ANDROID && !UNITY_EDITOR
         try
         {
-            var instance = _defaultInstanceProp.GetValue(null);
-            _cachedMethods[MTH_SIGN_OUT]?.Invoke(instance, null);
-            Debug.Log("[GoogleSignInHelper] Google 已登出");
+            if (_signInClient != null)
+            {
+                _signInClient.Call<AndroidJavaObject>("signOut");
+                Debug.Log("[GoogleSignInHelper] Google 已登出");
+            }
         }
         catch (Exception e)
         {
             Debug.LogWarning($"[GoogleSignInHelper] Google 登出异常: {e.Message}");
         }
-
-        State = SignInState.Idle;
-    }
-
-    /// <summary>
-    /// 静默登录（尝试使用上次登录的账号，无 UI 弹窗）
-    /// </summary>
-    public void SignInSilently(Action<string> onSuccess, Action<string> onError)
-    {
-        if (string.IsNullOrEmpty(WebClientId))
+#elif UNITY_IOS && !UNITY_EDITOR
+        try
         {
-            onError?.Invoke("WebClientId 未配置");
-            return;
+            _moonlyGoogleSignOut();
+            Debug.Log("[GoogleSignInHelper] Google 已登出");
         }
-
-#if !UNITY_ANDROID && !UNITY_IOS
-        onError?.Invoke("Google 静默登录仅支持 Android/iOS 真机");
-        return;
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[GoogleSignInHelper] iOS Google 登出异常: {e.Message}");
+        }
 #endif
-
-        if (!InitReflectionIfNeeded())
-        {
-            onError?.Invoke(_reflectionError ?? "Google Sign-In SDK 未安装");
-            return;
-        }
-
-        State = SignInState.SigningIn;
-        _signInCoroutine = StartCoroutine(SilentSignInCoroutine(onSuccess, onError));
+        State = SignInState.Idle;
     }
 
     #endregion
 
-    #region 内部方法 — 核心登录流程
+    #region Android 真机
+
+#if UNITY_ANDROID && !UNITY_EDITOR
 
     /// <summary>
-    /// 主登录协程（真机环境）
+    /// 获取或创建 GoogleSignInClient（用于静默登录和登出）
     /// </summary>
-    private IEnumerator SignInCoroutine(Action<string> onSuccess, Action<string> onError)
+    private AndroidJavaObject GetOrCreateSignInClient()
     {
-        var capturedOnSuccess = onSuccess;
-        var capturedOnError = onError;
-        object task = null;
-        string syncError = null;
+        if (_signInClient != null) return _signInClient;
 
-        // 同步初始化（不能包含 yield return）
         try
         {
-            if (!InitReflectionIfNeeded())
+            var optionsBuilder = new AndroidJavaObject(
+                "com.google.android.gms.auth.api.signin.GoogleSignInOptions$Builder");
+            optionsBuilder.Call<AndroidJavaObject>("requestIdToken", WebClientId);
+            optionsBuilder.Call<AndroidJavaObject>("requestEmail");
+            var options = optionsBuilder.Call<AndroidJavaObject>("build");
+
+            var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
+            var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
+
+            var signInClass = new AndroidJavaClass(
+                "com.google.android.gms.auth.api.signin.GoogleSignIn");
+
+            _signInClient = signInClass.CallStatic<AndroidJavaObject>("getClient", activity, options);
+            Debug.Log("[GoogleSignInHelper] GoogleSignInClient 创建成功");
+            return _signInClient;
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[GoogleSignInHelper] 创建 GoogleSignInClient 失败: {e.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 尝试静默登录
+    /// 成功 → 直接获取 ID Token
+    /// 失败 → 启动 Java 插件的交互式登录
+    /// </summary>
+    private void TrySilentSignIn()
+    {
+        var client = GetOrCreateSignInClient();
+        if (client == null)
+        {
+            FinishWithError("GoogleSignInClient 创建失败");
+            return;
+        }
+
+        try
+        {
+            var task = client.Call<AndroidJavaObject>("silentSignIn");
+
+            task.Call<AndroidJavaObject>("addOnSuccessListener",
+                new SuccessListener(account =>
+                {
+                    try
+                    {
+                        var idToken = account?.Call<string>("getIdToken");
+                        if (!string.IsNullOrEmpty(idToken))
+                        {
+                            Debug.Log("[GoogleSignInHelper] 静默登录成功");
+                            FinishWithSuccess(idToken);
+                        }
+                        else
+                        {
+                            // ID Token 为空，可能是 WebClientId 配置问题
+                            FinishWithError("静默登录成功但 ID Token 为空（WebClientId 可能配置错误）");
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        FinishWithError($"获取 ID Token 异常: {e.Message}");
+                    }
+                }));
+
+            task.Call<AndroidJavaObject>("addOnFailureListener",
+                new FailureListener(exception =>
+                {
+                    Debug.Log("[GoogleSignInHelper] 静默登录失败，启动交互式登录...");
+                    StartInteractiveSignIn();
+                }));
+        }
+        catch (Exception e)
+        {
+            FinishWithError($"silentSignIn 调用异常: {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 启动 Java 插件的交互式登录
+    /// MoonlySignInActivity 会自己处理 startActivityForResult 和 onActivityResult
+    /// 完成后通过 UnitySendMessage 回调 OnNativeSignInResult
+    /// </summary>
+    private void StartInteractiveSignIn()
+    {
+        try
+        {
+            var helperClass = new AndroidJavaClass("com.moonly.googlesignin.MoonlySignInActivity");
+            var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
+            var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
+
+            // 调用 Java: MoonlySignInActivity.startSignIn(activity, webClientId, gameObjectName, callbackMethod)
+            helperClass.CallStatic("startSignIn", activity, WebClientId, gameObject.name, "OnNativeSignInResult");
+
+            Debug.Log("[GoogleSignInHelper] 已启动 MoonlySignInActivity，等待回调...");
+        }
+        catch (Exception e)
+        {
+            FinishWithError($"启动 MoonlySignInActivity 失败: {e.Message}");
+        }
+    }
+
+    #region AndroidJavaProxy 回调
+
+    private class SuccessListener : AndroidJavaProxy
+    {
+        private readonly Action<AndroidJavaObject> _callback;
+
+        public SuccessListener(Action<AndroidJavaObject> callback)
+            : base("com.google.android.gms.tasks.OnSuccessListener")
+        {
+            _callback = callback;
+        }
+
+        public void onSuccess(AndroidJavaObject result)
+        {
+            _callback?.Invoke(result);
+        }
+    }
+
+    private class FailureListener : AndroidJavaProxy
+    {
+        private readonly Action<AndroidJavaObject> _callback;
+
+        public FailureListener(Action<AndroidJavaObject> callback)
+            : base("com.google.android.gms.tasks.OnFailureListener")
+        {
+            _callback = callback;
+        }
+
+        public void onFailure(AndroidJavaObject exception)
+        {
+            _callback?.Invoke(exception);
+        }
+    }
+
+    #endregion
+
+#endif
+
+    #endregion
+
+    #region 回调与清理
+
+    /// <summary>
+    /// 登录成功，触发回调
+    /// </summary>
+    private void FinishWithSuccess(string idToken)
+    {
+        State = SignInState.Idle;
+        Debug.Log("[GoogleSignInHelper] Google 登录成功，已获取 ID Token");
+        _pendingOnSuccess?.Invoke(idToken);
+        ClearPendingCallbacks();
+    }
+
+    /// <summary>
+    /// 登录失败，触发回调
+    /// </summary>
+    private void FinishWithError(string message)
+    {
+        State = SignInState.Idle;
+        Debug.LogError($"[GoogleSignInHelper] {message}");
+        _pendingOnError?.Invoke(message);
+        ClearPendingCallbacks();
+    }
+
+    /// <summary>
+    /// 清除挂起的回调引用
+    /// </summary>
+    private void ClearPendingCallbacks()
+    {
+        _pendingOnSuccess = null;
+        _pendingOnError = null;
+    }
+
+    /// <summary>
+    /// 原生插件回调入口（Android/iOS 共用）
+    /// 由 UnitySendMessage 调用（Java 插件 / iOS .mm 插件都走这里）
+    ///
+    /// result 格式：
+    ///   成功: "SUCCESS:<idToken>"
+    ///   失败: "FAILURE:<statusCode>:<message>"
+    ///   取消: "CANCELED"
+    /// </summary>
+    private void OnNativeSignInResult(string result)
+    {
+        Debug.Log($"[GoogleSignInHelper] 收到原生插件回调: {(result?.Length > 50 ? result.Substring(0, 50) + "..." : result)}");
+
+        if (string.IsNullOrEmpty(result))
+        {
+            FinishWithError("原生插件返回空结果");
+            return;
+        }
+
+        if (result.StartsWith("SUCCESS:"))
+        {
+            string idToken = result.Substring(8);
+            if (!string.IsNullOrEmpty(idToken))
             {
-                syncError = _reflectionError;
+                FinishWithSuccess(idToken);
             }
             else
             {
-                var instance = _defaultInstanceProp.GetValue(null);
-                ConfigureGoogleSignIn();
-                task = _cachedMethods[MTH_SIGN_IN]?.Invoke(instance, null);
-                if (task == null)
-                    syncError = "Google SignIn 返回空结果";
+                FinishWithError("ID Token 为空");
             }
         }
-        catch (Exception e)
+        else if (result == "CANCELED")
         {
-            var realEx = UnwrapException(e);
-            string exMsg = realEx.Message;
-
-            // 检测是否是原生层不可用（无 Google Play Services / 国内设备等）
-            bool isNativeUnavailable =
-                exMsg.Contains("GoogleSignIn_Create") ||
-                exMsg.Contains("unknown assembly") ||
-                exMsg.Contains("unknown type") ||
-                exMsg.Contains("JNI") ||
-                exMsg.Contains("DllNotFoundException") ||
-                exMsg.Contains("EntryPointNotFoundException");
-
-            if (isNativeUnavailable)
-            {
-                // 原生 SDK 不可用 → 自动降级到模拟模式
-                Debug.LogWarning("[GoogleSignInHelper] ⚠️ 原生 Google SDK 不可用（可能设备缺少 Google Play Services），自动降级到模拟模式");
-                Debug.LogWarning($"[GoogleSignInHelper] 原始异常: {exMsg}");
-
-                SetIdle();
-                StartEditorSimulation(capturedOnSuccess, capturedOnError);
-                yield break; // ★ 直接走模拟路径，不报错
-            }
-
-            syncError = $"Google 登录异常: {exMsg}";
-            Debug.LogError($"[GoogleSignInHelper] 异常: {exMsg}\n{realEx.StackTrace}");
+            FinishWithError("用户取消了 Google 登录");
         }
-
-        // 同步阶段出错 → 直接结束
-        if (syncError != null)
+        else if (result.StartsWith("FAILURE:"))
         {
-            FinishWithError(capturedOnError, syncError);
-            yield break;
-        }
-
-        // 异步等待 Task 结果（yield 在 try 外）
-        Debug.Log("[GoogleSignInHelper] 已发起 Google 登录请求，等待异步结果...");
-        yield return WaitForTaskResult(task, capturedOnSuccess, capturedOnError);
-    }
-
-    /// <summary>
-    /// 静默登录协程
-    /// </summary>
-    private IEnumerator SilentSignInCoroutine(Action<string> onSuccess, Action<string> onError)
-    {
-        var capturedOnSuccess = onSuccess;
-        var capturedOnError = onError;
-        object task = null;
-        string syncError = null;
-
-        // 同步初始化
-        try
-        {
-            var instance = _defaultInstanceProp.GetValue(null);
-            ConfigureGoogleSignIn();
-            task = _cachedMethods[MTH_SIGN_IN_SILENTLY]?.Invoke(instance, null);
-            if (task == null)
-                syncError = "静默登录返回空结果";
-        }
-        catch (Exception e)
-        {
-            syncError = $"静默登录失败: {UnwrapException(e).Message}";
-        }
-
-        if (syncError != null)
-        {
-            FinishWithError(capturedOnError, syncError);
-            yield break;
-        }
-
-        // 异步等待（yield 在 try 外）
-        yield return WaitForTaskResult(task, capturedOnSuccess, capturedOnError);
-    }
-
-    /// <summary>
-    /// Editor 模拟登录协程
-    /// </summary>
-    private IEnumerator EditorSimulateCoroutine(Action<string> onSuccess, Action<string> onError)
-    {
-        var capturedOnSuccess = onSuccess;
-        var capturedOnError = onError;
-        float elapsed = 0f;
-        while (elapsed < EditorSimulateDelay)
-        {
-
-            elapsed += Time.deltaTime;
-            // 检查是否超时
-            if (elapsed >= EditorSimulateDelay)
-            {
-                if (EditorSimulateSuccess)
-                {
-                    string mockToken = BuildMockIdToken();
-                    Debug.Log("[GoogleSignInHelper] ✅ 模拟登录成功！（假 Token 仅用于开发调试，不会连接真实 Google 服务器）");
-                    Debug.Log("[GoogleSignInHelper] 提示：在有 Google Play Services 的设备上才会调用真实 SDK");
-
-                    SetIdle();
-                    capturedOnSuccess?.Invoke(mockToken);
-                }
-                else
-                {
-                    Debug.LogWarning($"[GoogleSignInHelper] ❌ Editor 模拟登录失败：{EditorSimulateErrorMsg}");
-                    SetIdle();
-                    capturedOnError?.Invoke(EditorSimulateErrorMsg);
-                }
-                yield break;
-            }
-            yield return null;
-        }
-    }
-
-    /// <summary>
-    /// 启动 Editor 模拟登录
-    /// </summary>
-    private void StartEditorSimulation(Action<string> onSuccess, Action<string> onError)
-    {
-        State = SignInState.SigningIn;
-        _signInCoroutine = StartCoroutine(EditorSimulateCoroutine(onSuccess, onError));
-    }
-
-    /// <summary>
-    /// 取消活跃的登录协程并重置状态
-    /// </summary>
-    private void CancelActiveSignIn()
-    {
-        if (_signInCoroutine != null)
-        {
-            StopCoroutine(_signInCoroutine);
-            _signInCoroutine = null;
-        }
-        SetIdle();
-    }
-
-    /// <summary>
-    /// 统一完成-失败出口
-    /// </summary>
-    private void FinishWithError(Action<string> onError, string message)
-    {
-        SetIdle();
-        Debug.LogError($"[GoogleSignInHelper] {message}");
-        onError?.Invoke(message);
-    }
-
-    /// <summary>
-    /// 重置为空闲状态
-    /// </summary>
-    private void SetIdle()
-    {
-        State = SignInState.Idle;
-        _signInCoroutine = null;
-    }
-
-    #endregion
-
-    #region 内部方法 — 反射初始化
-
-    /// <summary>
-    /// 延迟初始化反射缓存（首次调用时执行，之后直接返回）
-    /// 返回 false 表示 SDK 不可用
-    /// </summary>
-    private bool InitReflectionIfNeeded()
-    {
-        if (_reflectionInitialized) return _reflectionError == null;
-        _reflectionInitialized = true;
-
-        // SDK 命名空间 Google，无 asmdef → 编译到 Assembly-CSharp
-        _googleTypes[IDX_SIGN_IN_TYPE] = Type.GetType("Google.GoogleSignIn, Assembly-CSharp");
-        _googleTypes[IDX_CONFIG_TYPE] = Type.GetType("Google.GoogleSignInConfiguration, Assembly-CSharp");
-
-        var signInType = _googleTypes[IDX_SIGN_IN_TYPE];
-        var configType = _googleTypes[IDX_CONFIG_TYPE];
-
-        if (signInType == null)
-        {
-            _reflectionError = "Google Sign-In SDK 未安装。请下载并导入:\nhttps://github.com/googlesamples/google-signin-unity/releases";
-            Debug.LogError($"[GoogleSignInHelper] {_reflectionError}");
-            return false;
-        }
-
-        if (configType == null)
-        {
-            _reflectionError = "GoogleSignInConfiguration 类型未找到";
-            Debug.LogError($"[GoogleSignInHelper] {_reflectionError}");
-            return false;
-        }
-
-        _defaultInstanceProp = signInType.GetProperty("DefaultInstance");
-        if (_defaultInstanceProp == null)
-        {
-            _reflectionError = "GoogleSignIn.DefaultInstance 属性未找到";
-            Debug.LogError($"[GoogleSignInHelper] {_reflectionError}");
-            return false;
-        }
-
-        _configurationProp = signInType.GetProperty("Configuration");
-
-        // 缓存常用方法
-        _cachedMethods[MTH_SIGN_IN] = signInType.GetMethod("SignIn");
-        _cachedMethods[MTH_SIGN_OUT] = signInType.GetMethod("SignOut");
-        _cachedMethods[MTH_SIGN_IN_SILENTLY] = signInType.GetMethod("SignInSilently");
-
-        if (_cachedMethods[MTH_SIGN_IN] == null)
-        {
-            _reflectionError = "GoogleSignIn.SignIn 方法未找到";
-            Debug.LogError($"[GoogleSignInHelper] {_reflectionError}");
-            return false;
-        }
-
-        Debug.Log("[GoogleSignInHelper] ✅ 反射初始化成功，Google Sign-In SDK 已就绪");
-        return true;
-    }
-
-    /// <summary>
-    /// 配置 Google Sign-In（通过静态 Configuration 属性）
-    /// 同时尝试属性和字段，兼容不同版本的 SDK
-    /// </summary>
-    private void ConfigureGoogleSignIn()
-    {
-        var configType = _googleTypes[IDX_CONFIG_TYPE];
-        object config = Activator.CreateInstance(configType);
-
-        // SDK 可能用 Property（PascalCase）也可能用 Field（camelCase），两种都试
-        SetMemberValue(config, "WebClientId",  WebClientId);
-        SetMemberValue(config, "RequestIdToken",  RequestIdToken);
-        SetMemberValue(config, "RequestAuthCode", RequestAuthCode);
-        SetMemberValue(config, "RequestEmail",     RequestEmail);
-        SetMemberValue(config, "RequestProfile",   RequestProfile);
-
-        _configurationProp?.SetValue(null, config);
-
-        Debug.Log($"[GoogleSignInHelper] Configuration 已设置: WebClientId={WebClientId}, IdToken={RequestIdToken}");
-    }
-
-    /// <summary>
-    /// 反射设置成员值：优先尝试 Property，失败再尝试 Field（忽略大小写）
-    /// </summary>
-    private static void SetMemberValue(object target, string name, object value)
-    {
-        var type = target.GetType();
-
-        // 先试 Property（SDK 正式版用 Property）
-        var prop = type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
-        if (prop != null && prop.CanWrite)
-        {
-            prop.SetValue(target, value);
-            return;
-        }
-
-        // 再试忽略大小写的 Property
-        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-        foreach (var p in props)
-        {
-            if (string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase) && p.CanWrite)
-            {
-                p.SetValue(target, value);
-                return;
-            }
-        }
-
-        // 最后试 Field（旧版 SDK 可能用 Field）
-        var field = type.GetField(name, BindingFlags.Public | BindingFlags.Instance);
-        if (field != null)
-        {
-            field.SetValue(target, value);
-            return;
-        }
-
-        // 忽略大小写试 Field
-        var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
-        foreach (var f in fields)
-        {
-            if (string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase))
-            {
-                f.SetValue(target, value);
-                return;
-            }
-        }
-
-        Debug.LogWarning($"[GoogleSignInHelper] SetMemberValue: 未找到成员 '{name}'");
-    }
-
-    #endregion
-
-    #region 内部方法 — Task 等待与 Token 构建
-
-    /// <summary>
-    /// 解包反射调用产生的 TargetInvocationException，获取真实异常信息
-    /// </summary>
-    private static Exception UnwrapException(Exception ex)
-    {
-        while (ex != null && ex.InnerException != null)
-            ex = ex.InnerException;
-        return ex ?? new Exception("未知异常");
-    }
-
-    /// <summary>
-    /// 协程轮询等待 Task&lt;T&gt; 结果
-    /// SDK 的 SignIn / SignInSilently 都返回 Task，Unity 无法 await，只能轮询
-    /// </summary>
-    private IEnumerator WaitForTaskResult(object taskObj, Action<string> onSuccess, Action<string> onError)
-    {
-        var taskType = taskObj.GetType();
-        var isCompletedProp = taskType.GetProperty("IsCompleted");
-        var exceptionProp = taskType.GetProperty("Exception");
-        var resultProp = taskType.GetProperty("Result");
-
-        const float timeoutSeconds = 60f;
-        float elapsed = 0f;
-
-        while (!(bool)isCompletedProp.GetValue(taskObj))
-        {
-            // 轮询期间检测取消
-            if (_signInCoroutine == null)
-            {
-                Debug.Log("[GoogleSignInHelper] 登录已取消");
-                yield break;
-            }
-
-            elapsed += Time.deltaTime;
-            if (elapsed >= timeoutSeconds)
-            {
-                FinishWithError(onError, "Google 登录超时（60秒）");
-                yield break;
-            }
-            yield return null;
-        }
-
-        // 检查异常
-        var exception = exceptionProp?.GetValue(taskObj) as Exception;
-        if (exception != null)
-        {
-            var innerEx = exception.InnerException;
-            string errorMsg = innerEx != null ? innerEx.Message : exception.Message;
-            FinishWithError(onError, errorMsg);
-            yield break;
-        }
-
-        // 提取 Result → GoogleSignInUser
-        var user = resultProp?.GetValue(taskObj);
-        if (user == null)
-        {
-            FinishWithError(onError, "登录返回空用户对象");
-            yield break;
-        }
-
-        var idToken = user.GetType().GetProperty("IdToken")?.GetValue(user) as string;
-        var email = user.GetType().GetProperty("Email")?.GetValue(user) as string;
-
-        if (!string.IsNullOrEmpty(idToken))
-        {
-            SetIdle();
-            Debug.Log($"[GoogleSignInHelper] ✅ Google 登录成功! Email={email ?? "N/A"}");
-            onSuccess?.Invoke(idToken);
+            string errorDetail = result.Substring(8);
+            FinishWithError($"Google 登录失败: {errorDetail}");
         }
         else
         {
-            FinishWithError(onError, "登录成功但未获取到 IdToken");
+            FinishWithError($"未知的登录结果格式: {result}");
         }
-    }
-
-    /// <summary>
-    /// 构建 Editor 模拟用的假 JWT 格式 Token
-    /// 仅用于开发调试整条登录链路，不可用于生产环境
-    /// </summary>
-    private string BuildMockIdToken()
-    {
-        string header = "eyJhbGciOiJSUzI1NiIsImtpZCI6Im1vY2tfZ29vZ2xlX3Rva2VuXyJ9";
-        string payload = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(
-            $"{{\"iss\":\"accounts.google.com\",\"aud\":\"{WebClientId ?? "mock"}\"," +
-            $"\"sub\":\"mock_google_user\",\"email\":\"mock@test.com\"," +
-            $"\"iat\":{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}," +
-            $"\"exp\":{DateTimeOffset.UtcNow.AddHours(1).ToUnixTimeSeconds()}}}"));
-        string signature = "editor_simulation_signature";
-        return $"{header}.{payload}.{signature}";
     }
 
     #endregion
 
-    #region 外部回调接口（兼容手动触发场景）
+    #region iOS 真机
+
+#if UNITY_IOS && !UNITY_EDITOR
+
+    [DllImport("__Internal")]
+    private static extern void _moonlyRestorePreviousSignIn(string gameObjectName, string callbackMethod);
+
+    [DllImport("__Internal")]
+    private static extern void _moonlyStartGoogleSignIn(string webClientId, string gameObjectName, string callbackMethod);
+
+    [DllImport("__Internal")]
+    private static extern void _moonlyGoogleSignOut();
 
     /// <summary>
-    /// Google 登录成功回调（供外部手动触发）
+    /// iOS: 尝试静默登录（恢复 Keychain 中缓存的登录状态）
+    /// 回调: OnSilentSignInResultIOS
     /// </summary>
-    public void OnSignInSuccess(string idToken)
+    private void TrySilentSignInIOS()
     {
-        SetIdle();
-        Debug.Log("[GoogleSignInHelper] Google 登录成功（外部回调），已获取 ID Token");
+        try
+        {
+            _moonlyRestorePreviousSignIn(gameObject.name, "OnSilentSignInResultIOS");
+            Debug.Log("[GoogleSignInHelper] iOS: 尝试恢复之前的 Google 登录...");
+        }
+        catch (Exception e)
+        {
+            FinishWithError($"iOS 静默登录调用异常: {e.Message}");
+        }
     }
 
     /// <summary>
-    /// Google 登录失败回调（供外部手动触发）
+    /// iOS 静默登录回调 — 由 iOS 原生插件通过 UnitySendMessage 调用
+    /// 静默失败 → 自动启动交互式登录
     /// </summary>
-    public void OnSignInError(string error)
+    private void OnSilentSignInResultIOS(string result)
     {
-        SetIdle();
-        Debug.LogError($"[GoogleSignInHelper] Google 登录失败（外部回调）: {error}");
+        Debug.Log($"[GoogleSignInHelper] iOS 静默登录结果: {(result?.Length > 50 ? result.Substring(0, 50) + "..." : result)}");
+
+        if (!string.IsNullOrEmpty(result) && result.StartsWith("SUCCESS:"))
+        {
+            string idToken = result.Substring(8);
+            if (!string.IsNullOrEmpty(idToken))
+            {
+                Debug.Log("[GoogleSignInHelper] iOS 静默登录成功");
+                FinishWithSuccess(idToken);
+            }
+            else
+            {
+                FinishWithError("iOS 静默登录成功但 ID Token 为空");
+            }
+        }
+        else
+        {
+            // 静默登录失败（无缓存/已撤销），启动交互式登录
+            Debug.Log("[GoogleSignInHelper] iOS 静默登录失败，启动交互式登录...");
+            StartInteractiveSignInIOS();
+        }
+    }
+
+    /// <summary>
+    /// iOS: 启动交互式 Google 登录
+    /// 原生插件内部会弹出 Safari/ASWebAuthenticationSession 登录页
+    /// 完成后通过 UnitySendMessage 回调 OnNativeSignInResult
+    /// </summary>
+    private void StartInteractiveSignInIOS()
+    {
+        try
+        {
+            _moonlyStartGoogleSignIn(WebClientId, gameObject.name, "OnNativeSignInResult");
+            Debug.Log("[GoogleSignInHelper] iOS: 已启动 Google Sign-In，等待回调...");
+        }
+        catch (Exception e)
+        {
+            FinishWithError($"iOS Google Sign-In 启动失败: {e.Message}");
+        }
+    }
+
+#endif
+
+    #endregion
+
+    #region Editor 模拟
+
+    private System.Collections.IEnumerator EditorSimulateCoroutine(Action<string> onSuccess, Action<string> onError)
+    {
+        float elapsed = 0f;
+        while (elapsed < EditorSimulateDelay)
+        {
+            elapsed += Time.deltaTime;
+            if (elapsed >= EditorSimulateDelay)
+            {
+                State = SignInState.Idle;
+                if (EditorSimulateSuccess)
+                {
+                    string mockIdToken = $"mock_id_token_{System.DateTime.Now.Ticks}";
+                    Debug.Log("[GoogleSignInHelper] 模拟 Google 登录成功");
+                    onSuccess?.Invoke(mockIdToken);
+                }
+                else
+                {
+                    Debug.LogWarning($"[GoogleSignInHelper] 模拟登录失败：{EditorSimulateErrorMsg}");
+                    onError?.Invoke(EditorSimulateErrorMsg);
+                }
+                yield break;
+            }
+            yield return null;
+        }
+    }
+
+    private void StartEditorSimulation(Action<string> onSuccess, Action<string> onError)
+    {
+        State = SignInState.SigningIn;
+        StartCoroutine(EditorSimulateCoroutine(onSuccess, onError));
+    }
+
+    #endregion
+
+    #region 辅助方法
+
+    private void CancelActiveSignIn()
+    {
+        ClearPendingCallbacks();
+        State = SignInState.Idle;
     }
 
     #endregion
@@ -638,13 +539,7 @@ public class GoogleSignInHelper : MonoSingleton<GoogleSignInHelper>
     protected override void Awake()
     {
         base.Awake();
-        // 防止切换场景时销毁单例导致登录中断
         DontDestroyOnLoad(gameObject);
-    }
-    private void OnDestroy() {
-         CancelActiveSignIn();
-        _reflectionInitialized = false;
-        _reflectionError = null;
     }
 
     #endregion

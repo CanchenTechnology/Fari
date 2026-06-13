@@ -1,6 +1,10 @@
 # MoonlyApp Firebase 社交登录 配置指南
 
-> 版本：2.1 | 最后更新：2026-06-12
+> 版本：4.0 | 最后更新：2026-06-13
+>
+> ⚠️ **v4.0 重大变更**：Google 登录已从 Play Games SDK 迁移到 **Android 原生 Google Sign-In API**（通过 AndroidJavaClass 调用）。
+> 原因：Play Games SDK 强制应用类型为"游戏"，不适合非游戏类 App（如 MoonlyApp）。
+> 新方案不需要 Play Console PGS 配置、不需要 Resources Definition，App 类型正常选"应用"即可。
 
 ---
 
@@ -25,7 +29,7 @@
 |--------|----------|------|
 | Unity | 2019.4+ (推荐 2022.3+) | 引擎 |
 | Firebase Unity SDK | 11.x+ (本项目使用 13.12.0) | 认证核心 |
-| Google Sign-In Unity 插件 | 最新版 | Google 登录 |
+| Google Sign-In (play-services-auth) | 21.2.0+ | Google 登录（通过 AndroidJavaClass 调用原生 API） |
 | Facebook SDK for Unity | 最新版 | Facebook 登录 |
 | apple-signin-unity 插件（可选） | 最新版 | Apple 登录增强 |
 | External Dependency Manager (EDM) | 内置于 Firebase SDK | 自动管理 Android 依赖 |
@@ -99,16 +103,16 @@
 │     │ SignInWithCredential()                        │
 │     │                                              │
 │     ▼                                              │
-│  GoogleSignInHelper  ←─── 这是额外装的插件           │
-│     │                    (获取 Google 凭证)          │
+│  GoogleSignInHelper  ←─── AndroidJavaClass (原生 Google Sign-In)│
+│     │                    (获取 ID Token)                         │
 │     ▼                                             │
-│  系统: Google Play Services / iOS Safari            │
-│     (弹窗、选账号、OAuth 授权)                      │
+│  系统: Google Play Services                         │
+│     (标准 Google 登录弹窗、账号选择、OAuth 授权)      │
 └─────────────────────────────────────────────────────┘
 
          ↑                                          ↑
     客户端 SDK 层                              服务端认证层
-    (Google 提供)                             (Firebase 提供)
+    (AndroidJavaClass 原生 API)               (Firebase 提供)
 ```
 
 ### 如果不用 Firebase 会怎样？
@@ -129,7 +133,7 @@
 
 | 角色 | 类比 |
 |------|------|
-| **Google Sign-In 插件** | 护照（证明你是你，由政府/Google 发行） |
+| **AndroidJavaClass 原生 API** | 护照（证明你是你，由 Google Play Services 发行） |
 | **Firebase Auth** | 入境海关（验证护照真假、给你发签证/FirebaseUser） |
 | **你的 App** | 目的地国家（只认 Firebase 签证，不关心你怎么进来的） |
 
@@ -220,7 +224,7 @@ Assets/
 │   └── GoogleService-Info.plist      ← iOS 配置文件（放这里）
 │
 ├── Firebase/
-├── GoogleSignIn/
+├── GooglePlayGames/                   ← 已移除（不再使用 Play Games SDK）
 └── Scripts/
 ```
 
@@ -244,87 +248,155 @@ Assets/
 
 ---
 
-## 四、Google 登录配置
+## 四、Google 登录配置（原生 Google Sign-In API）
 
-### 4.1 Firebase 控制台启用 Google 登录
+> ⚠️ **v4.0 重大变更**：项目已从 Play Games SDK 迁移到 **Android 原生 Google Sign-In API**。
+>
+> **为什么要迁移？**
+> - Play Games SDK 要求在 Play Console 中将应用类型设为"游戏"，导致 App 在 Play Store 上出现在游戏分类下
+> - MoonlyApp 是塔罗/占卜类 App，应出现在"生活"或"健康"分类，不适合游戏分类
+> - Play Games 登录弹窗显示"Play 游戏"风格 UI，与普通 App 体验不符
+>
+> **新方案优势**：
+> - ✅ App 类型正常选"应用"，不需要 Play Console PGS 配置
+> - ✅ 不需要 Resources Definition XML
+> - ✅ 标准 Google 登录弹窗 UI
+> - ✅ 通过 `AndroidJavaClass` 直接调用原生 API，不需要额外 Unity 插件
+> - ✅ 支持 arm64 架构
 
-> 这是唯一必需的操作。大多数情况下不需要去 GCP Console 手动配置 OAuth Client ID。
+### 4.1 旧插件清理
 
-1. **Authentication** → **Sign-in method** → 点击 **Google**
-2. 选择 **启用**
-3. 填写 **项目支持邮箱**（用于显示给用户，如 `support@yourcompany.com`）
-4. 复制 **Web Client ID**（后续需要填入 Unity Inspector）
-5. 点击 **保存**
-
-> 🔍 当你完成这一步时，Firebase 会在你的 GCP 项目中**自动创建**所需的 OAuth 2.0 Client ID（类型为 Web application）。这就是为什么通常不需要手动去 GCP Console 操作。
-
-### 4.2 GCP Console OAuth 客户端（进阶，通常可跳过）
-
-如果确实需要自定义 OAuth 配置（比如限制特定域名、配置多个 redirect URI），手动操作步骤：
-
-1. 从 Firebase 控制台 **设置** 页面找到 **"在 Google Cloud Console 中管理"** 并点击跳转
-2. 进入 **APIs & Services** → **Credentials**
-3. 确保已存在 **OAuth 2.0 客户端 ID** 类型为 **Web application** 的凭据
-4. 如需新建：
-   - 点击 **Create Credentials** → **OAuth client ID**
-   - Application type 选 **Web application**
-   - 名称随意
-   - Authorized redirect URIs 留空（Firebase 会自动处理）
-
-> **这一步在干什么？** 它在 Google 那边注册"谁是合法的登录客户端"。没有这个凭据，Google 会拒绝所有登录请求。但 Firebase 启用 Google 登录时已自动完成了这个注册，所以开发阶段基本不需要手动操作。
-
-### 4.3 安装 Google Sign-In Unity 插件
-
-1. 从 GitHub Releases 下载最新 `.unitypackage`：
-   > https://github.com/googlesamples/google-signin-unity/releases
-2. 在 Unity 中：**Assets** → **Import Package** → **Custom Package** → 选择下载的文件
-3. 导入全部内容
-
-### 4.4 处理导入后的弹窗提示
-
-#### Google Version Handler 弹窗
-
-导入后会弹出 **"Google Version Handler"** 对话框：
-
-> **Would you like to delete the following obsolete files in your project?**
-
-列表会包含旧版的 `.dll`、`.txt` 文件（如 `Google.IOSResolver_v1.2.89.0.dll` 等）。
-
-**操作：直接点 Apply（应用）**
-
-这些是旧版本的残留文件，新插件自带更新的版本。点击 Apply 后会自动清理并用新版替换。
-
-#### Parse SDK 冲突（CancellationToken 报错）
-
-如果导入后出现以下错误：
+在继续之前，**必须先删除旧版插件文件**：
 
 ```
-error CS0433: The type 'CancellationToken' exists in both 
-'Unity.Tasks, Version=0.0.0.0...' and 'mscorlib, Version=4.0.0.0...'
+在 Unity Project 窗口中，右键删除以下目录（如果存在）：
+❌ Assets/GoogleSignIn/                  ← 旧版 google-signin-unity 插件（整个删除）
+❌ Assets/GeneratedLocalRepo/GoogleSignIn/  ← 旧插件缓存（整个删除）
+❌ Assets/GooglePlayGames/               ← Play Games SDK 插件（整个删除，如果已安装）
 ```
 
-**原因：项目中存在旧的 Parse SDK（`Assets/Parse/Plugins/Unity.Tasks.dll`），其内置的 `Unity.Tasks.dll` 与 Visual Scripting 包中的 `CancellationToken` 类型冲突。**
+> ⚠️ 必须在 Unity Editor 中删除（不是直接在文件管理器删），让 Unity 正确处理 .meta 文件。
 
-**解决方法**：确认项目无代码引用 Parse 后，删除 `Assets/Parse/` 文件夹即可：
+删除后检查 `Assets/Plugins/Android/mainTemplate.gradle`，确认以下旧依赖行已移除（如果存在）：
+```gradle
+// 删除这行（如果存在）：
+implementation 'com.google.signin:google-signin-support:1.0.4'
+```
+
+然后运行：**菜单栏 Assets → External Dependency Manager → Android Resolver → Force Resolve**
+
+### 4.2 添加 play-services-auth 依赖
+
+在 `Assets/Plugins/Android/mainTemplate.gradle` 的 dependencies 中确认包含：
+
+```gradle
+implementation 'com.google.android.gms:play-services-auth:21.2.0' // Google Sign-In 原生 API
+```
+
+> 💡 此依赖提供 `GoogleSignIn`、`GoogleSignInOptions`、`GoogleSignInClient` 等 Java 类，
+> 供 `GoogleSignInHelper.cs` 通过 `AndroidJavaClass` 调用。
+
+然后运行：**菜单栏 Assets → External Dependency Manager → Android Resolver → Force Resolve**
+
+### 4.3 Firebase 控制台启用 Google 登录
+
+1. 打开 [Firebase 控制台](https://console.firebase.google.com/)
+2. **Authentication** → **Sign-in method** → 点击 **Google**
+3. 选择 **启用**
+4. 填写 **项目支持邮箱**
+5. **⭐ 复制 Web Client ID**（格式类似 `86394...ffm.apps.googleusercontent.com`）
+6. 点击 **保存**
+
+> ⚠️ **Web Client ID 是关键配置**，必须保存好，后面 Unity Inspector 中要填！
+
+### 4.4 Unity Inspector 配置
+
+在场景中找到挂载 `GoogleSignInHelper` 组件的 GameObject，填写：
+
+| 参数 | 说明 | 值 |
+|------|------|-----|
+| **Web Client Id** | Firebase 控制台的 Web Client ID | `86394...ffm.apps.googleusercontent.com` |
+| Editor Simulate Delay | Editor 模拟延迟（秒） | 1 |
+| Editor Simulate Success | Editor 模拟是否成功 | true |
+
+> ⚠️ **Web Client Id 必须填写**，否则 Android 真机登录会报错！
+> 这个 ID 来自 Firebase 控制台 → Authentication → Google → Web Client ID。
+
+### 4.5 原生 Google Sign-In 登录流程说明
+
+```
+当前流程（v4.0 原生 API）：
+  GoogleSignInHelper → AndroidJavaClass → GoogleSignInClient
+    ├── 先尝试 silentSignIn()（静默登录，已授权用户无弹窗）
+    │   └── 成功 → 获取 ID Token
+    └── 静默失败 → 启动 Google 系统登录 Activity（标准 Google 登录弹窗）
+        └── 用户选择账号后返回 → 再次 silentSignIn() → 获取 ID Token
+
+  ID Token → GoogleAuthProvider.GetCredential(idToken, null) → Firebase
+
+对比旧流程：
+  ❌ 旧版 google-signin-unity：反射调用 → ID Token（插件已废弃，无 arm64）
+  ❌ Play Games SDK：Server Auth Code → PlayGamesAuthProvider（强制游戏分类）
+  ✅ 当前方案：ID Token → GoogleAuthProvider（无插件依赖，App 类型正常）
+```
+
+### 4.6 技术实现原理
+
+`GoogleSignInHelper.cs` 通过 Unity 的 `AndroidJavaClass` / `AndroidJavaObject` 机制，直接调用 Android 原生 Java API：
+
+```
+C# 层 (GoogleSignInHelper.cs)
+  │
+  ├── AndroidJavaClass("com.google.android.gms.auth.api.signin.GoogleSignIn")
+  ├── AndroidJavaObject("com.google.android.gms.auth.api.signin.GoogleSignInOptions$Builder")
+  │     .Call("requestIdToken", webClientId)
+  │     .Call("requestEmail")
+  │     .Call("build")
+  │
+  ├── GoogleSignIn.getClient(activity, options) → GoogleSignInClient
+  │
+  ├── client.Call("silentSignIn") → Task<GoogleSignInAccount>
+  │     ├── addOnSuccessListener → 获取 account.getIdToken()
+  │     └── addOnFailureListener → 需要交互式登录
+  │
+  └── client.Call("getSignInIntent") → startActivity(intent)
+        → 用户操作后返回 → OnApplicationPause → 再次 silentSignIn()
+
+回调使用 AndroidJavaProxy：
+  ├── OnSuccessListenerProxy : AndroidJavaProxy("...OnSuccessListener")
+  └── OnFailureListenerProxy : AndroidJavaProxy("...OnFailureListener")
+```
+
+### 4.7 常见问题
+
+#### Q: 静默登录总是失败？
+
+**原因**：首次使用 App 的用户不会有缓存的 Google 凭证，静默登录必然失败。这是正常行为，会自动降级到交互式登录。
+
+#### Q: 交互式登录后 silentSignIn 还是失败？
+
+**可能原因**：
+1. **设备没有 Google Play Services** — 某些国产 ROM 可能不支持
+2. **Web Client ID 不匹配** — 确认 Firebase 控制台和 Inspector 中填的 ID 完全一致
+3. **SHA 签名不匹配** — Firebase 控制台中注册的 Android 应用需要包含当前签名的 SHA-1
+4. **网络问题** — Google 服务在某些地区可能需要代理
+
+#### Q: 如何添加 SHA 签名？
 
 ```bash
-# 在 Unity Project 窗口中：
-# 右键点击 Assets/Parse/ 文件夹 → Delete
+# 开发签名（debug）
+keytool -list -v -alias androiddebugkey -keystore ~/.android/debug.keystore
+# 密码: android
+
+# 发布签名（release）
+keytool -list -v -alias <your-alias> -keystore <your-keystore>
 ```
 
-> ⚠️ 删除前请确认项目中没有 `using Parse`、`ParseObject`、`ParseUser` 等引用 Parse SDK 的代码。
+然后到 Firebase 控制台 → 项目设置 → Android 应用 → 添加 SHA 证书指纹。
 
-### 4.5 Unity Inspector 配置
+#### Q: 登录弹窗一闪而过？
 
-在挂载了 `GoogleSignInHelper` 组件的 GameObject 上：
-
-| 参数 | 说明 | 示例值 |
-|------|------|--------|
-| **Web Client ID** | 从 Firebase 控制台获取的 Web Client ID（见 4.1 步骤第 4 步） | `123456789-xxxxxxxxxx.apps.googleusercontent.com` |
-| **Request Id Token** | ✅ 必须开启（Firebase 需要 ID Token） | true |
-| **Request Auth Code** | 是否请求授权码（服务端验证用） | false |
-| **Request Email** | 是否请求邮箱权限 | true |
-| **Request Profile** | 是否请求个人资料 | true |
+**原因**：Web Client ID 配置错误或 SHA 签名不匹配，Google 服务立即拒绝。检查 Firebase 控制台的 OAuth 配置。
 
 ---
 
@@ -489,7 +561,7 @@ Facebook SDK 需要 `AndroidManifest.xml` 中的额外配置。导入 SDK 时通
 | GameObject | 组件 | 说明 |
 |------------|------|------|
 | FirebaseAuthManager | `FirebaseAuthManager` | Firebase 认证核心管理器 |
-| GoogleSignInHelper | `GoogleSignInHelper` | Google 登录辅助 |
+| GoogleSignInHelper | `GoogleSignInHelper` | Google 登录辅助（Play Games SDK） |
 | AppleSignInHelper | `AppleSignInHelper` | Apple 登录辅助 |
 | FacebookSignInHelper | `FacebookSignInHelper` | Facebook 登录辅助 |
 
@@ -499,7 +571,7 @@ Facebook SDK 需要 `AndroidManifest.xml` 中的额外配置。导入 SDK 时通
 
 | 组件 | 关键配置字段 | 获取来源 |
 |------|-------------|----------|
-| GoogleSignInHelper | `WebClientId` | Firebase 控制台 → Auth → Google → Web Client ID（见 4.1 步骤） |
+| GoogleSignInHelper | `WebClientId` | Firebase 控制台 → Authentication → Google → Web Client ID |
 | FacebookSignInHelper | `FacebookAppId` | Facebook Developer Console → App Dashboard |
 | FirebaseAuthManager | 无需额外配置 | 自动读取 Firebase 配置文件 |
 
@@ -534,11 +606,11 @@ Assets/
 ├── StreamingAssets/
 │   └── GoogleService-Info.plist      ✅ iOS 配置（放这里）
 ├── Firebase/                          ✅ SDK 已导入
-├── GoogleSignIn/                      ✅ 插件已导入
+├── GooglePlayGames/                   ✅ 已删除（不使用 Play Games SDK）
 └── Scripts/
     └── GameManager/
         ├── FirebaseAuthManager.cs    ✅
-        ├── GoogleSignInHelper.cs     ✅
+        ├── GoogleSignInHelper.cs     ✅（已改用 Play Games SDK）
         └── ...
 ```
 
@@ -665,10 +737,10 @@ Assets/
 ✅ google-services.json 已下载并放入 Assets/
 ✅ GoogleService-Info.plist 已下载并放入 StreamingAssets/
 ✅ Firebase Unity SDK 已导入
-✅ Google Sign-In 插件已导入（Version Handler 已 Apply）
-✅ Parse SDK 已删除（避免冲突）
-✅ Inspector 参数已配置（Web Client ID 等）
-✅ 代码已完成（FirebaseAuthManager + LoginUI 集成 + UserDataManager 扩展）
+✅ 旧版 Google Sign-In 插件已删除（Assets/GoogleSignIn/）
+✅ Google Sign-In (play-services-auth) 依赖已添加到 mainTemplate.gradle
+✅ GoogleSignInHelper.WebClientId 已填写（Firebase Web Client ID）
+✅ 代码已完成（FirebaseAuthManager + GoogleSignInHelper + LoginUI 集成 + UserDataManager 扩展）
 ✅ 场景中 Manager 对象已挂载
 📍 下一步：Build & Run 到真机测试
 ```
@@ -677,7 +749,7 @@ Assets/
 
 ## 九、代码架构说明
 
-### 8.1 登录流程图
+### 9.1 登录流程图
 
 ```
 用户点击登录按钮
@@ -711,22 +783,22 @@ Assets/
   └───────────────────────────────────────┘
 ```
 
-### 8.2 核心类职责
+### 9.2 核心类职责
 
 | 类名 | 职责 | 设计模式 |
 |------|------|----------|
 | `FirebaseAuthManager` | Firebase 初始化、Credential 登录、账号关联、登出 | MonoSingleton |
-| `GoogleSignInHelper` | Google Sign-In SDK 封装，返回 ID Token | MonoSingleton + 反射调用 |
+| `GoogleSignInHelper` | AndroidJavaClass 封装，返回 ID Token | MonoSingleton + 协程 |
 | `AppleSignInHelper` | Apple Sign-In 封装，返回 ID Token + Auth Code | MonoSingleton + 条件编译 |
 | `FacebookSignInHelper` | Facebook SDK 封装，返回 Access Token | MonoSingleton + 反射调用 |
 | `UserDataManager` | 用户数据内存管理 + PlayerPrefs 持久化 | MonoSingleton |
 | `LoginUI` | 登录界面交互层，事件绑定与 UI 反馈 | WindowBase |
 
-### 8.3 数据流向
+### 9.3 数据流向
 
 ```
-第三方 SDK (Google/FB/Apple)
-        ↓ 返回 Token
+第三方 SDK (Play Games/FB/Apple)
+        ↓ 返回 Token/AuthCode
 FirebaseAuthManager.SignInWithCredential()
         ↓ Firebase Auth 验证
 FirebaseUser 对象
@@ -736,7 +808,7 @@ SyncUserToDataManager() → UserDataManager.SyncFromFirebaseUser()
 PlayerPrefs 持久化 (Email, UserId, PhotoUrl, FirebaseUid, ...)
 ```
 
-### 8.4 事件机制
+### 9.4 事件机制
 
 `FirebaseAuthManager` 通过事件解耦 UI 层和业务层：
 
@@ -762,24 +834,33 @@ FirebaseAuthManager.Instance.OnLogout += ShowLoginScreen;
 - Android：运行 **Assets → Play Services Resolver → Force Resolve** 
 - 重新打开 Unity Editor 让 EDM 重新解析
 
-### Q2: Google 登录报错 "WebClientId 未配置"
+### Q2: Google 登录报错 "静默登录失败"
 
-**原因**：Inspector 上的 WebClientId 为空  
-**解决**：从 Firebase 控制台 → Authentication → Google → **Web Client ID** 复制粘贴到 GoogleSignInHelper 组件上
+**原因**：首次使用 App 的用户不会有缓存的 Google 凭证，静默登录必然失败  
+**这是正常行为**：代码会自动降级到交互式登录（弹出 Google 账号选择窗口）  
+**排查**：如果交互式登录后仍然失败，检查：
+- WebClientId 是否正确填写（Inspector 中）
+- Firebase 控制台 → Android 应用的 SHA 签名是否匹配
+- 设备是否安装了 Google Play Services
 
-### Q3: Apple 登录编辑器中无法工作
+### Q3: Google 登录报错 "WebClientId 未配置"
+
+**原因**：GoogleSignInHelper 组件的 WebClientId 字段为空  
+**解决**：在 Inspector 中填写 Firebase 控制台 → Authentication → Google → Web Client ID
+
+### Q4: Apple 登录编辑器中无法工作
 
 **正常现象**：Apple Sign-In 仅支持 iOS/macOS 真机设备  
 **解决**：编辑器模式下代码会自动走模拟逻辑，真机测试请在 iPhone/iPad 上进行
 
-### Q4: Facebook 登录 "无效的 OAuth Redirect URI"
+### Q5: Facebook 登录 "无效的 OAuth Redirect URI"
 
 **原因**：Facebook 应用设置的 Redirect URI 与 Firebase 不匹配  
 **解决**：
 1. Firebase 控制台 → Auth → Facebook → 复制完整的 Redirect URI
 2. Facebook Developer Console → 你的应用 → Facebook Login → Settings → 粘贴该 URI
 
-### Q5: Android 构建报错 "Duplicate class" / 依赖冲突
+### Q6: Android 构建报错 "Duplicate class" / 依赖冲突
 
 **原因**：多个 SDK 引入了相同库的不同版本  
 **解决**：
@@ -787,7 +868,7 @@ FirebaseAuthManager.Instance.OnLogout += ShowLoginScreen;
 - 在 `Assets/Firebase/Editor/` 下的 `FirebaseDependencyVersion.xml` 中强制指定版本
 - 清理 Library 缓存后重新 Resolve
 
-### Q6: iOS 构建报错 "No matching provisioning profile found"
+### Q7: iOS 构建报错 "No matching provisioning profile found"
 
 **原因**：Apple Developer 账号的 App ID 与 Bundle Identifier 不匹配  
 **解决**：
@@ -795,29 +876,20 @@ FirebaseAuthManager.Instance.OnLogout += ShowLoginScreen;
 2. 在 Apple Developer Portal 为该 App ID 创建 Development/Distribution Provisioning Profile
 3. Xcode Signing & Capabilities 中选择正确的 Team 和 Profile
 
-### Q7: 登录成功但用户数据没同步
+### Q8: 登录成功但用户数据没同步
 
 **原因**：UserDataManager.SyncFromFirebaseUser 中的数据可能为空  
 **解决**：在 Firebase Console → Authentication → Users 中查看用户信息，确认 Email/Display Name/Photo URL 是否有值（取决于用户在第三方平台的隐私设置）
 
-### Q8: 导入 Google Sign-In 后报 CS0433 CancellationToken 错误
+### Q9: Google 登录报错 "DEVELOPER_ERROR" 或 10
 
-**错误信息**：
-```
-error CS0433: The type 'CancellationToken' exists in both 
-'Unity.Tasks, Version=0.0.0.0...' and 'mscorlib, Version=4.0.0.0...'
-```
+**原因**：SHA 签名不匹配或 Web Client ID 配置错误  
+**解决**：
+1. 确认 Firebase 控制台 → Android 应用中添加了正确的 SHA-1 签名
+2. 确认 Inspector 中 WebClientId 与 Firebase 控制台完全一致
+3. 重新下载 google-services.json 替换到 Assets/ 根目录
 
-**原因**：项目中残留了旧的 Parse SDK，其 `Unity.Tasks.dll` 与 Unity 内置的 Visual Scripting 包产生类型冲突  
-**解决**：删除 `Assets/Parse/` 文件夹（前提：确认项目无任何代码引用 Parse SDK）  
-
-### Q9: 导入 Google Sign-In 后弹出 Google Version Handler 对话框
-
-**现象**：弹出 "Would you like to delete the following obsolete files in your project?"  
-**含义**：检测到旧版本的 Google 相关文件  
-**操作**：保持全部勾选 → 点击 **Apply**。新插件的最新版本会自动替换旧文件。
-
-### Q10: task.Result 类型转换报错
+### Q10: Android 打包报错 "Duplicate class" / 依赖冲突
 
 **错误信息**：
 ```
@@ -826,63 +898,7 @@ error CS0029: Cannot implicitly convert type
 to 'Firebase.Auth.FirebaseUser'
 ```
 
-**原因**：`ContinueWithOnMainThread` 回调中的 `task` 是 `Task<FirebaseUser>` 类型，不是 `FirebaseUser`  
-**解决**：使用 `task.Result` 获取实际结果对象：
-```csharp
-// 错误写法
-FirebaseUser newUser = task;
-
-// 正确写法
-FirebaseUser newUser = task.Result;
-```
-
-### Q11: Editor 中点击 Google 登录提示 "Google Sign-In SDK 未安装"
-
-**错误现象**：
-```
-ShowToast: Google 登录失败: Google Sign-In SDK 未安装。请下载并导入 Google Sign-In Unity 插件:
-https://github.com/googlesamples/google-signin-unity/releases
-```
-
-**但实际上插件已经导入了！**
-
-**原因（双重问题）**：
-
-**原因 A — 反射类型名错误**：代码用反射查找类型时名称不匹配
-
-| 写错的（旧代码） | SDK 实际的 |
-|---|---|
-| `Type.GetType("GoogleSignIn, GoogleSignIn")` | `Type.GetType("Google.GoogleSignIn, Assembly-CSharp")` |
-| 属性名 `Default` | **`DefaultInstance`** |
-| 命名空间无 | 命名空间是 `Google` |
-| 假设程序集叫 `GoogleSignIn` | 无 .asmdef → 编译到 **Assembly-CSharp** |
-
-**原因 B — Editor 不支持**：Google Sign-In 插件源码中有平台限制：
-
-```csharp
-// GoogleSignIn.cs 第 52-56 行
-#if !UNITY_ANDROID && !UNITY_IOS
-static GoogleSignIn() {
-    Debug.LogError("This platform is not supported");
-}
-#endif
-```
-
-Unity Editor 既不是 Android 也不是 iOS，**Editor 下不能运行 Google 登录，这是正常行为。**
-
-**解决方法**：
-
-1. **修复反射调用**：更新 `GoogleSignInHelper.cs`，使用正确的类型名和属性名：
-   - 类型: `"Google.GoogleSignIn, Assembly-CSharp"`
-   - 单例属性: `DefaultInstance`（不是 `Default`）
-   - 配置类: `"Google.GoogleSignInConfiguration, Assembly-CSharp"`
-   - 使用 `Task<GoogleSignInUser>` 的异步结果模式
-
-2. **Editor 下正常提示**：在 `SignIn()` 方法开头加平台检测，提示用户去真机测试
-
-3. **测试方式**：必须 Build 到 **Android 真机** 或 **iOS 真机** 上测试 Google 登录功能
-
-### Q12: 每次写完功能都要打包到真机测试吗？如何提高开发效率？
+### Q11: 登录成功但用户数据没同步
 
 **问题**：Google / Apple 登录依赖手机系统服务，Editor 不能运行，难道每次都要 Build？
 
@@ -965,17 +981,19 @@ CurrentLoginType = LoginType.Google
 
 ### Unity 项目
 - [ ] Firebase Auth SDK 已安装
-- [ ] Google Sign-In 插件已安装（Version Handler 已执行 Apply）
-- [ ] Facebook SDK for Unity 已安装（如需要）
-- [ ] `Assets/Parse/` 已删除（避免 CancellationToken 冲突）
+- [ ] 旧版 Google Sign-In 插件已删除（`Assets/GoogleSignIn/`）
+- [ ] Play Games SDK 插件未安装（不需要）
+- [ ] `play-services-auth` 依赖已添加到 `mainTemplate.gradle`
+- [ ] `Assets/Plugins/Android/mainTemplate.gradle` 中无旧版 `google-signin-support` 依赖
+- [ ] External Dependency Manager → Force Resolve 已执行
 - [ ] google-services.json 在 Assets/ 根目录下
 - [ ] GoogleService-Info.plist 在 Assets/StreamingAssets/ 下
-- [ ] GoogleSignInHelper.WebClientId 已填写（§4.5）
+- [ ] GoogleSignInHelper.WebClientId 已填写（Firebase 控制台 → Authentication → Google → Web Client ID）
 - [ ] FacebookSignInHelper.FacebookAppId 已填写（如需要）
 
 ### 场景与组件挂载
 - [ ] FirebaseAuthManager 已挂载到常驻 GameObject（自动初始化 Firebase）
-- [ ] GoogleSignInHelper 已挂载并配置好 WebClientId
+- [ ] GoogleSignInHelper 已挂载（WebClientId 必须在 Inspector 中填写）
 - [ ] LoginUI Prefab 按钮引用已绑定（Google/Apple/Facebook/匿名登录按钮）
 - [ ] LoginUI 可通过 UIModule 正常打开
 

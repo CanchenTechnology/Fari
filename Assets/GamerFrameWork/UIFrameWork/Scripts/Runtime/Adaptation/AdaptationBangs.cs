@@ -1,71 +1,50 @@
 using UnityEngine;
 
-/*----------------------------------------------------------------------------
-* Title: 留海屏适配组件
-* Description: 直接挂载到窗口的UIContent节点上即可(在需要适配的窗口上自行挂载，非全屏弹窗一般不许需要挂载)
-
-----------------------------------------------------------------------------*/
 namespace GamerFrameWork.UIFrameWork
 {
+    [RequireComponent(typeof(RectTransform))]
     public class AdaptationBangs : MonoBehaviour
     {
-        /// <summary>
-        /// 静态字段(提升性能，在游戏初始化时获取，放置每次界面打开都进行获取)
-        /// </summary>
-        private static float m_StatusBarHeight;
-
-        /// <summary>
-        /// 是否是横屏
-        /// </summary>
-        public static bool IsHorizontal { get; private set; } = true;
-
-        /// <summary>
-        /// 初始化适配信息 只计算一次，提升性能
-        /// </summary>
-        public static void InitializeAdaptation()
-        {
-            //默认为横向
-            m_StatusBarHeight = Screen.safeArea.x;
-            // 判断是否是纵向
-            if (Screen.width < Screen.height)
-            {
-                m_StatusBarHeight = Screen.safeArea.y;
-                IsHorizontal = false;
-            }
-        }
+        private RectTransform m_RectTransform;
+        // 记录上一次的屏幕尺寸和安全区，避免不必要的重复计算
+        private Rect m_LastSafeArea = new Rect(0, 0, 0, 0);
 
         private void Awake()
         {
-            GeneratorAdaptation();
+            m_RectTransform = GetComponent<RectTransform>();
+            ApplySafeArea();
         }
 
-        public void GeneratorAdaptation()
+        // 也可以放在 Update 或 OnRectTransformDimensionsChange 中，以便支持游戏运行时的横竖屏旋转切换
+        private void Update()
         {
-            RectTransform rectTrans = transform.GetComponent<RectTransform>();
-            if (IsHorizontal)
+            if (m_LastSafeArea != Screen.safeArea)
             {
-                float anchorOffset = (m_StatusBarHeight / Screen.width);
-
-                Vector2 anchorMinV2 = rectTrans.anchorMin;
-                anchorMinV2.x = anchorOffset;
-                rectTrans.anchorMin = anchorMinV2;
-
-                Vector2 anchorMaxV2 = rectTrans.anchorMax;
-                anchorMaxV2.x -= anchorOffset;
-                rectTrans.anchorMax = anchorMaxV2;
+                ApplySafeArea();
             }
-            else
-            {
-                float anchorOffset = (m_StatusBarHeight / Screen.height);
+        }
 
-                Vector2 anchorMinV2 = rectTrans.anchorMin;
-                anchorMinV2.y = anchorOffset;
-                rectTrans.anchorMin = anchorMinV2;
+        public void ApplySafeArea()
+        {
+            Rect safeArea = Screen.safeArea;
+            m_LastSafeArea = safeArea;
 
-                Vector2 anchorMaxV2 = rectTrans.anchorMax;
-                anchorMaxV2.y -= anchorOffset;
-                rectTrans.anchorMax = anchorMaxV2;
-            }
+            // 获取屏幕的实际分辨率
+            float screenWidth = Screen.width;
+            float screenHeight = Screen.height;
+
+            // 将 SafeArea 的像素坐标转换为 0~1 的归一化锚点坐标
+            Vector2 anchorMin = safeArea.position;
+            Vector2 anchorMax = safeArea.position + safeArea.size;
+
+            anchorMin.x /= screenWidth;
+            anchorMin.y /= screenHeight;
+            anchorMax.x /= screenWidth;
+            anchorMax.y /= screenHeight;
+
+            // 应用到 RectTransform
+            m_RectTransform.anchorMin = anchorMin;
+            m_RectTransform.anchorMax = anchorMax;
         }
     }
 }
