@@ -21,11 +21,13 @@ public class MyUI : WindowBase
 		uiComponent.InitComponent(this);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		base.OnAwake();
+		SetBaseInfo();
 	}
 	// 物体显示时执行
 	public override void OnShow()
 	{
 		base.OnShow();
+		
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -40,6 +42,21 @@ public class MyUI : WindowBase
 	#endregion
 
 	#region API Function
+	/// <summary>
+	/// 设置基本信息
+	/// </summary>
+	private void SetBaseInfo()
+	{
+		uiComponent.UsernameText.text = UserDataManager.Instance.UserName;
+
+		GameManager.Instance.StartCoroutine(GoogleUserInfoHelper.LoadAndCacheAvatarCoroutine(
+				UserDataManager.Instance.PhotoUrl,
+				sprite => { if (sprite != null) uiComponent.AvatarImage.sprite = sprite; 
+			}
+		));
+
+
+	}
 
 	#endregion
 

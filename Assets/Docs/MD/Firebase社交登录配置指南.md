@@ -1,10 +1,12 @@
-# MoonlyApp Firebase 社交登录 配置指南
+# FariApp Firebase 社交登录 配置指南
 
-> 版本：4.0 | 最后更新：2026-06-13
+> 版本：4.3 | 最后更新：2026-06-13
 >
-> ⚠️ **v4.0 重大变更**：Google 登录已从 Play Games SDK 迁移到 **Android 原生 Google Sign-In API**（通过 AndroidJavaClass 调用）。
-> 原因：Play Games SDK 强制应用类型为"游戏"，不适合非游戏类 App（如 MoonlyApp）。
-> 新方案不需要 Play Console PGS 配置、不需要 Resources Definition，App 类型正常选"应用"即可。
+> ⚠️ **v4.3 重大变更**：
+> - **v4.2**：Android 端从 `AndroidJavaClass` 直接调用改为 **Java 插件方案**（`FariSignInActivity`），解决 `onActivityResult` 无法接收的问题
+> - **v4.3**：新增 **iOS 平台支持**（Objective-C++ 原生插件 `FariGoogleSignIn.mm` + CocoaPod `GoogleSignIn ~> 7.0`）
+> - 原因：Play Games SDK 强制应用类型为"游戏"，不适合非游戏类 App（如 FariApp）
+> - 新方案不需要 Play Console PGS 配置、不需要 Resources Definition，App 类型正常选"应用"即可
 
 ---
 
@@ -14,6 +16,19 @@
 - [二、核心概念：Firebase 与第三方 SDK 的分工](#二核心概念firebase-与第三方-sdk-的分工)
 - [三、Firebase 项目基础配置](#三firebase-项目基础配置)
 - [四、Google 登录配置](#四google-登录配置)
+  - [4.1 旧插件清理](#41-旧插件清理)
+  - [4.2 添加 play-services-auth 依赖（Android）](#42-添加-play-services-auth-依赖android)
+  - [4.3 添加 GoogleSignIn CocoaPod 依赖（iOS）](#43-添加-googlesignin-cocoapod-依赖ios)
+  - [4.4 Firebase 控制台启用 Google 登录](#44-firebase-控制台启用-google-登录)
+  - [4.5 添加 SHA-1 签名到 Firebase（Android 必须）](#45-添加-sha-1-签名到-firebaseandroid-必须)
+  - [4.6 Unity Inspector 配置](#46-unity-inspector-配置)
+  - [4.7 iOS 额外配置](#47-ios-额外配置)
+  - [4.8 双平台登录流程说明](#48-双平台登录流程说明)
+  - [4.9 Android Java 插件架构](#49-android-java-插件架构)
+  - [4.10 iOS 原生插件架构](#410-ios-原生插件架构)
+  - [4.11 技术实现原理](#411-技术实现原理)
+  - [4.12 登录后获取用户信息](#412-登录后获取用户信息)
+  - [4.13 常见问题](#413-常见问题)
 - [五、Apple 登录配置](#五apple-登录配置)
 - [六、Facebook 登录配置](#六facebook-登录配置)
 - [七、Unity 项目侧配置](#七unity-项目侧配置)
@@ -150,7 +165,7 @@ Firebase Console                    Google Cloud Console
      │                                      │
      ▼                                      ▼
 ┌──────────────┐                  ┌──────────────────┐
-│ moonly-app   │  ◄── 同一个项目 ──►│ moonly-app       │
+│ fari-app   │  ◄── 同一个项目 ──►│ fari-app       │
 │ (Firebase 视角)│                   │ (GCP 视角)        │
 └──────────────┘                  └──────────────────┘
 ```
@@ -166,7 +181,7 @@ Firebase Console                    Google Cloud Console
 ### 3.2 创建 Firebase 项目
 
 1. 打开 [Firebase 控制台](https://console.firebase.google.com/)
-2. 点击「**添加项目**」→ 输入项目名（如 `moonly-app`）
+2. 点击「**添加项目**」→ 输入项目名（如 `fari-app`）
 3. 按向导完成创建（可关闭 Analytics）
 
 ### 3.3 注册应用（双端）
@@ -183,9 +198,9 @@ Firebase 控制台 → 项目设置 → 您的应用
     ├── 点击「添加应用」→ 选择 🤖 Android 图标
     │
     ├── 填写：
-    │   ├── Android 包名：com.yourcompany.moonly
+    │   ├── Android 包名：com.yourcompany.fari
     │   │   （与 Unity Player Settings 的 Package Name 完全一致）
-    │   ├── 应用昵称：随意（如 MoonlyApp）
+    │   ├── 应用昵称：随意（如 FariApp）
     │   └── 调试签名证书 SHA-1/SHA-256：
     │       keytool -list -v -alias androiddebugkey -keystore ~/.android/debug.keystore
     │       # 密码: android
@@ -204,7 +219,7 @@ Firebase 控制台 → 项目设置 → 您的应用
     ├── 点击「添加应用」→ 选择 🍎 Apple (iOS) 图标
     │
     ├── 填写：
-    │   ├── iOS Bundle ID：com.yourcompany.moonly
+    │   ├── iOS Bundle ID：com.yourcompany.fari
     │   │   （与 Unity Player Settings 的 Bundle Identifier 一致）
     │   │   通常和 Android 包名使用同一个值
     │   ├── 应用昵称：随意
@@ -232,12 +247,12 @@ Assets/
 
 | 要点 | 说明 |
 |------|------|
-| **Bundle ID 必须一致** | Android 包名和 iOS Bundle ID 通常用同一个值（如 `com.yourcompany.moonly`） |
+| **Bundle ID 必须一致** | Android 包名和 iOS Bundle ID 通常用同一个值（如 `com.yourcompany.fari`） |
 | **同一个 Firebase 项目** | 不要分别建两个项目！iOS 和 Android 在同一个项目里各注册一个 App |
 | **改了包名要重新下载** | 在 Unity 里改了 Package Name / Bundle ID 后，必须回 Firebase 重新生成并替换这两个文件 |
 | **SHA 签名** | 开发阶段可先不填；正式上线前必须加 release 签名的 SHA |
 
-> 💡 如果还没确定最终包名，可以先填一个临时的（如 `com.test.moonly`），等定下来了再去 Firebase 更新并重新下载配置文件替换。
+> 💡 如果还没确定最终包名，可以先填一个临时的（如 `com.test.fari`），等定下来了再去 Firebase 更新并重新下载配置文件替换。
 
 ### 3.6 启用匿名登录
 
@@ -248,21 +263,20 @@ Assets/
 
 ---
 
-## 四、Google 登录配置（原生 Google Sign-In API）
+## 四、Google 登录配置（Android 原生 Java 插件 + iOS 原生 ObjC++ 插件）
 
-> ⚠️ **v4.0 重大变更**：项目已从 Play Games SDK 迁移到 **Android 原生 Google Sign-In API**。
+> ⚠️ **v4.2+ 重大变更**：
 >
-> **为什么要迁移？**
-> - Play Games SDK 要求在 Play Console 中将应用类型设为"游戏"，导致 App 在 Play Store 上出现在游戏分类下
-> - MoonlyApp 是塔罗/占卜类 App，应出现在"生活"或"健康"分类，不适合游戏分类
-> - Play Games 登录弹窗显示"Play 游戏"风格 UI，与普通 App 体验不符
+> **Android 端（v4.2）**：从 `AndroidJavaClass` 直接调用改为 **Java 插件方案**（`FariSignInActivity`）
+> - 原因：Unity 2022.3 没有 `IActivityResultListener` 接口，`startActivityForResult` 的结果无法在 C# 中接收
+> - 新方案：Java 插件自行处理 `onActivityResult`，通过 `UnitySendMessage` 回调 C#
 >
-> **新方案优势**：
-> - ✅ App 类型正常选"应用"，不需要 Play Console PGS 配置
-> - ✅ 不需要 Resources Definition XML
-> - ✅ 标准 Google 登录弹窗 UI
-> - ✅ 通过 `AndroidJavaClass` 直接调用原生 API，不需要额外 Unity 插件
-> - ✅ 支持 arm64 架构
+> **iOS 端（v4.3）**：新增 **iOS 平台完整支持**
+> - 原生 Objective-C++ 插件 `FariGoogleSignIn.mm`
+> - 通过 P/Invoke `[DllImport("__Internal")]` 调用
+> - CocoaPod 依赖 `GoogleSignIn ~> 7.0`
+>
+> **两平台统一回调格式**：`SUCCESS:<idToken>` / `FAILURE:<code>:<msg>` / `CANCELED`
 
 ### 4.1 旧插件清理
 
@@ -273,6 +287,7 @@ Assets/
 ❌ Assets/GoogleSignIn/                  ← 旧版 google-signin-unity 插件（整个删除）
 ❌ Assets/GeneratedLocalRepo/GoogleSignIn/  ← 旧插件缓存（整个删除）
 ❌ Assets/GooglePlayGames/               ← Play Games SDK 插件（整个删除，如果已安装）
+❌ Assets/Plugins/iOS/GoogleSignIn/      ← 旧版 iOS Google Sign-In 插件（整个删除）
 ```
 
 > ⚠️ 必须在 Unity Editor 中删除（不是直接在文件管理器删），让 Unity 正确处理 .meta 文件。
@@ -285,7 +300,7 @@ implementation 'com.google.signin:google-signin-support:1.0.4'
 
 然后运行：**菜单栏 Assets → External Dependency Manager → Android Resolver → Force Resolve**
 
-### 4.2 添加 play-services-auth 依赖
+### 4.2 添加 play-services-auth 依赖（Android）
 
 在 `Assets/Plugins/Android/mainTemplate.gradle` 的 dependencies 中确认包含：
 
@@ -294,11 +309,25 @@ implementation 'com.google.android.gms:play-services-auth:21.2.0' // Google Sign
 ```
 
 > 💡 此依赖提供 `GoogleSignIn`、`GoogleSignInOptions`、`GoogleSignInClient` 等 Java 类，
-> 供 `GoogleSignInHelper.cs` 通过 `AndroidJavaClass` 调用。
+> 供 `FariSignInActivity` Java 插件调用。
 
 然后运行：**菜单栏 Assets → External Dependency Manager → Android Resolver → Force Resolve**
 
-### 4.3 Firebase 控制台启用 Google 登录
+### 4.3 添加 GoogleSignIn CocoaPod 依赖（iOS）
+
+在 `Assets/Plugins/iOS/FariGoogleSignInDependencies.xml` 中声明：
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<dependencies>
+  <iosPod name="GoogleSignIn" version="~> 7.0" />
+</dependencies>
+```
+
+> 💡 Unity iOS Resolver 会在 Xcode 构建时自动执行 `pod install`。
+> 确保构建前已运行 **Assets → External Dependency Manager → iOS Resolver → Settings** 检查 Podfile 生成配置。
+
+### 4.4 Firebase 控制台启用 Google 登录
 
 1. 打开 [Firebase 控制台](https://console.firebase.google.com/)
 2. **Authentication** → **Sign-in method** → 点击 **Google**
@@ -309,7 +338,34 @@ implementation 'com.google.android.gms:play-services-auth:21.2.0' // Google Sign
 
 > ⚠️ **Web Client ID 是关键配置**，必须保存好，后面 Unity Inspector 中要填！
 
-### 4.4 Unity Inspector 配置
+### 4.5 ⭐ 添加 SHA-1 签名到 Firebase（Android 必须）
+
+> ⚠️ **这是 Google 登录最常见的坑！不添加 SHA-1 签名，交互式登录会直接返回 CANCELED，用户根本没机会操作选择账号。**
+
+#### 获取签名 SHA-1
+
+```bash
+# 开发签名（debug keystore）
+keytool -list -v -alias androiddebugkey -keystore ~/.android/debug.keystore
+# 密码: android
+
+# 自定义签名（release keystore）
+keytool -list -v -keystore <your-keystore-path> -alias <your-alias>
+# 输入你的 keystore 密码
+```
+
+#### 添加到 Firebase
+
+1. 打开 Firebase Console → 项目设置 → 你的 Android 应用
+2. 找到 **SHA 证书指纹** 部分
+3. 点击 **添加指纹**，粘贴上面的 SHA-1 值
+4. **下载最新的 `google-services.json`** 替换到项目 `Assets/` 目录
+5. **重新打包部署**（SHA-1 变更后必须重新构建）
+
+> ⚠️ **常见错误**：用 debug keystore 调试但 Firebase 只加了 release 的 SHA-1（或反过来），导致登录直接 CANCELED。
+> 确保你当前打包使用的 keystore 的 SHA-1 已注册。
+
+### 4.6 Unity Inspector 配置
 
 在场景中找到挂载 `GoogleSignInHelper` 组件的 GameObject，填写：
 
@@ -319,80 +375,248 @@ implementation 'com.google.android.gms:play-services-auth:21.2.0' // Google Sign
 | Editor Simulate Delay | Editor 模拟延迟（秒） | 1 |
 | Editor Simulate Success | Editor 模拟是否成功 | true |
 
-> ⚠️ **Web Client Id 必须填写**，否则 Android 真机登录会报错！
+> ⚠️ **Web Client Id 必须填写**，否则 Android/iOS 真机登录都会报错！
 > 这个 ID 来自 Firebase 控制台 → Authentication → Google → Web Client ID。
 
-### 4.5 原生 Google Sign-In 登录流程说明
+### 4.7 iOS 额外配置
+
+#### GoogleService-Info.plist
+
+确保 `GoogleService-Info.plist` 已放入 `Assets/StreamingAssets/` 目录，iOS 构建时会自动包含到 App Bundle 中。
+原生插件通过此文件读取 iOS Client ID（`CLIENT_ID` 字段）。
+
+#### REVERSED_CLIENT_ID URL Scheme
+
+在 iOS Player Settings 中需要添加 URL Scheme，让 Google Sign-In 流程能正确返回你的 App：
+
+1. Unity → Player Settings → iOS → Other Settings → URL Types
+2. 添加一个 URL Scheme，Identifier 填 `REVERSED_CLIENT_ID`
+3. URL Scheme 填写 `GoogleService-Info.plist` 中的 `REVERSED_CLIENT_ID` 值（格式如 `com.googleusercontent.apps.XXXXX`）
+
+> ⚠️ 如果不配置这个 URL Scheme，Google 登录完成后无法返回 App，流程会卡住。
+
+### 4.8 双平台登录流程说明
 
 ```
-当前流程（v4.0 原生 API）：
-  GoogleSignInHelper → AndroidJavaClass → GoogleSignInClient
-    ├── 先尝试 silentSignIn()（静默登录，已授权用户无弹窗）
-    │   └── 成功 → 获取 ID Token
-    └── 静默失败 → 启动 Google 系统登录 Activity（标准 Google 登录弹窗）
-        └── 用户选择账号后返回 → 再次 silentSignIn() → 获取 ID Token
+GoogleSignInHelper.SignIn()
+    │
+    ├── #if UNITY_EDITOR
+    │   └── 模拟登录，返回 mock ID Token
+    │
+    ├── #elif UNITY_ANDROID（Java 插件方案 v4.2）
+    │   ├── TrySilentSignIn()
+    │   │   ├── AndroidJavaClass("com.google.android.gms.auth.api.signin.GoogleSignIn")
+    │   │   ├── silentSignIn() → addOnSuccessListener → getIdToken() → SUCCESS:<token>
+    │   │   └── addOnFailureListener → 需要交互式登录
+    │   └── StartInteractiveSignIn()
+    │       ├── FariSignInActivity.startSignIn(activity, webClientId, gameObject, callback)
+    │       ├── Java 插件内部：startActivityForResult(signInIntent, RC_SIGN_IN)
+    │       ├── 用户选择账号 → onActivityResult → getSignedInAccountFromIntent
+    │       └── UnitySendMessage("SUCCESS:<idToken>" / "FAILURE:..." / "CANCELED")
+    │
+    └── #elif UNITY_IOS（ObjC++ 插件方案 v4.3）
+        ├── TrySilentSignInIOS()
+        │   ├── _fariRestorePreviousSignIn() → P/Invoke
+        │   ├── GIDSignIn.sharedInstance.restorePreviousSignInWithCallback
+        │   └── 成功 → SUCCESS:<idToken> / 失败 → 交互式
+        └── StartInteractiveSignInIOS()
+            ├── _fariStartGoogleSignIn() → P/Invoke
+            ├── GIDSignIn.sharedInstance.signInWithConfiguration:presentingViewController:callback:
+            └── 回调 → UnitySendMessage("SUCCESS:<idToken>" / "FAILURE:..." / "CANCELED")
 
-  ID Token → GoogleAuthProvider.GetCredential(idToken, null) → Firebase
-
-对比旧流程：
-  ❌ 旧版 google-signin-unity：反射调用 → ID Token（插件已废弃，无 arm64）
-  ❌ Play Games SDK：Server Auth Code → PlayGamesAuthProvider（强制游戏分类）
-  ✅ 当前方案：ID Token → GoogleAuthProvider（无插件依赖，App 类型正常）
+统一回调 → OnNativeSignInResult(string result)
+    │
+    ├── SUCCESS:<idToken> → GoogleAuthProvider.GetCredential(idToken, null) → Firebase
+    ├── FAILURE:<code>:<msg> → FinishWithError
+    └── CANCELED → FinishWithError("用户取消了 Google 登录")
 ```
 
-### 4.6 技术实现原理
+### 4.9 Android Java 插件架构
 
-`GoogleSignInHelper.cs` 通过 Unity 的 `AndroidJavaClass` / `AndroidJavaObject` 机制，直接调用 Android 原生 Java API：
+```
+Assets/Plugins/Android/FariGoogleSignIn.androidlib/
+├── AndroidManifest.xml          ← 注册 FariSignInActivity（透明主题）
+├── project.properties           ← android library 标识
+├── libs/
+│   └── FariGoogleSignIn.jar  ← 编译后的 Java 类
+└── java/                        ← 源码参考（不参与编译）
+    └── com/fari/googlesignin/
+        └── FariSignInActivity.java
+
+FariSignInActivity 职责：
+1. 接收 C# 传入的 webClientId
+2. 构建 GoogleSignInOptions（requestIdToken + requestEmail）
+3. startActivityForResult(signInIntent, RC_SIGN_IN)
+4. onActivityResult → GoogleSignIn.getSignedInAccountFromIntent(data)
+5. 成功 → UnitySendMessage(gameObjectName, "OnNativeSignInResult", "SUCCESS:<idToken>")
+6. 失败 → UnitySendMessage(gameObjectName, "OnNativeSignInResult", "FAILURE:<code>:<msg>")
+7. 取消 → UnitySendMessage(gameObjectName, "OnNativeSignInResult", "CANCELED")
+```
+
+### 4.10 iOS 原生插件架构
+
+```
+Assets/Plugins/iOS/
+├── FariGoogleSignIn.mm              ← Objective-C++ 原生插件
+└── FariGoogleSignInDependencies.xml ← CocoaPod 依赖声明
+
+FariGoogleSignIn.mm 职责：
+1. FariGetIOSClientID() — 从 GoogleService-Info.plist 读取 CLIENT_ID
+2. _fariRestorePreviousSignIn() — 静默恢复登录状态
+3. _fariStartGoogleSignIn() — 交互式登录
+4. _fariGoogleSignOut() — 登出
+
+P/Invoke 接口（C# 侧）：
+[DllImport("__Internal")]
+private static extern void _fariRestorePreviousSignIn(string gameObjectName, string callbackMethod);
+[DllImport("__Internal")]
+private static extern void _fariStartGoogleSignIn(string gameObjectName, string callbackMethod, string webClientId);
+[DllImport("__Internal")]
+private static extern void _fariGoogleSignOut();
+```
+
+### 4.11 技术实现原理
+
+**Android 端**（`GoogleSignInHelper.cs` → Java 插件 `FariSignInActivity`）：
 
 ```
 C# 层 (GoogleSignInHelper.cs)
   │
-  ├── AndroidJavaClass("com.google.android.gms.auth.api.signin.GoogleSignIn")
-  ├── AndroidJavaObject("com.google.android.gms.auth.api.signin.GoogleSignInOptions$Builder")
-  │     .Call("requestIdToken", webClientId)
-  │     .Call("requestEmail")
-  │     .Call("build")
+  ├── 静默登录：AndroidJavaClass("...GoogleSignIn") → silentSignIn()
+  │     ├── OnSuccessListenerProxy → getIdToken() → SUCCESS
+  │     └── OnFailureListenerProxy → 需要交互式登录
   │
-  ├── GoogleSignIn.getClient(activity, options) → GoogleSignInClient
-  │
-  ├── client.Call("silentSignIn") → Task<GoogleSignInAccount>
-  │     ├── addOnSuccessListener → 获取 account.getIdToken()
-  │     └── addOnFailureListener → 需要交互式登录
-  │
-  └── client.Call("getSignInIntent") → startActivity(intent)
-        → 用户操作后返回 → OnApplicationPause → 再次 silentSignIn()
-
-回调使用 AndroidJavaProxy：
-  ├── OnSuccessListenerProxy : AndroidJavaProxy("...OnSuccessListener")
-  └── OnFailureListenerProxy : AndroidJavaProxy("...OnFailureListener")
+  └── 交互式登录：FariSignInActivity.startSignIn(activity, webClientId, gameObject, callback)
+        → Java 插件内部处理 onActivityResult → UnitySendMessage 回调 C#
 ```
 
-### 4.7 常见问题
+**iOS 端**（`GoogleSignInHelper.cs` → ObjC++ 插件 `FariGoogleSignIn.mm`）：
+
+```
+C# 层 (GoogleSignInHelper.cs)
+  │
+  ├── 静默登录：_fariRestorePreviousSignIn() → P/Invoke
+  │     → GIDSignIn.sharedInstance.restorePreviousSignInWithCallback
+  │
+  └── 交互式登录：_fariStartGoogleSignIn() → P/Invoke
+        → GIDSignIn.sharedInstance.signInWithConfiguration:presentingViewController:callback:
+        → 回调通过 UnitySendMessage 返回 C#
+```
+
+**回调统一格式**（双平台共用 `OnNativeSignInResult`）：
+
+| 回调字符串 | 含义 | 处理 |
+|-----------|------|------|
+| `SUCCESS:<idToken>` | 登录成功，携带 ID Token | → GoogleAuthProvider.GetCredential → Firebase |
+| `FAILURE:<code>:<msg>` | 登录失败 | → FinishWithError |
+| `CANCELED` | 用户取消或被拒绝 | → FinishWithError("用户取消了 Google 登录") |
+
+### 4.12 登录后获取用户信息
+
+Google 登录成功后，通过 `GoogleUserInfoHelper` 提取用户信息：
+
+```csharp
+// 方式1：从当前 Firebase 登录用户提取
+var info = GoogleUserInfoHelper.GetCurrentUser();
+Debug.Log(info.ToString());
+// 输出: [GoogleUserInfo] UID=xxx, Email=xxx@gmail.com, Name=Zhang San, Photo=https://..., ...
+
+// 方式2：在 FirebaseAuthManager 登录成功回调里用
+private void OnFirebaseSignInSuccess(FirebaseUser user)
+{
+    var info = GoogleUserInfoHelper.ExtractFromFirebaseUser(user);
+    Debug.Log($"欢迎, {info.displayName}!");
+    StartCoroutine(LoadAvatar(info.photoUrl));
+}
+```
+
+**FirebaseUser 能直接获取的信息**（无需改原生代码）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `UserId` | string | Firebase UID，唯一标识 |
+| `Email` | string | 邮箱 |
+| `DisplayName` | string | 全名（如 "Zhang San"） |
+| `PhotoUrl` | Uri | 头像图片 URL，用 `UnityWebRequestTexture` 加载 |
+| `IsEmailVerified` | bool | 邮箱是否验证 |
+| `IsAnonymous` | bool | 是否匿名用户 |
+| `Metadata.CreationTimestamp` | long | 账号创建时间（毫秒时间戳） |
+| `Metadata.LastSignInTimestamp` | long | 上次登录时间 |
+
+> 💡 `CreationTime` 和 `LastSignInTime` 已封装为 `DateTime` 属性，直接 `info.CreationTime` 即可。
+
+**需要改原生回调才能获取的信息**：
+
+| 字段 | 说明 | 改动量 |
+|------|------|--------|
+| `GivenName` | 名（first name） | 改 Java + ObjC++ 回调传回 |
+| `FamilyName` | 姓（last name） | 改 Java + ObjC++ 回调传回 |
+| `ServerAuthCode` | 一次性授权码，用于服务端换 refresh token | 改 Java + ObjC++ 回调传回 |
+| Google 原始 Account ID | Google 数字账号 ID | 改 Java + ObjC++ 回调传回 |
+
+> 如果需要这些信息，告诉我要改哪些字段，我帮你改原生回调把数据传回 C#。
+
+### 4.13 常见问题
+
+#### Q: 交互式登录刚启动就返回 CANCELED，用户没看到账号选择窗？
+
+**这是最经典的问题，99% 是 SHA-1 签名未注册到 Firebase。**
+
+现象：日志显示 `静默登录失败，启动交互式登录...` 紧接着 `收到原生插件回调: CANCELED`，中间没有任何用户操作时间。
+
+排查步骤：
+
+```
+1. 获取当前打包所用 keystore 的 SHA-1：
+   keytool -list -v -keystore <your-keystore-path>
+
+2. 打开 Firebase Console → 项目设置 → Android 应用
+3. 检查 SHA 证书指纹 是否包含上面的 SHA-1
+4. 如果不一致 → 添加正确的 SHA-1
+5. 下载最新的 google-services.json 替换到 Assets/ 根目录
+6. 重新打包部署
+```
+
+> ⚠️ **常见错误**：
+> - 用 debug keystore 调试但 Firebase 只加了 release keystore 的 SHA-1
+> - 用自定义 keystore 打包但 Firebase 加的是 debug keystore 的 SHA-1
+> - 添加了 SHA-1 但忘了重新下载 `google-services.json`（必须重新下载！）
 
 #### Q: 静默登录总是失败？
 
 **原因**：首次使用 App 的用户不会有缓存的 Google 凭证，静默登录必然失败。这是正常行为，会自动降级到交互式登录。
 
-#### Q: 交互式登录后 silentSignIn 还是失败？
+#### Q: 交互式登录后还是获取不到 ID Token？
 
 **可能原因**：
 1. **设备没有 Google Play Services** — 某些国产 ROM 可能不支持
 2. **Web Client ID 不匹配** — 确认 Firebase 控制台和 Inspector 中填的 ID 完全一致
-3. **SHA 签名不匹配** — Firebase 控制台中注册的 Android 应用需要包含当前签名的 SHA-1
+3. **SHA 签名不匹配** — 见上一个问题
 4. **网络问题** — Google 服务在某些地区可能需要代理
 
-#### Q: 如何添加 SHA 签名？
+#### Q: 如何获取 keystore 的 SHA-1？
 
 ```bash
-# 开发签名（debug）
+# 开发签名（debug keystore）
 keytool -list -v -alias androiddebugkey -keystore ~/.android/debug.keystore
 # 密码: android
+# 输出中找到 "SHA1:" 行
 
-# 发布签名（release）
-keytool -list -v -alias <your-alias> -keystore <your-keystore>
+# 自定义签名（release keystore）
+keytool -list -v -keystore "D:/my_demo/Unity/user.keystore" -storepass <密码>
 ```
 
-然后到 Firebase 控制台 → 项目设置 → Android 应用 → 添加 SHA 证书指纹。
+> 💡 FariApp 使用的 keystore：
+> - 路径：`D:/my_demo/Unity/user.keystore`
+> - 密码：`12345678`
+> - SHA-1：`A2:B8:20:BB:FE:15:81:DA:A4:09:B8:E7:34:24:00:EA:39:F2:BC:81`
+
+#### Q: iOS 登录提示 "The operation couldn't be completed"？
+
+**可能原因**：
+1. `GoogleService-Info.plist` 未正确放入 `Assets/StreamingAssets/`
+2. iOS Player Settings 中未配置 `REVERSED_CLIENT_ID` URL Scheme
+3. CocoaPod `GoogleSignIn` 未正确安装（检查 Xcode 项目的 Podfile）
 
 #### Q: 登录弹窗一闪而过？
 
@@ -415,8 +639,8 @@ keytool -list -v -alias <your-alias> -keystore <your-keystore>
 
 #### 创建 Services ID（用于 Web/OAuth 流程）
 1. **Identifiers** → 点击 **+** → 选 **Services IDs**
-2. Description 填写（如 `MoonlyApp Apple Sign-In`）
-3. Identifier 填写反向域名格式（如 `com.yourcompany.moonly.signin`）
+2. Description 填写（如 `FariApp Apple Sign-In`）
+3. Identifier 填写反向域名格式（如 `com.yourcompany.fari.signin`）
 4. 勾选 **Sign In With Apple**
 5. 配置 **Primary App ID** 为上面创建的 App ID
 6. **Domains and Subdomains**：填写你的域名（可选）
@@ -464,7 +688,7 @@ keytool -list -v -alias <your-alias> -keystore <your-keystore>
 
 1. 打开 [Facebook 开发者平台](https://developers.facebook.com/)
 2. **My Apps** → **Create App** → 类型选 **Consumer**（或 **Games** 如果是游戏类）
-3. 填写 Display Name（如 `MoonlyApp`）、联系邮箱
+3. 填写 Display Name（如 `FariApp`）、联系邮箱
 4. 创建后在 Dashboard 获取 **App ID**（后续需要）
 
 ### 6.2 Facebook 产品设置
@@ -561,7 +785,7 @@ Facebook SDK 需要 `AndroidManifest.xml` 中的额外配置。导入 SDK 时通
 | GameObject | 组件 | 说明 |
 |------------|------|------|
 | FirebaseAuthManager | `FirebaseAuthManager` | Firebase 认证核心管理器 |
-| GoogleSignInHelper | `GoogleSignInHelper` | Google 登录辅助（Play Games SDK） |
+| GoogleSignInHelper | `GoogleSignInHelper` | Google 登录辅助（Android Java 插件 + iOS 原生插件） |
 | AppleSignInHelper | `AppleSignInHelper` | Apple 登录辅助 |
 | FacebookSignInHelper | `FacebookSignInHelper` | Facebook 登录辅助 |
 
@@ -606,11 +830,17 @@ Assets/
 ├── StreamingAssets/
 │   └── GoogleService-Info.plist      ✅ iOS 配置（放这里）
 ├── Firebase/                          ✅ SDK 已导入
-├── GooglePlayGames/                   ✅ 已删除（不使用 Play Games SDK）
+├── Plugins/
+│   ├── Android/
+│   │   └── FariGoogleSignIn.androidlib/  ✅ Android Java 插件
+│   └── iOS/
+│       ├── FariGoogleSignIn.mm              ✅ iOS 原生插件
+│       └── FariGoogleSignInDependencies.xml  ✅ CocoaPod 依赖声明
 └── Scripts/
     └── GameManager/
         ├── FirebaseAuthManager.cs    ✅
-        ├── GoogleSignInHelper.cs     ✅（已改用 Play Games SDK）
+        ├── GoogleSignInHelper.cs     ✅（Android Java 插件 + iOS ObjC++ 插件）
+        ├── GoogleUserInfoHelper.cs  ✅（登录后获取用户信息）
         └── ...
 ```
 
@@ -788,16 +1018,17 @@ Assets/
 | 类名 | 职责 | 设计模式 |
 |------|------|----------|
 | `FirebaseAuthManager` | Firebase 初始化、Credential 登录、账号关联、登出 | MonoSingleton |
-| `GoogleSignInHelper` | AndroidJavaClass 封装，返回 ID Token | MonoSingleton + 协程 |
+| `GoogleSignInHelper` | Android: Java 插件封装; iOS: P/Invoke ObjC++ 封装，返回 ID Token | MonoSingleton + 平台条件编译 |
 | `AppleSignInHelper` | Apple Sign-In 封装，返回 ID Token + Auth Code | MonoSingleton + 条件编译 |
 | `FacebookSignInHelper` | Facebook SDK 封装，返回 Access Token | MonoSingleton + 反射调用 |
+| `GoogleUserInfoHelper` | 从 FirebaseUser 提取 Google 账号信息 | 静态工具类 |
 | `UserDataManager` | 用户数据内存管理 + PlayerPrefs 持久化 | MonoSingleton |
 | `LoginUI` | 登录界面交互层，事件绑定与 UI 反馈 | WindowBase |
 
 ### 9.3 数据流向
 
 ```
-第三方 SDK (Play Games/FB/Apple)
+第三方 SDK (Google/Apple/Facebook)
         ↓ 返回 Token/AuthCode
 FirebaseAuthManager.SignInWithCredential()
         ↓ Firebase Auth 验证
@@ -982,12 +1213,17 @@ CurrentLoginType = LoginType.Google
 ### Unity 项目
 - [ ] Firebase Auth SDK 已安装
 - [ ] 旧版 Google Sign-In 插件已删除（`Assets/GoogleSignIn/`）
-- [ ] Play Games SDK 插件未安装（不需要）
-- [ ] `play-services-auth` 依赖已添加到 `mainTemplate.gradle`
+- [ ] `Assets/Plugins/Android/FariGoogleSignIn.androidlib/` 已就位（Android Java 插件）
+- [ ] `Assets/Plugins/iOS/FariGoogleSignIn.mm` 已就位（iOS 原生插件）
+- [ ] `Assets/Plugins/iOS/FariGoogleSignInDependencies.xml` 已就位（iOS CocoaPod 声明）
+- [ ] `play-services-auth:21.2.0` 依赖已添加到 `mainTemplate.gradle`
 - [ ] `Assets/Plugins/Android/mainTemplate.gradle` 中无旧版 `google-signin-support` 依赖
-- [ ] External Dependency Manager → Force Resolve 已执行
+- [ ] External Dependency Manager → Force Resolve（Android）已执行
+- [ ] CocoaPods 依赖已通过 iOS Resolver 解析（或构建后 `pod install` 成功）
 - [ ] google-services.json 在 Assets/ 根目录下
 - [ ] GoogleService-Info.plist 在 Assets/StreamingAssets/ 下
+- [ ] **SHA-1 签名已添加到 Firebase 控制台**（Android 必须）
+- [ ] **iOS Player Settings → URL Types 已添加 REVERSED_CLIENT_ID**（iOS 必须）
 - [ ] GoogleSignInHelper.WebClientId 已填写（Firebase 控制台 → Authentication → Google → Web Client ID）
 - [ ] FacebookSignInHelper.FacebookAppId 已填写（如需要）
 
