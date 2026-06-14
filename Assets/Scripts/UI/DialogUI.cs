@@ -129,11 +129,11 @@ public class DialogUI : WindowBase
 
         if (msgData.roleType == DialogRoleType.AI)
         {
-            item = listView.NewListViewItem("ItemPrefab1");
+            item = listView.NewListViewItem("LeftDialogItem");
         }
         else
         {
-            item = listView.NewListViewItem("ItemPrefab2");
+            item = listView.NewListViewItem("RightDialogItem");
         }
         ChatItem itemScript = item.GetComponent<ChatItem>();
         // 只初始化一次（避免重复执行）
@@ -275,12 +275,14 @@ public class DialogUI : WindowBase
     }
 
     /// <summary>
-    /// 问题按钮点击（快捷问题）
+    /// 快速占卜
     /// </summary>
     public void OnquestionButtonClick()
     {
-        Debug.Log("questionButton is clicked");
-        // 可以在这里实现快捷问题的功能
+        dialogSystem.AddQuickDivinationMessage("");
+        int msgCount = dialogSystem.GetMessageCount();
+        chatListView.SetListItemCount(msgCount,false);
+        chatListView.MovePanelToItemIndex(msgCount,0);
     }
 
     /// <summary>

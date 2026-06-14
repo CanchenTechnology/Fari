@@ -26,6 +26,8 @@ public enum MsgType
     PopupWindow,// 弹窗
     Picture,
     Voice,
+    Quickivination,//快速占卜
+    FriendContext,//@好友
 }
 
 /// <summary>
@@ -159,9 +161,28 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             id = mMessageIdCounter++,
             roleType = DialogRoleType.AI,
 
-            //messageType = MsgType.Str,
+            messageType = MsgType.Str,
             content = content,
             options = options,
+            divinerType = CurrentDivinerType
+        };
+        mChatMessageList.Add(data);
+
+        // 同时添加到 API 历史
+        mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", content));
+
+        return data;
+    }
+    public ChatMessageData AddQuickDivinationMessage(string content)
+    {
+        ChatMessageData data = new ChatMessageData
+        {
+            id = mMessageIdCounter++,
+            roleType = DialogRoleType.AI,
+
+            messageType = MsgType.Quickivination,
+            content = content,
+
             divinerType = CurrentDivinerType
         };
         mChatMessageList.Add(data);

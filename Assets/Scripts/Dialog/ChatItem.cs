@@ -3,6 +3,7 @@ using SuperScrollView;
 using System.Drawing;
 using UnityEngine;
 using UnityEngine.UI;
+using XFGameFrameWork;
 
 /// <summary>
 /// 用户聊天项
@@ -15,18 +16,21 @@ public class ChatItem : MonoBehaviour
     //说话人的名字
     public Text speakerName;
 
+    public Transform msgTrans;
 
+    [Header("发送文本信息")]
     // 文本消息
     public Text mMsgText;
 
     // 消息背景框:聊天气泡
+
     public Image mItemBg;
 
     // 气泡尾巴
     public Image mArrow;
 
 
-
+    [Header("发送图片信息")]
     // 图片消息显示Image
     public Image mMsgPic;
 
@@ -35,6 +39,12 @@ public class ChatItem : MonoBehaviour
     // 图片缩放比例（宽高）
     float mMsgPicScaleX = 0.7f;
     float mMsgPicScaleY = 0.7f;
+
+    [Header("快速占卜")]
+    public Transform quickDivinationTrans;
+
+    [Header("今日牌")]
+    public Transform dailyCardTrans;
 
 
     // 当前Item索引
@@ -59,23 +69,38 @@ public class ChatItem : MonoBehaviour
     /// <summary>
     /// 设置消息数据
     /// </summary>
-    public void SetItemData(ChatMessageData data,int itemIndex)
+    public void SetItemData(ChatMessageData data, int itemIndex)
     {
+         msgTrans.gameObject.SetActive(false);
+         quickDivinationTrans.gameObject.SetActive(false);
         switch (data.messageType)
         {
             case MsgType.Str:
+                msgTrans.gameObject.SetActive(true);
                 SetStrMessage(data);
                 break;
             case MsgType.PopupWindow:
+            SetPopupWindowMessage();
+          
                 break;
             case MsgType.Picture:
+                msgTrans.gameObject.SetActive(true);
+                SetPictureMessage();
                 break;
             case MsgType.Voice:
                 break;
+            case MsgType.Quickivination:
+                quickDivinationTrans.gameObject.SetActive(true);
+                SetQuickDivinationMessage();
+                 break;
+            case MsgType.FriendContext:
+                break;
+               
             default:
                 break;
         }
     }
+
     /// <summary>
     /// 设置文本信息
     /// </summary>
@@ -135,8 +160,8 @@ public class ChatItem : MonoBehaviour
 
 
     private void SetPopupWindowMessage()
-    { 
-              
+    {
+
     }
     private void SetPictureMessage()
     {
@@ -178,6 +203,23 @@ public class ChatItem : MonoBehaviour
         tf.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, y);
     }
     
+    private void SetContentSizeMessage(Transform targetTrans)
+    {
+        Vector2 size = Vector2.zero;
+        size.x = targetTrans.GetComponent<RectTransform>().sizeDelta.x;
+        size.y = targetTrans.GetComponent<RectTransform>().sizeDelta.y;
+        this.GetComponent<RectTransform>().sizeDelta = size;
+    }
+    private void SetQuickDivinationMessage()
+    {
+        SetContentSizeMessage(quickDivinationTrans);
+      
+    }
+    private void SetDailyCardMessage()
+    {
+        SetContentSizeMessage(dailyCardTrans);
+    }
+
     private void LoadHeadIcon(string iconName)
     {
         // 如果项目中有资源管理器，可以在这里加载
