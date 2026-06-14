@@ -555,8 +555,10 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         PlayerPrefs.DeleteKey(KEY_LAST_SIGNIN_TS);
         PlayerPrefs.Save();
 
-        // 清理本地头像缓存
+        // 清理本地头像缓存（所有 provider）
         GoogleUserInfoHelper.ClearLocalAvatarCache();
+        AppleUserInfoHelper.ClearLocalAvatarCache();
+        FacebookUserInfoHelper.ClearLocalAvatarCache();
 
         Debug.Log("[UserDataManager] 已退出登录");
     }
@@ -663,6 +665,113 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         Debug.Log($"[UserDataManager] Google 用户数据已同步: UID={googleInfo.firebaseUid}, " +
                   $"Email={googleInfo.email}, EmailVerified={googleInfo.isEmailVerified}, " +
                   $"Created={googleInfo.CreationTime:yyyy-MM-dd}");
+    }
+
+    /// <summary>
+    /// 从 AppleUserInfo 同步 Apple 登录专属数据到本地
+    /// 在 Apple 登录成功后调用，可获取时间戳、邮箱验证状态等完整字段
+    /// 注意：Apple 后续登录时 displayName/email 可能为空（Firebase Auth 正常行为）
+    /// </summary>
+    public void SyncFromAppleUserInfo(AppleUserInfo appleInfo)
+    {
+        if (appleInfo == null) return;
+        Debug.Log($"apple用户登录信息:{appleInfo.ToString()}");
+
+        // UID
+        if (!string.IsNullOrEmpty(appleInfo.firebaseUid))
+        {
+            SetFirebaseUid(appleInfo.firebaseUid);
+            SetUserId(appleInfo.firebaseUid);
+        }
+
+        // 邮箱（Apple 首次登录有，后续可能为空，不覆盖已存的值）
+        if (!string.IsNullOrEmpty(appleInfo.email))
+            SetEmail(appleInfo.email);
+
+        // 用户名（不覆盖已填写的本地名；Apple 后续登录 displayName 为空是正常的）
+        if (!string.IsNullOrEmpty(appleInfo.displayName) && string.IsNullOrWhiteSpace(UserName))
+            SetUserName(appleInfo.displayName);
+
+        // 头像 URL（Apple 通常不提供头像）
+        if (!string.IsNullOrEmpty(appleInfo.photoUrl))
+            SetPhotoUrl(appleInfo.photoUrl);
+
+        // 提供商
+        if (!string.IsNullOrEmpty(appleInfo.providerId))
+            SetAuthProviderId(appleInfo.providerId);
+
+        // Apple 特有字段
+        SetEmailVerified(appleInfo.isEmailVerified);
+        SetCreationTimestamp(appleInfo.creationTimestamp);
+        SetLastSignInTimestamp(appleInfo.lastSignInTimestamp);
+
+        SetFirebaseAuthenticated(true);
+        SetLoginType(LoginType.Apple);
+
+        // 注册时间：优先用 Firebase 创建时间戳转换
+        if (string.IsNullOrWhiteSpace(RegTime) && appleInfo.creationTimestamp > 0)
+        {
+            RegTime = appleInfo.CreationTime.ToUniversalTime().ToString("O");
+        }
+
+        SaveData();
+
+        Debug.Log($"[UserDataManager] Apple 用户数据已同步: UID={appleInfo.firebaseUid}, " +
+                  $"Email={appleInfo.email}, EmailVerified={appleInfo.isEmailVerified}, " +
+                  $"Created={appleInfo.CreationTime:yyyy-MM-dd}");
+    }
+
+    /// <summary>
+    /// 从 FacebookUserInfo 同步 Facebook 登录专属数据到本地
+    /// 在 Facebook 登录成功后调用，可获取时间戳、邮箱验证状态等完整字段
+    /// </summary>
+    public void SyncFromFacebookUserInfo(FacebookUserInfo facebookInfo)
+    {
+        if (facebookInfo == null) return;
+        Debug.Log($"facebook用户登录信息:{facebookInfo.ToString()}");
+
+        // UID
+        if (!string.IsNullOrEmpty(facebookInfo.firebaseUid))
+        {
+            SetFirebaseUid(facebookInfo.firebaseUid);
+            SetUserId(facebookInfo.firebaseUid);
+        }
+
+        // 邮箱
+        if (!string.IsNullOrEmpty(facebookInfo.email))
+            SetEmail(facebookInfo.email);
+
+        // 用户名（不覆盖已填写的本地名）
+        if (!string.IsNullOrEmpty(facebookInfo.displayName) && string.IsNullOrWhiteSpace(UserName))
+            SetUserName(facebookInfo.displayName);
+
+        // 头像 URL（Facebook 通常提供方形头像）
+        if (!string.IsNullOrEmpty(facebookInfo.photoUrl))
+            SetPhotoUrl(facebookInfo.photoUrl);
+
+        // 提供商
+        if (!string.IsNullOrEmpty(facebookInfo.providerId))
+            SetAuthProviderId(facebookInfo.providerId);
+
+        // Facebook 特有字段
+        SetEmailVerified(facebookInfo.isEmailVerified);
+        SetCreationTimestamp(facebookInfo.creationTimestamp);
+        SetLastSignInTimestamp(facebookInfo.lastSignInTimestamp);
+
+        SetFirebaseAuthenticated(true);
+        SetLoginType(LoginType.Facebook);
+
+        // 注册时间：优先用 Firebase 创建时间戳转换
+        if (string.IsNullOrWhiteSpace(RegTime) && facebookInfo.creationTimestamp > 0)
+        {
+            RegTime = facebookInfo.CreationTime.ToUniversalTime().ToString("O");
+        }
+
+        SaveData();
+
+        Debug.Log($"[UserDataManager] Facebook 用户数据已同步: UID={facebookInfo.firebaseUid}, " +
+                  $"Email={facebookInfo.email}, EmailVerified={facebookInfo.isEmailVerified}, " +
+                  $"Created={facebookInfo.CreationTime:yyyy-MM-dd}");
     }
 
     #endregion

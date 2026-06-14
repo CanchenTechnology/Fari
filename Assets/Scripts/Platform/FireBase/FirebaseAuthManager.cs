@@ -201,9 +201,10 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
         AppleSignInHelper.Instance.SignIn(
             onSuccess: (idToken, authorizationCode, nonce) =>
             {
-                // 用 Apple ID Token 创建 Firebase credential
+                // 用 Apple ID Token + Nonce 创建 Firebase credential
+                // nonce 是原始值（Firebase 会用它验证 Apple 返回的 Token）
                 Credential credential = OAuthProvider.GetCredential(
-                    "apple.com", idToken, null, null
+                    "apple.com", idToken, string.IsNullOrEmpty(nonce) ? null : nonce, null
                 );
                 SignInWithCredential(credential, AuthProvider.Apple);
             },
@@ -324,7 +325,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
             // 下载并缓存头像（仅第三方登录有 photoUrl）
             if (!string.IsNullOrEmpty(newUser.PhotoUrl?.ToString()))
             {
-                StartCoroutine(DownloadAvatarCoroutine(newUser.PhotoUrl.ToString()));
+                StartCoroutine(DownloadAvatarCoroutine(newUser.PhotoUrl.ToString(), provider));
             }
             FirestoreManager.Instance.LoadUserData(success =>
             {
@@ -595,7 +596,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
                 AppleSignInHelper.Instance.SignIn(
                     onSuccess: (idToken, authCode, nonce) =>
                     {
-                        Credential credential = OAuthProvider.GetCredential("apple.com", idToken, null, null);
+                        Credential credential = OAuthProvider.GetCredential("apple.com", idToken, string.IsNullOrEmpty(nonce) ? null : nonce, null);
                         LinkWithCredential(credential, provider);
                     },
                     onError: (error) =>
@@ -650,24 +651,33 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
     {
         if (user == null) return;
 
-        if (provider == AuthProvider.Google)
+        switch (provider)
         {
-            // Google 登录：直接走 Helper，包含时间戳 / 邮箱验证 / ProviderData 全量字段
-            GoogleUserInfoHelper.SyncToUserDataManager(user);
-        }
-        else
-        {
-            // 其他登录方式（Apple / Facebook / Anonymous）走通用结构
-            UserInfo userInfo = new UserInfo
-            {
-                uid = user.UserId,
-                displayName = user.DisplayName ?? string.Empty,
-                email = user.Email ?? string.Empty,
-                photoUrl = user.PhotoUrl?.ToString() ?? string.Empty,
-                providerId = user.ProviderId ?? string.Empty,
-                isAnonymous = user.IsAnonymous,
-            };
-            UserDataManager.Instance.SyncFromFirebaseUser(userInfo, provider);
+            case AuthProvider.Google:
+                // Google 登录：直接走 Helper，包含时间戳 / 邮箱验证 / ProviderData 全量字段
+                GoogleUserInfoHelper.SyncToUserDataManager(user);
+                break;
+            case AuthProvider.Apple:
+                // Apple 登录：直接走 Helper，包含时间戳 / 邮箱验证 / ProviderData 全量字段
+                AppleUserInfoHelper.SyncToUserDataManager(user);
+                break;
+            case AuthProvider.Facebook:
+                // Facebook 登录：直接走 Helper，包含时间戳 / 邮箱验证 / ProviderData 全量字段
+                FacebookUserInfoHelper.SyncToUserDataManager(user);
+                break;
+            default:
+                // Anonymous 等其他登录方式走通用结构
+                UserInfo userInfo = new UserInfo
+                {
+                    uid = user.UserId,
+                    displayName = user.DisplayName ?? string.Empty,
+                    email = user.Email ?? string.Empty,
+                    photoUrl = user.PhotoUrl?.ToString() ?? string.Empty,
+                    providerId = user.ProviderId ?? string.Empty,
+                    isAnonymous = user.IsAnonymous,
+                };
+                UserDataManager.Instance.SyncFromFirebaseUser(userInfo, provider);
+                break;
         }
     }
 
@@ -677,21 +687,53 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
 
     /// <summary>
     /// 登录成功后下载并缓存头像到本地
-    /// 调用 GoogleUserInfoHelper.LoadAndCacheAvatarCoroutine
+    /// 根据 provider 路由到对应的 Helper（Google / Apple / Facebook）
     /// </summary>
-    private IEnumerator DownloadAvatarCoroutine(string photoUrl)
+    private IEnumerator DownloadAvatarCoroutine(string photoUrl, AuthProvider provider)
     {
-        yield return GoogleUserInfoHelper.LoadAndCacheAvatarCoroutine(
-            photoUrl,
-            sprite =>
-            {
-                if (sprite != null)
-                {
-                    Debug.Log("[FirebaseAuthManager] 头像下载并缓存成功");
-                    OnUserInfoUpdated?.Invoke(CurrentUser);
-                }
-            }
-        );
+        switch (provider)
+        {
+            case AuthProvider.Apple:
+                yield return AppleUserInfoHelper.LoadAndCacheAvatarCoroutine(
+                    photoUrl,
+                    sprite =>
+                    {
+                        if (sprite != null)
+                        {
+                            Debug.Log("[FirebaseAuthManager] Apple 头像下载并缓存成功");
+                            OnUserInfoUpdated?.Invoke(CurrentUser);
+                        }
+                    }
+                );
+                break;
+            case AuthProvider.Facebook:
+                yield return FacebookUserInfoHelper.LoadAndCacheAvatarCoroutine(
+                    photoUrl,
+                    sprite =>
+                    {
+                        if (sprite != null)
+                        {
+                            Debug.Log("[FirebaseAuthManager] Facebook 头像下载并缓存成功");
+                            OnUserInfoUpdated?.Invoke(CurrentUser);
+                        }
+                    }
+                );
+                break;
+            default:
+                // Google / Anonymous 走 Google Helper（共享缓存路径）
+                yield return GoogleUserInfoHelper.LoadAndCacheAvatarCoroutine(
+                    photoUrl,
+                    sprite =>
+                    {
+                        if (sprite != null)
+                        {
+                            Debug.Log("[FirebaseAuthManager] 头像下载并缓存成功");
+                            OnUserInfoUpdated?.Invoke(CurrentUser);
+                        }
+                    }
+                );
+                break;
+        }
     }
 
     /// <summary>

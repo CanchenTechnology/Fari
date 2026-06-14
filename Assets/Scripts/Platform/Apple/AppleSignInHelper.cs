@@ -1,48 +1,88 @@
 using System;
 using UnityEngine;
-using System.Collections;
+using System.Runtime.InteropServices;
 using XFGameFrameWork;
+
 /// <summary>
 /// Apple 登录辅助类
 /// 封装 Sign In With Apple 的调用流程
-/// 
+///
 /// 依赖：
-/// 1. Unity 2019.4+ 内置 Apple Sign-In 支持（iOS 13+）
-/// 2. 或使用插件：https://github.com/lupidan/apple-signin-unity
-/// 3. 在 Firebase 控制台启用 Apple 登录提供商
-/// 4. 在 Apple Developer Console 配置 Sign In With Apple 能力
-/// 
-/// 配置步骤：
-/// 1. Apple Developer Console → Certificates, Identifiers & Profiles
-/// 2. 在 App ID 中启用 "Sign In With Apple" 能力
-/// 3. 在 Firebase Console → Authentication → Sign-in method 中启用 Apple
-/// 4. 下载 Apple 的 Services ID 配置并上传到 Firebase
-/// 5. iOS 构建设置中确保 Capability 包含 "Sign In With Apple"
+/// iOS 13+ 真机:
+///   1. FariAppleSignIn.mm（Assets/Plugins/iOS/FariAppleSignIn.mm）— 原生插件，无需 CocoaPod
+///   2. Xcode Capability 中启用 "Sign In With Apple"
+///   3. Apple Developer Console 中 App ID 已启用 Sign In With Apple
+/// 共用:
+///   4. Firebase Auth SDK
+///   5. Firebase 控制台启用 Apple 登录提供商
+///
+/// 登录流程：
+/// 1. 生成随机 Nonce + SHA256 哈希（安全验证用）
+/// 2. iOS → P/Invoke _fariAppleStartSignIn → ASAuthorizationController
+/// 3. 用户 Face ID / Touch ID / 密码验证
+/// 4. 原生插件通过 UnitySendMessage 回调 "SUCCESS:idToken|authCode|fullName|email"
+/// 5. C# 用 idToken + rawNonce → OAuthProvider.GetCredential("apple.com", ...) → Firebase
+///
+/// 回调节奏（同 GoogleSignInHelper）：
+///   SUCCESS:<idToken>|<authCode>|<fullName>|<email>
+///   FAILURE:<code>:<message>
+///   CANCELED
 /// </summary>
 public class AppleSignInHelper : MonoSingleton<AppleSignInHelper>
 {
-    #region 配置
+    #region 枚举与配置
+
+    /// <summary>登录状态</summary>
+    public enum SignInState
+    {
+        Idle,
+        SigningIn,
+    }
 
     [Header("Apple Sign-In 配置")]
-    [Tooltip("是否在登录时请求全名")]
-    public bool RequestFullName = true;
+    [Tooltip("是否使用 Nonce 进行安全验证（Firebase 要求）")]
+    public bool UseNonce = true;
 
-    [Tooltip("是否在登录时请求邮箱")]
-    public bool RequestEmail = true;
+    [Header("Editor 模拟设置")]
+    [Tooltip("Editor 模拟延迟（秒）")]
+    public float EditorSimulateDelay = 1f;
 
     #endregion
 
     #region 状态
 
+    /// <summary>当前登录状态</summary>
+    public SignInState State { get; private set; } = SignInState.Idle;
+
     /// <summary>是否正在登录中</summary>
-    public bool IsSigningIn { get; private set; } = false;
+    public bool IsSigningIn => State == SignInState.SigningIn;
+
+    /// <summary>本次登录使用的原始 nonce（Firebase 验证时需要）</summary>
+    public string CurrentRawNonce { get; private set; }
 
     #endregion
 
     #region 回调
 
-    private Action<string, string, string> _onSuccess; // idToken, authorizationCode, nonce
+    private Action<string, string, string> _onSuccess; // idToken, authCode, rawNonce
     private Action<string> _onError;
+
+    #endregion
+
+    #region iOS 原生接口 (P/Invoke)
+
+#if UNITY_IOS && !UNITY_EDITOR
+    /// <summary>检查设备是否支持 Apple Sign-In（iOS 13+）</summary>
+    [DllImport("__Internal")]
+    private static extern string _fariAppleIsSupported();
+
+    /// <summary>启动 Apple Sign-In</summary>
+    /// <param name="gameObjectName">C# GameObject 名称</param>
+    /// <param name="callbackMethod">C# 回调方法名</param>
+    /// <param name="sha256Nonce">SHA256 哈希后的 nonce（可选）</param>
+    [DllImport("__Internal")]
+    private static extern void _fariAppleStartSignIn(string gameObjectName, string callbackMethod, string sha256Nonce);
+#endif
 
     #endregion
 
@@ -51,8 +91,8 @@ public class AppleSignInHelper : MonoSingleton<AppleSignInHelper>
     /// <summary>
     /// 发起 Apple 登录
     /// </summary>
-    /// <param name="onSuccess">登录成功回调，参数为 (idToken, authorizationCode, nonce)</param>
-    /// <param name="onError">登录失败回调，参数为错误信息</param>
+    /// <param name="onSuccess">成功回调 (idToken, authCode, rawNonce)</param>
+    /// <param name="onError">失败回调 (错误信息)</param>
     public void SignIn(Action<string, string, string> onSuccess, Action<string> onError)
     {
         if (IsSigningIn)
@@ -61,26 +101,37 @@ public class AppleSignInHelper : MonoSingleton<AppleSignInHelper>
             return;
         }
 
-        IsSigningIn = true;
+        State = SignInState.SigningIn;
         _onSuccess = onSuccess;
         _onError = onError;
 
-        // Apple Sign-In 仅在 iOS 13+ / macOS 10.15+ 可用
 #if UNITY_IOS && !UNITY_EDITOR
-        StartAppleSignIn();
+        // iOS 真机 → 原生插件
+        StartAppleSignInNative();
 #else
-        // 在编辑器或非 iOS 平台上，使用模拟登录
-        Debug.LogWarning("[AppleSignInHelper] Apple Sign-In 仅在 iOS 设备上可用，当前使用模拟模式");
-        SimulateAppleSignIn();
+        // Editor / 其他平台 → 模拟模式
+        Debug.Log("[AppleSignInHelper] 非 iOS 平台，使用模拟模式");
+        StartCoroutine(SimulateAppleSignInCoroutine());
 #endif
     }
 
     /// <summary>
-    /// 检查当前平台是否支持 Apple Sign-In
+    /// 检查当前设备是否支持 Apple Sign-In
     /// </summary>
     public bool IsSupported()
     {
 #if UNITY_IOS && !UNITY_EDITOR
+        try
+        {
+            string result = _fariAppleIsSupported();
+            return result == "1";
+        }
+        catch
+        {
+            return false;
+        }
+#elif UNITY_EDITOR
+        // Editor 下模拟支持
         return true;
 #else
         return false;
@@ -94,131 +145,31 @@ public class AppleSignInHelper : MonoSingleton<AppleSignInHelper>
 #if UNITY_IOS && !UNITY_EDITOR
 
     /// <summary>
-    /// 在 iOS 设备上发起 Apple Sign-In
-    /// 使用 Unity 内置的 Apple Sign-In API（需要 Unity 2019.4+）
+    /// 在 iOS 设备上通过原生插件发起 Apple Sign-In
     /// </summary>
-    private void StartAppleSignIn()
+    private void StartAppleSignInNative()
     {
         try
         {
-            // 使用 Unity 的 Apple Sign-In API（UnityEngine.SocialPlatforms 或第三方插件）
-            // 这里使用苹果原生的 Sign In With Apple API
-            
-            // 方案1：使用 UnityEngine.SocialPlatforms（Unity 2019.4+ 内置支持）
-            // UnityEngine.Social.Active.Authenticate() - 但这不直接返回 Apple ID Token
-            
-            // 方案2：使用第三方插件 apple-signin-unity 的反射调用
-            StartAppleSignInWithPlugin();
+            // 生成 Nonce 用于 Firebase 安全验证
+            CurrentRawNonce = null;
+            string sha256Nonce = "";
+
+            if (UseNonce)
+            {
+                CurrentRawNonce = GenerateNonce();
+                sha256Nonce = SHA256Hash(CurrentRawNonce);
+                Debug.Log($"[AppleSignInHelper] 已生成 Nonce: SHA256={sha256Nonce.Substring(0, 16)}...");
+            }
+
+            _fariAppleStartSignIn(gameObject.name, "OnNativeSignInResult", sha256Nonce);
+            Debug.Log("[AppleSignInHelper] iOS: 已启动 Apple Sign-In，等待用户验证...");
         }
         catch (Exception e)
         {
-            IsSigningIn = false;
+            State = SignInState.Idle;
             Debug.LogError($"[AppleSignInHelper] Apple Sign-In 调用异常: {e.Message}");
-            _onError?.Invoke($"Apple Sign-In 异常: {e.Message}");
-        }
-    }
-
-    /// <summary>
-    /// 使用 apple-signin-unity 插件的反射调用
-    /// </summary>
-    private void StartAppleSignInWithPlugin()
-    {
-        // 尝试加载 Apple Sign-In 插件类型
-        var appleAuthManagerType = System.Type.GetType("AppleAuth.AppleAuthManager, AppleAuth");
-        
-        if (appleAuthManagerType == null)
-        {
-            // 尝试使用 Unity 内置 API
-            StartAppleSignInWithBuiltInAPI();
-            return;
-        }
-
-        // 使用插件的 QuickLogin 或 LoginWithAppleId
-        try
-        {
-            var loginWithAppleIdType = System.Type.GetType("AppleAuth.Enums.LoginOptions, AppleAuth");
-            if (loginWithAppleIdType != null)
-            {
-                // 构造 LoginOptions
-                int options = 0;
-                if (RequestFullName) options |= 1; // IncludeFullName
-                if (RequestEmail) options |= 2;     // IncludeEmail
-                
-                // 调用 AppleAuthManager.LoginWithAppleId
-                Debug.Log("[AppleSignInHelper] 正在使用 apple-signin-unity 插件发起 Apple 登录...");
-                
-                // 由于反射调用复杂，实际使用时建议直接引用插件
-                // 这里标记为需要手动集成
-                IsSigningIn = false;
-                _onError?.Invoke(
-                    "Apple Sign-In 需要安装 apple-signin-unity 插件并在代码中直接调用。\n" +
-                    "请参考: https://github.com/lupidan/apple-signin-unity\n" +
-                    "安装后，在 AppleAuthManager 的回调中调用 AppleSignInHelper.Instance.OnSignInSuccess(idToken, authCode, nonce)"
-                );
-            }
-        }
-        catch (Exception e)
-        {
-            IsSigningIn = false;
-            _onError?.Invoke($"Apple Sign-In 插件调用失败: {e.Message}");
-        }
-    }
-
-    /// <summary>
-    /// 使用 Unity 内置 API 进行 Apple Sign-In
-    /// Unity 2022.1+ 支持 UnityEngine.Apple.SignIn
-    /// </summary>
-    private void StartAppleSignInWithBuiltInAPI()
-    {
-        try
-        {
-            var appleSignInType = System.Type.GetType("UnityEngine.Apple.SignIn.AppleSignIn, UnityEngine.Apple");
-            if (appleSignInType != null)
-            {
-                Debug.Log("[AppleSignInHelper] 正在使用 Unity 内置 Apple Sign-In API...");
-                
-                // 调用 AppleSignIn.StartSignIn()
-                var startSignInMethod = appleSignInType.GetMethod("StartSignIn");
-                if (startSignInMethod != null)
-                {
-                    startSignInMethod.Invoke(null, null);
-                    StartCoroutine(WaitForAppleSignInResult());
-                    return;
-                }
-            }
-
-            IsSigningIn = false;
-            _onError?.Invoke(
-                "未找到 Apple Sign-In API。请确保：\n" +
-                "1. 使用 Unity 2019.4+ 并在 iOS 构建设置中启用 Sign In With Apple Capability\n" +
-                "2. 或安装 apple-signin-unity 插件: https://github.com/lupidan/apple-signin-unity"
-            );
-        }
-        catch (Exception e)
-        {
-            IsSigningIn = false;
-            _onError?.Invoke($"Unity 内置 Apple Sign-In 调用失败: {e.Message}");
-        }
-    }
-
-    /// <summary>
-    /// 协程等待 Apple Sign-In 结果
-    /// </summary>
-    private IEnumerator WaitForAppleSignInResult()
-    {
-        float timeout = 60f;
-        float elapsed = 0f;
-
-        while (IsSigningIn && elapsed < timeout)
-        {
-            elapsed += Time.deltaTime;
-            yield return null;
-        }
-
-        if (elapsed >= timeout)
-        {
-            IsSigningIn = false;
-            _onError?.Invoke("Apple 登录超时");
+            _onError?.Invoke($"Apple Sign-In 启动失败: {e.Message}");
         }
     }
 
@@ -226,62 +177,147 @@ public class AppleSignInHelper : MonoSingleton<AppleSignInHelper>
 
     #endregion
 
-    #region 编辑器模拟
+    #region 原生回调处理
 
     /// <summary>
-    /// 在编辑器中模拟 Apple 登录
+    /// 原生插件回调入口（FariAppleSignIn.mm → UnitySendMessage）
+    ///
+    /// result 格式：
+    ///   成功: "SUCCESS:idToken|authCode|fullName|email"
+    ///   失败: "FAILURE:<code>:<message>"
+    ///   取消: "CANCELED"
     /// </summary>
-    private void SimulateAppleSignIn()
+    private void OnNativeSignInResult(string result)
     {
-        StartCoroutine(SimulateAppleSignInCoroutine());
-    }
+        Debug.Log($"[AppleSignInHelper] 收到原生插件回调: {(result?.Length > 80 ? result.Substring(0, 80) + "..." : result)}");
 
-    private IEnumerator SimulateAppleSignInCoroutine()
-    {
-        Debug.Log("[AppleSignInHelper] 模拟 Apple 登录中...");
-        yield return new WaitForSeconds(1f);
+        if (string.IsNullOrEmpty(result))
+        {
+            FinishWithError("原生插件返回空结果");
+            return;
+        }
 
-        string mockIdToken = "mock_apple_id_token_" + System.Guid.NewGuid().ToString("N").Substring(0, 8);
-        string mockAuthCode = "mock_apple_auth_code_" + System.Guid.NewGuid().ToString("N").Substring(0, 8);
-        string mockNonce = GenerateNonce();
+        if (result.StartsWith("SUCCESS:"))
+        {
+            // 格式: SUCCESS:idToken|authCode|fullName|email
+            string payload = result.Substring(8);
+            string[] parts = payload.Split('|');
 
-        IsSigningIn = false;
-        _onSuccess?.Invoke(mockIdToken, mockAuthCode, mockNonce);
+            string idToken = parts.Length > 0 ? parts[0] : "";
+            string authCode = parts.Length > 1 ? parts[1] : "";
+            string fullName = parts.Length > 2 ? parts[2] : "";
+            string email = parts.Length > 3 ? parts[3] : "";
+
+            if (string.IsNullOrEmpty(idToken))
+            {
+                FinishWithError("Apple ID Token 为空");
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(fullName))
+            {
+                Debug.Log($"[AppleSignInHelper] Apple 用户: {fullName}, {email}");
+            }
+
+            FinishWithSuccess(idToken, authCode);
+        }
+        else if (result == "CANCELED")
+        {
+            FinishWithError("用户取消了 Apple 登录");
+        }
+        else if (result.StartsWith("FAILURE:"))
+        {
+            string errorDetail = result.Substring(8);
+            FinishWithError($"Apple 登录失败: {errorDetail}");
+        }
+        else
+        {
+            FinishWithError($"未知的登录结果格式: {result}");
+        }
     }
 
     #endregion
 
-    #region 工具方法
+    #region 结果处理
+
+    /// <summary>
+    /// 登录成功
+    /// </summary>
+    private void FinishWithSuccess(string idToken, string authCode)
+    {
+        State = SignInState.Idle;
+        Debug.Log("[AppleSignInHelper] Apple 登录成功，已获取 ID Token");
+        _onSuccess?.Invoke(idToken, authCode, CurrentRawNonce ?? "");
+        ClearPendingCallbacks();
+    }
+
+    /// <summary>
+    /// 登录失败
+    /// </summary>
+    private void FinishWithError(string message)
+    {
+        State = SignInState.Idle;
+        Debug.LogError($"[AppleSignInHelper] {message}");
+        _onError?.Invoke(message);
+        ClearPendingCallbacks();
+    }
+
+    private void ClearPendingCallbacks()
+    {
+        _onSuccess = null;
+        _onError = null;
+        CurrentRawNonce = null;
+    }
+
+    #endregion
+
+    #region Editor 模拟
+
+    /// <summary>
+    /// Editor 模拟 Apple Sign-In（非 iOS 平台 / 开发调试用）
+    /// </summary>
+    private System.Collections.IEnumerator SimulateAppleSignInCoroutine()
+    {
+        Debug.Log("[AppleSignInHelper] 模拟 Apple 登录中...");
+        yield return new WaitForSeconds(EditorSimulateDelay);
+
+        string mockIdToken = "mock_apple_id_token_" + Guid.NewGuid().ToString("N").Substring(0, 8);
+        string mockAuthCode = "mock_apple_auth_code_" + Guid.NewGuid().ToString("N").Substring(0, 8);
+        string mockNonce = UseNonce ? GenerateNonce() : "";
+
+        State = SignInState.Idle;
+        CurrentRawNonce = mockNonce;
+        Debug.Log($"[AppleSignInHelper] Editor 模拟 Apple 登录成功");
+        _onSuccess?.Invoke(mockIdToken, mockAuthCode, mockNonce);
+        ClearPendingCallbacks();
+    }
+
+    #endregion
+
+    #region 工具方法 — Nonce 生成与 SHA256
 
     /// <summary>
     /// 生成随机 Nonce（用于 Apple Sign-In 安全验证）
+    /// 随机生成 32 位十六进制字符串
     /// </summary>
     public static string GenerateNonce(int length = 32)
     {
         const string chars = "0123456789abcdef";
-        System.Random random = new System.Random();
+        var random = new System.Random();
         char[] result = new char[length];
         for (int i = 0; i < length; i++)
-        {
             result[i] = chars[random.Next(chars.Length)];
-        }
         return new string(result);
     }
 
     /// <summary>
-    /// 生成 SHA256 哈希的 Nonce
+    /// SHA256 哈希（用于 Nonce 的 Apple Sign-In 格式要求）
+    /// Apple 要求传入的是 SHA256(nonce)，Firebase 验证时传入原始 nonce
     /// </summary>
-    public static string GenerateSHA256Nonce()
+    public static string SHA256Hash(string input)
     {
-        string rawNonce = GenerateNonce();
-        return SHA256Hash(rawNonce);
-    }
+        if (string.IsNullOrEmpty(input)) return "";
 
-    /// <summary>
-    /// SHA256 哈希
-    /// </summary>
-    private static string SHA256Hash(string input)
-    {
         using (var sha256 = System.Security.Cryptography.SHA256.Create())
         {
             byte[] bytes = System.Text.Encoding.UTF8.GetBytes(input);
@@ -292,50 +328,12 @@ public class AppleSignInHelper : MonoSingleton<AppleSignInHelper>
 
     #endregion
 
-    #region SDK 回调处理（由 SDK 回调触发）
+    #region 生命周期
 
-    /// <summary>
-    /// Apple 登录成功回调
-    /// 
-    /// 使用方式：
-    /// 在 Apple Sign-In SDK 的回调中，调用此方法并传入 Apple ID Token 和 Authorization Code
-    /// 
-    /// 示例（使用 apple-signin-unity 插件）：
-    /// <code>
-    /// appleAuthManager.LoginWithAppleId(
-    ///     LoginOptions.IncludeEmail | LoginOptions.IncludeFullName,
-    ///     credential =>
-    ///     {
-    ///         var appleIdCredential = credential as IAppleIDCredential;
-    ///         if (appleIdCredential != null)
-    ///         {
-    ///             string idToken = System.Text.Encoding.UTF8.GetString(appleIdCredential.IdentityToken);
-    ///             string authCode = System.Text.Encoding.UTF8.GetString(appleIdCredential.AuthorizationCode);
-    ///             AppleSignInHelper.Instance.OnSignInSuccess(idToken, authCode, "");
-    ///         }
-    ///     },
-    ///     error =>
-    ///     {
-    ///         AppleSignInHelper.Instance.OnSignInError(error.ToString());
-    ///     }
-    /// );
-    /// </code>
-    /// </summary>
-    public void OnSignInSuccess(string idToken, string authorizationCode, string nonce)
+    protected override void Awake()
     {
-        IsSigningIn = false;
-        Debug.Log("[AppleSignInHelper] Apple 登录成功，已获取 ID Token");
-        _onSuccess?.Invoke(idToken, authorizationCode, nonce);
-    }
-
-    /// <summary>
-    /// Apple 登录失败回调
-    /// </summary>
-    public void OnSignInError(string error)
-    {
-        IsSigningIn = false;
-        Debug.LogError($"[AppleSignInHelper] Apple 登录失败: {error}");
-        _onError?.Invoke(error);
+        base.Awake();
+        DontDestroyOnLoad(gameObject);
     }
 
     #endregion
