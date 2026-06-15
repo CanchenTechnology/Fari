@@ -27,9 +27,10 @@ public enum MsgType
     PopupWindow,// 弹窗
     Picture,
     Voice,
-
     AtFriend,//@好友
     DailyCard, //今日塔罗牌
+
+    InteractionCard3, //三排牌阵
 }
 
 /// <summary>

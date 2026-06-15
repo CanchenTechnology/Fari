@@ -1,6 +1,3 @@
-using I2.Loc;
-using SuperScrollView;
-using System.Drawing;
 using UnityEngine;
 using UnityEngine.UI;
 using XFGameFrameWork;
@@ -47,6 +44,9 @@ public class ChatItem : MonoBehaviour
     [Header("好友关系")]
     public Transform friendContentTrans;
 
+    [Header("三排牌阵")]
+    public SpreadInteractionCard3 interactionCard3;
+
 
     // 当前Item索引
     int mItemIndex = -1;
@@ -75,6 +75,7 @@ public class ChatItem : MonoBehaviour
         msgTrans.gameObject.SetActive(false);
         dailyCardTrans.gameObject.SetActive(false);
         friendContentTrans.gameObject.SetActive(false);
+        interactionCard3.gameObject.SetActive(false);
         switch (data.messageType)
         {
             case MsgType.Str:
@@ -83,7 +84,6 @@ public class ChatItem : MonoBehaviour
                 break;
             case MsgType.PopupWindow:
                 SetPopupWindowMessage();
-
                 break;
             case MsgType.Picture:
                 msgTrans.gameObject.SetActive(true);
@@ -100,7 +100,10 @@ public class ChatItem : MonoBehaviour
                 dailyCardTrans.gameObject.SetActive(true);
                 SetDailyCardMessage();
                 break;
-
+            case MsgType.InteractionCard3:
+                interactionCard3.gameObject.SetActive(true);
+                SetSpreadInteractionCard3();
+                break;
             default:
                 break;
         }
@@ -222,6 +225,10 @@ public class ChatItem : MonoBehaviour
     public void SetFriendContentMessage()
     {
         SetContentSizeMessage(friendContentTrans);
+    }
+    public void SetSpreadInteractionCard3()
+    {
+        SetContentSizeMessage(interactionCard3.transform);
     }
 
     private void LoadHeadIcon(string iconName)

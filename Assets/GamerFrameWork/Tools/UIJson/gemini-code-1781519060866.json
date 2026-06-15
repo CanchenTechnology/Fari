@@ -1,0 +1,431 @@
+{
+  "screenName": "TarotSpreadChatScreen",
+  "resolution": {
+    "x": 750,
+    "y": 1334
+  },
+  "matchWidthOrHeight": 0.5,
+  "includeMask": false,
+  "elements": [
+    {
+      "name": "Background",
+      "type": "Panel",
+      "color": { "r": 0.05, "g": 0.02, "b": 0.08, "a": 1.0 },
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "size": { "x": 0, "y": 0 },
+      "children": [
+        {
+          "name": "BgDecorativeImage",
+          "type": "Image",
+          "sprite": "bg_mystic_room",
+          "color": { "r": 0.5, "g": 0.5, "b": 0.5, "a": 0.6 },
+          "size": { "x": 750, "y": 1334 },
+          "position": { "x": 0, "y": 0 }
+        },
+        {
+          "name": "TopBar",
+          "type": "Panel",
+          "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+          "size": { "x": 750, "y": 100 },
+          "position": { "x": 0, "y": 580 },
+          "children": [
+            {
+              "name": "OracleAvatar",
+              "type": "Image",
+              "sprite": "avatar_oracle_sage",
+              "size": { "x": 60, "y": 60 },
+              "position": { "x": -310, "y": 0 }
+            },
+            {
+              "name": "TitleText",
+              "type": "Text",
+              "text": "Nocturne Oracle",
+              "fontSize": 26,
+              "fontStyle": "Bold",
+              "textAlignment": "Left",
+              "textColor": { "r": 0.90, "g": 0.80, "b": 0.60, "a": 1.0 },
+              "size": { "x": 300, "y": 35 },
+              "position": { "x": -110, "y": 15 }
+            },
+            {
+              "name": "SubtitleText",
+              "type": "Text",
+              "text": "夜色为引，真相自现 ✦",
+              "fontSize": 14,
+              "textAlignment": "Left",
+              "textColor": { "r": 0.65, "g": 0.65, "b": 0.70, "a": 1.0 },
+              "size": { "x": 300, "y": 25 },
+              "position": { "x": -110, "y": -15 }
+            },
+            {
+              "name": "[Button]SwitchOracle",
+              "type": "Button",
+              "text": "✦ 切换神谕师",
+              "fontSize": 18,
+              "textColor": { "r": 0.90, "g": 0.80, "b": 0.60, "a": 1.0 },
+              "sprite": "btn_pill_outline_gold",
+              "color": { "r": 0.15, "g": 0.08, "b": 0.20, "a": 0.9 },
+              "size": { "x": 180, "y": 50 },
+              "position": { "x": 250, "y": 0 }
+            }
+          ]
+        },
+        {
+          "name": "[ScrollRect]ChatScrollContainer",
+          "type": "ScrollRect",
+          "horizontalScroll": false,
+          "verticalScroll": true,
+          "layoutType": "Vertical",
+          "childAlignment": "UpperCenter",
+          "spacing": 25,
+          "paddingTop": 20,
+          "paddingBottom": 40,
+          "size": { "x": 750, "y": 880 },
+          "position": { "x": 0, "y": 60 },
+          "children": [
+            {
+              "name": "BotAudioBubble",
+              "type": "Panel",
+              "sprite": "chat_bubble_left_dark",
+              "color": { "r": 0.15, "g": 0.12, "b": 0.22, "a": 0.95 },
+              "size": { "x": 640, "y": 160 },
+              "children": [
+                {
+                  "name": "AudioPlayBox",
+                  "type": "Panel",
+                  "sprite": "badge_pill_bg",
+                  "color": { "r": 0.35, "g": 0.25, "b": 0.45, "a": 1.0 },
+                  "size": { "x": 100, "y": 45 },
+                  "position": { "x": -230, "y": 35 },
+                  "children": [
+                    {
+                      "name": "PlayIconText",
+                      "type": "Text",
+                      "text": "▶ 3\"",
+                      "fontSize": 16,
+                      "fontStyle": "Bold",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.95, "g": 0.85, "b": 0.85, "a": 1.0 },
+                      "position": { "x": 0, "y": 0 }
+                    },
+                    {
+                      "name": "[Button]PlayAudio",
+                      "type": "Button",
+                      "text": "",
+                      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                      "size": { "x": 100, "y": 45 },
+                      "position": { "x": 0, "y": 0 }
+                    }
+                  ]
+                },
+                {
+                  "name": "MessageText",
+                  "type": "Text",
+                  "text": "我正在把你的问题放进牌阵里，等三张牌各自落位。",
+                  "fontSize": 18,
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.90, "g": 0.90, "b": 0.95, "a": 1.0 },
+                  "size": { "x": 560, "y": 60 },
+                  "position": { "x": 0, "y": -25 }
+                }
+              ]
+            },
+            {
+              "name": "SpreadInteractionCard",
+              "type": "Panel",
+              "sprite": "panel_rounded_outline_gold",
+              "color": { "r": 0.12, "g": 0.08, "b": 0.18, "a": 0.85 },
+              "size": { "x": 640, "y": 580 },
+              "children": [
+                {
+                  "name": "CardTitle",
+                  "type": "Text",
+                  "text": "开始三牌牌阵",
+                  "fontSize": 22,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.90, "g": 0.80, "b": 0.60, "a": 1.0 },
+                  "size": { "x": 600, "y": 30 },
+                  "position": { "x": 0, "y": 240 }
+                },
+                {
+                  "name": "CardSubtitle",
+                  "type": "Text",
+                  "text": "三牌牌阵：看清当下、阻碍、走向。",
+                  "fontSize": 16,
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.75, "g": 0.75, "b": 0.80, "a": 1.0 },
+                  "size": { "x": 600, "y": 30 },
+                  "position": { "x": 0, "y": 200 }
+                },
+                {
+                  "name": "CardsContainer",
+                  "type": "Panel",
+                  "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                  "size": { "x": 600, "y": 240 },
+                  "position": { "x": 0, "y": 40 },
+                  "children": [
+                    {
+                      "name": "CardSlot1",
+                      "type": "Panel",
+                      "sprite": "card_outline_placeholder",
+                      "color": { "r": 0.15, "g": 0.10, "b": 0.25, "a": 0.9 },
+                      "size": { "x": 160, "y": 230 },
+                      "position": { "x": -180, "y": 0 },
+                      "children": [
+                        {
+                          "name": "SparkleIcon1",
+                          "type": "Text",
+                          "text": "✧",
+                          "fontSize": 48,
+                          "textAlignment": "Center",
+                          "textColor": { "r": 0.90, "g": 0.80, "b": 0.60, "a": 1.0 },
+                          "position": { "x": 0, "y": 0 }
+                        }
+                      ]
+                    },
+                    {
+                      "name": "CardSlot2",
+                      "type": "Panel",
+                      "sprite": "card_outline_placeholder",
+                      "color": { "r": 0.15, "g": 0.10, "b": 0.25, "a": 0.9 },
+                      "size": { "x": 160, "y": 230 },
+                      "position": { "x": 0, "y": 0 },
+                      "children": [
+                        {
+                          "name": "SparkleIcon2",
+                          "type": "Text",
+                          "text": "✧",
+                          "fontSize": 48,
+                          "textAlignment": "Center",
+                          "textColor": { "r": 0.90, "g": 0.80, "b": 0.60, "a": 1.0 },
+                          "position": { "x": 0, "y": 0 }
+                        }
+                      ]
+                    },
+                    {
+                      "name": "CardSlot3",
+                      "type": "Panel",
+                      "sprite": "card_outline_placeholder",
+                      "color": { "r": 0.15, "g": 0.10, "b": 0.25, "a": 0.9 },
+                      "size": { "x": 160, "y": 230 },
+                      "position": { "x": 180, "y": 0 },
+                      "children": [
+                        {
+                          "name": "SparkleIcon3",
+                          "type": "Text",
+                          "text": "✧",
+                          "fontSize": 48,
+                          "textAlignment": "Center",
+                          "textColor": { "r": 0.90, "g": 0.80, "b": 0.60, "a": 1.0 },
+                          "position": { "x": 0, "y": 0 }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "[Button]SpreadStatus",
+                  "type": "Button",
+                  "text": "牌阵准备中...",
+                  "fontSize": 18,
+                  "textColor": { "r": 0.85, "g": 0.75, "b": 0.90, "a": 1.0 },
+                  "sprite": "btn_pill_outline_gold",
+                  "color": { "r": 0.25, "g": 0.15, "b": 0.35, "a": 1.0 },
+                  "size": { "x": 420, "y": 50 },
+                  "position": { "x": 0, "y": -120 }
+                },
+                {
+                  "name": "ActionBox1",
+                  "type": "Panel",
+                  "sprite": "btn_pill_outline_purple",
+                  "color": { "r": 0.20, "g": 0.10, "b": 0.35, "a": 0.8 },
+                  "size": { "x": 240, "y": 45 },
+                  "position": { "x": -130, "y": -190 },
+                  "children": [
+                    {
+                      "name": "ActionText1",
+                      "type": "Text",
+                      "text": "为这个问题选择牌阵",
+                      "fontSize": 16,
+                      "textColor": { "r": 0.95, "g": 0.90, "b": 1.0, "a": 1.0 },
+                      "position": { "x": 0, "y": 0 }
+                    },
+                    {
+                      "name": "[Button]SelectSpread",
+                      "type": "Button",
+                      "text": "",
+                      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                      "size": { "x": 240, "y": 45 },
+                      "position": { "x": 0, "y": 0 }
+                    }
+                  ]
+                },
+                {
+                  "name": "ActionBox2",
+                  "type": "Panel",
+                  "sprite": "btn_pill_outline_purple",
+                  "color": { "r": 0.20, "g": 0.10, "b": 0.35, "a": 0.8 },
+                  "size": { "x": 140, "y": 45 },
+                  "position": { "x": 80, "y": -190 },
+                  "children": [
+                    {
+                      "name": "ActionText2",
+                      "type": "Text",
+                      "text": "继续追问",
+                      "fontSize": 16,
+                      "textColor": { "r": 0.95, "g": 0.90, "b": 1.0, "a": 1.0 },
+                      "position": { "x": 0, "y": 0 }
+                    },
+                    {
+                      "name": "[Button]ContinueAsk",
+                      "type": "Button",
+                      "text": "",
+                      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                      "size": { "x": 140, "y": 45 },
+                      "position": { "x": 0, "y": 0 }
+                    }
+                  ]
+                },
+                {
+                  "name": "ActionBox3",
+                  "type": "Panel",
+                  "sprite": "btn_pill_outline_purple",
+                  "color": { "r": 0.20, "g": 0.10, "b": 0.35, "a": 0.8 },
+                  "size": { "x": 240, "y": 45 },
+                  "position": { "x": -130, "y": -250 },
+                  "children": [
+                    {
+                      "name": "ActionText3",
+                      "type": "Text",
+                      "text": "明天再看这条线索",
+                      "fontSize": 16,
+                      "textColor": { "r": 0.95, "g": 0.90, "b": 1.0, "a": 1.0 },
+                      "position": { "x": 0, "y": 0 }
+                    },
+                    {
+                      "name": "[Button]CheckTomorrow",
+                      "type": "Button",
+                      "text": "",
+                      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                      "size": { "x": 240, "y": 45 },
+                      "position": { "x": 0, "y": 0 }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "InputArea",
+          "type": "Panel",
+          "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+          "size": { "x": 750, "y": 100 },
+          "position": { "x": 0, "y": -430 },
+          "children": [
+            {
+              "name": "[Button]LeftAction",
+              "type": "Button",
+              "text": "✧",
+              "fontSize": 24,
+              "textColor": { "r": 0.85, "g": 0.75, "b": 0.95, "a": 1.0 },
+              "sprite": "btn_circle_purple",
+              "color": { "r": 0.30, "g": 0.20, "b": 0.45, "a": 0.9 },
+              "size": { "x": 60, "y": 60 },
+              "position": { "x": -310, "y": 0 }
+            },
+            {
+              "name": "[InputField]ChatInput",
+              "type": "InputField",
+              "text": "",
+              "placeholderText": "向塔罗师提问...",
+              "contentType": "Standard",
+              "fontSize": 18,
+              "sprite": "input_pill_outline_gray",
+              "textColor": { "r": 0.95, "g": 0.95, "b": 0.95, "a": 1.0 },
+              "size": { "x": 520, "y": 60 },
+              "position": { "x": 0, "y": 0 }
+            },
+            {
+              "name": "[Button]RightAction",
+              "type": "Button",
+              "text": "✦",
+              "fontSize": 24,
+              "textColor": { "r": 0.90, "g": 0.80, "b": 0.60, "a": 1.0 },
+              "sprite": "btn_circle_purple",
+              "color": { "r": 0.30, "g": 0.20, "b": 0.45, "a": 0.9 },
+              "size": { "x": 60, "y": 60 },
+              "position": { "x": 310, "y": 0 }
+            }
+          ]
+        },
+        {
+          "name": "BottomNavBarContainer",
+          "type": "Panel",
+          "sprite": "nav_bar_bg",
+          "color": { "r": 0.05, "g": 0.03, "b": 0.08, "a": 1.0 },
+          "size": { "x": 750, "y": 140 },
+          "position": { "x": 0, "y": -597 },
+          "children": [
+            {
+              "name": "[ToggleGroup]BottomNav",
+              "type": "ToggleGroup",
+              "allowSwitchOff": false,
+              "spacing": 40,
+              "size": { "x": 700, "y": 100 },
+              "position": { "x": 0, "y": 10 },
+              "children": [
+                {
+                  "name": "[Toggle]TabOracle",
+                  "type": "Toggle",
+                  "isOn": false,
+                  "text": "今日神谕",
+                  "fontSize": 16,
+                  "textColor": { "r": 0.55, "g": 0.55, "b": 0.55, "a": 1.0 },
+                  "backgroundSprite": "tab_icon_oracle_normal",
+                  "checkmarkSprite": "tab_icon_oracle_active",
+                  "size": { "x": 120, "y": 90 }
+                },
+                {
+                  "name": "[Toggle]TabChat",
+                  "type": "Toggle",
+                  "isOn": true,
+                  "text": "对话",
+                  "fontSize": 16,
+                  "textColor": { "r": 0.85, "g": 0.75, "b": 0.90, "a": 1.0 },
+                  "backgroundSprite": "tab_icon_chat_normal",
+                  "checkmarkSprite": "tab_icon_chat_active",
+                  "size": { "x": 120, "y": 90 }
+                },
+                {
+                  "name": "[Toggle]TabFriends",
+                  "type": "Toggle",
+                  "isOn": false,
+                  "text": "朋友",
+                  "fontSize": 16,
+                  "textColor": { "r": 0.55, "g": 0.55, "b": 0.55, "a": 1.0 },
+                  "backgroundSprite": "tab_icon_friends_normal",
+                  "checkmarkSprite": "tab_icon_friends_active",
+                  "size": { "x": 120, "y": 90 }
+                },
+                {
+                  "name": "[Toggle]TabProfile",
+                  "type": "Toggle",
+                  "isOn": false,
+                  "text": "我的",
+                  "fontSize": 16,
+                  "textColor": { "r": 0.55, "g": 0.55, "b": 0.55, "a": 1.0 },
+                  "backgroundSprite": "tab_icon_profile_normal",
+                  "checkmarkSprite": "tab_icon_profile_active",
+                  "size": { "x": 120, "y": 90 }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
