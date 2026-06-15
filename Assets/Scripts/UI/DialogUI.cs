@@ -10,9 +10,9 @@ using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 using SuperScrollView;
 using System.Collections.Generic;
-using System.Collections;
-using I2.Loc;
-using Unity.VisualScripting;
+using GamerFrameWork;
+using XFGameFrameWork;
+
 
 public class DialogUI : WindowBase
 {
@@ -40,6 +40,9 @@ public class DialogUI : WindowBase
 
         chatListView.InitListView(0, OnGetChatItemByIndex);
 
+        // 订阅事件
+        EventSystem.AddEvent(GameDataStr.RefreshChatUI, OnRefreshChatUI);
+        EventSystem.AddEventListener<string>(GameDataStr.QuickQuestionSelected, OnQuickQuestionSelected);
 
         UpdateDivinerInfo();
     }
@@ -56,6 +59,8 @@ public class DialogUI : WindowBase
     // 物体销毁时执行
     public override void OnDestroy()
     {
+        EventSystem.RemoveEvent(GameDataStr.RefreshChatUI, OnRefreshChatUI);
+        EventSystem.RemoveEventListener<string>(GameDataStr.QuickQuestionSelected, OnQuickQuestionSelected);
         base.OnDestroy();
     }
     #endregion
@@ -295,14 +300,23 @@ public class DialogUI : WindowBase
         string divinerName = dialogSystem.GetCurrentDivinerName();
         ToastManager.ShowToast("已切换为" + divinerName);
     }
-
+    private bool isShowQuickDivinationPanel =false;
     /// <summary>
     /// 快速占卜
     /// </summary>
     public void OnquestionButtonClick()
     {
-        dialogSystem.AddQuickDivinationMessage("");
-        UpdateChatScrollView();
+        // 显示快速占卜面板
+        QuickDivinationPanel panel = uiComponent.QuickDivinationPanelTransform.GetComponent<QuickDivinationPanel>();
+        isShowQuickDivinationPanel = !isShowQuickDivinationPanel;
+        if(isShowQuickDivinationPanel)
+        {
+            panel.ShowPanel();           
+        }
+        else
+        {
+            panel.HidePanel();
+        }
     }
 
     /// <summary>
@@ -350,6 +364,35 @@ public class DialogUI : WindowBase
     #endregion
 
     #region AI消息回调
+
+    /// <summary>
+    /// 刷新聊天UI事件回调
+    /// </summary>
+    private void OnRefreshChatUI(object data)
+    {
+        if (chatListView == null || dialogSystem == null) return;
+        int msgCount = dialogSystem.GetMessageCount();
+        chatListView.SetListItemCount(msgCount, false);
+        chatListView.MovePanelToItemIndex(msgCount - 1, 0);
+    }
+
+    /// <summary>
+    /// 快速占卜问题选中事件回调
+    /// </summary>
+    private void OnQuickQuestionSelected(string question)
+    {
+        Debug.Log($"[DialogUI] 快速占卜问题: {question}");
+        if (string.IsNullOrEmpty(question)) return;
+
+        // 添加用户消息
+        dialogSystem.AddUserMessage(question);
+
+
+        UpdateChatScrollView();
+
+        // 发送到 AI
+        SendMessageToAI();
+    }
 
     /// <summary>
     /// AI选项按钮点击回调

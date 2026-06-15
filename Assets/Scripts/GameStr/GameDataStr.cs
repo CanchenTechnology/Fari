@@ -14,4 +14,6 @@ public class GameDataStr
 
     //事件
     public static readonly string UpdateRoleInfo = "UpdateRoleInfo"; //更新角色信息事件
+    public static readonly string RefreshChatUI = "RefreshChatUI"; //刷新聊天UI事件
+    public static readonly string QuickQuestionSelected = "QuickQuestionSelected"; //快速占卜问题选中事件
 }

@@ -40,8 +40,6 @@ public class ChatItem : MonoBehaviour
     float mMsgPicScaleX = 0.7f;
     float mMsgPicScaleY = 0.7f;
 
-    [Header("快速占卜")]
-    public Transform quickDivinationTrans;
 
     [Header("今日牌")]
     public Transform dailyCardTrans;
@@ -75,7 +73,6 @@ public class ChatItem : MonoBehaviour
     public void SetItemData(ChatMessageData data, int itemIndex)
     {
         msgTrans.gameObject.SetActive(false);
-        quickDivinationTrans.gameObject.SetActive(false);
         dailyCardTrans.gameObject.SetActive(false);
         friendContentTrans.gameObject.SetActive(false);
         switch (data.messageType)
@@ -94,10 +91,7 @@ public class ChatItem : MonoBehaviour
                 break;
             case MsgType.Voice:
                 break;
-            case MsgType.Quickivination:
-                quickDivinationTrans.gameObject.SetActive(true);
-                SetQuickDivinationMessage();
-                break;
+
             case MsgType.AtFriend:
                 friendContentTrans.gameObject.SetActive(true);
                 SetFriendContentMessage();
@@ -220,11 +214,6 @@ public class ChatItem : MonoBehaviour
         size.x = targetTrans.GetComponent<RectTransform>().sizeDelta.x;
         size.y = targetTrans.GetComponent<RectTransform>().sizeDelta.y;
         this.GetComponent<RectTransform>().sizeDelta = size;
-    }
-    private void SetQuickDivinationMessage()
-    {
-        SetContentSizeMessage(quickDivinationTrans);
-
     }
     private void SetDailyCardMessage()
     {

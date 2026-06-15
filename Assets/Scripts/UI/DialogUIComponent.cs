@@ -24,6 +24,8 @@ public class DialogUIComponent:MonoBehaviour
 	public InputField questionInputField;
 
 	public LoopListView2 ChatScrollViewLoopListView2;
+
+	public Transform QuickDivinationPanelTransform;
 	public void InitComponent(WindowBase target)
 	{
 	    //组件事件绑定
