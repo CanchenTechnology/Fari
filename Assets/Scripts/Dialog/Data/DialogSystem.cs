@@ -45,6 +45,7 @@ public class ChatMessageData
     public string content;
     public List<string> options; // AI回复的选项按钮文本
     public DivinerType divinerType; // 当messageType为AI时使用
+    public string spreadKind;       // 牌阵类型（仅 MsgType.InteractionCard3 使用）
 }
 
 /// <summary>
@@ -259,6 +260,32 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         // 同时添加到 API 历史
         mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", content));
 
+        return data;
+    }
+
+    /// <summary>
+    /// 添加三排牌阵互动卡片消息（AI 主动触发）
+    /// </summary>
+    /// <param name="content">AI 的引导文案</param>
+    /// <param name="spreadKind">牌阵类型，如 "self_repair"、"relationship_tension"</param>
+    public ChatMessageData AddInteractionCard3Message(string content, string spreadKind)
+    {
+        ChatMessageData data = new ChatMessageData
+        {
+            id = mMessageIdCounter++,
+            roleType = DialogRoleType.AI,
+            messageType = MsgType.InteractionCard3,
+            content = content,
+            spreadKind = spreadKind ?? "self_repair",
+            options = GetTarotOptions(),
+            divinerType = CurrentDivinerType
+        };
+        mChatMessageList.Add(data);
+
+        // 同时添加到 API 历史
+        mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", content));
+
+        Debug.Log($"[DialogSystem] 添加 InteractionCard3 消息, spreadKind={spreadKind}");
         return data;
     }
     /// <summary>

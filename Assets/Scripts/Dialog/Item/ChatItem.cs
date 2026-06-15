@@ -1,3 +1,4 @@
+using GamerFrameWork.UIFrameWork;
 using UnityEngine;
 using UnityEngine.UI;
 using XFGameFrameWork;
@@ -102,7 +103,7 @@ public class ChatItem : MonoBehaviour
                 break;
             case MsgType.InteractionCard3:
                 interactionCard3.gameObject.SetActive(true);
-                SetSpreadInteractionCard3();
+                SetSpreadInteractionCard3(data.spreadKind);
                 break;
             default:
                 break;
@@ -228,6 +229,28 @@ public class ChatItem : MonoBehaviour
     }
     public void SetSpreadInteractionCard3()
     {
+        SetContentSizeMessage(interactionCard3.transform);
+    }
+
+    /// <summary>
+    /// 初始化三排牌阵（带数据）
+    /// </summary>
+    public void SetSpreadInteractionCard3(string spreadKind)
+    {
+        if (interactionCard3 == null) return;
+
+        // 从 DivinationEngine 获取牌阵定义
+        SpreadDefinition spreadDef = null;
+        if (DivinationEngine.Instance != null)
+            spreadDef = DivinationEngine.Instance.GetSpreadDefinition(spreadKind);
+
+        interactionCard3.Setup(spreadDef);
+
+        // 绑定事件到 DialogUI
+        var dialogUI = UIModule.Instance.GetWindow<DialogUI>();
+        if (dialogUI != null)
+            dialogUI.WireUpInteractionCard3(interactionCard3);
+
         SetContentSizeMessage(interactionCard3.transform);
     }
 

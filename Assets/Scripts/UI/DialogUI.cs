@@ -200,11 +200,19 @@ public class DialogUI : WindowBase
                     // 隐藏加载中提示
                     HideLoadingIndicator();
 
-                    // 添加AI回复到数据层
-                    List<string> options = dialogSystem.GetCurrentDivinerOptions();
-                    dialogSystem.AddAIMessage(aiResponse, options);
+                    // ---- 检查是否需要展示 InteractionCard3 ----
+                    if (ShouldTriggerInteractionCard3())
+                    {
+                        AddInteractionCard3ToChat(aiResponse);
+                    }
+                    else
+                    {
+                        // 普通 AI 回复
+                        List<string> options = dialogSystem.GetCurrentDivinerOptions();
+                        dialogSystem.AddAIMessage(aiResponse, options);
+                    }
 
-                    // 更新列表 - 移除 RefreshAllShownItem
+                    // 更新列表
                     if (chatListView != null)
                     {
                         int msgCount = dialogSystem.GetMessageCount();
@@ -611,6 +619,112 @@ public class DialogUI : WindowBase
         Debug.Log("重新生成声音按钮点击");
         ToastManager.ShowToast("正在重新生成语音...");
         // TODO: 实现语音合成功能
+    }
+
+    #endregion
+
+    #region InteractionCard3 三牌阵
+
+    /// <summary>
+    /// 判断当前是否应该触发三牌阵交互卡
+    /// AI 返回后，如果占卜引擎处于 ChoosingSpread 阶段，直接展示 InteractionCard3
+    /// </summary>
+    private bool ShouldTriggerInteractionCard3()
+    {
+        if (divinationEngine == null) return false;
+
+        var phase = divinationEngine.CurrentPhase;
+        // ChoosingSpread 阶段 → AI 已给出牌阵计划，展示三牌阵交互卡
+        return phase == DivinationPhase.ChoosingSpread;
+    }
+
+    /// <summary>
+    /// 在对话中添加三牌阵互动卡片消息
+    /// </summary>
+    private void AddInteractionCard3ToChat(string aiResponse)
+    {
+        // 获取当前的牌阵类型（从 DivinationEngine 的第一个 3 牌阵中取）
+        string spreadKind = "self_repair"; // 默认：自我修复·三步牌阵
+
+        if (divinationEngine?.SpreadDefinitions != null)
+        {
+            foreach (var sd in divinationEngine.SpreadDefinitions)
+            {
+                if (sd.cardCount == 3)
+                {
+                    spreadKind = sd.kind;
+                    break;
+                }
+            }
+        }
+
+        dialogSystem.AddInteractionCard3Message(aiResponse, spreadKind);
+        Debug.Log($"[DialogUI] 触发 InteractionCard3, spreadKind={spreadKind}");
+    }
+
+    /// <summary>
+    /// 为 ChatItem 中的 SpreadInteractionCard3 绑定事件（在列表项渲染时调用）
+    /// </summary>
+    public void WireUpInteractionCard3(SpreadInteractionCard3 card)
+    {
+        if (card == null) return;
+
+        // 移除旧的监听，避免重复绑定
+        card.OnSelectSpreadClicked -= HandleSpreadFromCard;
+        card.OnContinueAskClicked -= HandleContinueAskFromCard;
+        card.OnCheckTomorrowClicked -= HandleCheckTomorrowFromCard;
+
+        card.OnSelectSpreadClicked += HandleSpreadFromCard;
+        card.OnContinueAskClicked += HandleContinueAskFromCard;
+        card.OnCheckTomorrowClicked += HandleCheckTomorrowFromCard;
+    }
+
+    /// <summary>
+    /// 牌阵内「选择牌阵」→ 展开牌阵选项列表
+    /// </summary>
+    private void HandleSpreadFromCard()
+    {
+        HandleSpreadSelection();
+    }
+
+    /// <summary>
+    /// 牌阵内「继续追问」→ 激活输入框
+    /// </summary>
+    private void HandleContinueAskFromCard()
+    {
+        divinationEngine?.EnterFollowUp();
+        if (uiComponent.questionInputField != null)
+        {
+            uiComponent.questionInputField.ActivateInputField();
+        }
+        ToastManager.ShowToast("请继续输入你想问的问题");
+    }
+
+    /// <summary>
+    /// 牌阵内「明天再看」→ 保存明日钩子
+    /// </summary>
+    private void HandleCheckTomorrowFromCard()
+    {
+        string triggerText = "明天再看这条线索";
+        if (divinationEngine?.CurrentSession != null
+            && divinationEngine.CurrentSession.lockedCards != null
+            && divinationEngine.CurrentSession.lockedCards.Count > 0)
+        {
+            // 用已抽到的牌构建更有意义的触发文本
+            var cards = divinationEngine.CurrentSession.lockedCards;
+            triggerText = $"回顾牌阵：{cards[0].cardName}、{cards[1].cardName}、{cards[2].cardName}";
+        }
+
+        var hook = divinationEngine?.CreateTomorrowHook(triggerText);
+        if (hook != null)
+        {
+            Debug.Log($"[DialogUI] 从牌阵保存明日钩子: hookId={hook.hookId}");
+            ToastManager.ShowToast("已保存线索，明天见！");
+        }
+        else
+        {
+            ToastManager.ShowToast("暂无活跃占卜，无法保存");
+        }
     }
 
     #endregion
