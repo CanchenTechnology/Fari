@@ -12,6 +12,7 @@ using SuperScrollView;
 using System.Collections.Generic;
 using GamerFrameWork;
 using XFGameFrameWork;
+using GamerFrameWork.OracleRuntime;
 
 
 public class DialogUI : WindowBase
@@ -24,6 +25,7 @@ public class DialogUI : WindowBase
     private string aiItemPrefabName = "MessageItem";
 
     private DialogSystem dialogSystem;
+    private DivinationEngine divinationEngine;
 
     #region 生命周期函数
     // 调用机制与 Mono Awake 一致
@@ -35,6 +37,14 @@ public class DialogUI : WindowBase
         base.OnAwake();
 
         dialogSystem = DialogSystem.Instance;
+
+        // 初始化占卜引擎
+        divinationEngine = DivinationEngine.Instance;
+        if (divinationEngine == null)
+        {
+            var go = new GameObject("DivinationEngine");
+            divinationEngine = go.AddComponent<DivinationEngine>();
+        }
 
         chatListView = uiComponent.ChatScrollViewLoopListView2;
 
@@ -384,13 +394,25 @@ public class DialogUI : WindowBase
         Debug.Log($"[DialogUI] 快速占卜问题: {question}");
         if (string.IsNullOrEmpty(question)) return;
 
+        // 启动占卜引擎
+        if (divinationEngine != null)
+        {
+            var session = divinationEngine.StartQuickDivination(question);
+            Debug.Log($"[DialogUI] 占卜已启动 [{session.readingId}], phase={session.phase}");
+
+            // 如果携带今日牌，同步到 DialogSystem
+            if (divinationEngine.TodayCard.HasValue)
+            {
+                dialogSystem.SetTodayCardPayload(divinationEngine.GetTodayCardPayload());
+            }
+        }
+
         // 添加用户消息
         dialogSystem.AddUserMessage(question);
 
-
         UpdateChatScrollView();
 
-        // 发送到 AI
+        // 发送到 AI（此时 DialogSystem 已携带 readingState/actionKing，OracleRuntime 会走 plan_spread scene）
         SendMessageToAI();
     }
 
@@ -413,42 +435,173 @@ public class DialogUI : WindowBase
         switch (selectedOption)
         {
             case "为这个问题选牌阵":
-                ToastManager.ShowToast("正在为您选牌阵...");
-                // TODO: 实现选牌阵功能
+                HandleSpreadSelection();
                 break;
+
             case "继续追问":
-                // 聚焦输入框，让用户继续输入
+                // 进入追问模式
+                divinationEngine?.EnterFollowUp();
                 if (uiComponent.questionInputField != null)
                 {
                     uiComponent.questionInputField.ActivateInputField();
                 }
                 break;
+
             case "明天再看这条线索":
-                ToastManager.ShowToast("已保存线索，明天见！");
-                // TODO: 实现保存线索功能
+                HandleSaveTomorrowHook(selectedOption);
                 break;
+
             case "看这段关系的周期":
-                ToastManager.ShowToast("正在分析关系周期...");
-                // TODO: 实现关系周期分析
+                HandleRelationshipCycle();
                 break;
+
             case "分析今日星象":
-                ToastManager.ShowToast("正在分析今日星象...");
-                // TODO: 实现今日星象分析
+                HandleAstrologyAnalysis();
                 break;
+
             case "看下一周趋势":
-                ToastManager.ShowToast("正在预测下周趋势...");
-                // TODO: 实现下周趋势预测
+                HandleWeeklyTrend();
                 break;
+
             case "保存明日回看":
-                ToastManager.ShowToast("已保存，明日可回看！");
-                // TODO: 实现保存功能
+                HandleSaveTomorrowHook(selectedOption);
                 break;
+
             default:
+                // 检测是否是牌阵选择
+                if (TryHandleSpreadChoice(selectedOption))
+                    break;
+
                 // 将选项作为问题发送
                 SendUserMessage(selectedOption);
                 break;
         }
     }
+
+    #endregion
+
+    #region 占卜流程
+
+    /// <summary>
+    /// 展示牌阵选择（AI 选项按钮形式）
+    /// </summary>
+    private void HandleSpreadSelection()
+    {
+        if (divinationEngine == null)
+        {
+            ToastManager.ShowToast("占卜引擎未就绪");
+            return;
+        }
+
+        var spreadOptions = divinationEngine.GetSpreadOptions();
+        if (spreadOptions.Length == 0)
+        {
+            ToastManager.ShowToast("暂无可用的牌阵");
+            return;
+        }
+
+        // 将牌阵选项设置到 DialogSystem 的选项列表中
+        var optionList = new List<string>(spreadOptions);
+        dialogSystem.SetDivinerOptions(optionList);
+
+        // 触发 UI 刷新以显示新选项
+        UpdateChatScrollView();
+        ToastManager.ShowToast("请选择一个牌阵");
+    }
+
+    /// <summary>
+    /// 检查用户选择的选项是否是牌阵，如果是则执行牌阵选择 + 发送解读请求
+    /// </summary>
+    private bool TryHandleSpreadChoice(string selectedOption)
+    {
+        if (divinationEngine == null) return false;
+
+        var spreadDef = divinationEngine.GetSpreadByLabel(selectedOption);
+        if (spreadDef == null) return false;
+
+        Debug.Log($"[DialogUI] 用户选择牌阵: {spreadDef.label} ({spreadDef.kind})");
+
+        // 抽牌并锁定
+        var lockedCards = divinationEngine.SelectSpread(spreadDef.kind);
+        if (lockedCards.Count == 0)
+        {
+            ToastManager.ShowToast("抽牌失败，请重试");
+            return true;
+        }
+
+        // 构建抽牌结果文本，发送给 AI
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"我选择了牌阵「{spreadDef.label}」，请帮我解读：");
+        foreach (var lc in lockedCards)
+        {
+            var orientLabel = lc.orientation == "upright" ? "正位" : "逆位";
+            sb.AppendLine($"- {lc.position}：{lc.cardName}（{orientLabel}）");
+        }
+
+        SendUserMessage(sb.ToString().TrimEnd());
+        return true;
+    }
+
+    /// <summary>
+    /// 保存明日钩子
+    /// </summary>
+    private void HandleSaveTomorrowHook(string optionLabel)
+    {
+        if (divinationEngine == null)
+        {
+            ToastManager.ShowToast("占卜引擎未就绪");
+            return;
+        }
+
+        // 取最后一条 AI 消息作为触发文本
+        int msgCount = dialogSystem.GetMessageCount();
+        string triggerText = msgCount > 0
+            ? dialogSystem.GetMessageSnippet(msgCount - 1, 60)
+            : optionLabel;
+
+        var hook = divinationEngine.CreateTomorrowHook(triggerText);
+        if (hook != null)
+        {
+            Debug.Log($"[DialogUI] 保存明日钩子: hookId={hook.hookId}, text={triggerText}");
+            ToastManager.ShowToast("已保存线索，明天见！");
+        }
+        else
+        {
+            ToastManager.ShowToast("暂无活跃占卜，无法保存");
+        }
+    }
+
+    /// <summary>
+    /// 关系周期分析 —— 启动新占卜并发送特定消息
+    /// </summary>
+    private void HandleRelationshipCycle()
+    {
+        if (divinationEngine != null)
+        {
+            divinationEngine.StartQuickDivination("请分析这段关系的周期和走向");
+        }
+        SendUserMessage("分析这段关系的周期");
+    }
+
+    /// <summary>
+    /// 今日星象分析 —— 发送占星 prompt
+    /// </summary>
+    private void HandleAstrologyAnalysis()
+    {
+        SendUserMessage("请分析今日星象和我当前的能量状态");
+    }
+
+    /// <summary>
+    /// 下周趋势 —— 发送趋势 prompt
+    /// </summary>
+    private void HandleWeeklyTrend()
+    {
+        SendUserMessage("请分析下一周的趋势和需要注意的事项");
+    }
+
+    #endregion
+
+    #region 语音
 
     /// <summary>
     /// 重新生成声音按钮点击回调

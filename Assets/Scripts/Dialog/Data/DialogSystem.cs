@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using XFGameFrameWork;
+using GamerFrameWork.OracleRuntime;
 
 /// <summary>
 /// 占卜师类型
@@ -74,6 +75,42 @@ public class DialogSystem : MonoSingleton<DialogSystem>
 
     [TextArea(3, 10)]
     public string AstrologySystemPrompt = "你是一位专业的占星师，说话风格温柔而知性，善于用星象和星座来回答问题。你的回复应该包含星象相关的分析和建议。回复 concise 一些，在200字以内。";
+
+    [Header("Oracle Runtime 集成")]
+    [Tooltip("启用后使用 ContextAssembler 结构化 Prompt，替代简单系统提示词")]
+    public bool useOracleRuntime = true;
+
+    /// <summary>Oracle Runtime 用户记忆数据源</summary>
+    private MemorySource memorySource = new MemorySource();
+
+    /// <summary>当前活跃的占卜阅读锁（防止追问时重新抽牌）</summary>
+    private ReadingLock readingLock;
+
+    /// <summary>当前活跃的关系 ID（好友合盘场景）</summary>
+    private string activeRelationshipId;
+
+    /// <summary>当前占卜 Reading ID</summary>
+    private string activeReadingId;
+
+    /// <summary>当前占卜状态（供 DivinationEngine 同步）</summary>
+    private string activeReadingState = "";
+
+    /// <summary>当前动作类型（供 SceneRouter 路由）</summary>
+    private string activeActionKind = "";
+
+    /// <summary>今日牌数据（供 ChatPayload 使用）</summary>
+    private TodayCardPayload todayCardPayload;
+
+    /// <summary>临时覆盖的选项列表（一次性消耗，例如牌阵选择）</summary>
+    private List<string> _overriddenOptions;
+
+    /// <summary>最近 N 轮用户发言（供 ChatPayload 使用）</summary>
+    private List<string> recentUserMessages = new List<string>();
+
+    /// <summary>最近 N 轮 AI 回复（供 ChatPayload 使用）</summary>
+    private List<string> recentAssistantReplies = new List<string>();
+
+    private const int MAX_RECENT_MESSAGES = 6;
 
     // 消息列表
     private List<ChatMessageData> mChatMessageList = new List<ChatMessageData>();
@@ -149,6 +186,11 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         // 同时添加到 API 历史
         mApiMessageHistory.Add(new DeepSeekAPI.Message("user", content));
 
+        // 追踪最近用户消息
+        recentUserMessages.Add(content);
+        if (recentUserMessages.Count > MAX_RECENT_MESSAGES)
+            recentUserMessages.RemoveAt(0);
+
         return data;
     }
 
@@ -171,6 +213,11 @@ public class DialogSystem : MonoSingleton<DialogSystem>
 
         // 同时添加到 API 历史
         mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", content));
+
+        // 追踪最近 AI 回复
+        recentAssistantReplies.Add(content);
+        if (recentAssistantReplies.Count > MAX_RECENT_MESSAGES)
+            recentAssistantReplies.RemoveAt(0);
 
         return data;
     }
@@ -251,22 +298,220 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     }
 
     /// <summary>
+    /// 构建 ChatPayload 供 ContextAssembler 使用
+    /// </summary>
+    private ChatPayload BuildChatPayload(string userMessage)
+    {
+        var payload = new ChatPayload
+        {
+            scene = "chat_companion_stream",
+            locale = "zh-CN",
+            message = userMessage ?? "",
+            activeRelationshipId = activeRelationshipId ?? "",
+            activeReadingId = activeReadingId ?? "",
+            activeReadingState = string.IsNullOrEmpty(activeReadingState)
+                ? (readingLock != null ? "cards_locked" : "")
+                : activeReadingState,
+            isReturningFromHook = false,
+            actionKind = activeActionKind ?? "",
+            todayCard = todayCardPayload,
+            conversationSummary = "",
+            lastOracleReply = recentAssistantReplies.Count > 0
+                ? recentAssistantReplies[recentAssistantReplies.Count - 1]
+                : "",
+            rationaleQuestion = false,
+            friendContext = "",
+            memoryUsed = new List<string>(),
+            recentMessages = new List<string>(recentUserMessages),
+            recentAssistantReplies = new List<string>(recentAssistantReplies),
+
+            user = new UserPayloadProfile
+            {
+                userId = "",
+                preferredName = memorySource.stableProfile?.preferredName ?? UserName,
+                preferredTone = GetOracleVoiceId(),
+                locale = "zh-CN",
+                activeRelationships = string.IsNullOrEmpty(activeRelationshipId)
+                    ? null
+                    : new List<string> { activeRelationshipId },
+                recentThemes = memorySource.stableProfile?.recurringThemes
+            }
+        };
+
+        return payload;
+    }
+
+    /// <summary>
+    /// 使用 OracleRuntime ContextAssembler 构建消息列表
+    /// 替换旧的简单 system prompt，使用 fari 原版的 5 段结构化提示词 + 对话历史
+    /// </summary>
+    private List<DeepSeekAPI.Message> GetOracleAssembledMessages(string userMessage)
+    {
+        // 构建 ChatPayload
+        var payload = BuildChatPayload(userMessage);
+
+        // 调用 ContextAssembler 生成 6 条消息
+        // [0..4] = system, [5] = user payload
+        var assemblyResult = ContextAssembler.AssembleStreamingChat(
+            payload, memorySource, readingLock);
+
+        var messages = new List<DeepSeekAPI.Message>();
+
+        if (assemblyResult?.messages != null)
+        {
+            foreach (var cm in assemblyResult.messages)
+            {
+                messages.Add(new DeepSeekAPI.Message(cm.role, cm.content));
+            }
+        }
+        else
+        {
+            // 降级：如果组装失败，使用旧的简单提示词
+            Debug.LogWarning("[OracleRuntime] ContextAssembler returned null, falling back to simple prompt.");
+            return GetApiMessagesWithSystemPrompt();
+        }
+
+        // 追加最近 N 轮对话历史（不含当前用户消息，因为已在 payload 中）
+        // 取 mApiMessageHistory 中最近几轮，跳过最后一个（即当前用户消息）
+        int historyCount = mApiMessageHistory.Count;
+        int skipLast = (historyCount > 0 && mApiMessageHistory[historyCount - 1].role == "user") ? 1 : 0;
+        int maxHistory = 6; // 最多追加 3 轮对话
+        int startIdx = Mathf.Max(0, historyCount - skipLast - maxHistory);
+        for (int i = startIdx; i < historyCount - skipLast; i++)
+        {
+            messages.Add(mApiMessageHistory[i]);
+        }
+
+        Debug.Log($"[OracleRuntime] Assembled {messages.Count} messages for API request. "
+            + $"Scene={payload.scene}, Stage=auto-detected, Voice={GetOracleVoiceId()}");
+
+        return messages;
+    }
+
+    /// <summary>
+    /// 设置用户记忆（供外部模块 Firebase 加载后调用）
+    /// </summary>
+    public void SetMemorySource(MemorySource source)
+    {
+        memorySource = source ?? new MemorySource();
+    }
+
+    /// <summary>
+    /// 设置当前 ReadingLock（抽牌后调用，防止追问时重新抽牌）
+    /// </summary>
+    public void SetReadingLock(ReadingLock rl)
+    {
+        readingLock = rl;
+        activeReadingId = rl?.readingId;
+    }
+
+    /// <summary>
+    /// 设置活跃关系 ID（好友合盘场景）
+    /// </summary>
+    public void SetActiveRelationship(string relationshipId)
+    {
+        activeRelationshipId = relationshipId;
+    }
+
+    /// <summary>
+    /// 设置当前占卜状态（DivinationEngine 调用）
+    /// </summary>
+    public void SetActiveReadingState(string state)
+    {
+        activeReadingState = state ?? "";
+    }
+
+    /// <summary>
+    /// 设置当前动作类型（DivinationEngine 调用）
+    /// </summary>
+    public void SetActiveActionKind(string actionKind)
+    {
+        activeActionKind = actionKind ?? "";
+    }
+
+    /// <summary>
+    /// 设置当前 Reading ID（DivinationEngine 调用）
+    /// </summary>
+    public void SetActiveReadingId(string readingId)
+    {
+        activeReadingId = readingId;
+    }
+
+    /// <summary>
+    /// 设置今日牌数据（TodayOracleUI / DivinationEngine 调用）
+    /// </summary>
+    public void SetTodayCardPayload(TodayCardPayload payload)
+    {
+        todayCardPayload = payload;
+    }
+
+    /// <summary>
+    /// 清除 ReadingLock
+    /// </summary>
+    public void ClearReadingLock()
+    {
+        readingLock = null;
+        activeReadingId = null;
+    }
+
+    /// <summary>
     /// 清空对话历史
     /// </summary>
     public void ClearChatHistory()
     {
         mChatMessageList.Clear();
         mApiMessageHistory.Clear();
+        recentUserMessages.Clear();
+        recentAssistantReplies.Clear();
         mMessageIdCounter = 0;
     }
 
     /// <summary>
     /// 发送消息到 DeepSeek API
+    /// 启用 OracleRuntime 时使用 ContextAssembler 组装结构化 Prompt
     /// </summary>
     public void SendMessageToAI(System.Action<string> onSuccess, System.Action<string> onError)
     {
-        List<DeepSeekAPI.Message> messages = GetApiMessagesWithSystemPrompt();
-        deepSeekAPI.SendChatRequest(messages, onSuccess, onError);
+        List<DeepSeekAPI.Message> messages;
+
+        if (useOracleRuntime)
+        {
+            // 使用 ContextAssembler 构建 5 段结构化 system prompt + 对话历史
+            string lastUserMsg = (mApiMessageHistory.Count > 0
+                && mApiMessageHistory[mApiMessageHistory.Count - 1].role == "user")
+                ? mApiMessageHistory[mApiMessageHistory.Count - 1].content
+                : "";
+            messages = GetOracleAssembledMessages(lastUserMsg);
+        }
+        else
+        {
+            // 降级：使用旧版简单 system prompt
+            messages = GetApiMessagesWithSystemPrompt();
+        }
+
+        deepSeekAPI.SendChatRequest(messages,
+            (aiResponse) =>
+            {
+                // OracleRuntime 输出校验（非阻断，仅日志）
+                if (useOracleRuntime)
+                {
+                    try
+                    {
+                        var guardResult = OutputGuard.Check(aiResponse);
+                        if (!guardResult.ok && guardResult.issues?.Count > 0)
+                        {
+                            Debug.LogWarning($"[OracleRuntime] OutputGuard issues: {string.Join(", ", guardResult.issues)}");
+                        }
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Debug.LogWarning($"[OracleRuntime] OutputGuard check failed: {ex.Message}");
+                    }
+                }
+                onSuccess?.Invoke(aiResponse);
+            },
+            onError
+        );
     }
 
     /// <summary>
@@ -297,10 +542,44 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     }
 
     /// <summary>
+    /// DivinerType → oracleVoiceId 映射
+    /// </summary>
+    private string GetOracleVoiceId()
+    {
+        return CurrentDivinerType == DivinerType.Tarot ? "tarot_reader" : "astrologer";
+    }
+
+    /// <summary>
     /// 获取当前占卜师的默认选项
     /// </summary>
     public List<string> GetCurrentDivinerOptions()
     {
+        // 如果有临时覆盖的选项（如牌阵选择），优先使用
+        if (_overriddenOptions != null && _overriddenOptions.Count > 0)
+        {
+            var temp = _overriddenOptions;
+            _overriddenOptions = null; // 一次性消耗
+            return temp;
+        }
         return CurrentDivinerType == DivinerType.Tarot ? GetTarotOptions() : GetAstrologyOptions();
+    }
+
+    /// <summary>
+    /// 临时覆盖占卜师选项（如展示牌阵选择）
+    /// </summary>
+    public void SetDivinerOptions(List<string> options)
+    {
+        _overriddenOptions = options;
+    }
+
+    /// <summary>
+    /// 获取指定索引消息的摘要片段
+    /// </summary>
+    public string GetMessageSnippet(int index, int maxLen)
+    {
+        if (index < 0 || index >= mChatMessageList.Count) return "";
+        var msg = mChatMessageList[index];
+        if (string.IsNullOrEmpty(msg.content)) return "";
+        return msg.content.Length <= maxLen ? msg.content : msg.content.Substring(0, maxLen) + "...";
     }
 }
