@@ -1,5 +1,7 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using GamerFrameWork.UIFrameWork;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -12,7 +14,19 @@ public class FriendItem : MonoBehaviour
     public Button atBtn;
 
     private FriendDataManager.FriendData data;
-
+    private void OnEnable()
+    {
+        atBtn.onClick.AddListener(ContactFriendToUI);
+    }
+    private void OnDisable()
+    {
+        atBtn.onClick.RemoveListener(ContactFriendToUI);
+    }
+    private void ContactFriendToUI()
+    {
+        UIModule.Instance.GetWindow<NavigationUI>().OpenDialogUI();
+        UIModule.Instance.GetWindow<DialogUI>().SendAtFriendsMessage();
+    }
     /// <summary>
     /// 当前绑定的好友数据
     /// </summary>
@@ -46,5 +60,6 @@ public class FriendItem : MonoBehaviour
         headImage.sprite = defaultSprite;
         nameText.text = string.Empty;
         infoText.text = string.Empty;
+        
     }
 }

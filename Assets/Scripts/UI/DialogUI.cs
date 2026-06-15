@@ -12,6 +12,7 @@ using SuperScrollView;
 using System.Collections.Generic;
 using System.Collections;
 using I2.Loc;
+using Unity.VisualScripting;
 
 public class DialogUI : WindowBase
 {
@@ -161,16 +162,7 @@ public class DialogUI : WindowBase
         // 添加用户消息到数据层
         dialogSystem.AddUserMessage(content);
 
-        // 更新列表 - 移除 RefreshAllShownItem，让 ScrollView 自动处理
-        int msgCount = dialogSystem.GetMessageCount();
-        Debug.Log($"发送用户消息后，当前消息数量：{msgCount}");
-        chatListView.SetListItemCount(msgCount, false);
-
-        // 滚动到最后一条
-        chatListView.MovePanelToItemIndex(
-            msgCount - 1,
-            0
-        );
+        UpdateChatScrollView();
 
         // 发送消息到AI
         SendMessageToAI();
@@ -220,6 +212,35 @@ public class DialogUI : WindowBase
             }
         );
     }
+    /// <summary>
+    /// 
+    /// </summary>
+    public void SendTodayOracleMessage()
+    {
+        //todo:塔罗牌数据
+        //添加     
+        dialogSystem.AddTodayDivinationMessage("");
+        UpdateChatScrollView();
+    }
+    public void SendAtFriendsMessage()
+    {
+        dialogSystem.AddAtFriendMessage("");
+        UpdateChatScrollView();
+        Debug.Log("关联好友");
+    }
+    private void UpdateChatScrollView()
+    {
+         // 更新列表 - 移除 RefreshAllShownItem，让 ScrollView 自动处理
+        int msgCount = dialogSystem.GetMessageCount();
+        Debug.Log($"发送用户消息后，当前消息数量：{msgCount}");
+        chatListView.SetListItemCount(msgCount, false);
+
+        // 滚动到最后一条
+        chatListView.MovePanelToItemIndex(
+            msgCount - 1,
+            0
+        );
+    }
 
 
     #endregion
@@ -250,6 +271,7 @@ public class DialogUI : WindowBase
 
     #region API Function
 
+    
     #endregion
 
     #region UI组件事件
@@ -280,9 +302,7 @@ public class DialogUI : WindowBase
     public void OnquestionButtonClick()
     {
         dialogSystem.AddQuickDivinationMessage("");
-        int msgCount = dialogSystem.GetMessageCount();
-        chatListView.SetListItemCount(msgCount,false);
-        chatListView.MovePanelToItemIndex(msgCount,0);
+        UpdateChatScrollView();
     }
 
     /// <summary>

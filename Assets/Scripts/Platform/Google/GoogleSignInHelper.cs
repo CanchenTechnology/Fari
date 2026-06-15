@@ -42,9 +42,10 @@ public class GoogleSignInHelper : MonoSingleton<GoogleSignInHelper>
         SigningOut,
     }
 
-    [Header("Google 登录配置")]
+    [Header("Google 登录配置 (必填)")]
     [Tooltip("Firebase 控制台 → Authentication → Google → Web Client ID\n" +
-             "格式类似: 86394...ffm.apps.googleusercontent.com")]
+             "格式类似: 86394...ffm.apps.googleusercontent.com\n" +
+             "Android 和 iOS 真机必需，Editor 模式可填测试值")]
     public string WebClientId = "";
 
     [Header("Editor 模拟设置")]

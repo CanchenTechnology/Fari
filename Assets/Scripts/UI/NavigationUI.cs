@@ -110,11 +110,11 @@ public class NavigationUI : WindowBase
 			UIModule.Instance.HideWindow<MyUI>();
 		}
 	}
-
-	public void FlipCard()
+	public void OpenDialogUI()
 	{
 		uiComponent.dialogueToggle.isOn = true;
-		//Todo:可能会激活特定的方法,分析牌库
 	}
+
+
 	#endregion
 }

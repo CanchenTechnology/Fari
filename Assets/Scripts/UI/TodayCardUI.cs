@@ -1,7 +1,7 @@
 /*---------------------------------
  * Title: UI表现层脚本自动化生成工具-不会被覆盖
  * Author: GamerFrameWork
- * Date: 6/9/2026 10:43:40 AM
+ * Date: 6/15/2026 10:49:55 AM
  * Description: UI 表现层，该层只负责界面的交互、表现相关的更新，不允许编写任何业务逻辑代码
  * 注意: 以下文件是自动生成的，再次生成不会覆盖原有的代码，会在原有的代码上进行新增，可放心使用
 ---------------------------------*/
@@ -9,15 +9,15 @@ using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 
-public class TodayOracleUI : WindowBase
+public class TodayCardUI : WindowBase
 {
-	public TodayOracleUIComponent uiComponent;
+	public TodayCardUIComponent uiComponent;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
 	public override void OnAwake()
 	{
-		uiComponent = gameObject.GetComponent<TodayOracleUIComponent>();
+		uiComponent = gameObject.GetComponent<TodayCardUIComponent>();
 		uiComponent.InitComponent(this);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		base.OnAwake();
@@ -43,24 +43,27 @@ public class TodayOracleUI : WindowBase
 
 	#endregion
 
-	#region UI组件事件		 
-	public void OnDeepChatButtonClick()
+	#region UI组件事件
+	public void OnBackButtonClick()
 	{
+		HideWindow();
+	}
+	public void OnShareButtonClick()
+	{
+	}
+	public void OnAskQuestion1ButtonClick()
+	{
+	}
+	public void OnAskQuestion2ButtonClick()
+	{
+	}
+	public void OnAskQuestion3ButtonClick()
+	{
+	}
+	public void OnContinueChatButtonClick()
+	{
+		HideWindow();
 		UIModule.Instance.GetWindow<NavigationUI>().OpenDialogUI();
-		UIModule.Instance.GetWindow<DialogUI>().SendTodayOracleMessage();
-	}
-		
-	public void OnswitchDivinerButtonClick()
-	{
-	
-		UIModule.Instance.PopUpWindow<SwitchRoleUI>();
-		
-	}
-
-	public void OnflipCardButtonClick()
-	{
-		uiComponent.flipCardButton.gameObject.SetActive(false);
-		uiComponent.ReadingCardContainerTransform.gameObject.SetActive(true);
 	}
 	#endregion
 }

@@ -46,6 +46,9 @@ public class ChatItem : MonoBehaviour
     [Header("今日牌")]
     public Transform dailyCardTrans;
 
+    [Header("好友关系")]
+    public Transform friendContentTrans;
+
 
     // 当前Item索引
     int mItemIndex = -1;
@@ -71,8 +74,10 @@ public class ChatItem : MonoBehaviour
     /// </summary>
     public void SetItemData(ChatMessageData data, int itemIndex)
     {
-         msgTrans.gameObject.SetActive(false);
-         quickDivinationTrans.gameObject.SetActive(false);
+        msgTrans.gameObject.SetActive(false);
+        quickDivinationTrans.gameObject.SetActive(false);
+        dailyCardTrans.gameObject.SetActive(false);
+        friendContentTrans.gameObject.SetActive(false);
         switch (data.messageType)
         {
             case MsgType.Str:
@@ -80,8 +85,8 @@ public class ChatItem : MonoBehaviour
                 SetStrMessage(data);
                 break;
             case MsgType.PopupWindow:
-            SetPopupWindowMessage();
-          
+                SetPopupWindowMessage();
+
                 break;
             case MsgType.Picture:
                 msgTrans.gameObject.SetActive(true);
@@ -92,10 +97,16 @@ public class ChatItem : MonoBehaviour
             case MsgType.Quickivination:
                 quickDivinationTrans.gameObject.SetActive(true);
                 SetQuickDivinationMessage();
-                 break;
-            case MsgType.FriendContext:
                 break;
-               
+            case MsgType.AtFriend:
+                friendContentTrans.gameObject.SetActive(true);
+                SetFriendContentMessage();
+                break;
+            case MsgType.DailyCard:
+                dailyCardTrans.gameObject.SetActive(true);
+                SetDailyCardMessage();
+                break;
+
             default:
                 break;
         }
@@ -202,7 +213,7 @@ public class ChatItem : MonoBehaviour
         }
         tf.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, y);
     }
-    
+
     private void SetContentSizeMessage(Transform targetTrans)
     {
         Vector2 size = Vector2.zero;
@@ -213,11 +224,15 @@ public class ChatItem : MonoBehaviour
     private void SetQuickDivinationMessage()
     {
         SetContentSizeMessage(quickDivinationTrans);
-      
+
     }
     private void SetDailyCardMessage()
     {
         SetContentSizeMessage(dailyCardTrans);
+    }
+    public void SetFriendContentMessage()
+    {
+        SetContentSizeMessage(friendContentTrans);
     }
 
     private void LoadHeadIcon(string iconName)

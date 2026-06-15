@@ -27,7 +27,8 @@ public enum MsgType
     Picture,
     Voice,
     Quickivination,//快速占卜
-    FriendContext,//@好友
+    AtFriend,//@好友
+    DailyCard, //今日塔罗牌
 }
 
 /// <summary>
@@ -173,6 +174,11 @@ public class DialogSystem : MonoSingleton<DialogSystem>
 
         return data;
     }
+    /// <summary>
+    /// 添加快速占卜功能
+    /// </summary>
+    /// <param name="content"></param>
+    /// <returns></returns>
     public ChatMessageData AddQuickDivinationMessage(string content)
     {
         ChatMessageData data = new ChatMessageData
@@ -193,6 +199,44 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         return data;
     }
 
+    public ChatMessageData AddTodayDivinationMessage(string content)
+    {
+         ChatMessageData data = new ChatMessageData
+        {
+            id = mMessageIdCounter++,
+            roleType = DialogRoleType.AI,
+
+            messageType = MsgType.DailyCard,
+            content = content,
+
+            divinerType = CurrentDivinerType
+        };
+        mChatMessageList.Add(data);
+
+        // 同时添加到 API 历史
+        mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", content));
+
+        return data;
+    }
+    public ChatMessageData AddAtFriendMessage(string content)
+    {
+         ChatMessageData data = new ChatMessageData
+        {
+            id = mMessageIdCounter++,
+            roleType = DialogRoleType.AI,
+
+            messageType = MsgType.AtFriend,
+            content = content,
+
+            divinerType = CurrentDivinerType
+        };
+        mChatMessageList.Add(data);
+
+        // 同时添加到 API 历史
+        mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", content));
+
+        return data;
+    }
     /// <summary>
     /// 获取所有消息
     /// </summary>

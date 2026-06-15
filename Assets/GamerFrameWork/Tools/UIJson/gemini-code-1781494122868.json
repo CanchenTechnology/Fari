@@ -1,0 +1,419 @@
+{
+  "screenName": "ContextChatScreen",
+  "resolution": {
+    "x": 750,
+    "y": 1334
+  },
+  "matchWidthOrHeight": 0.5,
+  "includeMask": false,
+  "elements": [
+    {
+      "name": "Background",
+      "type": "Panel",
+      "color": { "r": 0.05, "g": 0.02, "b": 0.08, "a": 1.0 },
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "size": { "x": 0, "y": 0 },
+      "children": [
+        {
+          "name": "BgDecorativeImage",
+          "type": "Image",
+          "sprite": "bg_mystic_room",
+          "color": { "r": 0.5, "g": 0.5, "b": 0.5, "a": 0.6 },
+          "size": { "x": 750, "y": 1334 },
+          "position": { "x": 0, "y": 0 }
+        },
+        {
+          "name": "TopBar",
+          "type": "Panel",
+          "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+          "size": { "x": 750, "y": 100 },
+          "position": { "x": 0, "y": 580 },
+          "children": [
+            {
+              "name": "OracleAvatar",
+              "type": "Image",
+              "sprite": "avatar_oracle_sage",
+              "size": { "x": 60, "y": 60 },
+              "position": { "x": -310, "y": 0 }
+            },
+            {
+              "name": "TitleText",
+              "type": "Text",
+              "text": "Nocturne Oracle",
+              "fontSize": 26,
+              "fontStyle": "Bold",
+              "textAlignment": "Left",
+              "textColor": { "r": 0.90, "g": 0.80, "b": 0.60, "a": 1.0 },
+              "size": { "x": 300, "y": 35 },
+              "position": { "x": -110, "y": 15 }
+            },
+            {
+              "name": "SubtitleText",
+              "type": "Text",
+              "text": "夜色为引，真相自现 ✦",
+              "fontSize": 14,
+              "textAlignment": "Left",
+              "textColor": { "r": 0.65, "g": 0.65, "b": 0.70, "a": 1.0 },
+              "size": { "x": 300, "y": 25 },
+              "position": { "x": -110, "y": -15 }
+            },
+            {
+              "name": "[Button]SwitchOracle",
+              "type": "Button",
+              "text": "✦ 切换神谕师",
+              "fontSize": 18,
+              "textColor": { "r": 0.90, "g": 0.80, "b": 0.60, "a": 1.0 },
+              "sprite": "btn_pill_outline_gold",
+              "color": { "r": 0.15, "g": 0.08, "b": 0.20, "a": 0.9 },
+              "size": { "x": 180, "y": 50 },
+              "position": { "x": 250, "y": 0 }
+            }
+          ]
+        },
+        {
+          "name": "[ScrollRect]ChatScrollContainer",
+          "type": "ScrollRect",
+          "horizontalScroll": false,
+          "verticalScroll": true,
+          "layoutType": "Vertical",
+          "childAlignment": "UpperCenter",
+          "spacing": 20,
+          "paddingTop": 20,
+          "paddingBottom": 40,
+          "size": { "x": 750, "y": 880 },
+          "position": { "x": 0, "y": 60 },
+          "children": [
+            {
+              "name": "ContextBubble",
+              "type": "Panel",
+              "sprite": "chat_bubble_right_dark",
+              "color": { "r": 0.15, "g": 0.10, "b": 0.20, "a": 0.9 },
+              "size": { "x": 680, "y": 130 },
+              "children": [
+                {
+                  "name": "ContextTagText",
+                  "type": "Text",
+                  "text": "@Ava",
+                  "fontSize": 18,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.90, "g": 0.80, "b": 0.60, "a": 1.0 },
+                  "size": { "x": 560, "y": 30 },
+                  "position": { "x": -20, "y": 35 }
+                },
+                {
+                  "name": "ContextDescText",
+                  "type": "Text",
+                  "text": "创建好友 · 完整出生资料可用于占卜",
+                  "fontSize": 14,
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.65, "g": 0.65, "b": 0.70, "a": 1.0 },
+                  "size": { "x": 560, "y": 30 },
+                  "position": { "x": -20, "y": 10 }
+                },
+                {
+                  "name": "DividerLine",
+                  "type": "Panel",
+                  "color": { "r": 0.50, "g": 0.40, "b": 0.60, "a": 0.3 },
+                  "size": { "x": 640, "y": 2 },
+                  "position": { "x": 0, "y": -15 }
+                },
+                {
+                  "name": "ContextQuestionText",
+                  "type": "Text",
+                  "text": "问：我和 TA 最近的关系走向如何？",
+                  "fontSize": 16,
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.95, "g": 0.95, "b": 0.95, "a": 1.0 },
+                  "size": { "x": 640, "y": 30 },
+                  "position": { "x": 20, "y": -35 }
+                },
+                {
+                  "name": "[Button]CloseContext",
+                  "type": "Button",
+                  "text": "X",
+                  "fontSize": 18,
+                  "textColor": { "r": 0.85, "g": 0.85, "b": 0.90, "a": 1.0 },
+                  "sprite": "btn_circle_outline_gray",
+                  "color": { "r": 0.10, "g": 0.08, "b": 0.15, "a": 0.8 },
+                  "size": { "x": 40, "y": 40 },
+                  "position": { "x": 300, "y": 25 }
+                }
+              ]
+            },
+            {
+              "name": "BotMessageBubble",
+              "type": "Panel",
+              "sprite": "chat_bubble_left_dark",
+              "color": { "r": 0.10, "g": 0.08, "b": 0.15, "a": 0.85 },
+              "size": { "x": 680, "y": 80 },
+              "children": [
+                {
+                  "name": "MessageText",
+                  "type": "Text",
+                  "text": "已带入 @Ava 的关系上下文。你可以直接问：\n我和 TA 最近的关系走向如何？",
+                  "fontSize": 16,
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.90, "g": 0.90, "b": 0.90, "a": 1.0 },
+                  "size": { "x": 600, "y": 60 },
+                  "position": { "x": 0, "y": 0 }
+                }
+              ]
+            },
+            {
+              "name": "FriendContextCard",
+              "type": "Panel",
+              "sprite": "panel_rounded_outline_gold",
+              "color": { "r": 0.12, "g": 0.08, "b": 0.18, "a": 0.85 },
+              "size": { "x": 680, "y": 380 },
+              "children": [
+                {
+                  "name": "CardSubtitle",
+                  "type": "Text",
+                  "text": "FRIEND CONTEXT",
+                  "fontSize": 14,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.90, "g": 0.80, "b": 0.60, "a": 1.0 },
+                  "size": { "x": 600, "y": 20 },
+                  "position": { "x": 0, "y": 150 }
+                },
+                {
+                  "name": "CardTitle",
+                  "type": "Text",
+                  "text": "@Ava 可以这样问",
+                  "fontSize": 24,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.95, "g": 0.95, "b": 0.95, "a": 1.0 },
+                  "size": { "x": 600, "y": 40 },
+                  "position": { "x": 0, "y": 115 }
+                },
+                {
+                  "name": "QuestionRow1",
+                  "type": "Panel",
+                  "sprite": "btn_pill_outline_purple",
+                  "color": { "r": 0.20, "g": 0.15, "b": 0.30, "a": 0.6 },
+                  "size": { "x": 600, "y": 50 },
+                  "position": { "x": 0, "y": 50 },
+                  "children": [
+                    {
+                      "name": "QText1",
+                      "type": "Text",
+                      "text": "我和 Ava 最近的关系走向如何？",
+                      "fontSize": 16,
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.90, "g": 0.90, "b": 0.95, "a": 1.0 },
+                      "size": { "x": 560, "y": 30 },
+                      "position": { "x": 0, "y": 0 }
+                    },
+                    {
+                      "name": "[Button]AskQ1",
+                      "type": "Button",
+                      "text": "",
+                      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                      "size": { "x": 600, "y": 50 },
+                      "position": { "x": 0, "y": 0 }
+                    }
+                  ]
+                },
+                {
+                  "name": "QuestionRow2",
+                  "type": "Panel",
+                  "sprite": "btn_pill_outline_purple",
+                  "color": { "r": 0.20, "g": 0.15, "b": 0.30, "a": 0.6 },
+                  "size": { "x": 600, "y": 50 },
+                  "position": { "x": 0, "y": -15 },
+                  "children": [
+                    {
+                      "name": "QText2",
+                      "type": "Text",
+                      "text": "我和 Ava 之间真正的阻碍是什么？",
+                      "fontSize": 16,
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.90, "g": 0.90, "b": 0.95, "a": 1.0 },
+                      "size": { "x": 560, "y": 30 },
+                      "position": { "x": 0, "y": 0 }
+                    },
+                    {
+                      "name": "[Button]AskQ2",
+                      "type": "Button",
+                      "text": "",
+                      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                      "size": { "x": 600, "y": 50 },
+                      "position": { "x": 0, "y": 0 }
+                    }
+                  ]
+                },
+                {
+                  "name": "QuestionRow3",
+                  "type": "Panel",
+                  "sprite": "btn_pill_outline_purple",
+                  "color": { "r": 0.20, "g": 0.15, "b": 0.30, "a": 0.6 },
+                  "size": { "x": 600, "y": 50 },
+                  "position": { "x": 0, "y": -80 },
+                  "children": [
+                    {
+                      "name": "QText3",
+                      "type": "Text",
+                      "text": "Ava 现在对这段关系的感受是什么？",
+                      "fontSize": 16,
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.90, "g": 0.90, "b": 0.95, "a": 1.0 },
+                      "size": { "x": 560, "y": 30 },
+                      "position": { "x": 0, "y": 0 }
+                    },
+                    {
+                      "name": "[Button]AskQ3",
+                      "type": "Button",
+                      "text": "",
+                      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                      "size": { "x": 600, "y": 50 },
+                      "position": { "x": 0, "y": 0 }
+                    }
+                  ]
+                },
+                {
+                  "name": "QuestionRow4",
+                  "type": "Panel",
+                  "sprite": "btn_pill_outline_purple",
+                  "color": { "r": 0.20, "g": 0.15, "b": 0.30, "a": 0.6 },
+                  "size": { "x": 600, "y": 50 },
+                  "position": { "x": 0, "y": -145 },
+                  "children": [
+                    {
+                      "name": "QText4",
+                      "type": "Text",
+                      "text": "我应该如何更温和地靠近 Ava？",
+                      "fontSize": 16,
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.90, "g": 0.90, "b": 0.95, "a": 1.0 },
+                      "size": { "x": 560, "y": 30 },
+                      "position": { "x": 0, "y": 0 }
+                    },
+                    {
+                      "name": "[Button]AskQ4",
+                      "type": "Button",
+                      "text": "",
+                      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+                      "size": { "x": 600, "y": 50 },
+                      "position": { "x": 0, "y": 0 }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "InputArea",
+          "type": "Panel",
+          "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+          "size": { "x": 750, "y": 100 },
+          "position": { "x": 0, "y": -430 },
+          "children": [
+            {
+              "name": "[Button]LeftAction",
+              "type": "Button",
+              "text": "✧",
+              "fontSize": 24,
+              "textColor": { "r": 0.85, "g": 0.75, "b": 0.95, "a": 1.0 },
+              "sprite": "btn_circle_purple",
+              "color": { "r": 0.30, "g": 0.20, "b": 0.45, "a": 0.9 },
+              "size": { "x": 60, "y": 60 },
+              "position": { "x": -310, "y": 0 }
+            },
+            {
+              "name": "[InputField]ChatInput",
+              "type": "InputField",
+              "text": "",
+              "placeholderText": "向塔罗师提问...",
+              "contentType": "Standard",
+              "fontSize": 18,
+              "sprite": "input_pill_outline_gray",
+              "textColor": { "r": 0.95, "g": 0.95, "b": 0.95, "a": 1.0 },
+              "size": { "x": 520, "y": 60 },
+              "position": { "x": 0, "y": 0 }
+            },
+            {
+              "name": "[Button]RightAction",
+              "type": "Button",
+              "text": "✦",
+              "fontSize": 24,
+              "textColor": { "r": 0.90, "g": 0.80, "b": 0.60, "a": 1.0 },
+              "sprite": "btn_circle_purple",
+              "color": { "r": 0.30, "g": 0.20, "b": 0.45, "a": 0.9 },
+              "size": { "x": 60, "y": 60 },
+              "position": { "x": 310, "y": 0 }
+            }
+          ]
+        },
+        {
+          "name": "BottomNavBarContainer",
+          "type": "Panel",
+          "sprite": "nav_bar_bg",
+          "color": { "r": 0.05, "g": 0.03, "b": 0.08, "a": 1.0 },
+          "size": { "x": 750, "y": 140 },
+          "position": { "x": 0, "y": -597 },
+          "children": [
+            {
+              "name": "[ToggleGroup]BottomNav",
+              "type": "ToggleGroup",
+              "allowSwitchOff": false,
+              "spacing": 40,
+              "size": { "x": 700, "y": 100 },
+              "position": { "x": 0, "y": 10 },
+              "children": [
+                {
+                  "name": "[Toggle]TabOracle",
+                  "type": "Toggle",
+                  "isOn": false,
+                  "text": "今日神谕",
+                  "fontSize": 16,
+                  "textColor": { "r": 0.55, "g": 0.55, "b": 0.55, "a": 1.0 },
+                  "backgroundSprite": "tab_icon_oracle_normal",
+                  "checkmarkSprite": "tab_icon_oracle_active",
+                  "size": { "x": 120, "y": 90 }
+                },
+                {
+                  "name": "[Toggle]TabChat",
+                  "type": "Toggle",
+                  "isOn": true,
+                  "text": "对话",
+                  "fontSize": 16,
+                  "textColor": { "r": 0.85, "g": 0.75, "b": 0.90, "a": 1.0 },
+                  "backgroundSprite": "tab_icon_chat_normal",
+                  "checkmarkSprite": "tab_icon_chat_active",
+                  "size": { "x": 120, "y": 90 }
+                },
+                {
+                  "name": "[Toggle]TabFriends",
+                  "type": "Toggle",
+                  "isOn": false,
+                  "text": "朋友",
+                  "fontSize": 16,
+                  "textColor": { "r": 0.55, "g": 0.55, "b": 0.55, "a": 1.0 },
+                  "backgroundSprite": "tab_icon_friends_normal",
+                  "checkmarkSprite": "tab_icon_friends_active",
+                  "size": { "x": 120, "y": 90 }
+                },
+                {
+                  "name": "[Toggle]TabProfile",
+                  "type": "Toggle",
+                  "isOn": false,
+                  "text": "我的",
+                  "fontSize": 16,
+                  "textColor": { "r": 0.55, "g": 0.55, "b": 0.55, "a": 1.0 },
+                  "backgroundSprite": "tab_icon_profile_normal",
+                  "checkmarkSprite": "tab_icon_profile_active",
+                  "size": { "x": 120, "y": 90 }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

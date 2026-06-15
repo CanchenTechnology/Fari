@@ -987,10 +987,19 @@ namespace UGUIBuilder
             {
                 HorizontalOrVerticalLayoutGroup lg;
                 if (elem.layoutType == "Horizontal")
-                    lg = go.AddComponent<HorizontalLayoutGroup>();
+                {
+                    // 安全机制：先查后加
+                    lg = go.GetComponent<HorizontalLayoutGroup>();
+                    if (lg == null) lg = go.AddComponent<HorizontalLayoutGroup>();
+                }
                 else
-                    lg = go.AddComponent<VerticalLayoutGroup>();
+                {
+                    // 安全机制：先查后加
+                    lg = go.GetComponent<VerticalLayoutGroup>();
+                    if (lg == null) lg = go.AddComponent<VerticalLayoutGroup>();
+                }
 
+                // 正常执行后续属性赋值，此时 lg 绝对不可能为 null
                 lg.padding = new RectOffset(
                     elem.paddingLeft, elem.paddingRight,
                     elem.paddingTop, elem.paddingBottom);
