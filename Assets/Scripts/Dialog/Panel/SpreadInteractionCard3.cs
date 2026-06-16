@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using GamerFrameWork;
+using GamerFrameWork.UIFrameWork;
 using UnityEngine;
 using UnityEngine.UI;
 using XFGameFrameWork;
@@ -26,14 +27,9 @@ public class SpreadInteractionCard3 : MonoBehaviour
     public Text drawCardBtnText;           // 按钮文字（可选），默认"开始抽牌"
 
     [Header("卡牌槽位（左→中→右）")]
-    public Image cardSlot1Image;
-    public Image cardSlot2Image;
-    public Image cardSlot3Image;
-
-    [Header("槽位标签")]
-    public Text slot1Label;                // 如"当下"
-    public Text slot2Label;                // 如"阻碍"
-    public Text slot3Label;                // 如"走向"
+    public CardSlotItem cardSlotItem1;
+    public CardSlotItem cardSlotItem2;
+    public CardSlotItem cardSlotItem3;
 
     [Header("卡牌背面（占位图）")]
     public Sprite cardBackSprite;
@@ -87,6 +83,9 @@ public class SpreadInteractionCard3 : MonoBehaviour
 
         if (_revealCoroutine != null)
             StopCoroutine(_revealCoroutine);
+
+        // 清理桥接订阅
+        SpreadShuffleBridge.ShuffleCompleted -= OnShuffleCompleted;
     }
 
     // ========== 对外 API ==========
@@ -154,31 +153,48 @@ public class SpreadInteractionCard3 : MonoBehaviour
 
         drawCardBtn.interactable = false;
         if (drawCardBtnText != null)
-            drawCardBtnText.text = "抽牌中...";
+            drawCardBtnText.text = "正在打开...";
 
-        _revealCoroutine = StartCoroutine(DrawAndRevealCards());
+        // 设置桥接数据，打开洗牌界面
+        SpreadShuffleBridge.PendingSpread = _currentSpread;
+        SpreadShuffleBridge.ShuffleCompleted += OnShuffleCompleted;
+
+        UIModule.Instance.PopUpWindow<TarorSingleSpreadShuffleUI>();
     }
 
-    private IEnumerator DrawAndRevealCards()
+    /// <summary>
+    /// 洗牌界面完成后的回调
+    /// </summary>
+    private void OnShuffleCompleted(List<(TarotCard card, bool upright)> drawnCards)
     {
-        // 1. 从塔罗牌组随机抽 3 张（不重复）
-        _drawnCards = TarotDeck.DrawMultiple(3);
+        SpreadShuffleBridge.ShuffleCompleted -= OnShuffleCompleted;
 
-        // 2. 同步到 DivinationEngine（如果有活跃会话）
-        SyncToDivinationEngine();
+        if (drawnCards == null || drawnCards.Count == 0) return;
 
-        yield return new WaitForSeconds(0.3f);
+        _drawnCards = drawnCards;
 
-        // 3. 逐一翻牌
-        yield return StartCoroutine(FlipCard(cardSlot1Image, _drawnCards[0]));
+        // 逐一翻牌揭示
+        _revealCoroutine = StartCoroutine(RevealCardsRoutine());
+    }
+
+    private IEnumerator RevealCardsRoutine()
+    {
+        // 逐一翻牌
+        yield return StartCoroutine(FlipCard(cardSlotItem1?.cardImage, _drawnCards[0]));
+        if (cardSlotItem1 != null)
+            cardSlotItem1.cardTag.text = $"{_drawnCards[0].card.nameZh}（{(_drawnCards[0].upright ? "正" : "逆")}）";
         yield return new WaitForSeconds(cardRevealGap);
 
-        yield return StartCoroutine(FlipCard(cardSlot2Image, _drawnCards[1]));
+        yield return StartCoroutine(FlipCard(cardSlotItem2?.cardImage, _drawnCards[1]));
+        if (cardSlotItem2 != null)
+            cardSlotItem2.cardTag.text = $"{_drawnCards[1].card.nameZh}（{(_drawnCards[1].upright ? "正" : "逆")}）";
         yield return new WaitForSeconds(cardRevealGap);
 
-        yield return StartCoroutine(FlipCard(cardSlot3Image, _drawnCards[2]));
+        yield return StartCoroutine(FlipCard(cardSlotItem3?.cardImage, _drawnCards[2]));
+        if (cardSlotItem3 != null)
+            cardSlotItem3.cardTag.text = $"{_drawnCards[2].card.nameZh}（{(_drawnCards[2].upright ? "正" : "逆")}）";
 
-        // 4. 完成
+        // 完成
         _cardsDrawn = true;
 
         if (drawCardBtn != null)
@@ -242,16 +258,13 @@ public class SpreadInteractionCard3 : MonoBehaviour
     {
         if (_currentSpread?.positions == null) return;
 
+        var slots = new[] { cardSlotItem1, cardSlotItem2, cardSlotItem3 };
+
         // 按顺序映射槽位标签
-        for (int i = 0; i < _currentSpread.positions.Count && i < 3; i++)
+        for (int i = 0; i < _currentSpread.positions.Count && i < slots.Length; i++)
         {
-            string label = _currentSpread.positions[i].label;
-            switch (i)
-            {
-                case 0: if (slot1Label != null) slot1Label.text = label; break;
-                case 1: if (slot2Label != null) slot2Label.text = label; break;
-                case 2: if (slot3Label != null) slot3Label.text = label; break;
-            }
+            if (slots[i] != null)
+                slots[i].cardTag.text = _currentSpread.positions[i].label;
         }
     }
 
@@ -331,16 +344,7 @@ public class SpreadInteractionCard3 : MonoBehaviour
     private Sprite LoadCardSprite(string cardId)
     {
         if (string.IsNullOrEmpty(cardId)) return cardBackSprite;
-
-        // 优先级：TarotCards/ → Cards/ → CardBack
-        var sprite = Resources.Load<Sprite>($"TarotCards/{cardId}");
-        if (sprite != null) return sprite;
-
-        sprite = Resources.Load<Sprite>($"Cards/{cardId}");
-        if (sprite != null) return sprite;
-
-        Debug.LogWarning($"[SpreadInteractionCard3] 未找到卡牌图片: {cardId}");
-        return cardBackSprite;
+        return TarotSpriteLoader.Load(cardId) ?? cardBackSprite;
     }
 
     /// <summary>
@@ -361,15 +365,15 @@ public class SpreadInteractionCard3 : MonoBehaviour
         // 恢复卡牌背面
         if (cardBackSprite != null)
         {
-            if (cardSlot1Image != null) cardSlot1Image.sprite = cardBackSprite;
-            if (cardSlot2Image != null) cardSlot2Image.sprite = cardBackSprite;
-            if (cardSlot3Image != null) cardSlot3Image.sprite = cardBackSprite;
+            if (cardSlotItem1 != null) cardSlotItem1.cardImage.sprite = cardBackSprite;
+            if (cardSlotItem2 != null) cardSlotItem2.cardImage.sprite = cardBackSprite;
+            if (cardSlotItem3 != null) cardSlotItem3.cardImage.sprite = cardBackSprite;
         }
 
         // 恢复 Transform
-        ResetCardTransform(cardSlot1Image);
-        ResetCardTransform(cardSlot2Image);
-        ResetCardTransform(cardSlot3Image);
+        ResetCardTransform(cardSlotItem1?.cardImage);
+        ResetCardTransform(cardSlotItem2?.cardImage);
+        ResetCardTransform(cardSlotItem3?.cardImage);
 
         // 按钮状态
         if (drawCardBtn != null)
@@ -383,9 +387,9 @@ public class SpreadInteractionCard3 : MonoBehaviour
         SetActionButtonsVisible(false);
 
         // 清空标签
-        if (slot1Label != null) slot1Label.text = "";
-        if (slot2Label != null) slot2Label.text = "";
-        if (slot3Label != null) slot3Label.text = "";
+        if (cardSlotItem1 != null) cardSlotItem1.cardTag.text = "";
+        if (cardSlotItem2 != null) cardSlotItem2.cardTag.text = "";
+        if (cardSlotItem3 != null) cardSlotItem3.cardTag.text = "";
     }
 
     private void ResetCardTransform(Image img)

@@ -60,12 +60,21 @@
 5. 创建
 
 #### 获取 App ID 和 App Secret
+点击 应用设置 下面的 基本。
 
+进入“基本”设置页面后，你就可以看到你的 应用编号 (App ID) 和 应用密钥 (App Secret) 了。点击密钥旁边的“显示”按钮（可能需要输入你的 Facebook 密码），然后把这两个值复制到 Firebase 控制台中即可。
 1. 应用 Dashboard → **Settings** → **Basic**
 2. 复制 **App ID** 和 **App Secret**（App Secret 需要点击 Show 后输入密码确认）
 3. 往下滚动，点击 **+ Add Platform** → 选择 **iOS** 和 **Android**
 4. Android: 填入 Package Name（`com.canchentechnology.fari`）
 5. iOS: 填入 Bundle ID（`com.canchentechnology.fari`）
+
+链接FireBase:
+1.点击左侧的「用例」：在屏幕左侧的导航菜单里，找到并点击 「用例」 (Use cases)。
+2.展开登录卡片：在右侧的主界面中，你会看到 「用 Facebook 登录来验证用户身份并请求访问其数据」 这个卡片，点击它（或者点击它右侧的 > 箭头进入自定义页面）。
+3.进入设置：进入该用例后，找到并点击 「设置」 (Settings) 或 「转到设置」 按钮。
+4.粘贴链接：向下滚动页面，你就能找到 「有效的 OAuth 跳转 URI」 (Valid OAuth Redirect URIs) 这一栏了。把你在 Firebase 复制的重定向链接粘贴进这个输入框里。
+5.保存：最后别忘了点击页面底部的 「保存更改」。
 
 #### 添加 Facebook Login 产品
 

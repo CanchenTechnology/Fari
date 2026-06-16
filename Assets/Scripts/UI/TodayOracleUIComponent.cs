@@ -16,7 +16,7 @@ public class TodayOracleUIComponent:MonoBehaviour
 	public Button switchDivinerButton;
 	public Button flipCardButton;
 	public Transform ReadingCardContainerTransform;
-	public Button DeepChatButton;
+
 	public void InitComponent(WindowBase target)
 	{
 	    //组件事件绑定
@@ -25,6 +25,6 @@ public class TodayOracleUIComponent:MonoBehaviour
 	    TodayOracleUI mWindow=(TodayOracleUI)target;
 	    target.AddButtonClickListener(switchDivinerButton,mWindow.OnswitchDivinerButtonClick);
 	    target.AddButtonClickListener(flipCardButton,mWindow.OnflipCardButtonClick);
-	    target.AddButtonClickListener(DeepChatButton,mWindow.OnDeepChatButtonClick);
+
 	}
 }

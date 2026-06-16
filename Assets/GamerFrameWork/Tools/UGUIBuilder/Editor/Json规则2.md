@@ -2,8 +2,8 @@ UGUI Builder JSON Schema 参考本文档描述 UGUI Builder 工具接受的 JSON
 给 AI 的提示：请严格遵循本文档的字段名、枚举值和嵌套规则生成 JSON。字段名大小写敏感。
 特别注意：所有涉及文本的组件（Text、Button、InputField 等），其字体颜色（textColor）必须严格观察并跟随用户提供的贴图/UI设计稿中的实际颜色进行提取，切勿直接盲目使用默认的纯黑或纯白。  JSON 根结构JSON{
   "screenName": "string（必填，Prefab名）",
-  "resolution": { "x": 750, "y": 1334 },
-  "matchWidthOrHeight": 0.5,
+  "resolution": { "x": 1080, "y": 1920 },
+  "matchWidthOrHeight": 0.1,
   "includeMask": true,
   "maskColor": { "r": 0, "g": 0, "b": 0, "a": 0.67 },
   "defaultFont": "Assets/...（可选字体路径）",

@@ -31,6 +31,8 @@ public enum MsgType
     DailyCard, //今日塔罗牌
 
     InteractionCard3, //三排牌阵
+    InteractionCard1, //单排牌阵（单张镜像牌阵）
+    InteractionCard5, //五排牌阵（五牌选择门牌阵）
 }
 
 /// <summary>
@@ -45,7 +47,7 @@ public class ChatMessageData
     public string content;
     public List<string> options; // AI回复的选项按钮文本
     public DivinerType divinerType; // 当messageType为AI时使用
-    public string spreadKind;       // 牌阵类型（仅 MsgType.InteractionCard3 使用）
+    public string spreadKind;       // 牌阵类型（InteractionCard1/3/5 使用）
 }
 
 /// <summary>
@@ -288,6 +290,58 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         Debug.Log($"[DialogSystem] 添加 InteractionCard3 消息, spreadKind={spreadKind}");
         return data;
     }
+
+    /// <summary>
+    /// 添加单排牌阵互动卡片消息（AI 主动触发）
+    /// </summary>
+    /// <param name="content">AI 的引导文案</param>
+    /// <param name="spreadKind">牌阵类型，如 "single_mirror"</param>
+    public ChatMessageData AddInteractionCard1Message(string content, string spreadKind)
+    {
+        ChatMessageData data = new ChatMessageData
+        {
+            id = mMessageIdCounter++,
+            roleType = DialogRoleType.AI,
+            messageType = MsgType.InteractionCard1,
+            content = content,
+            spreadKind = spreadKind ?? "single_mirror",
+            options = GetTarotOptions(),
+            divinerType = CurrentDivinerType
+        };
+        mChatMessageList.Add(data);
+
+        // 同时添加到 API 历史
+        mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", content));
+
+        Debug.Log($"[DialogSystem] 添加 InteractionCard1 消息, spreadKind={spreadKind}");
+        return data;
+    }
+
+    /// <summary>
+    /// 添加五排牌阵互动卡片消息（AI 主动触发）
+    /// </summary>
+    /// <param name="content">AI 的引导文案</param>
+    /// <param name="spreadKind">牌阵类型，如 "five_choice_gate"</param>
+    public ChatMessageData AddInteractionCard5Message(string content, string spreadKind)
+    {
+        ChatMessageData data = new ChatMessageData
+        {
+            id = mMessageIdCounter++,
+            roleType = DialogRoleType.AI,
+            messageType = MsgType.InteractionCard5,
+            content = content,
+            spreadKind = spreadKind ?? "five_choice_gate",
+            options = GetTarotOptions(),
+            divinerType = CurrentDivinerType
+        };
+        mChatMessageList.Add(data);
+
+        // 同时添加到 API 历史
+        mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", content));
+
+        Debug.Log($"[DialogSystem] 添加 InteractionCard5 消息, spreadKind={spreadKind}");
+        return data;
+    }
     /// <summary>
     /// 获取所有消息
     /// </summary>
@@ -414,6 +468,14 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             + $"Scene={payload.scene}, Stage=auto-detected, Voice={GetOracleVoiceId()}");
 
         return messages;
+    }
+
+    /// <summary>
+    /// 获取当前 MemorySource（供 DailyOracleService 等外部模块读取）
+    /// </summary>
+    public MemorySource GetMemorySource()
+    {
+        return memorySource;
     }
 
     /// <summary>

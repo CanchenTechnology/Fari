@@ -42,6 +42,7 @@ namespace GamerFrameWork.UIFrameWork
         /// UI节点
         /// </summary>
         private Transform mUIRoot;
+        public Transform UIRoot { get { return mUIRoot; } }
         /// <summary>
         /// 窗口配置表
         /// </summary>
@@ -390,7 +391,7 @@ namespace GamerFrameWork.UIFrameWork
             var path = mWindowConfig.GetWindowData(wndName)?.path;
             if (string.IsNullOrEmpty(path))
             {
-                    Debug.LogError($"[LoadWindow] path is null, wndName={wndName}");
+                Debug.LogError($"[LoadWindow] path is null, wndName={wndName}");
                 return null;
             }
 

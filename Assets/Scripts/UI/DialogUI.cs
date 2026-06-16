@@ -53,6 +53,7 @@ public class DialogUI : WindowBase
         // 订阅事件
         EventSystem.AddEvent(GameDataStr.RefreshChatUI, OnRefreshChatUI);
         EventSystem.AddEventListener<string>(GameDataStr.QuickQuestionSelected, OnQuickQuestionSelected);
+        EventSystem.AddEventListener<string>(GameDataStr.CardTopicSelected, OnCardTopicSelected);
 
         UpdateDivinerInfo();
     }
@@ -71,6 +72,7 @@ public class DialogUI : WindowBase
     {
         EventSystem.RemoveEvent(GameDataStr.RefreshChatUI, OnRefreshChatUI);
         EventSystem.RemoveEventListener<string>(GameDataStr.QuickQuestionSelected, OnQuickQuestionSelected);
+        EventSystem.RemoveEventListener<string>(GameDataStr.CardTopicSelected, OnCardTopicSelected);
         base.OnDestroy();
     }
     #endregion
@@ -200,10 +202,10 @@ public class DialogUI : WindowBase
                     // 隐藏加载中提示
                     HideLoadingIndicator();
 
-                    // ---- 检查是否需要展示 InteractionCard3 ----
-                    if (ShouldTriggerInteractionCard3())
+                    // ---- 检查是否需要展示 InteractionCard（1/3/5 牌阵）----
+                    if (ShouldTriggerInteractionCard())
                     {
-                        AddInteractionCard3ToChat(aiResponse);
+                        AddInteractionCardToChat(aiResponse);
                     }
                     else
                     {
@@ -250,6 +252,47 @@ public class DialogUI : WindowBase
         dialogSystem.AddAtFriendMessage("");
         UpdateChatScrollView();
         Debug.Log("关联好友");
+    }
+
+    /// <summary>
+    /// 外部调用：从其他界面（如 CompleteInterpretationUI）发送消息并触发 AI 对话
+    /// </summary>
+    public void SendMessageFromExternal(string message)
+    {
+        if (string.IsNullOrEmpty(message)) return;
+        if (dialogSystem == null) return;
+
+        if (mIsLoading)
+        {
+            Debug.LogWarning("[DialogUI] AI 正在回复中，消息已进入队列");
+        }
+
+        // 如果有今日卡牌数据，同步到 DialogSystem
+        var oracleService = DailyOracleService.Instance;
+        if (oracleService?.CurrentCard != null)
+        {
+            var cardPayload = oracleService.GetTodayCardPayload();
+            if (cardPayload != null)
+                dialogSystem.SetTodayCardPayload(cardPayload);
+        }
+
+        // 添加用户消息
+        dialogSystem.AddUserMessage(message);
+
+        // 更新 UI
+        UpdateChatScrollView();
+
+        // 发送到 AI
+        SendMessageToAI();
+    }
+
+    /// <summary>
+    /// 卡牌话题选中事件回调（从 CompleteInterpretationUI 通过 EventSystem 触发）
+    /// </summary>
+    private void OnCardTopicSelected(string topic)
+    {
+        Debug.Log($"[DialogUI] 卡牌话题选中: {topic}");
+        SendMessageFromExternal(topic);
     }
     private void UpdateChatScrollView()
     {
@@ -623,53 +666,98 @@ public class DialogUI : WindowBase
 
     #endregion
 
-    #region InteractionCard3 三牌阵
+    #region InteractionCard 互动牌阵（1/3/5 牌阵）
 
     /// <summary>
-    /// 判断当前是否应该触发三牌阵交互卡
-    /// AI 返回后，如果占卜引擎处于 ChoosingSpread 阶段，直接展示 InteractionCard3
+    /// 判断当前是否应该触发互动牌阵交互卡
+    /// AI 返回后，如果占卜引擎处于 ChoosingSpread 阶段，展示 InteractionCard
     /// </summary>
-    private bool ShouldTriggerInteractionCard3()
+    private bool ShouldTriggerInteractionCard()
     {
         if (divinationEngine == null) return false;
 
         var phase = divinationEngine.CurrentPhase;
-        // ChoosingSpread 阶段 → AI 已给出牌阵计划，展示三牌阵交互卡
+        // ChoosingSpread 阶段 → AI 已给出牌阵计划，展示交互卡
         return phase == DivinationPhase.ChoosingSpread;
     }
 
     /// <summary>
-    /// 在对话中添加三牌阵互动卡片消息
+    /// 在对话中添加互动牌阵卡片消息（根据牌阵卡牌数自动选择 1/3/5 类型）
     /// </summary>
-    private void AddInteractionCard3ToChat(string aiResponse)
+    private void AddInteractionCardToChat(string aiResponse)
     {
-        // 获取当前的牌阵类型（从 DivinationEngine 的第一个 3 牌阵中取）
-        string spreadKind = "self_repair"; // 默认：自我修复·三步牌阵
+        // 从 DivinationEngine 获取合适的牌阵定义，优先取会话中已选中的牌阵
+        int targetCardCount = GetCurrentSpreadCardCount();
 
+        // 查找对应卡牌数的牌阵
+        string spreadKind = FindSpreadKindByCardCount(targetCardCount);
+
+        switch (targetCardCount)
+        {
+            case 1:
+                dialogSystem.AddInteractionCard1Message(aiResponse, spreadKind);
+                Debug.Log($"[DialogUI] 触发 InteractionCard1, spreadKind={spreadKind}");
+                break;
+            case 5:
+                dialogSystem.AddInteractionCard5Message(aiResponse, spreadKind);
+                Debug.Log($"[DialogUI] 触发 InteractionCard5, spreadKind={spreadKind}");
+                break;
+            default: // 3（默认）
+                dialogSystem.AddInteractionCard3Message(aiResponse, spreadKind);
+                Debug.Log($"[DialogUI] 触发 InteractionCard3, spreadKind={spreadKind}");
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 获取当前占卜会话预期的卡牌数量
+    /// </summary>
+    private int GetCurrentSpreadCardCount()
+    {
+        // 优先从当前会话中获取
+        if (divinationEngine?.CurrentSession != null
+            && !string.IsNullOrEmpty(divinationEngine.CurrentSession.spreadKind))
+        {
+            var def = divinationEngine.GetSpreadDefinition(divinationEngine.CurrentSession.spreadKind);
+            if (def != null) return def.cardCount;
+        }
+
+        // 回退：默认 3 张牌阵
+        return 3;
+    }
+
+    /// <summary>
+    /// 根据卡牌数量查找合适的牌阵 kind
+    /// </summary>
+    private string FindSpreadKindByCardCount(int cardCount)
+    {
         if (divinationEngine?.SpreadDefinitions != null)
         {
             foreach (var sd in divinationEngine.SpreadDefinitions)
             {
-                if (sd.cardCount == 3)
-                {
-                    spreadKind = sd.kind;
-                    break;
-                }
+                if (sd.cardCount == cardCount)
+                    return sd.kind;
             }
         }
 
-        dialogSystem.AddInteractionCard3Message(aiResponse, spreadKind);
-        Debug.Log($"[DialogUI] 触发 InteractionCard3, spreadKind={spreadKind}");
+        // 回退默认值
+        return cardCount switch
+        {
+            1 => "single_mirror",
+            5 => "five_choice_gate",
+            _ => "self_repair"
+        };
     }
 
+    // ---- WireUp 事件绑定 ----
+
     /// <summary>
-    /// 为 ChatItem 中的 SpreadInteractionCard3 绑定事件（在列表项渲染时调用）
+    /// 为 ChatItem 中的 SpreadInteractionCard3 绑定事件
     /// </summary>
     public void WireUpInteractionCard3(SpreadInteractionCard3 card)
     {
         if (card == null) return;
 
-        // 移除旧的监听，避免重复绑定
         card.OnSelectSpreadClicked -= HandleSpreadFromCard;
         card.OnContinueAskClicked -= HandleContinueAskFromCard;
         card.OnCheckTomorrowClicked -= HandleCheckTomorrowFromCard;
@@ -678,6 +766,38 @@ public class DialogUI : WindowBase
         card.OnContinueAskClicked += HandleContinueAskFromCard;
         card.OnCheckTomorrowClicked += HandleCheckTomorrowFromCard;
     }
+
+    /// <summary>
+    /// 为 ChatItem 中的 SpreadInteractionCard1 绑定事件
+    /// </summary>
+    public void WireUpInteractionCard1(SpreadInteractionCard1 card)
+    {
+        if (card == null) return;
+
+        card.OnSelectSpreadClicked -= HandleSpreadFromCard;
+        card.OnContinueAskClicked -= HandleContinueAskFromCard;
+
+        card.OnSelectSpreadClicked += HandleSpreadFromCard;
+        card.OnContinueAskClicked += HandleContinueAskFromCard;
+    }
+
+    /// <summary>
+    /// 为 ChatItem 中的 SpreadInteractionCard5 绑定事件
+    /// </summary>
+    public void WireUpInteractionCard5(SpreadInteractionCard5 card)
+    {
+        if (card == null) return;
+
+        card.OnSelectSpreadClicked -= HandleSpreadFromCard;
+        card.OnContinueAskClicked -= HandleContinueAskFromCard;
+        card.OnChatFirstClicked -= HandleChatFirstFromCard;
+
+        card.OnSelectSpreadClicked += HandleSpreadFromCard;
+        card.OnContinueAskClicked += HandleContinueAskFromCard;
+        card.OnChatFirstClicked += HandleChatFirstFromCard;
+    }
+
+    // ---- 事件处理器 ----
 
     /// <summary>
     /// 牌阵内「选择牌阵」→ 展开牌阵选项列表
@@ -701,7 +821,7 @@ public class DialogUI : WindowBase
     }
 
     /// <summary>
-    /// 牌阵内「明天再看」→ 保存明日钩子
+    /// 牌阵内「明天再看」（仅三牌阵）→ 保存明日钩子
     /// </summary>
     private void HandleCheckTomorrowFromCard()
     {
@@ -710,9 +830,14 @@ public class DialogUI : WindowBase
             && divinationEngine.CurrentSession.lockedCards != null
             && divinationEngine.CurrentSession.lockedCards.Count > 0)
         {
-            // 用已抽到的牌构建更有意义的触发文本
             var cards = divinationEngine.CurrentSession.lockedCards;
-            triggerText = $"回顾牌阵：{cards[0].cardName}、{cards[1].cardName}、{cards[2].cardName}";
+            var names = new System.Text.StringBuilder();
+            for (int i = 0; i < cards.Count && i < 5; i++)
+            {
+                if (i > 0) names.Append("、");
+                names.Append(cards[i].cardName);
+            }
+            triggerText = $"回顾牌阵：{names}";
         }
 
         var hook = divinationEngine?.CreateTomorrowHook(triggerText);
@@ -725,6 +850,18 @@ public class DialogUI : WindowBase
         {
             ToastManager.ShowToast("暂无活跃占卜，无法保存");
         }
+    }
+
+    /// <summary>
+    /// 五牌阵「先继续聊聊」→ 占卜流程由用户自然推动
+    /// </summary>
+    private void HandleChatFirstFromCard()
+    {
+        if (uiComponent.questionInputField != null)
+        {
+            uiComponent.questionInputField.ActivateInputField();
+        }
+        ToastManager.ShowToast("可以先聊聊再决定是否抽牌～");
     }
 
     #endregion

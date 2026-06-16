@@ -431,6 +431,7 @@ namespace GamerFrameWork.OracleRuntime
             ["followup_reading"] = GetFollowupReadingPrompt(),
             ["chat_entry"] = GetChatEntryPrompt(),
             ["user_memory_summary"] = GetMemorySummaryPrompt(),
+            ["quick_reading"] = GetQuickReadingPrompt(),
             ["friend_divination_result"] = GetFriendDivinationPrompt(),
         };
 
@@ -540,6 +541,20 @@ reading_type, summary(title+text), cards(position, card_name, orientation, short
 - 不要做医学诊断。
 - 不要把用户的话逐字复制。
 - 只保留能帮助下一次对话更贴合用户的内容。";
+        }
+
+        private static string GetQuickReadingPrompt()
+        {
+            return @"## 场景：快速占卜推荐
+
+用户打开快速占卜工具。你需要根据用户记忆、今日牌、最近对话，为四类快速占卜生成更贴合当前用户的问题。
+
+规则：
+- 只能使用输入中允许的 topic key。
+- 每个问题不超过 22 个中文字符。
+- 问题必须适合触发三牌占卜。
+- 不要写医疗、法律、财务确定性建议。
+- 不要恐吓用户。";
         }
 
         private static string GetFriendDivinationPrompt()

@@ -212,6 +212,14 @@ namespace GamerFrameWork.OracleRuntime
                     mustNot = new List<string> { "不要引入新牌" },
                     nextActionPolicy = "chips"
                 },
+                ["recall"] = new ResponseContract
+                {
+                    stage = "recall", responseMode = "follow_up",
+                    maxSentences = 3, maxWords = 120,
+                    mustDo = new List<string> { "承接明日提醒或开放循环", "保持叙事连续性", "保持低压力和可选性" },
+                    mustNot = new List<string> { "使用 FOMO 语言", "暗示用户错过了唯一的机会" },
+                    nextActionPolicy = "chips"
+                },
                 ["dive_deeper"] = new ResponseContract
                 {
                     stage = "dive_deeper", responseMode = "dive_deeper",

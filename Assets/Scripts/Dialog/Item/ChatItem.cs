@@ -45,9 +45,11 @@ public class ChatItem : MonoBehaviour
     [Header("好友关系")]
     public Transform friendContentTrans;
 
-    [Header("三排牌阵")]
-    public SpreadInteractionCard3 interactionCard3;
-
+    [Header("牌阵")]
+    public SpreadInteractionCard3 interactionCard3;//三排阵
+    public SpreadInteractionCard5 interactionCard5;//五排阵
+    public SpreadInteractionCard1 interactionCard1; //单排阵
+    
 
     // 当前Item索引
     int mItemIndex = -1;
@@ -77,6 +79,8 @@ public class ChatItem : MonoBehaviour
         dailyCardTrans.gameObject.SetActive(false);
         friendContentTrans.gameObject.SetActive(false);
         interactionCard3.gameObject.SetActive(false);
+        interactionCard1.gameObject.SetActive(false);
+        interactionCard5.gameObject.SetActive(false);
         switch (data.messageType)
         {
             case MsgType.Str:
@@ -104,6 +108,14 @@ public class ChatItem : MonoBehaviour
             case MsgType.InteractionCard3:
                 interactionCard3.gameObject.SetActive(true);
                 SetSpreadInteractionCard3(data.spreadKind);
+                break;
+            case MsgType.InteractionCard1:
+                interactionCard1.gameObject.SetActive(true);
+                SetSpreadInteractionCard1(data.spreadKind);
+                break;
+            case MsgType.InteractionCard5:
+                interactionCard5.gameObject.SetActive(true);
+                SetSpreadInteractionCard5(data.spreadKind);
                 break;
             default:
                 break;
@@ -134,8 +146,8 @@ public class ChatItem : MonoBehaviour
         float preferredWidth = mMsgText.preferredWidth;
 
         // 2. 设定一个最大宽度，防止长文本不换行超出屏幕边界
-        // 你可以根据你实际的游戏 UI 比例修改这个值 (例如 500f 或 600f)
-        float maxTextWidth = 500f;
+        // 你可以根据你实际的游戏 UI 比例修改这个值
+        float maxTextWidth = Screen.width - 500;
 
         // 3. 取两者较小值：短文本自动缩框，长文本触达极限宽度以备换行
         float targetTextWidth = preferredWidth < maxTextWidth ? preferredWidth : maxTextWidth;
@@ -215,12 +227,54 @@ public class ChatItem : MonoBehaviour
     private void SetContentSizeMessage(Transform targetTrans)
     {
         Vector2 size = Vector2.zero;
-        size.x = targetTrans.GetComponent<RectTransform>().sizeDelta.x;
+        size.x = this.GetComponent<RectTransform>().sizeDelta.x;
         size.y = targetTrans.GetComponent<RectTransform>().sizeDelta.y;
         this.GetComponent<RectTransform>().sizeDelta = size;
     }
     private void SetDailyCardMessage()
     {
+        // 从 dailyCardTrans 获取 DailyCardBox 组件并填充今日牌数据
+        var dailyCardBox = dailyCardTrans?.GetComponent<DailyCardBox>();
+        if (dailyCardBox != null && DivinationEngine.Instance?.TodayCard.HasValue == true)
+        {
+            var (card, upright) = DivinationEngine.Instance.TodayCard.Value;
+
+            // 标题
+            if (dailyCardBox.cardTitleText != null)
+                dailyCardBox.cardTitleText.text = "今日塔罗";
+
+            // 牌名
+            if (dailyCardBox.cardNameText != null)
+                dailyCardBox.cardNameText.text = card.DisplayName(upright);
+
+            // 描述（正逆位）
+            if (dailyCardBox.cardDesText != null)
+                dailyCardBox.cardDesText.text = upright ? "正位" : "逆位";
+
+            // 卡牌图片
+            if (dailyCardBox.cardImage != null)
+            {
+                var sprite = TarotSpriteLoader.Load(card.cardId);
+                if (sprite != null)
+                {
+                    dailyCardBox.cardImage.sprite = sprite;
+                    // 逆位旋转
+                    dailyCardBox.cardImage.rectTransform.localRotation = upright
+                        ? Quaternion.identity
+                        : Quaternion.Euler(0, 0, 180);
+                    Debug.Log($"[ChatItem] DailyCardBox 图片设置成功: {card.cardId} → {sprite.name}");
+                }
+                else
+                {
+                    Debug.LogWarning($"[ChatItem] DailyCardBox TarotSpriteLoader.Load 返回 null: cardId={card.cardId}, 图集状态={TarotSpriteLoader.IsReady}");
+                }
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"[ChatItem] DailyCardBox 跳过赋值: dailyCardBox={dailyCardBox != null}, TodayCard={DivinationEngine.Instance?.TodayCard.HasValue}");
+        }
+
         SetContentSizeMessage(dailyCardTrans);
     }
     public void SetFriendContentMessage()
@@ -252,6 +306,60 @@ public class ChatItem : MonoBehaviour
             dialogUI.WireUpInteractionCard3(interactionCard3);
 
         SetContentSizeMessage(interactionCard3.transform);
+    }
+
+    public void SetSpreadInteractionCard1()
+    {
+        SetContentSizeMessage(interactionCard1.transform);
+    }
+
+    /// <summary>
+    /// 初始化单排牌阵（带数据）
+    /// </summary>
+    public void SetSpreadInteractionCard1(string spreadKind)
+    {
+        if (interactionCard1 == null) return;
+
+        // 从 DivinationEngine 获取牌阵定义
+        SpreadDefinition spreadDef = null;
+        if (DivinationEngine.Instance != null)
+            spreadDef = DivinationEngine.Instance.GetSpreadDefinition(spreadKind);
+
+        interactionCard1.Setup(spreadDef);
+
+        // 绑定事件到 DialogUI
+        var dialogUI = UIModule.Instance.GetWindow<DialogUI>();
+        if (dialogUI != null)
+            dialogUI.WireUpInteractionCard1(interactionCard1);
+
+        SetContentSizeMessage(interactionCard1.transform);
+    }
+
+    public void SetSpreadInteractionCard5()
+    {
+        SetContentSizeMessage(interactionCard5.transform);
+    }
+
+    /// <summary>
+    /// 初始化五排牌阵（带数据）
+    /// </summary>
+    public void SetSpreadInteractionCard5(string spreadKind)
+    {
+        if (interactionCard5 == null) return;
+
+        // 从 DivinationEngine 获取牌阵定义
+        SpreadDefinition spreadDef = null;
+        if (DivinationEngine.Instance != null)
+            spreadDef = DivinationEngine.Instance.GetSpreadDefinition(spreadKind);
+
+        interactionCard5.Setup(spreadDef);
+
+        // 绑定事件到 DialogUI
+        var dialogUI = UIModule.Instance.GetWindow<DialogUI>();
+        if (dialogUI != null)
+            dialogUI.WireUpInteractionCard5(interactionCard5);
+
+        SetContentSizeMessage(interactionCard5.transform);
     }
 
     private void LoadHeadIcon(string iconName)

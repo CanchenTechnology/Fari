@@ -286,4 +286,27 @@ namespace GamerFrameWork.OracleRuntime
         public string responseMode;
         public List<string> lines;
     }
+
+    /// <summary>
+    /// 完整解读 Payload —— 包含 AI 生成的描述、标签、牌义、行动建议和话题列表
+    /// 用于 CompleteInterpretationUI 展示
+    /// </summary>
+    [Serializable]
+    public class CompleteInterpretationPayload
+    {
+        /// <summary>卡片描述 (AI 生成，叙事化)</summary>
+        public string description;
+
+        /// <summary>3 个情感/能量标签</summary>
+        public List<string> tags;
+
+        /// <summary>牌义解析描述</summary>
+        public string meaningAnalysis;
+
+        /// <summary>今日可以做的行为建议</summary>
+        public string actionSuggestion;
+
+        /// <summary>4 个适合继续聊的话题</summary>
+        public List<string> topics;
+    }
 }
