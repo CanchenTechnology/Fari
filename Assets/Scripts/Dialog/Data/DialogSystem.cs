@@ -557,7 +557,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     }
 
     /// <summary>
-    /// 发送消息到 DeepSeek API
+    /// 发送消息到 DeepSeek API（非流式，保留向后兼容）
     /// 启用 OracleRuntime 时使用 ContextAssembler 组装结构化 Prompt
     /// </summary>
     public void SendMessageToAI(System.Action<string> onSuccess, System.Action<string> onError)
@@ -566,7 +566,6 @@ public class DialogSystem : MonoSingleton<DialogSystem>
 
         if (useOracleRuntime)
         {
-            // 使用 ContextAssembler 构建 5 段结构化 system prompt + 对话历史
             string lastUserMsg = (mApiMessageHistory.Count > 0
                 && mApiMessageHistory[mApiMessageHistory.Count - 1].role == "user")
                 ? mApiMessageHistory[mApiMessageHistory.Count - 1].content
@@ -575,14 +574,12 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         }
         else
         {
-            // 降级：使用旧版简单 system prompt
             messages = GetApiMessagesWithSystemPrompt();
         }
 
         deepSeekAPI.SendChatRequest(messages,
             (aiResponse) =>
             {
-                // OracleRuntime 输出校验（非阻断，仅日志）
                 if (useOracleRuntime)
                 {
                     try
@@ -602,6 +599,151 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             },
             onError
         );
+    }
+
+    // ---- 流式输出支持 ----
+
+    /// <summary>当前流式消息的索引（-1 表示无活跃流式消息）</summary>
+    private int mStreamingMessageIndex = -1;
+
+    /// <summary>
+    /// 发送流式消息到 DeepSeek API
+    /// </summary>
+    /// <param name="onChunk">每收到一个 token 的回调（delta 文本）</param>
+    /// <param name="onComplete">流式完成回调（完整文本）</param>
+    /// <param name="onError">错误回调</param>
+    public void SendMessageToAIStream(
+        System.Action<string> onChunk,
+        System.Action<string> onComplete,
+        System.Action<string> onError)
+    {
+        List<DeepSeekAPI.Message> messages;
+
+        if (useOracleRuntime)
+        {
+            string lastUserMsg = (mApiMessageHistory.Count > 0
+                && mApiMessageHistory[mApiMessageHistory.Count - 1].role == "user")
+                ? mApiMessageHistory[mApiMessageHistory.Count - 1].content
+                : "";
+            messages = GetOracleAssembledMessages(lastUserMsg);
+        }
+        else
+        {
+            messages = GetApiMessagesWithSystemPrompt();
+        }
+
+        // 创建占位消息
+        CreateStreamingAIMessage();
+
+        deepSeekAPI.SendChatRequestStream(messages,
+            (chunk) =>
+            {
+                AppendToStreamingMessage(chunk);
+                onChunk?.Invoke(chunk);
+            },
+            (fullContent) =>
+            {
+                FinalizeStreamingMessage(fullContent);
+
+                // OutputGuard 校验
+                if (useOracleRuntime)
+                {
+                    try
+                    {
+                        var guardResult = OutputGuard.Check(fullContent);
+                        if (!guardResult.ok && guardResult.issues?.Count > 0)
+                        {
+                            Debug.LogWarning($"[OracleRuntime] OutputGuard issues: {string.Join(", ", guardResult.issues)}");
+                        }
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Debug.LogWarning($"[OracleRuntime] OutputGuard check failed: {ex.Message}");
+                    }
+                }
+
+                onComplete?.Invoke(fullContent);
+            },
+            (error) =>
+            {
+                // 移除占位消息
+                if (mStreamingMessageIndex >= 0 && mStreamingMessageIndex < mChatMessageList.Count)
+                {
+                    mChatMessageList.RemoveAt(mStreamingMessageIndex);
+                }
+                mStreamingMessageIndex = -1;
+                onError?.Invoke(error);
+            }
+        );
+    }
+
+    /// <summary>
+    /// 创建流式占位消息（空内容）
+    /// </summary>
+    private void CreateStreamingAIMessage()
+    {
+        ChatMessageData data = new ChatMessageData
+        {
+            id = mMessageIdCounter++,
+            roleType = DialogRoleType.AI,
+            messageType = MsgType.Str,
+            content = "",
+            options = null,
+            divinerType = CurrentDivinerType
+        };
+        mChatMessageList.Add(data);
+        mStreamingMessageIndex = mChatMessageList.Count - 1;
+    }
+
+    /// <summary>
+    /// 向当前流式消息追加内容
+    /// </summary>
+    private void AppendToStreamingMessage(string chunk)
+    {
+        if (mStreamingMessageIndex < 0 || mStreamingMessageIndex >= mChatMessageList.Count) return;
+        mChatMessageList[mStreamingMessageIndex].content += chunk;
+    }
+
+    /// <summary>
+    /// 完成流式消息：写入 API 历史 & 最近回复
+    /// </summary>
+    private void FinalizeStreamingMessage(string fullContent)
+    {
+        if (mStreamingMessageIndex < 0 || mStreamingMessageIndex >= mChatMessageList.Count) return;
+
+        // 确保内容完整（防止 chunk 累加不精确）
+        mChatMessageList[mStreamingMessageIndex].content = fullContent;
+
+        // 加入 API 历史
+        mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", fullContent));
+
+        // 追踪最近 AI 回复
+        recentAssistantReplies.Add(fullContent);
+        if (recentAssistantReplies.Count > MAX_RECENT_MESSAGES)
+            recentAssistantReplies.RemoveAt(0);
+
+        mStreamingMessageIndex = -1;
+    }
+
+    /// <summary>
+    /// 获取当前流式消息在列表中的索引（-1 表示没有活跃流）
+    /// </summary>
+    public int GetStreamingMessageIndex()
+    {
+        return mStreamingMessageIndex;
+    }
+
+    /// <summary>
+    /// 替换最后一条 AI 消息的选项（流式完成后调用）
+    /// </summary>
+    public void SetLastAIMessageOptions(List<string> options)
+    {
+        if (mChatMessageList.Count == 0) return;
+        var last = mChatMessageList[mChatMessageList.Count - 1];
+        if (last.roleType == DialogRoleType.AI)
+        {
+            last.options = options;
+        }
     }
 
     /// <summary>

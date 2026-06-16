@@ -4,12 +4,25 @@
  * Date: 6/16/2026 6:03:04 PM
  * Description: UI 表现层，该层只负责界面的交互、表现相关的更新，不允许编写任何业务逻辑代码
  * 注意: 以下文件是自动生成的，再次生成不会覆盖原有的代码，会在原有的代码上进行新增，可放心使用
+ *
+ * [修复记录 2026-06-16]
+ * - BugFix: SetCard() 在窗口可见时自动刷新 UI
+ * - BugFix: locale 恢复使用 DailyOracleService.CurrentLocale
+ * - BugFix: OnSwitchOracleButtonClick 先设占位符再请求，消除竞态
+ * - BugFix: 移除 OnAwake 中与 Component.InitComponent 重复的 sortingOrder 设置
+ * - Improve: 添加加载态检查(_isLoading)，防止重复请求
+ * - Improve: 添加超时自动降级（5秒后无响应走 fallback）
+ * - Improve: 添加 Refresh() 公共方法供外部强制刷新
+ * - Improve: 完善空引用保护
+ * - Improve: GetTopicText 增加降级兜底
 ---------------------------------*/
 using UnityEngine.UI;
 using UnityEngine;
+using System.Collections;
 using GamerFrameWork.UIFrameWork;
 using GamerFrameWork;
 using System.Collections.Generic;
+using GamerFrameWork.OracleRuntime;
 
 public class CompleteInterpretationUI : WindowBase
 {
@@ -19,30 +32,47 @@ public class CompleteInterpretationUI : WindowBase
     private TarotCard _currentCard;
     private bool _currentUpright;
 
+    // 加载与错误状态
+    private bool _isLoading;
+    private bool _hasError;
+    private Coroutine _timeoutCoroutine;
+
+    // 兜底时缓存的话题列表（供 GetTopicText 使用，避免依赖 CachedInterpretation）
+    private List<string> _fallbackTopics;
+
     #region 生命周期函数
-    // 调用机制与 Mono Awake 一致
     public override void OnAwake()
     {
         uiComponent = gameObject.GetComponent<CompleteInterpretationUIComponent>();
+        if (uiComponent == null)
+        {
+            Debug.LogError("[CompleteInterpretationUI] 未找到 CompleteInterpretationUIComponent，请检查预制体");
+            base.OnAwake();
+            return;
+        }
         uiComponent.InitComponent(this);
-        this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
+        // sortingOrder 已在 InitComponent 中设置，此处不再重复
         base.OnAwake();
     }
-    // 物体显示时执行
+
     public override void OnShow()
     {
         base.OnShow();
+        // 防止重复请求
+        if (_isLoading) return;
         PopulateCardInfo();
         RequestAIInterpretation();
     }
-    // 物体隐藏时执行
+
     public override void OnHide()
     {
         base.OnHide();
+        StopTimeoutCoroutine();
     }
-    // 物体销毁时执行
+
     public override void OnDestroy()
     {
+        StopTimeoutCoroutine();
         base.OnDestroy();
     }
     #endregion
@@ -50,38 +80,66 @@ public class CompleteInterpretationUI : WindowBase
     #region API Function
 
     /// <summary>
-    /// 从外部设置卡牌数据（由 ReadingCardContainer 或其他界面打开时调用）
+    /// 从外部设置卡牌数据（由 ReadingCardContainer 或其他界面打开时调用）。
+    /// 如果窗口已可见则自动刷新 UI。
     /// </summary>
     public void SetCard(TarotCard card, bool upright)
     {
         _currentCard = card;
         _currentUpright = upright;
+        _isLoading = false;
+        _hasError = false;
+        StopTimeoutCoroutine();
+
+        // 窗口已可见 → 立即刷新
+        if (Visible)
+        {
+            PopulateCardInfo();
+            RequestAIInterpretation();
+        }
     }
+
+    /// <summary>
+    /// 强制刷新当前卡牌的 UI 和 AI 内容（忽略缓存）
+    /// </summary>
+    public void Refresh()
+    {
+        if (_currentCard == null) return;
+        _isLoading = false;
+        _hasError = false;
+        StopTimeoutCoroutine();
+
+        DailyOracleService.Instance?.ClearCache();
+        PopulateCardInfo();
+        RequestAIInterpretation();
+    }
+
+    /// <summary>
+    /// 当前是否正在加载中
+    /// </summary>
+    public bool IsContentReady => !_isLoading && !_hasError && _currentCard != null;
 
     #endregion
 
     #region 初始化与数据加载
 
-    /// <summary>
-    /// 填充卡牌图片和名字（立刻显示，无需等待 AI）
-    /// </summary>
     private void PopulateCardInfo()
     {
         // 优先使用外部设置的卡牌，其次从 DailyOracleService 或 DivinationEngine 获取
         if (_currentCard == null)
         {
             var oracleService = DailyOracleService.Instance;
-            // if (oracleService?.CurrentCard != null)
-            // {
-            //     _currentCard = oracleService.CurrentCard;
-            //     _currentUpright = oracleService.CurrentUpright;
-            // }
-            // else if (DivinationEngine.Instance != null)
-            // {
-            //     var result = DivinationEngine.Instance.DrawDailyCard();
-            //     _currentCard = result.card;
-            //     _currentUpright = result.upright;
-            // }
+            if (oracleService?.CurrentCard != null)
+            {
+                _currentCard = oracleService.CurrentCard;
+                _currentUpright = oracleService.CurrentUpright;
+            }
+            else if (DivinationEngine.Instance != null)
+            {
+                var result = DivinationEngine.Instance.DrawDailyCard();
+                _currentCard = result.card;
+                _currentUpright = result.upright;
+            }
         }
 
         if (_currentCard == null)
@@ -107,9 +165,21 @@ public class CompleteInterpretationUI : WindowBase
                     ? Quaternion.identity
                     : Quaternion.Euler(0, 0, 180);
             }
+            else
+            {
+                Debug.LogWarning($"[CompleteInterpretationUI] 无法加载卡牌图片: {_currentCard.cardId}");
+            }
         }
 
-        // 清空描述（等待 AI）
+        // 设置占位符，表示等待 AI 内容
+        ShowLoadingPlaceholders();
+    }
+
+    /// <summary>
+    /// 显示加载中的占位符
+    /// </summary>
+    private void ShowLoadingPlaceholders()
+    {
         SetDescriptionText("...");
         SetTagTexts(new List<string> { "...", "...", "..." });
         SetMeaningText("...");
@@ -117,12 +187,10 @@ public class CompleteInterpretationUI : WindowBase
         SetTopicTexts(new List<string> { "...", "...", "...", "..." });
     }
 
-    /// <summary>
-    /// 请求 AI 生成完整解读内容
-    /// </summary>
     private void RequestAIInterpretation()
     {
         if (_currentCard == null) return;
+        if (_isLoading) return; // 防止重复请求
 
         var oracleService = DailyOracleService.Instance;
         if (oracleService == null)
@@ -132,74 +200,125 @@ public class CompleteInterpretationUI : WindowBase
             return;
         }
 
-        // // 如果已有缓存且是同一张牌，直接使用
-        // if (oracleService.CachedInterpretation != null
-        //     && oracleService.CurrentCard == _currentCard
-        //     && oracleService.CurrentUpright == _currentUpright)
-        // {
-        //     PopulateFromPayload(oracleService.CachedInterpretation);
-        //     return;
-        // }
+        // 如果已有缓存且是同一张牌，直接使用
+        if (oracleService.CachedInterpretation != null
+            && oracleService.CurrentCard == _currentCard
+            && oracleService.CurrentUpright == _currentUpright)
+        {
+            PopulateFromPayload(oracleService.CachedInterpretation);
+            return;
+        }
 
-        // // 请求 AI 生成
-        // oracleService.RequestCompleteInterpretation(_currentCard, _currentUpright,
-        //     (payload) =>
-        //     {
-        //         // 回调在主线程（UnityWebRequest 保证）
-        //         PopulateFromPayload(payload);
-        //     });
+        // 开始加载
+        _isLoading = true;
+        _hasError = false;
+        ShowLoadingState(true);
+
+        // 启动超时降级协程（5 秒后无响应自动走 fallback）
+        _timeoutCoroutine = uiComponent.StartCoroutine(TimeoutFallbackRoutine(5f));
+
+        // 请求 AI 生成
+        oracleService.RequestCompleteInterpretation(_currentCard, _currentUpright,
+            (payload) =>
+            {
+                _isLoading = false;
+                StopTimeoutCoroutine();
+                ShowLoadingState(false);
+
+                if (payload != null)
+                {
+                    PopulateFromPayload(payload);
+                }
+                else
+                {
+                    // AI 返回空 payload，走降级
+                    Debug.LogWarning("[CompleteInterpretationUI] AI 返回空结果，使用降级内容");
+                    _hasError = true;
+                    PopulateFallback();
+                }
+            });
     }
 
     /// <summary>
-    /// 将 AI 返回的 CompleteInterpretationPayload 赋值到 UI
+    /// 超时自动降级：指定秒数后若仍未收到回调则直接走 fallback
     /// </summary>
-    // private void PopulateFromPayload(CompleteInterpretationPayload payload)
-    // {
-    //     if (payload == null) return;
+    private IEnumerator TimeoutFallbackRoutine(float seconds)
+    {
+        yield return new WaitForSeconds(seconds);
+        if (_isLoading)
+        {
+            Debug.LogWarning($"[CompleteInterpretationUI] AI 请求超时（{seconds}s），使用降级内容");
+            _isLoading = false;
+            _hasError = true;
+            ShowLoadingState(false);
+            PopulateFallback();
+        }
+    }
 
-    //     SetDescriptionText(payload.description);
-    //     SetTagTexts(payload.tags);
-    //     SetMeaningText(payload.meaningAnalysis);
-    //     SetActionText(payload.actionSuggestion);
-    //     SetTopicTexts(payload.topics);
-    // }
+    private void StopTimeoutCoroutine()
+    {
+        if (_timeoutCoroutine != null)
+        {
+            uiComponent.StopCoroutine(_timeoutCoroutine);
+            _timeoutCoroutine = null;
+        }
+    }
+
+    private void PopulateFromPayload(CompleteInterpretationPayload payload)
+    {
+        if (payload == null) return;
+
+        _hasError = false;
+        _fallbackTopics = null; // 清除降级话题缓存
+
+        SetDescriptionText(payload.description);
+        SetTagTexts(payload.tags);
+        SetMeaningText(payload.meaningAnalysis);
+        SetActionText(payload.actionSuggestion);
+        SetTopicTexts(payload.topics);
+    }
 
     /// <summary>
-    /// AI 不可用时的降级展示
+    /// AI 不可用 / 超时时的降级展示
     /// </summary>
     private void PopulateFallback()
     {
         if (_currentCard == null) return;
-        var locale ="";// DailyOracleService.CurrentLocale;
+
+        var locale = DailyOracleService.CurrentLocale ?? "zh-CN";
         var name = _currentCard.nameZh;
 
-        if (locale == "en-US")
+        if (locale.StartsWith("en"))
         {
-            SetDescriptionText($"Today you drew {name} ({(_currentUpright ? "Upright" : "Reversed")}). Its energy is here to guide you.");
+            var orientLabel = _currentUpright ? "Upright" : "Reversed";
+            SetDescriptionText($"Today you drew {name} ({orientLabel}). Its energy is here to guide you.");
             SetTagTexts(new List<string> { "clarity", "courage", "awareness" });
             SetMeaningText($"The {name} card carries a meaningful message for today. Reflect on what resonates.");
             SetActionText("Take a quiet moment today to sit with the card's image and notice what comes up.");
-            SetTopicTexts(new List<string>
+            _fallbackTopics = new List<string>
             {
                 $"Tell me more about {name}",
                 "How does this card relate to love?",
                 "What should I focus on at work?",
                 "What energy is around me this week?"
-            });
+            };
+            SetTopicTexts(_fallbackTopics);
         }
         else
         {
-            SetDescriptionText($"今天你抽到了{(_currentUpright ? "正位" : "逆位")}的{name}，它的能量在今天指引着你。");
+            var orientLabel = _currentUpright ? "正位" : "逆位";
+            SetDescriptionText($"今天你抽到了{orientLabel}的{name}，它的能量在今天指引着你。");
             SetTagTexts(new List<string> { "清晰", "勇气", "觉知" });
             SetMeaningText($"{name}这张牌为你今天带来了重要的讯息。静下来感受哪些部分与你产生共鸣。");
             SetActionText("今天找一个安静的片刻，凝视这张牌的图像，看看浮现出什么感受。");
-            SetTopicTexts(new List<string>
+            _fallbackTopics = new List<string>
             {
                 $"我想更了解{name}",
                 "这张牌和感情有什么关系？",
                 "今天工作上我要注意什么？",
                 "这周我的整体能量怎样？"
-            });
+            };
+            SetTopicTexts(_fallbackTopics);
         }
     }
 
@@ -251,17 +370,25 @@ public class CompleteInterpretationUI : WindowBase
 
     /// <summary>
     /// 获取第 index 个话题文本（用于点击回调）
+    /// 优先级: CachedInterpretation.topics → _fallbackTopics → UI 文本
     /// </summary>
     private string GetTopicText(int index)
     {
-        // var oracleService = DailyOracleService.Instance;
-        // if (oracleService?.CachedInterpretation?.topics != null
-        //     && index < oracleService.CachedInterpretation.topics.Count)
-        // {
-        //     return oracleService.CachedInterpretation.topics[index];
-        // }
+        // 1. 优先从 AI 缓存读取
+        var oracleService = DailyOracleService.Instance;
+        if (oracleService?.CachedInterpretation?.topics != null
+            && index < oracleService.CachedInterpretation.topics.Count)
+        {
+            var topic = oracleService.CachedInterpretation.topics[index];
+            if (!string.IsNullOrEmpty(topic) && topic != "...")
+                return topic;
+        }
 
-        // 降级：直接读 UI 文本
+        // 2. 降级：使用 fallback 话题缓存
+        if (_fallbackTopics != null && index < _fallbackTopics.Count)
+            return _fallbackTopics[index];
+
+        // 3. 最终兜底：直接读 UI 文本
         return index switch
         {
             0 => uiComponent.TopicText1Text?.text,
@@ -272,34 +399,49 @@ public class CompleteInterpretationUI : WindowBase
         };
     }
 
+    /// <summary>
+    /// 控制 Loading 状态的 UI 表现
+    /// </summary>
+    private void ShowLoadingState(bool isLoading)
+    {
+        // 如果 Component 中有 LoadingOverlay，控制其显隐
+        if (uiComponent.LoadingOverlay != null)
+            uiComponent.LoadingOverlay.SetActive(isLoading);
+
+        // 加载中禁用话题按钮，避免用户在内容未就绪时点击
+        SetTopicButtonsInteractable(!isLoading);
+    }
+
+    private void SetTopicButtonsInteractable(bool interactable)
+    {
+        if (uiComponent.Topic1ItemButton != null) uiComponent.Topic1ItemButton.interactable = interactable;
+        if (uiComponent.Topic2ItemButton != null) uiComponent.Topic2ItemButton.interactable = interactable;
+        if (uiComponent.Topic3ItemButton != null) uiComponent.Topic3ItemButton.interactable = interactable;
+        if (uiComponent.Topic4ItemButton != null) uiComponent.Topic4ItemButton.interactable = interactable;
+    }
+
     #endregion
 
     #region 跳转到对话
 
-    /// <summary>
-    /// 跳转到对话界面并自动发送指定消息
-    /// </summary>
     private void NavigateToDialogAndSend(string message)
     {
         if (string.IsNullOrEmpty(message)) return;
 
-        // 1. 切换到对话界面（通过 NavigationUI 的导航 Toggle）
-        var navigationUI = UIModule.Instance.GetWindow<NavigationUI>();
+        var navigationUI = UIModule.Instance?.GetWindow<NavigationUI>();
         if (navigationUI != null)
         {
             navigationUI.OpenDialogUI();
         }
+        else
+        {
+            Debug.LogWarning("[CompleteInterpretationUI] NavigationUI 未找到，无法跳转到对话界面");
+        }
 
-        // 2. 发送消息（通过 EventSystem 通知 DialogUI）
         EventSystem.DispatchEvent(GameDataStr.CardTopicSelected, message);
-
-        // 3. 隐藏当前界面
         HideWindow();
     }
 
-    /// <summary>
-    /// 发送今日塔罗牌信息并跳转到对话
-    /// </summary>
     private void NavigateToDialogWithCardContext()
     {
         if (_currentCard == null)
@@ -308,10 +450,10 @@ public class CompleteInterpretationUI : WindowBase
             return;
         }
 
-        var locale = "";//;DailyOracleService.CurrentLocale;
+        var locale = DailyOracleService.CurrentLocale ?? "zh-CN";
         string cardMsg;
 
-        if (locale == "en-US")
+        if (locale.StartsWith("en"))
         {
             var orientLabel = _currentUpright ? "Upright" : "Reversed";
             cardMsg = $"I just looked at today's tarot card: {_currentCard.nameZh} ({orientLabel}). I'd like to chat more about it.";
@@ -329,44 +471,47 @@ public class CompleteInterpretationUI : WindowBase
 
     #region UI组件事件
 
-    // 话题按钮 1
     public void OnTopic1ItemButtonClick()
     {
         NavigateToDialogAndSend(GetTopicText(0));
     }
 
-    // 话题按钮 2
     public void OnTopic2ItemButtonClick()
     {
         NavigateToDialogAndSend(GetTopicText(1));
     }
 
-    // 话题按钮 3
     public void OnTopic3ItemButtonClick()
     {
         NavigateToDialogAndSend(GetTopicText(2));
     }
 
-    // 话题按钮 4
     public void OnTopic4ItemButtonClick()
     {
         NavigateToDialogAndSend(GetTopicText(3));
     }
 
-    // 切换神谕 / 重新生成
+    /// <summary>
+    /// 切换神谕 / 重新生成 — 清除缓存后重新请求 AI
+    /// </summary>
     public void OnSwitchOracleButtonClick()
     {
-        // 清除缓存，重新请求 AI
+        if (_isLoading) return; // 防止重复点击
+
         DailyOracleService.Instance?.ClearCache();
+        _isLoading = false;
+        _hasError = false;
+        _fallbackTopics = null;
+        StopTimeoutCoroutine();
+
+        // 先设占位符，再请求（顺序很重要：避免异步回调先到后被占位符覆盖）
+        ShowLoadingPlaceholders();
         RequestAIInterpretation();
-        SetDescriptionText("...");
-        SetTagTexts(new List<string> { "...", "...", "..." });
-        SetMeaningText("...");
-        SetActionText("...");
-        SetTopicTexts(new List<string> { "...", "...", "...", "..." });
     }
 
-    // 继续和她聊聊
+    /// <summary>
+    /// 继续和她聊聊 — 携带当前卡牌上下文跳转到对话界面
+    /// </summary>
     public void OnContinueChatButtonClick()
     {
         NavigateToDialogWithCardContext();

@@ -215,6 +215,14 @@ public class AudioManager : MonoBehaviour
         voiceQueue.Clear();
     }
 
+    /// <summary>
+    /// 检查 VoiceSource 是否正在播放
+    /// </summary>
+    public bool IsVoicePlaying()
+    {
+        return voiceSource != null && voiceSource.isPlaying;
+    }
+
     #endregion
 
     //================================================

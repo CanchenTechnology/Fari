@@ -64,8 +64,33 @@ public class DeepSeekAPI : MonoBehaviour
         public int total_tokens;
     }
 
+    // ---- 流式响应解析 ----
+
+    [System.Serializable]
+    public class StreamChunk
+    {
+        public string id;
+        public string model;
+        public List<StreamChoice> choices;
+    }
+
+    [System.Serializable]
+    public class StreamChoice
+    {
+        public StreamDelta delta;
+        public string finish_reason;
+        public int index;
+    }
+
+    [System.Serializable]
+    public class StreamDelta
+    {
+        public string content;
+        public string role;
+    }
+
     /// <summary>
-    /// 发送对话请求到 DeepSeek API
+    /// 发送对话请求到 DeepSeek API（非流式）
     /// </summary>
     /// <param name="messages">对话历史消息列表</param>
     /// <param name="onSuccess">成功回调</param>
@@ -151,6 +176,172 @@ public class DeepSeekAPI : MonoBehaviour
             }
         }
     }
+
+    #region 流式请求
+
+    /// <summary>
+    /// 发送流式对话请求到 DeepSeek API
+    /// </summary>
+    /// <param name="messages">对话历史消息列表</param>
+    /// <param name="onChunk">每收到一个 token 的回调</param>
+    /// <param name="onComplete">流式完成时的回调（传入完整文本）</param>
+    /// <param name="onError">错误回调</param>
+    public void SendChatRequestStream(List<Message> messages,
+        Action<string> onChunk, Action<string> onComplete, Action<string> onError)
+    {
+        StartCoroutine(SendChatRequestStreamCoroutine(messages, onChunk, onComplete, onError));
+    }
+
+    private IEnumerator SendChatRequestStreamCoroutine(List<Message> messages,
+        Action<string> onChunk, Action<string> onComplete, Action<string> onError)
+    {
+        // 构建请求 JSON（比非流式多 "stream": true）
+        StringBuilder sb = new StringBuilder();
+        sb.Append("{\"model\":\"").Append(MODEL).Append("\",");
+        sb.Append("\"messages\":[");
+        for (int i = 0; i < messages.Count; i++)
+        {
+            sb.Append("{\"role\":\"").Append(messages[i].role).Append("\",");
+            sb.Append("\"content\":\"").Append(EscapeJsonString(messages[i].content)).Append("\"");
+            sb.Append("}");
+            if (i < messages.Count - 1) sb.Append(",");
+        }
+        sb.Append("],");
+        sb.Append("\"temperature\":0.7,");
+        sb.Append("\"max_tokens\":2000,");
+        sb.Append("\"stream\":true");
+        sb.Append("}");
+
+        string jsonBody = sb.ToString();
+
+        using (UnityWebRequest request = new UnityWebRequest(API_URL, "POST"))
+        {
+            byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+
+            var handler = new StreamingDownloadHandler(onChunk, onComplete, onError);
+            request.downloadHandler = handler;
+
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.SetRequestHeader("Authorization", "Bearer " + API_KEY);
+
+            yield return request.SendWebRequest();
+
+#if UNITY_2020_1_OR_NEWER
+            if (request.result == UnityWebRequest.Result.ConnectionError
+                || request.result == UnityWebRequest.Result.ProtocolError)
+#else
+            if (request.isNetworkError || request.isHttpError)
+#endif
+            {
+                // 如果 Handler 还没触发过错误回调才报错
+                if (!handler.HasCompleted)
+                {
+                    Debug.LogError("DeepSeek Stream Error: " + request.error);
+                    onError?.Invoke(request.error);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 流式下载处理器 — 逐行解析 SSE 事件
+    /// </summary>
+    private class StreamingDownloadHandler : DownloadHandlerScript
+    {
+        private Action<string> onChunk;
+        private Action<string> onComplete;
+        private Action<string> onError;
+        private StringBuilder textBuffer = new StringBuilder();
+        private StringBuilder fullContent = new StringBuilder();
+        private bool _hasCompleted;
+
+        public bool HasCompleted => _hasCompleted;
+
+        public StreamingDownloadHandler(Action<string> onChunk,
+            Action<string> onComplete, Action<string> onError)
+        {
+            this.onChunk = onChunk;
+            this.onComplete = onComplete;
+            this.onError = onError;
+        }
+
+        protected override bool ReceiveData(byte[] data, int dataLength)
+        {
+            if (data == null || dataLength <= 0) return false;
+
+            string text = Encoding.UTF8.GetString(data, 0, dataLength);
+            textBuffer.Append(text);
+            ProcessLines();
+            return true;
+        }
+
+        protected override void CompleteContent()
+        {
+            // 处理缓冲区中可能残留的最后一行
+            if (textBuffer.Length > 0)
+            {
+                textBuffer.Append('\n');
+                ProcessLines();
+            }
+        }
+
+        private void ProcessLines()
+        {
+            string buffer = textBuffer.ToString();
+            int newlineIndex;
+            while ((newlineIndex = buffer.IndexOf('\n')) >= 0)
+            {
+                string line = buffer.Substring(0, newlineIndex).Trim();
+                buffer = buffer.Substring(newlineIndex + 1);
+
+                if (string.IsNullOrEmpty(line)) continue;
+
+                if (line.StartsWith("data: "))
+                {
+                    string data = line.Substring(6).Trim();
+                    if (data == "[DONE]")
+                    {
+                        _hasCompleted = true;
+                        onComplete?.Invoke(fullContent.ToString());
+                        return;
+                    }
+
+                    try
+                    {
+                        var chunk = JsonUtility.FromJson<StreamChunk>(data);
+                        if (chunk?.choices != null && chunk.choices.Count > 0)
+                        {
+                            string content = chunk.choices[0].delta?.content;
+                            if (!string.IsNullOrEmpty(content))
+                            {
+                                fullContent.Append(content);
+                                onChunk?.Invoke(content);
+                            }
+
+                            // finish_reason 出现时也触发完成
+                            if (!string.IsNullOrEmpty(chunk.choices[0].finish_reason)
+                                && chunk.choices[0].finish_reason != "null")
+                            {
+                                _hasCompleted = true;
+                                onComplete?.Invoke(fullContent.ToString());
+                                return;
+                            }
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogWarning("[DeepSeekAPI] SSE parse error: " + e.Message
+                            + " | raw: " + data.Substring(0, Math.Min(data.Length, 80)));
+                    }
+                }
+            }
+            textBuffer.Clear();
+            textBuffer.Append(buffer);
+        }
+    }
+
+    #endregion
 
     /// <summary>
     /// 转义 JSON 字符串中的特殊字符

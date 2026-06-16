@@ -49,7 +49,13 @@ public class ChatItem : MonoBehaviour
     public SpreadInteractionCard3 interactionCard3;//三排阵
     public SpreadInteractionCard5 interactionCard5;//五排阵
     public SpreadInteractionCard1 interactionCard1; //单排阵
-    
+
+    [Header("TTS 语音播放")]
+    public Button ttsPlayButton;        // 播放按钮（手动拖拽绑定或代码查找）
+    public GameObject ttsLoadingIcon;   // 加载中旋转图标（可选）
+
+    /// <summary>TTS 播放回调（由 DialogUI 绑定）</summary>
+    public System.Action<ChatItem> onTTSPlayClicked;
 
     // 当前Item索引
     int mItemIndex = -1;
@@ -68,7 +74,11 @@ public class ChatItem : MonoBehaviour
     /// </summary>
     public void Init()
     {
-
+        if (ttsPlayButton != null)
+        {
+            ttsPlayButton.onClick.RemoveAllListeners();
+            ttsPlayButton.onClick.AddListener(OnTTSPlayButtonClick);
+        }
     }
     /// <summary>
     /// 设置消息数据
@@ -141,6 +151,13 @@ public class ChatItem : MonoBehaviour
         // 设置文本内容
         mMsgText.text = data.content;
 
+        // TTS 按钮：仅 AI 消息显示
+        if (ttsPlayButton != null)
+        {
+            bool isAIMessage = data.roleType == DialogRoleType.AI;
+            ttsPlayButton.gameObject.SetActive(isAIMessage && !string.IsNullOrEmpty(data.content));
+        }
+
         // 【修改核心区：动态计算文本宽度】
         // 1. 获取文本无折行情况下的实际理想宽度 (比如 "ss" 只有几十像素)
         float preferredWidth = mMsgText.preferredWidth;
@@ -172,11 +189,50 @@ public class ChatItem : MonoBehaviour
         float y = size.y;
 
         // 最小高度限制
-        if (y < 75)
+        if (y < headImage.GetComponent<RectTransform>().sizeDelta.y)
         {
-            y = 75;
+            y = headImage.GetComponent<RectTransform>().sizeDelta.y+10;
         }
         tf.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, y);
+    }
+
+    /// <summary>
+    /// 流式更新文本（仅更新文字+气泡大小，不切换 GameObject 避免闪烁）
+    /// </summary>
+    public void UpdateStreamingText(string newText)
+    {
+        if (mMsgText == null) return;
+
+        mMsgText.text = newText;
+
+        // 流式更新时也更新 TTS 按钮可见性
+        if (ttsPlayButton != null)
+        {
+            ttsPlayButton.gameObject.SetActive(!string.IsNullOrEmpty(newText));
+        }
+
+        float preferredWidth = mMsgText.preferredWidth;
+        float maxTextWidth = Screen.width - 500;
+        float targetTextWidth = preferredWidth < maxTextWidth ? preferredWidth : maxTextWidth;
+
+        mMsgText.rectTransform.sizeDelta = new Vector2(targetTextWidth, mMsgText.rectTransform.sizeDelta.y);
+        LayoutRebuilder.ForceRebuildLayoutImmediate(mMsgText.rectTransform);
+
+        if (mItemBg != null)
+        {
+            Vector2 size = mItemBg.rectTransform.sizeDelta;
+            size.x = targetTextWidth + 20;
+            size.y = mMsgText.rectTransform.sizeDelta.y + 34;
+            mItemBg.rectTransform.sizeDelta = size;
+
+            RectTransform tf = gameObject.GetComponent<RectTransform>();
+            float y = size.y;
+            if (y < headImage.GetComponent<RectTransform>().sizeDelta.y)
+            {
+                y = headImage.GetComponent<RectTransform>().sizeDelta.y + 10;
+            }
+            tf.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, y);
+        }
     }
 
 
@@ -216,10 +272,10 @@ public class ChatItem : MonoBehaviour
         RectTransform tf = gameObject.GetComponent<RectTransform>();
         float y = size.y;
 
-        // 最小高度限制
-        if (y < 75)
+         // 最小高度限制
+        if (y < headImage.GetComponent<RectTransform>().sizeDelta.y)
         {
-            y = 75;
+            y = headImage.GetComponent<RectTransform>().sizeDelta.y+10;
         }
         tf.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, y);
     }
@@ -368,4 +424,42 @@ public class ChatItem : MonoBehaviour
         // 例如使用 ResManager.Get.GetSpriteByName(iconName)
         // 这里留空，根据实际项目资源管理方式实现
     }
+
+    #region TTS 语音播放
+
+    /// <summary>
+    /// TTS 播放按钮点击
+    /// </summary>
+    private void OnTTSPlayButtonClick()
+    {
+        onTTSPlayClicked?.Invoke(this);
+    }
+
+    /// <summary>
+    /// 显示加载中状态（旋转图标）
+    /// </summary>
+    public void ShowTTSLoading(bool show)
+    {
+        if (ttsLoadingIcon != null)
+        {
+            ttsLoadingIcon.SetActive(show);
+        }
+        if (ttsPlayButton != null)
+        {
+            ttsPlayButton.interactable = !show;
+        }
+    }
+
+    /// <summary>
+    /// 更新流式文本时同步更新 TTS 按钮可见性
+    /// </summary>
+    public void UpdateTTSButtonAfterStream(string text)
+    {
+        if (ttsPlayButton != null)
+        {
+            ttsPlayButton.gameObject.SetActive(!string.IsNullOrEmpty(text));
+        }
+    }
+
+    #endregion
 }
