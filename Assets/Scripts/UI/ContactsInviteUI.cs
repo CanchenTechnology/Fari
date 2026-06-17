@@ -12,6 +12,26 @@ using GamerFrameWork.UIFrameWork;
 public class ContactsInviteUI : WindowBase
 {
 	public ContactsInviteUIComponent uiComponent;
+	private Button[] contactInviteButtons;
+
+	private readonly MockContact[] mockContacts =
+	{
+		new MockContact("Sora", "+1 415 010 0248"),
+		new MockContact("Rin", "+1 415 010 0319"),
+		new MockContact("Mira", "+1 415 010 0520")
+	};
+
+	private struct MockContact
+	{
+		public string name;
+		public string phone;
+
+		public MockContact(string name, string phone)
+		{
+			this.name = name;
+			this.phone = phone;
+		}
+	}
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -26,6 +46,7 @@ public class ContactsInviteUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		BindContactInviteButtons();
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -50,7 +71,7 @@ public class ContactsInviteUI : WindowBase
 	}
 	public void OnNotificationsButtonClick()
 	{
-		ToastManager.ShowDebug();
+		InviteMockContact(0);
 	}
 	public void OnBottomNavToggleChange(bool state, Toggle toggle)
 	{
@@ -66,6 +87,43 @@ public class ContactsInviteUI : WindowBase
 	}
 	public void OnTabProfileToggleChange(bool state, Toggle toggle)
 	{
+	}
+
+	private void BindContactInviteButtons()
+	{
+		var buttons = gameObject.GetComponentsInChildren<Button>(true);
+		var list = new System.Collections.Generic.List<Button>();
+
+		foreach (var button in buttons)
+		{
+			if (button == null || button == uiComponent.BackButton || button == uiComponent.NotificationsButton)
+			{
+				continue;
+			}
+
+			string buttonName = button.gameObject.name.ToLowerInvariant();
+			if (buttonName.Contains("invite") || buttonName.Contains("contact"))
+			{
+				list.Add(button);
+			}
+		}
+
+		contactInviteButtons = list.ToArray();
+		for (int i = 0; i < contactInviteButtons.Length && i < mockContacts.Length; i++)
+		{
+			int index = i;
+			contactInviteButtons[i].onClick.RemoveAllListeners();
+			contactInviteButtons[i].onClick.AddListener(() => InviteMockContact(index));
+		}
+	}
+
+	private void InviteMockContact(int index)
+	{
+		if (index < 0 || index >= mockContacts.Length) return;
+
+		var contact = mockContacts[index];
+		FriendDataManager.Instance.AddRealFriend(contact.name, string.Empty, $"通讯录好友 · {contact.phone}", null, "通讯录");
+		ToastManager.ShowToast($"已添加 {contact.name}");
 	}
 	#endregion
 }

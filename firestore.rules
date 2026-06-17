@@ -1,0 +1,51 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    match /users/{uid} {
+      allow read, create, update, delete: if isOwner(uid);
+
+      match /daily_oracles/{date} {
+        allow read, create, update, delete: if isOwner(uid);
+      }
+
+      match /divination_records/{readingId} {
+        allow read, create, update, delete: if isOwner(uid);
+      }
+
+      match /memories/{memoryId} {
+        allow read, create, update, delete: if isOwner(uid);
+      }
+
+      match /tomorrow_hooks/{hookId} {
+        allow read, create, update, delete: if isOwner(uid);
+      }
+
+      match /friends/{friendId} {
+        allow read, create, update, delete: if isOwner(uid);
+      }
+    }
+
+    match /quick_reading/{oracleId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /analytics_events/{eventId} {
+      allow create: if signedIn();
+      allow read, update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

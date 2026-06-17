@@ -9,6 +9,7 @@ using GamerFrameWork.UIFrameWork;
 using TMPro;
 using UnityEngine.UI;
 using UnityEngine;
+using UnityEngine.Video;
 
 public class TodayOracleUIComponent:MonoBehaviour
 {
@@ -16,6 +17,7 @@ public class TodayOracleUIComponent:MonoBehaviour
 	public Button switchDivinerButton;
 	public Button flipCardButton;
 	public Transform ReadingCardContainerTransform;
+	public VideoPlayer idleVideoPlayer;
 
 	public void InitComponent(WindowBase target)
 	{

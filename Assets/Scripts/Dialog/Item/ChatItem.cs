@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using GamerFrameWork.UIFrameWork;
 using UnityEngine;
 using UnityEngine.UI;
@@ -53,6 +54,7 @@ public class ChatItem : MonoBehaviour
     [Header("TTS 语音播放")]
     public Button ttsPlayButton;        // 播放按钮（手动拖拽绑定或代码查找）
     public GameObject ttsLoadingIcon;   // 加载中旋转图标（可选）
+    public Text ttsTimeText;  //记录语音的时常
 
     /// <summary>TTS 播放回调（由 DialogUI 绑定）</summary>
     public System.Action<ChatItem> onTTSPlayClicked;
@@ -85,12 +87,22 @@ public class ChatItem : MonoBehaviour
     /// </summary>
     public void SetItemData(ChatMessageData data, int itemIndex)
     {
+        mItemIndex = itemIndex;
+
+        // 隐藏所有内容区域
         msgTrans.gameObject.SetActive(false);
         dailyCardTrans.gameObject.SetActive(false);
         friendContentTrans.gameObject.SetActive(false);
         interactionCard3.gameObject.SetActive(false);
         interactionCard1.gameObject.SetActive(false);
         interactionCard5.gameObject.SetActive(false);
+        if (ttsPlayButton != null)
+            ttsPlayButton.gameObject.SetActive(false);
+        ShowTTSLoading(false);
+
+
+        SetSpeakerInfo(data);
+
         switch (data.messageType)
         {
             case MsgType.Str:
@@ -109,7 +121,7 @@ public class ChatItem : MonoBehaviour
 
             case MsgType.AtFriend:
                 friendContentTrans.gameObject.SetActive(true);
-                SetFriendContentMessage();
+                SetFriendContentMessage(data);
                 break;
             case MsgType.DailyCard:
                 dailyCardTrans.gameObject.SetActive(true);
@@ -117,7 +129,7 @@ public class ChatItem : MonoBehaviour
                 break;
             case MsgType.InteractionCard3:
                 interactionCard3.gameObject.SetActive(true);
-                SetSpreadInteractionCard3(data.spreadKind);
+                SetSpreadInteractionCard3(data);
                 break;
             case MsgType.InteractionCard1:
                 interactionCard1.gameObject.SetActive(true);
@@ -130,6 +142,65 @@ public class ChatItem : MonoBehaviour
             default:
                 break;
         }
+    }
+
+    private void SetSpeakerInfo(ChatMessageData data)
+    {
+        if (data == null) return;
+
+        if (data.roleType == DialogRoleType.User)
+        {
+            if (speakerName != null)
+                speakerName.text = DialogSystem.Instance != null
+                    ? DialogSystem.Instance.UserName
+                    : "我";
+
+            SetUserAvatarFromCurrentConfig();
+            return;
+        }
+
+        if (speakerName != null)
+            speakerName.text = GetDivinerName(data.divinerType);
+
+        // AI 回复头像暂时不自动赋值，保留 prefab 默认状态。
+        // 后续接入角色头像时调用 SetAIAvatar / SetAIAvatarByResourceName。
+    }
+
+    private string GetDivinerName(DivinerType divinerType)
+    {
+        var dialogSystem = DialogSystem.Instance;
+        if (dialogSystem == null)
+            return divinerType == DivinerType.Tarot ? "塔罗师" : "占星师";
+
+        return divinerType == DivinerType.Tarot
+            ? dialogSystem.TarotDivinerName
+            : dialogSystem.AstrologyDivinerName;
+    }
+
+    private void SetUserAvatarFromCurrentConfig()
+    {
+        var iconName = DialogSystem.Instance != null ? DialogSystem.Instance.UserHeadIcon : "";
+        if (!string.IsNullOrEmpty(iconName))
+            SetAvatarByResourceName(iconName, false);
+    }
+
+    public void SetAIAvatar(Sprite avatarSprite)
+    {
+        if (avatarSprite == null || headImage == null) return;
+        headImage.sprite = avatarSprite;
+        headImage.enabled = true;
+    }
+
+    public void SetAIAvatarByResourceName(string iconName)
+    {
+        SetAvatarByResourceName(iconName, true);
+    }
+
+    public void SetUserAvatar(Sprite avatarSprite)
+    {
+        if (avatarSprite == null || headImage == null) return;
+        headImage.sprite = avatarSprite;
+        headImage.enabled = true;
     }
 
     /// <summary>
@@ -191,9 +262,15 @@ public class ChatItem : MonoBehaviour
         // 最小高度限制
         if (y < headImage.GetComponent<RectTransform>().sizeDelta.y)
         {
-            y = headImage.GetComponent<RectTransform>().sizeDelta.y+10;
+            y = headImage.GetComponent<RectTransform>().sizeDelta.y+40;
         }
         tf.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, y);
+
+        // // ---- 渲染 AI 选项按钮 ----
+        // if (data.options != null && data.options.Count > 0)
+        // {
+        //     RenderOptionButtons(data.options);
+        // }
     }
 
     /// <summary>
@@ -205,10 +282,10 @@ public class ChatItem : MonoBehaviour
 
         mMsgText.text = newText;
 
-        // 流式更新时也更新 TTS 按钮可见性
+        // 流式输出未完成前不开放 TTS，避免合成半句文本。
         if (ttsPlayButton != null)
         {
-            ttsPlayButton.gameObject.SetActive(!string.IsNullOrEmpty(newText));
+            ttsPlayButton.gameObject.SetActive(false);
         }
 
         float preferredWidth = mMsgText.preferredWidth;
@@ -294,36 +371,29 @@ public class ChatItem : MonoBehaviour
         if (dailyCardBox != null && DivinationEngine.Instance?.TodayCard.HasValue == true)
         {
             var (card, upright) = DivinationEngine.Instance.TodayCard.Value;
+            var oracleService = DailyOracleService.Instance;
+            var preparedReading = oracleService?.CachedPreparedReading;
+            var oraclePayload = preparedReading != null && preparedReading.IsFor(card, upright)
+                ? preparedReading.oraclePayload
+                : oracleService != null && oracleService.IsCachedOracleFor(card, upright)
+                    ? oracleService.CachedPayload
+                    : null;
+            var cardSprite = preparedReading != null && preparedReading.IsFor(card, upright)
+                ? preparedReading.cardIcon
+                : TarotSpriteLoader.Load(card.cardId);
 
-            // 标题
-            if (dailyCardBox.cardTitleText != null)
-                dailyCardBox.cardTitleText.text = "今日塔罗";
+            dailyCardBox.SetCardData(card, upright, oraclePayload, cardSprite);
 
-            // 牌名
-            if (dailyCardBox.cardNameText != null)
-                dailyCardBox.cardNameText.text = card.DisplayName(upright);
-
-            // 描述（正逆位）
-            if (dailyCardBox.cardDesText != null)
-                dailyCardBox.cardDesText.text = upright ? "正位" : "逆位";
-
-            // 卡牌图片
-            if (dailyCardBox.cardImage != null)
+            if (oraclePayload == null && oracleService != null)
             {
-                var sprite = TarotSpriteLoader.Load(card.cardId);
-                if (sprite != null)
+                oracleService.RequestDailyOracle(card, upright, (payload) =>
                 {
-                    dailyCardBox.cardImage.sprite = sprite;
-                    // 逆位旋转
-                    dailyCardBox.cardImage.rectTransform.localRotation = upright
-                        ? Quaternion.identity
-                        : Quaternion.Euler(0, 0, 180);
-                    Debug.Log($"[ChatItem] DailyCardBox 图片设置成功: {card.cardId} → {sprite.name}");
-                }
-                else
-                {
-                    Debug.LogWarning($"[ChatItem] DailyCardBox TarotSpriteLoader.Load 返回 null: cardId={card.cardId}, 图集状态={TarotSpriteLoader.IsReady}");
-                }
+                    if (dailyCardBox != null && dailyCardBox.gameObject.activeInHierarchy)
+                    {
+                        dailyCardBox.SetCardData(card, upright, payload, cardSprite);
+                        SetContentSizeMessage(dailyCardTrans);
+                    }
+                });
             }
         }
         else
@@ -337,6 +407,21 @@ public class ChatItem : MonoBehaviour
     {
         SetContentSizeMessage(friendContentTrans);
     }
+
+    public void SetFriendContentMessage(ChatMessageData data)
+    {
+        if (data != null && friendContentTrans != null)
+        {
+            var texts = friendContentTrans.GetComponentsInChildren<Text>(true);
+            string title = string.IsNullOrWhiteSpace(data.friendName) ? "@好友" : $"@{data.friendName}";
+            string detail = string.IsNullOrWhiteSpace(data.friendContext) ? data.content : data.friendContext;
+
+            if (texts.Length > 0) texts[0].text = title;
+            if (texts.Length > 1) texts[1].text = detail;
+        }
+
+        SetContentSizeMessage(friendContentTrans);
+    }
     public void SetSpreadInteractionCard3()
     {
         SetContentSizeMessage(interactionCard3.transform);
@@ -347,14 +432,24 @@ public class ChatItem : MonoBehaviour
     /// </summary>
     public void SetSpreadInteractionCard3(string spreadKind)
     {
+        SetSpreadInteractionCard3(new ChatMessageData { spreadKind = spreadKind });
+    }
+
+    /// <summary>
+    /// 初始化三排牌阵（带消息数据）
+    /// </summary>
+    public void SetSpreadInteractionCard3(ChatMessageData data)
+    {
         if (interactionCard3 == null) return;
+
+        string spreadKind = data?.spreadKind;
 
         // 从 DivinationEngine 获取牌阵定义
         SpreadDefinition spreadDef = null;
         if (DivinationEngine.Instance != null)
             spreadDef = DivinationEngine.Instance.GetSpreadDefinition(spreadKind);
 
-        interactionCard3.Setup(spreadDef);
+        interactionCard3.Setup(spreadDef, data);
 
         // 绑定事件到 DialogUI
         var dialogUI = UIModule.Instance.GetWindow<DialogUI>();
@@ -420,9 +515,23 @@ public class ChatItem : MonoBehaviour
 
     private void LoadHeadIcon(string iconName)
     {
-        // 如果项目中有资源管理器，可以在这里加载
-        // 例如使用 ResManager.Get.GetSpriteByName(iconName)
-        // 这里留空，根据实际项目资源管理方式实现
+        SetAvatarByResourceName(iconName, true);
+    }
+
+    private void SetAvatarByResourceName(string iconName, bool logMissing = true)
+    {
+        if (headImage == null || string.IsNullOrEmpty(iconName)) return;
+
+        var sprite = Resources.Load<Sprite>(iconName);
+        if (sprite != null)
+        {
+            headImage.sprite = sprite;
+            headImage.enabled = true;
+        }
+        else if (logMissing)
+        {
+            Debug.LogWarning($"[ChatItem] 头像资源未找到: {iconName}");
+        }
     }
 
     #region TTS 语音播放
@@ -440,7 +549,7 @@ public class ChatItem : MonoBehaviour
     /// </summary>
     public void ShowTTSLoading(bool show)
     {
-        if (ttsLoadingIcon != null)
+        if (ttsLoadingIcon != null && (ttsPlayButton == null || ttsLoadingIcon != ttsPlayButton.gameObject))
         {
             ttsLoadingIcon.SetActive(show);
         }
@@ -462,4 +571,5 @@ public class ChatItem : MonoBehaviour
     }
 
     #endregion
+
 }

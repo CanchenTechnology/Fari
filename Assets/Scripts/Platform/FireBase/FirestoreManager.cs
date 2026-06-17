@@ -13,7 +13,7 @@ using XFGameFrameWork;
 /// 数据结构：
 ///   users/{firebaseUid}        ← 用户资料文档
 ///     - displayName, email, photoUrl, birthday, birthTime, city
-///     - avatarType, loginType, isEmailVerified
+///     - avatarType, loginType, isEmailVerified, selectedOracle, timezone
 ///     - createdAt, lastSignInAt
 ///
 /// 使用前确保：
@@ -99,6 +99,9 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             { "avatarType",      (int)ud.CurrentAvatar },
             { "loginType",       ud.CurrentLoginType.ToString() },
             { "isEmailVerified", ud.IsEmailVerified },
+            { "selectedOracle",  GetCurrentOracleId() },
+            { "timezone",        GetLocalTimezoneId() },
+            { "profileUpdatedAt", FieldValue.ServerTimestamp },
             { "lastSignInAt",    FieldValue.ServerTimestamp }, // 这里使用服务器时间，防止玩家本地设备时间不准
         };
 
@@ -140,6 +143,10 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             { "avatarType",      (int)ud.CurrentAvatar },
             { "loginType",       ud.CurrentLoginType.ToString() },
             { "isEmailVerified", ud.IsEmailVerified },
+            { "selectedOracle",  GetCurrentOracleId() },
+            { "timezone",        GetLocalTimezoneId() },
+            { "membershipStatus", "free" },
+            { "profileUpdatedAt", FieldValue.ServerTimestamp },
             { "createdAt",       FieldValue.ServerTimestamp }, // 唯一和 Save 的区别：写入账号创建的服务器时间
             { "lastSignInAt",    FieldValue.ServerTimestamp },
         };
@@ -165,6 +172,14 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     public void UpdateUserFields(Dictionary<string, object> fields, Action<bool> onComplete = null)
     {
         if (!CheckReady(onComplete)) return;
+        if (fields == null || fields.Count == 0)
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        if (!fields.ContainsKey("profileUpdatedAt"))
+            fields["profileUpdatedAt"] = FieldValue.ServerTimestamp;
 
         string uid = UserDataManager.Instance.FirebaseUid;
         DocumentReference docRef = _db.Collection("users").Document(uid);
@@ -394,6 +409,9 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         if (snapshot.TryGetValue("avatarType", out int cloudAvatar))
             ud.SetAvatarType((AvatarType)cloudAvatar);
 
+        if (snapshot.TryGetValue("selectedOracle", out string selectedOracle))
+            ApplySelectedOracle(selectedOracle);
+
         // 数据覆盖完毕后，通知本地数据管理器写盘（保存到 PlayerPrefs 或本地 JSON）
         ud.SaveData();
 
@@ -412,6 +430,43 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             return false;
         }
         return true;
+    }
+
+    private static string GetCurrentOracleId()
+    {
+        if (RoleManager.Instance == null) return "tarot";
+        return RoleManager.Instance.characterType switch
+        {
+            CharacterType.Astrologer => "astrology",
+            CharacterType.Meditator => "sage",
+            _ => "tarot",
+        };
+    }
+
+    private static string GetLocalTimezoneId()
+    {
+        try
+        {
+            return TimeZoneInfo.Local.Id;
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private static void ApplySelectedOracle(string oracleId)
+    {
+        if (RoleManager.Instance == null || string.IsNullOrEmpty(oracleId)) return;
+
+        int roleId = oracleId switch
+        {
+            "astrology" => (int)CharacterType.Astrologer,
+            "sage" => (int)CharacterType.Meditator,
+            _ => (int)CharacterType.TarotReader,
+        };
+
+        RoleManager.Instance.ChangeRole(roleId);
     }
 
     #endregion

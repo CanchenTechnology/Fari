@@ -303,37 +303,11 @@ public class FriendUI : WindowBase
 	}
 	public void OnAddFriendButtonClick()
 	{
-		// 通过 DataManager 添加好友数据
-		FriendDataManager.FriendData data = FriendDataManager.Instance.AddRealFriend("新好友", "真实好友·新好友");
-
-		// 从对象池获取 FriendItem 并设置数据
-		GameObject friendGO = FriendDataManager.Instance.GetFriendItem(uiComponent.RealFriendContentTransform);
-		FriendItem item = friendGO.GetComponent<FriendItem>();
-		item.SetData(data);
-		activeRealFriendItems.Add(item);
-
-		// 强制刷新 ContentSizeFitter 布局
-		ForceRebuildLayout(uiComponent.RealFriendContentTransform);
-
-		UpdateCountText();
 		UIModule.Instance.PopUpWindow<AddFriendUI>();
 	}
 	public void OnCreateFriendButtonClick()
 	{
 		UIModule.Instance.PopUpWindow<CreateFriendUI>();
-		// 通过 DataManager 添加虚拟好友数据
-		FriendDataManager.FriendData data = FriendDataManager.Instance.AddVirtualFriend("AI好友", "创建好友·AI好友");
-
-		// 从对象池获取 FriendItem 并设置数据
-		GameObject friendGO = FriendDataManager.Instance.GetFriendItem(uiComponent.VirtualFriendContentTransform);
-		FriendItem item = friendGO.GetComponent<FriendItem>();
-		item.SetData(data);
-		activeVirtualFriendItems.Add(item);
-
-		// 强制刷新 ContentSizeFitter 布局
-		ForceRebuildLayout(uiComponent.VirtualFriendContentTransform);
-
-		UpdateCountText();
 	}
 	#endregion
 }

@@ -192,9 +192,9 @@ RectTransform:
   - {fileID: 5579903423807392294}
   m_Father: {fileID: 3067841952994505856}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 1}
-  m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 415, y: -30}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 150, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &4888928365474817225
@@ -746,7 +746,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -140, y: 70}
+  m_AnchoredPosition: {x: -158, y: 83}
   m_SizeDelta: {x: 600, y: 60}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &9158355804991058000
@@ -1118,7 +1118,7 @@ MonoBehaviour:
     m_FontSize: 30
     m_FontStyle: 0
     m_BestFit: 1
-    m_MinSize: 0
+    m_MinSize: 26
     m_MaxSize: 40
     m_Alignment: 0
     m_AlignByGeometry: 0
@@ -1475,7 +1475,6 @@ GameObject:
   - component: {fileID: 7762428011243532928}
   - component: {fileID: 3675645259341999154}
   - component: {fileID: 3822397089576826805}
-  - component: {fileID: 976195469308724516}
   m_Layer: 0
   m_Name: '[Text]TopicText2'
   m_TagString: Untagged
@@ -1523,7 +1522,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.65, g: 0.6, b: 0.55, a: 1}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -1545,21 +1544,6 @@ MonoBehaviour:
     m_LineSpacing: 1
   m_Text: "Q  \u6211\u73B0\u5728\u6700\u9700\u8981\u76F8\u4FE1\u7684\u662F\u4EC0\u4E48\uFF1F                                    
     >"
---- !u!114 &976195469308724516
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3446959788863086167}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e19747de3f5aca642ab2be37e372fb86, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_EffectColor: {r: 0, g: 0, b: 0, a: 1}
-  m_EffectDistance: {x: 0, y: 0}
-  m_UseGraphicAlpha: 1
 --- !u!1 &3614308736141000825
 GameObject:
   m_ObjectHideFlags: 0
@@ -2039,16 +2023,15 @@ MonoBehaviour:
   Tag3TextText: {fileID: 461033046724253261}
   MeaningSectionText: {fileID: 5818912631128172004}
   ActionSectionText: {fileID: 4126680163874530251}
-  Topic1ItemButton: {fileID: 0}
-  TopicText1Text: {fileID: 0}
-  Topic2ItemButton: {fileID: 0}
-  TopicText2Text: {fileID: 0}
-  Topic3ItemButton: {fileID: 0}
-  TopicText3Text: {fileID: 0}
-  Topic4ItemButton: {fileID: 0}
-  TopicText4Text: {fileID: 0}
+  Topic1ItemButton: {fileID: 1990034064857286382}
+  TopicText1Text: {fileID: 4666374066200125267}
+  Topic2ItemButton: {fileID: 5876640521183219785}
+  TopicText2Text: {fileID: 3822397089576826805}
+  Topic3ItemButton: {fileID: 7065816721114651780}
+  TopicText3Text: {fileID: 4854947077145849793}
+  Topic4ItemButton: {fileID: 1169535990721312901}
+  TopicText4Text: {fileID: 1287257866838814216}
   ContinueChatButton: {fileID: 5284544693679703482}
-  LoadingOverlay: {fileID: 0}
 --- !u!1 &4528866670540892075
 GameObject:
   m_ObjectHideFlags: 0
@@ -2388,7 +2371,6 @@ GameObject:
   - component: {fileID: 9195593400635912145}
   - component: {fileID: 6491337081383627070}
   - component: {fileID: 4666374066200125267}
-  - component: {fileID: 2913909014755863590}
   m_Layer: 0
   m_Name: '[Text]TopicText1'
   m_TagString: Untagged
@@ -2436,7 +2418,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.65, g: 0.6, b: 0.55, a: 1}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -2458,21 +2440,6 @@ MonoBehaviour:
     m_LineSpacing: 1
   m_Text: "Q  \u6211\u73B0\u5728\u6700\u9700\u8981\u76F8\u4FE1\u7684\u662F\u4EC0\u4E48\uFF1F                                    
     >"
---- !u!114 &2913909014755863590
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4964154352462953751}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e19747de3f5aca642ab2be37e372fb86, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_EffectColor: {r: 0, g: 0, b: 0, a: 1}
-  m_EffectDistance: {x: 0, y: 0}
-  m_UseGraphicAlpha: 1
 --- !u!1 &5127435819120943561
 GameObject:
   m_ObjectHideFlags: 0
@@ -2638,7 +2605,7 @@ MonoBehaviour:
     m_FontSize: 50
     m_FontStyle: 0
     m_BestFit: 1
-    m_MinSize: 30
+    m_MinSize: 26
     m_MaxSize: 50
     m_Alignment: 3
     m_AlignByGeometry: 0
@@ -2848,7 +2815,6 @@ GameObject:
   - component: {fileID: 4740984502167421192}
   - component: {fileID: 3665841553115581171}
   - component: {fileID: 4854947077145849793}
-  - component: {fileID: 3418998225116281418}
   m_Layer: 0
   m_Name: '[Text]TopicText3'
   m_TagString: Untagged
@@ -2896,7 +2862,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.65, g: 0.6, b: 0.55, a: 1}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -2918,21 +2884,6 @@ MonoBehaviour:
     m_LineSpacing: 1
   m_Text: "Q  \u6211\u73B0\u5728\u6700\u9700\u8981\u76F8\u4FE1\u7684\u662F\u4EC0\u4E48\uFF1F                                    
     >"
---- !u!114 &3418998225116281418
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6573855489187640324}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e19747de3f5aca642ab2be37e372fb86, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_EffectColor: {r: 0, g: 0, b: 0, a: 1}
-  m_EffectDistance: {x: 0, y: 0}
-  m_UseGraphicAlpha: 1
 --- !u!1 &6738130120076806156
 GameObject:
   m_ObjectHideFlags: 0
@@ -2966,9 +2917,9 @@ RectTransform:
   - {fileID: 7407623983992305757}
   m_Father: {fileID: 3067841952994505856}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 1}
-  m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 245, y: -30}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 150, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &3219804544410677021
@@ -3118,7 +3069,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -65, y: -40}
+  m_AnchoredPosition: {x: -65, y: -12}
   m_SizeDelta: {x: 770, y: 120}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &2069310605583521773
@@ -3151,10 +3102,10 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 12800000, guid: 56c59f4ecd2348d41abca4cc46a07e11, type: 3}
-    m_FontSize: 30
+    m_FontSize: 26
     m_FontStyle: 0
     m_BestFit: 1
-    m_MinSize: 30
+    m_MinSize: 26
     m_MaxSize: 40
     m_Alignment: 3
     m_AlignByGeometry: 0
@@ -3352,9 +3303,9 @@ RectTransform:
   - {fileID: 2648507444497785445}
   m_Father: {fileID: 3067841952994505856}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 1}
-  m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 75, y: -30}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 150, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &3843435542967466664
@@ -3878,7 +3829,6 @@ GameObject:
   - component: {fileID: 1392580910557174858}
   - component: {fileID: 8304001540595735848}
   - component: {fileID: 1287257866838814216}
-  - component: {fileID: 3569498538044951302}
   m_Layer: 0
   m_Name: '[Text]TopicText4'
   m_TagString: Untagged
@@ -3926,7 +3876,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.65, g: 0.6, b: 0.55, a: 1}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -3948,21 +3898,6 @@ MonoBehaviour:
     m_LineSpacing: 1
   m_Text: "Q  \u6211\u73B0\u5728\u6700\u9700\u8981\u76F8\u4FE1\u7684\u662F\u4EC0\u4E48\uFF1F                                    
     >"
---- !u!114 &3569498538044951302
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8162667619830605824}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e19747de3f5aca642ab2be37e372fb86, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_EffectColor: {r: 0, g: 0, b: 0, a: 1}
-  m_EffectDistance: {x: 0, y: 0}
-  m_UseGraphicAlpha: 1
 --- !u!1 &8169329538124748157
 GameObject:
   m_ObjectHideFlags: 0

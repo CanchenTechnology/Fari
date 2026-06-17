@@ -25,15 +25,23 @@ public class ReadingCardContainer : MonoBehaviour
 
     public Button viewFullBtn;
 
-    private void Start()
+    private void Awake()
     {
-        deepChatBtn.onClick.AddListener(OnDeepChatButtonClick);
-        viewFullBtn.onClick.AddListener(OnViewFullButtonClick);
+         RemoveButtonListeners();
+
+        if (deepChatBtn != null)
+            deepChatBtn.onClick.AddListener(OnDeepChatButtonClick);
+        if (viewFullBtn != null)
+            viewFullBtn.onClick.AddListener(OnViewFullButtonClick);
     }
-    private void OnDisable()
+
+
+    private void RemoveButtonListeners()
     {
-        deepChatBtn.onClick.RemoveListener(OnDeepChatButtonClick);
-        viewFullBtn.onClick.RemoveListener(OnViewFullButtonClick);
+        if (deepChatBtn != null)
+            deepChatBtn.onClick.RemoveListener(OnDeepChatButtonClick);
+        if (viewFullBtn != null)
+            viewFullBtn.onClick.RemoveListener(OnViewFullButtonClick);
     }
 
     private void OnDeepChatButtonClick()
@@ -43,7 +51,12 @@ public class ReadingCardContainer : MonoBehaviour
 
     private void OnViewFullButtonClick()
     {
-        UIModule.Instance.PopUpWindow<CompleteInterpretationUI>();
+        var completeUI = UIModule.Instance.PopUpWindow<CompleteInterpretationUI>();
+        if (completeUI != null && DivinationEngine.Instance?.TodayCard.HasValue == true)
+        {
+            var (card, upright) = DivinationEngine.Instance.TodayCard.Value;
+            completeUI.SetCard(card, upright);
+        }
     }
 
 }

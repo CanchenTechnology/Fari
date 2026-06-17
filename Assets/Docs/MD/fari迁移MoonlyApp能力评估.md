@@ -92,8 +92,8 @@
 
 | 事项 | 说明 |
 |------|------|
-| **DeepSeek API Key** | 当前硬编码在 `DeepSeekAPI.cs`。如更换 Key 或切换 Ark，需要你提供并在 Firebase Remote Config 或安全存储中配置 |
-| **火山引擎 TTS Key** | 接入 TTS 需要你获取 `VOLCANO_TTS_API_KEY` 和 `VOLCANO_TTS_APP_ID` |
+| **DeepSeek API Key** | 已迁移到 Firebase Cloud Functions Secret `DEEPSEEK_API_KEY`，不应放在 Unity 客户端 |
+| **火山引擎 TTS Key** | 已预留 Firebase Cloud Functions Secret：`VOLC_TTS_APP_ID`、`VOLC_TTS_ACCESS_TOKEN` |
 | **Firebase 项目** | `fari-app-b2fd2` 已存在，如换新项目需重建 |
 | **Apple Developer 账号** | Sign in with Apple 需要 Apple Developer 后台配置 |
 | **Facebook App** | Facebook 登录需要 Facebook Developer 后台配置 |
@@ -166,7 +166,7 @@ P2 - 锦上添花：
 
 ### 5.2 安全提醒
 
-⚠️ `DeepSeekAPI.cs` 第 15 行硬编码了 API Key `sk-71d2099e083448928be76e01964012ec`。打包到客户端 = 任何反编译者都能看到。**强烈建议**迁移后用 Firebase Cloud Functions 做 LLM 代理。
+⚠️ AI / TTS Key 不应打包进客户端。当前方案已改为通过 Firebase Cloud Functions 做 LLM / TTS 代理，并用 Functions Secret 保存密钥。
 
 ---
 

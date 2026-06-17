@@ -118,6 +118,20 @@ public class DivinationEngine : MonoBehaviour
     }
 
     /// <summary>
+    /// 用云端保存的今日牌覆盖本地今日牌，保证跨设备同一天抽到同一张牌。
+    /// </summary>
+    public void SetTodayCardFromCloud(TarotCard card, bool upright, string localDate = null)
+    {
+        if (card == null) return;
+
+        TodayCard = (card, upright);
+        _todayCardDate = string.IsNullOrEmpty(localDate)
+            ? DateTime.Now.ToString("yyyy-MM-dd")
+            : localDate;
+        Debug.Log($"[DivinationEngine] 使用云端今日牌: {card.nameZh} ({(upright ? "正位" : "逆位")})");
+    }
+
+    /// <summary>
     /// 获取今日牌的 TodayCardPayload
     /// </summary>
     public TodayCardPayload GetTodayCardPayload()
@@ -246,14 +260,54 @@ public class DivinationEngine : MonoBehaviour
     }
 
     /// <summary>
-    /// 标记占卜完成
+    /// 标记占卜完成，并自动保存到 Firestore
     /// </summary>
-    public void CompleteDivination(string shortVerdict = null)
+    public void CompleteDivination(string shortVerdict = null, string fullResponse = null)
     {
         if (CurrentSession == null) return;
         CurrentSession.phase = DivinationPhase.Completed;
         CurrentSession.shortVerdict = shortVerdict ?? "";
         Debug.Log("[DivinationEngine] 占卜完成");
+        SyncToDialogSystem();
+
+        // 自动保存到 Firestore
+        SaveCurrentSessionToFirestore(shortVerdict);
+    }
+
+    /// <summary>
+    /// 将当前占卜会话保存到 Firestore
+    /// </summary>
+    private void SaveCurrentSessionToFirestore(string shortVerdict)
+    {
+        var firestore = DivinationRecordFirestore.Instance;
+        if (firestore != null && firestore.IsReady)
+        {
+            firestore.SaveFromSession(CurrentSession, shortVerdict, success =>
+            {
+                if (success)
+                    Debug.Log($"[DivinationEngine] 占卜记录已同步至 Firestore: {CurrentSession.readingId}");
+                else
+                    Debug.LogWarning($"[DivinationEngine] Firestore 同步失败，记录仅在内存中: {CurrentSession.readingId}");
+            });
+        }
+        else
+        {
+            Debug.Log("[DivinationEngine] Firestore 未就绪，跳过自动保存（记录仅在内存中）");
+        }
+    }
+
+    /// <summary>
+    /// 从历史记录恢复占卜会话（用于继续追问）
+    /// </summary>
+    public void RestoreSession(DivinationSession session)
+    {
+        if (session == null)
+        {
+            Debug.LogWarning("[DivinationEngine] RestoreSession: session is null");
+            return;
+        }
+        CurrentSession = session;
+        Debug.Log($"[DivinationEngine] 恢复占卜会话 [{session.readingId}] 问题: {session.question}");
         SyncToDialogSystem();
     }
 
@@ -448,6 +502,12 @@ public class DivinationSession
     public DivinationPlan divinationPlan;
     public TomorrowHook tomorrowHook;
     public string shortVerdict;
+    /// <summary>AI 生成的详细评判内容</summary>
+    public string judgeContent;
+    /// <summary>AI 生成的建议内容</summary>
+    public string adviceContent;
+    /// <summary>AI 建议的追问话题列表</summary>
+    public List<string> topics;
     public string createdAt;
 }
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
+using Firebase.Auth;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -11,9 +12,50 @@ using UnityEngine.Networking;
 /// </summary>
 public class DeepSeekAPI : MonoBehaviour
 {
-    private const string API_URL = "https://api.deepseek.com/chat/completions";
-    private const string API_KEY = "sk-71d2099e083448928be76e01964012ec";
-    private const string MODEL = "deepseek-v4-pro";
+    private const string AI_CHAT_URL = "https://us-central1-fari-app-b2fd2.cloudfunctions.net/aiChat";
+    private const string AI_CHAT_STREAM_URL = "https://us-central1-fari-app-b2fd2.cloudfunctions.net/aiChatStream";
+    private const string DEEPSEEK_CHAT_URL = "https://api.deepseek.com/chat/completions";
+    private const string MODEL = "deepseek-chat";
+
+    [Header("Editor 调试")]
+    [Tooltip("Editor 下优先使用下面的调试 Key 直连 DeepSeek。正式包不生效，正式包始终走 Firebase Functions。")]
+    public bool useEditorDirectDeepSeek = true;
+
+    [Tooltip("仅用于 Unity Editor 调试的 DeepSeek API Key。请使用单独的调试 Key，不要提交真实生产 Key。")]
+    public string editorDeepSeekApiKey = "";
+
+    [Tooltip("Editor 没有配置调试 Key、未登录 Firebase 或 Functions 尚未部署时，使用本地模拟回复，避免 Play Mode 被后端依赖卡住。正式包不生效。")]
+    public bool useEditorMockWhenBackendUnavailable = true;
+
+    public bool HasEditorDirectDeepSeekConfig()
+    {
+#if UNITY_EDITOR
+        return ShouldUseEditorDirectDeepSeek();
+#else
+        return false;
+#endif
+    }
+
+    public static DeepSeekAPI ResolveFor(GameObject owner)
+    {
+        DeepSeekAPI local = owner != null ? owner.GetComponent<DeepSeekAPI>() : null;
+#if UNITY_EDITOR
+        DeepSeekAPI[] apis = FindObjectsOfType<DeepSeekAPI>();
+        for (int i = 0; i < apis.Length; i++)
+        {
+            if (apis[i] != null && apis[i].HasEditorDirectDeepSeekConfig())
+            {
+                return apis[i];
+            }
+        }
+#endif
+        if (local != null)
+        {
+            return local;
+        }
+
+        return owner != null ? owner.AddComponent<DeepSeekAPI>() : null;
+    }
 
     [System.Serializable]
     public class Message
@@ -62,6 +104,14 @@ public class DeepSeekAPI : MonoBehaviour
         public int prompt_tokens;
         public int completion_tokens;
         public int total_tokens;
+    }
+
+    [System.Serializable]
+    private class BackendAIResponse
+    {
+        public string content;
+        public string error;
+        public string code;
     }
 
     // ---- 流式响应解析 ----
@@ -130,13 +180,36 @@ public class DeepSeekAPI : MonoBehaviour
 
         jsonBody = sb.ToString();
 
-        using (UnityWebRequest request = new UnityWebRequest(API_URL, "POST"))
+#if UNITY_EDITOR
+        if (ShouldUseEditorDirectDeepSeek())
+        {
+            yield return SendEditorDirectChatRequest(jsonBody, messages, onSuccess, onError);
+            yield break;
+        }
+#endif
+
+        string idToken = null;
+        string tokenError = null;
+        yield return GetFirebaseIdToken(
+            token => idToken = token,
+            error => tokenError = error);
+        if (string.IsNullOrEmpty(idToken))
+        {
+            if (TryCompleteWithEditorMock(messages, onSuccess, tokenError))
+                yield break;
+
+            Debug.LogError("[DeepSeekAPI] Firebase token error: " + tokenError);
+            onError?.Invoke(tokenError);
+            yield break;
+        }
+
+        using (UnityWebRequest request = new UnityWebRequest(AI_CHAT_URL, "POST"))
         {
             byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Authorization", "Bearer " + API_KEY);
+            request.SetRequestHeader("Authorization", "Bearer " + idToken);
 
             yield return request.SendWebRequest();
 
@@ -148,6 +221,8 @@ public class DeepSeekAPI : MonoBehaviour
             {
                 Debug.LogError("DeepSeek API Error: " + request.error);
                 Debug.LogError("Response: " + request.downloadHandler.text);
+                if (TryCompleteWithEditorMock(messages, onSuccess, request.error))
+                    yield break;
                 onError?.Invoke(request.error);
             }
             else
@@ -157,15 +232,14 @@ public class DeepSeekAPI : MonoBehaviour
 
                 try
                 {
-                    ResponseBody response = JsonUtility.FromJson<ResponseBody>(responseText);
-                    if (response.choices != null && response.choices.Count > 0)
+                    BackendAIResponse response = JsonUtility.FromJson<BackendAIResponse>(responseText);
+                    if (!string.IsNullOrEmpty(response?.content))
                     {
-                        string content = response.choices[0].message.content;
-                        onSuccess?.Invoke(content);
+                        onSuccess?.Invoke(response.content);
                     }
                     else
                     {
-                        onError?.Invoke("No response content");
+                        onError?.Invoke(response?.error ?? "No response content");
                     }
                 }
                 catch (Exception e)
@@ -214,7 +288,30 @@ public class DeepSeekAPI : MonoBehaviour
 
         string jsonBody = sb.ToString();
 
-        using (UnityWebRequest request = new UnityWebRequest(API_URL, "POST"))
+#if UNITY_EDITOR
+        if (ShouldUseEditorDirectDeepSeek())
+        {
+            yield return SendEditorDirectChatRequestStream(jsonBody, messages, onChunk, onComplete, onError);
+            yield break;
+        }
+#endif
+
+        string idToken = null;
+        string tokenError = null;
+        yield return GetFirebaseIdToken(
+            token => idToken = token,
+            error => tokenError = error);
+        if (string.IsNullOrEmpty(idToken))
+        {
+            if (TryCompleteStreamWithEditorMock(messages, onChunk, onComplete, tokenError))
+                yield break;
+
+            Debug.LogError("[DeepSeekAPI] Firebase token error: " + tokenError);
+            onError?.Invoke(tokenError);
+            yield break;
+        }
+
+        using (UnityWebRequest request = new UnityWebRequest(AI_CHAT_STREAM_URL, "POST"))
         {
             byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
@@ -223,7 +320,7 @@ public class DeepSeekAPI : MonoBehaviour
             request.downloadHandler = handler;
 
             request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Authorization", "Bearer " + API_KEY);
+            request.SetRequestHeader("Authorization", "Bearer " + idToken);
 
             yield return request.SendWebRequest();
 
@@ -238,6 +335,8 @@ public class DeepSeekAPI : MonoBehaviour
                 if (!handler.HasCompleted)
                 {
                     Debug.LogError("DeepSeek Stream Error: " + request.error);
+                    if (TryCompleteStreamWithEditorMock(messages, onChunk, onComplete, request.error))
+                        yield break;
                     onError?.Invoke(request.error);
                 }
             }
@@ -343,6 +442,99 @@ public class DeepSeekAPI : MonoBehaviour
 
     #endregion
 
+#if UNITY_EDITOR
+    private bool ShouldUseEditorDirectDeepSeek()
+    {
+        return useEditorDirectDeepSeek && !string.IsNullOrWhiteSpace(editorDeepSeekApiKey);
+    }
+
+    private IEnumerator SendEditorDirectChatRequest(string jsonBody, List<Message> messages,
+        Action<string> onSuccess, Action<string> onError)
+    {
+        using (UnityWebRequest request = new UnityWebRequest(DEEPSEEK_CHAT_URL, "POST"))
+        {
+            byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.SetRequestHeader("Authorization", "Bearer " + editorDeepSeekApiKey.Trim());
+
+            yield return request.SendWebRequest();
+
+#if UNITY_2020_1_OR_NEWER
+            if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
+#else
+            if (request.isNetworkError || request.isHttpError)
+#endif
+            {
+                Debug.LogError("[DeepSeekAPI] Editor DeepSeek API Error: " + request.error);
+                Debug.LogError("Response: " + request.downloadHandler.text);
+                if (TryCompleteWithEditorMock(messages, onSuccess, request.error))
+                    yield break;
+                onError?.Invoke(request.error);
+                yield break;
+            }
+
+            try
+            {
+                ResponseBody response = JsonUtility.FromJson<ResponseBody>(request.downloadHandler.text);
+                string content = response?.choices != null && response.choices.Count > 0
+                    ? response.choices[0].message?.content
+                    : null;
+
+                if (!string.IsNullOrEmpty(content))
+                {
+                    onSuccess?.Invoke(content);
+                }
+                else
+                {
+                    onError?.Invoke("Editor DeepSeek response has no content");
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[DeepSeekAPI] Editor DeepSeek parse error: " + e.Message);
+                onError?.Invoke("Parse error: " + e.Message);
+            }
+        }
+    }
+
+    private IEnumerator SendEditorDirectChatRequestStream(string jsonBody, List<Message> messages,
+        Action<string> onChunk, Action<string> onComplete, Action<string> onError)
+    {
+        using (UnityWebRequest request = new UnityWebRequest(DEEPSEEK_CHAT_URL, "POST"))
+        {
+            byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+
+            var handler = new StreamingDownloadHandler(onChunk, onComplete, onError);
+            request.downloadHandler = handler;
+
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.SetRequestHeader("Authorization", "Bearer " + editorDeepSeekApiKey.Trim());
+
+            yield return request.SendWebRequest();
+
+#if UNITY_2020_1_OR_NEWER
+            if (request.result == UnityWebRequest.Result.ConnectionError
+                || request.result == UnityWebRequest.Result.ProtocolError)
+#else
+            if (request.isNetworkError || request.isHttpError)
+#endif
+            {
+                if (!handler.HasCompleted)
+                {
+                    Debug.LogError("[DeepSeekAPI] Editor DeepSeek Stream Error: " + request.error);
+                    Debug.LogError("Response: " + request.downloadHandler.text);
+                    if (TryCompleteStreamWithEditorMock(messages, onChunk, onComplete, request.error))
+                        yield break;
+                    onError?.Invoke(request.error);
+                }
+            }
+        }
+    }
+#endif
+
     /// <summary>
     /// 转义 JSON 字符串中的特殊字符
     /// </summary>
@@ -383,5 +575,88 @@ public class DeepSeekAPI : MonoBehaviour
             }
         }
         return sb.ToString();
+    }
+
+    private IEnumerator GetFirebaseIdToken(Action<string> onToken, Action<string> onError)
+    {
+        var user = FirebaseAuth.DefaultInstance?.CurrentUser;
+        if (user == null)
+        {
+            onError?.Invoke("用户未登录，无法调用 AI 服务");
+            yield break;
+        }
+
+        var task = user.TokenAsync(false);
+        yield return new WaitUntil(() => task.IsCompleted);
+
+        if (task.IsFaulted || task.IsCanceled)
+        {
+            onError?.Invoke(task.Exception?.InnerException?.Message ?? "获取 Firebase Token 失败");
+            yield break;
+        }
+
+        onToken?.Invoke(task.Result);
+    }
+
+    private bool TryCompleteWithEditorMock(List<Message> messages, Action<string> onSuccess, string reason)
+    {
+#if UNITY_EDITOR
+        if (!useEditorMockWhenBackendUnavailable) return false;
+
+        string content = BuildEditorMockResponse(messages, reason);
+        Debug.LogWarning("[DeepSeekAPI] Editor 使用本地模拟 AI 回复: " + reason);
+        onSuccess?.Invoke(content);
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    private bool TryCompleteStreamWithEditorMock(List<Message> messages,
+        Action<string> onChunk, Action<string> onComplete, string reason)
+    {
+#if UNITY_EDITOR
+        if (!useEditorMockWhenBackendUnavailable) return false;
+
+        string content = BuildEditorMockResponse(messages, reason);
+        Debug.LogWarning("[DeepSeekAPI] Editor 使用本地模拟流式 AI 回复: " + reason);
+        onChunk?.Invoke(content);
+        onComplete?.Invoke(content);
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    private string BuildEditorMockResponse(List<Message> messages, string reason)
+    {
+        string lastUserMessage = "";
+        if (messages != null)
+        {
+            for (int i = messages.Count - 1; i >= 0; i--)
+            {
+                if (messages[i]?.role == "user")
+                {
+                    lastUserMessage = messages[i].content;
+                    break;
+                }
+            }
+        }
+
+        if (!string.IsNullOrEmpty(lastUserMessage)
+            && (lastUserMessage.Contains("今日标题") || lastUserMessage.Contains("今日神谕") || lastUserMessage.Contains("详情解释")))
+        {
+            return "今日标题：微光靠近\n今日神谕：先相信你心里最安静的那个答案。\n详情解释：这是一条 Editor 调试回复，因为当前没有 Firebase 登录或后端 Functions 尚未部署。你可以继续测试 UI 流程；正式环境会调用 Cloud Functions 里的真实 AI 服务。";
+        }
+
+        if (!string.IsNullOrEmpty(lastUserMessage)
+            && (lastUserMessage.Contains("卡牌描述") || lastUserMessage.Contains("牌义解析") || lastUserMessage.Contains("推荐追问")))
+        {
+            return "卡牌描述：这是一条 Editor 调试解读，用来保证本地界面流程可以继续跑通。\n能量标签：调试、确认、前进\n牌义解析：当前没有 Firebase 登录或后端 Functions 尚未部署，所以这里不会调用真实 AI。你可以先验证翻牌、完整解读、按钮跳转和布局表现。\n行动建议：先完成本地 UI 与交互检查，等 Firebase Functions 部署后再切回真实服务验证内容质量。\n推荐追问：\n1. 这张牌今天想提醒我什么？\n2. 我现在该如何面对现状？\n3. 这件事更深层的讯息是什么？\n4. 我接下来该问自己什么？";
+        }
+
+        return string.IsNullOrEmpty(lastUserMessage)
+            ? "这是 Editor 调试回复：当前没有 Firebase 登录或后端 Functions 尚未部署。正式环境会调用 Cloud Functions 的 AI 代理。"
+            : $"这是 Editor 调试回复：我收到了你的问题“{lastUserMessage}”。当前没有 Firebase 登录或后端 Functions 尚未部署，所以先返回本地模拟内容，方便你测试对话流程。";
     }
 }

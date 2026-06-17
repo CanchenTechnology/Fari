@@ -25,7 +25,7 @@ public class FriendItem : MonoBehaviour
     private void ContactFriendToUI()
     {
         UIModule.Instance.GetWindow<NavigationUI>().OpenDialogUI();
-        UIModule.Instance.GetWindow<DialogUI>().SendAtFriendsMessage();
+        UIModule.Instance.GetWindow<DialogUI>().SendAtFriendsMessage(data);
     }
     /// <summary>
     /// 当前绑定的好友数据

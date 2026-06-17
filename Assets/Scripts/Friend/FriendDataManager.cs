@@ -11,9 +11,30 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
     {
         public int id;
         public string name;
+        public string handle;
         public string info;
+        public string relationship;
+        public string birthday;
+        public string birthTime;
+        public string city;
+        public string notes;
+        public string source;
         public Sprite headSprite;
         public bool isVirtual; // true=虚拟好友, false=真实好友
+
+        public string BuildOracleContext()
+        {
+            var parts = new List<string>();
+            parts.Add($"姓名：{name}");
+            if (!string.IsNullOrWhiteSpace(handle)) parts.Add($"用户名：{handle}");
+            if (!string.IsNullOrWhiteSpace(relationship)) parts.Add($"关系：{relationship}");
+            if (!string.IsNullOrWhiteSpace(birthday)) parts.Add($"生日：{birthday}");
+            if (!string.IsNullOrWhiteSpace(birthTime)) parts.Add($"出生时间：{birthTime}");
+            if (!string.IsNullOrWhiteSpace(city)) parts.Add($"城市：{city}");
+            if (!string.IsNullOrWhiteSpace(notes)) parts.Add($"背景：{notes}");
+            parts.Add(isVirtual ? "类型：创建的好友档案" : "类型：真实好友");
+            return string.Join("\n", parts);
+        }
     }
 
     /// <summary>
@@ -136,11 +157,22 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
     /// </summary>
     public FriendData AddRealFriend(string name, string info, Sprite headSprite = null)
     {
+        return AddRealFriend(name, string.Empty, info, headSprite, "用户名搜索");
+    }
+
+    public FriendData AddRealFriend(string name, string handle, string info, Sprite headSprite = null, string source = "用户名搜索")
+    {
+        var existing = FindRealFriendByHandleOrName(handle, name);
+        if (existing != null) return existing;
+
         var data = new FriendData
         {
             id = nextId++,
             name = name,
+            handle = handle,
             info = info,
+            relationship = "好友",
+            source = source,
             headSprite = headSprite,
             isVirtual = false
         };
@@ -153,11 +185,30 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
     /// </summary>
     public FriendData AddVirtualFriend(string name, string info, Sprite headSprite = null)
     {
+        return AddVirtualFriend(name, "好友", string.Empty, string.Empty, string.Empty, info, headSprite);
+    }
+
+    public FriendData AddVirtualFriend(
+        string name,
+        string relationship,
+        string birthday,
+        string birthTime,
+        string city,
+        string notes,
+        Sprite headSprite = null)
+    {
         var data = new FriendData
         {
             id = nextId++,
             name = name,
-            info = info,
+            handle = string.Empty,
+            info = BuildVirtualFriendInfo(relationship, birthday, city),
+            relationship = relationship,
+            birthday = birthday,
+            birthTime = birthTime,
+            city = city,
+            notes = notes,
+            source = "创建档案",
             headSprite = headSprite,
             isVirtual = true
         };
@@ -213,6 +264,40 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         realFriendList.Clear();
         virtualFriendList.Clear();
         inviteList.Clear();
+    }
+
+    public FriendData FindRealFriendByHandleOrName(string handle, string name)
+    {
+        string normalizedHandle = NormalizeKey(handle);
+        string normalizedName = NormalizeKey(name);
+
+        foreach (var friend in realFriendList)
+        {
+            if (!string.IsNullOrEmpty(normalizedHandle) && NormalizeKey(friend.handle) == normalizedHandle)
+            {
+                return friend;
+            }
+            if (!string.IsNullOrEmpty(normalizedName) && NormalizeKey(friend.name) == normalizedName)
+            {
+                return friend;
+            }
+        }
+
+        return null;
+    }
+
+    private string NormalizeKey(string value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToLowerInvariant();
+    }
+
+    private string BuildVirtualFriendInfo(string relationship, string birthday, string city)
+    {
+        var parts = new List<string>();
+        parts.Add(string.IsNullOrWhiteSpace(relationship) ? "创建好友" : relationship.Trim());
+        if (!string.IsNullOrWhiteSpace(birthday)) parts.Add(birthday.Trim());
+        if (!string.IsNullOrWhiteSpace(city)) parts.Add(city.Trim());
+        return string.Join(" · ", parts);
     }
 
     #endregion

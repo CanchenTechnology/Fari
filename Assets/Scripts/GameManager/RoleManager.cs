@@ -21,6 +21,8 @@ public class RoleManager : MonoSingleton<RoleManager>
     public CharacterType characterType; //需要初始化
     private int currentRoleId = 0;
 
+    public int CurrentRoleId => currentRoleId;
+
     protected override void Awake()
     {
         base.Awake();
@@ -53,6 +55,7 @@ public class RoleManager : MonoSingleton<RoleManager>
             currentRoleId = roleId;
             characterType = (CharacterType)roleId;
             SaveRoleData();
+            SyncSelectedOracleToCloud();
             EventSystem.DispatchEvent(GameDataStr.UpdateRoleInfo, roleId);
         }
     }
@@ -89,4 +92,25 @@ public class RoleManager : MonoSingleton<RoleManager>
         }
     }
     #endregion
+
+    private void SyncSelectedOracleToCloud()
+    {
+        if (FirestoreManager.Instance == null || !FirestoreManager.Instance.IsInitialized)
+            return;
+
+        FirestoreManager.Instance.UpdateUserFields(new Dictionary<string, object>
+        {
+            { "selectedOracle", GetOracleId(characterType) }
+        });
+    }
+
+    private static string GetOracleId(CharacterType type)
+    {
+        return type switch
+        {
+            CharacterType.Astrologer => "astrology",
+            CharacterType.Meditator => "sage",
+            _ => "tarot",
+        };
+    }
 }

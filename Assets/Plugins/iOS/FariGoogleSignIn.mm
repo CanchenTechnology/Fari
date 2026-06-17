@@ -40,7 +40,7 @@ extern "C" void _fariRestorePreviousSignIn(const char* gameObjectName, const cha
     NSString* go = [NSString stringWithUTF8String:gameObjectName];
     NSString* method = [NSString stringWithUTF8String:callbackMethod];
 
-    [GIDSignIn.sharedInstance restorePreviousSignInWithCallback:^(GIDGoogleUser *user, NSError *error) {
+    [GIDSignIn.sharedInstance restorePreviousSignInWithCompletion:^(GIDGoogleUser *user, NSError *error) {
         NSString* result;
         if (user && !error) {
             NSString* token = user.idToken.tokenString;
@@ -73,13 +73,13 @@ extern "C" void _fariStartGoogleSignIn(const char* webClientId, const char* game
     }
 
     dispatch_async(dispatch_get_main_queue(), ^{
-        GIDConfiguration* cfg = [[GIDConfiguration alloc] initWithClientID:iosClientID];
-        cfg.serverClientID = serverClientID;  // required to get ID token
+        GIDConfiguration* cfg = [[GIDConfiguration alloc] initWithClientID:iosClientID
+                                                            serverClientID:serverClientID];
+        GIDSignIn.sharedInstance.configuration = cfg;
 
         UIViewController* vc = UnityGetGLViewController();
-        [GIDSignIn.sharedInstance signInWithConfiguration:cfg
-                               presentingViewController:vc
-                                           callback:^(GIDGoogleUser *user, NSError *error) {
+        [GIDSignIn.sharedInstance signInWithPresentingViewController:vc
+                                                          completion:^(GIDSignInResult *signInResult, NSError *error) {
             NSString* result;
             if (error) {
                 // kGIDSignInErrorCodeCanceled = -5
@@ -88,7 +88,8 @@ extern "C" void _fariStartGoogleSignIn(const char* webClientId, const char* game
                 } else {
                     result = [NSString stringWithFormat:@"FAILURE:%ld:%@", (long)error.code, error.localizedDescription];
                 }
-            } else if (user) {
+            } else if (signInResult.user) {
+                GIDGoogleUser *user = signInResult.user;
                 NSString* token = user.idToken.tokenString;
                 if (token.length > 0) {
                     result = [NSString stringWithFormat:@"SUCCESS:%@", token];

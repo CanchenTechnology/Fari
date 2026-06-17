@@ -36,10 +36,6 @@ public class CompleteInterpretationUIComponent:MonoBehaviour
 	public Text TopicText4Text;
 	public Button ContinueChatButton;
 
-	/// <summary>
-	/// AI 请求加载中的遮罩 GameObject（可选，若未赋值则不控制）
-	/// </summary>
-	public GameObject LoadingOverlay;
 
 	public void InitComponent(WindowBase target)
 	{

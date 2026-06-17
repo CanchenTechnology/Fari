@@ -24,14 +24,23 @@ public class DailyOracleService : MonoBehaviour
     /// <summary>缓存的完整解读结果</summary>
     public CompleteInterpretationPayload CachedInterpretation { get; private set; }
 
+    /// <summary>当前缓存的完整预生成结果</summary>
+    public TodayOraclePreparedReading CachedPreparedReading { get; private set; }
+
     /// <summary>当前卡牌（最近一次请求的牌）</summary>
     public TarotCard CurrentCard { get; private set; }
 
     /// <summary>当前卡牌是否正位</summary>
     public bool CurrentUpright { get; private set; }
 
-    /// <summary>是否正在请求中</summary>
-    public bool IsLoading { get; private set; }
+    /// <summary>今日神谕是否正在请求中</summary>
+    public bool IsOracleLoading { get; private set; }
+
+    /// <summary>完整解读是否正在请求中</summary>
+    public bool IsInterpretationLoading { get; private set; }
+
+    /// <summary>是否有任意 AI 请求正在进行中（兼容旧代码）</summary>
+    public bool IsLoading => IsOracleLoading || IsInterpretationLoading;
 
     /// <summary>生成完成事件（用于 UI 异步更新）</summary>
     public event Action<TodayOraclePayload> OnOracleGenerated;
@@ -40,6 +49,12 @@ public class DailyOracleService : MonoBehaviour
     public event Action<CompleteInterpretationPayload> OnInterpretationGenerated;
 
     private DeepSeekAPI _deepSeekAPI;
+    private string _cachedOracleCardId;
+    private bool _cachedOracleUpright;
+    private string _cachedInterpretationCardId;
+    private bool _cachedInterpretationUpright;
+    private string _cachedPreparedCardId;
+    private bool _cachedPreparedUpright;
 
     private void Awake()
     {
@@ -51,9 +66,7 @@ public class DailyOracleService : MonoBehaviour
         Instance = this;
         DontDestroyOnLoad(gameObject);
 
-        _deepSeekAPI = GetComponent<DeepSeekAPI>();
-        if (_deepSeekAPI == null)
-            _deepSeekAPI = gameObject.AddComponent<DeepSeekAPI>();
+        _deepSeekAPI = DeepSeekAPI.ResolveFor(gameObject);
     }
 
     private void OnDestroy()
@@ -70,11 +83,25 @@ public class DailyOracleService : MonoBehaviour
     /// <param name="onComplete">完成回调（null 表示只更新 CachedPayload）</param>
     public void RequestDailyOracle(TarotCard card, bool upright, Action<TodayOraclePayload> onComplete = null)
     {
+        if (CachedPayload != null && IsCachedOracleFor(card, upright) && !IsOracleLoading)
+        {
+            onComplete?.Invoke(CachedPayload);
+            return;
+        }
+
         // 如果已在加载中，排队回调
-        if (IsLoading)
+        if (IsOracleLoading)
         {
             if (onComplete != null)
-                OnOracleGenerated += (payload) => onComplete(payload);
+            {
+                Action<TodayOraclePayload> handler = null;
+                handler = (payload) =>
+                {
+                    OnOracleGenerated -= handler;
+                    onComplete(payload);
+                };
+                OnOracleGenerated += handler;
+            }
             return;
         }
 
@@ -84,9 +111,43 @@ public class DailyOracleService : MonoBehaviour
     private System.Collections.IEnumerator RequestDailyOracleRoutine(
         TarotCard card, bool upright, Action<TodayOraclePayload> onComplete)
     {
-        IsLoading = true;
+        IsOracleLoading = true;
         CurrentCard = card;
         CurrentUpright = upright;
+
+        bool cloudChecked = false;
+        DailyOracleCloudRecord cloudRecord = null;
+        var dailyOracleStore = DailyOracleFirestore.Instance;
+        if (dailyOracleStore != null && dailyOracleStore.IsReady)
+        {
+            dailyOracleStore.LoadToday(record =>
+            {
+                cloudRecord = record;
+                cloudChecked = true;
+            });
+            yield return new WaitUntil(() => cloudChecked);
+
+            if (cloudRecord != null && cloudRecord.HasPayload)
+            {
+                var cloudCard = TarotDeck.GetById(cloudRecord.cardId);
+                if (cloudCard != null)
+                {
+                    card = cloudCard;
+                    upright = cloudRecord.IsUpright;
+                    CurrentCard = cloudCard;
+                    CurrentUpright = upright;
+                    DivinationEngine.Instance?.SetTodayCardFromCloud(cloudCard, upright, cloudRecord.date);
+                }
+
+                CachedPayload = cloudRecord.ToPayload();
+                MarkOracleCache(card, upright);
+                IsOracleLoading = false;
+                Debug.Log($"[DailyOracleService] 使用云端今日神谕缓存: {cloudRecord.cardId}");
+                onComplete?.Invoke(CachedPayload);
+                OnOracleGenerated?.Invoke(CachedPayload);
+                yield break;
+            }
+        }
 
         // 1. 构建 ChatPayload
         var payload = BuildDailyOraclePayload(card, upright);
@@ -102,7 +163,8 @@ public class DailyOracleService : MonoBehaviour
         {
             Debug.LogError("[DailyOracleService] 组装消息失败，使用降级模板");
             CachedPayload = BuildFallbackPayload(card, upright, CurrentLocale);
-            IsLoading = false;
+            MarkOracleCache(card, upright);
+            IsOracleLoading = false;
             onComplete?.Invoke(CachedPayload);
             OnOracleGenerated?.Invoke(CachedPayload);
             yield break;
@@ -139,15 +201,23 @@ public class DailyOracleService : MonoBehaviour
         if (!string.IsNullOrEmpty(aiResponse))
         {
             CachedPayload = ParseDailyOracleResponse(aiResponse, card, upright, CurrentLocale);
+            MarkOracleCache(card, upright);
             Debug.Log($"[DailyOracleService] AI 神谕生成成功: {card.nameZh}");
         }
         else
         {
             Debug.LogWarning($"[DailyOracleService] AI 请求失败: {errorMsg}，使用降级模板");
             CachedPayload = BuildFallbackPayload(card, upright, CurrentLocale);
+            MarkOracleCache(card, upright);
         }
 
-        IsLoading = false;
+        DialogSystem.Instance?.RecordExternalPrompt(
+            assemblyResult.promptRecord,
+            string.IsNullOrEmpty(aiResponse) ? CachedPayload?.detail : aiResponse);
+
+        DailyOracleFirestore.Instance?.SaveToday(card, upright, CachedPayload, CurrentLocale);
+
+        IsOracleLoading = false;
         onComplete?.Invoke(CachedPayload);
         OnOracleGenerated?.Invoke(CachedPayload);
     }
@@ -167,6 +237,174 @@ public class DailyOracleService : MonoBehaviour
     {
         CachedPayload = null;
         CachedInterpretation = null;
+        CachedPreparedReading = null;
+        _cachedOracleCardId = null;
+        _cachedInterpretationCardId = null;
+        _cachedPreparedCardId = null;
+    }
+
+    /// <summary>
+    /// 翻牌时预热今日神谕和完整解读，保证后续 UI 读取的是同一张牌的同一份缓存。
+    /// </summary>
+    public void PreloadTodayReading(TarotCard card, bool upright, Action<TodayOraclePayload> onOracleReady = null,
+        Action<CompleteInterpretationPayload> onInterpretationReady = null)
+    {
+        if (card == null) return;
+        RequestDailyOracle(card, upright, onOracleReady);
+        RequestCompleteInterpretation(card, upright, onInterpretationReady);
+    }
+
+    /// <summary>
+    /// 翻牌准备：生成今日牌 UI 所需的完整数据包。
+    /// 回调返回后，UI 再显示卡牌、打开阅读页或完整解读页。
+    /// </summary>
+    public void PrepareTodayReading(TarotCard card, bool upright, Action<TodayOraclePreparedReading> onReady = null)
+    {
+        if (card == null)
+        {
+            onReady?.Invoke(null);
+            return;
+        }
+
+        if (IsCachedPreparedReadingFor(card, upright) && !IsLoading)
+        {
+            onReady?.Invoke(CachedPreparedReading);
+            return;
+        }
+
+        StartCoroutine(PrepareTodayReadingRoutine(card, upright, onReady));
+    }
+
+    public bool IsSameCurrentCard(TarotCard card, bool upright)
+    {
+        return card != null
+            && CurrentCard != null
+            && CurrentCard.cardId == card.cardId
+            && CurrentUpright == upright;
+    }
+
+    public bool IsCachedOracleFor(TarotCard card, bool upright)
+    {
+        return card != null
+            && CachedPayload != null
+            && _cachedOracleCardId == card.cardId
+            && _cachedOracleUpright == upright;
+    }
+
+    public bool IsCachedInterpretationFor(TarotCard card, bool upright)
+    {
+        return card != null
+            && CachedInterpretation != null
+            && _cachedInterpretationCardId == card.cardId
+            && _cachedInterpretationUpright == upright;
+    }
+
+    public bool IsCachedPreparedReadingFor(TarotCard card, bool upright)
+    {
+        return card != null
+            && CachedPreparedReading != null
+            && _cachedPreparedCardId == card.cardId
+            && _cachedPreparedUpright == upright;
+    }
+
+    private void MarkOracleCache(TarotCard card, bool upright)
+    {
+        _cachedOracleCardId = card?.cardId;
+        _cachedOracleUpright = upright;
+    }
+
+    private void MarkInterpretationCache(TarotCard card, bool upright)
+    {
+        _cachedInterpretationCardId = card?.cardId;
+        _cachedInterpretationUpright = upright;
+    }
+
+    private void MarkPreparedCache(TarotCard card, bool upright)
+    {
+        _cachedPreparedCardId = card?.cardId;
+        _cachedPreparedUpright = upright;
+    }
+
+    private System.Collections.IEnumerator PrepareTodayReadingRoutine(
+        TarotCard card, bool upright, Action<TodayOraclePreparedReading> onReady)
+    {
+        CurrentCard = card;
+        CurrentUpright = upright;
+
+        TodayOraclePayload oraclePayload = null;
+        CompleteInterpretationPayload interpretationPayload = null;
+        bool oracleReady = false;
+        bool interpretationReady = false;
+
+        // 先确定今日神谕。若云端已缓存今日牌，这一步会把 card/upright 切到云端结果。
+        RequestDailyOracle(card, upright, (payload) =>
+        {
+            oraclePayload = payload;
+            oracleReady = true;
+        });
+
+        yield return new WaitUntil(() => oracleReady);
+
+        if (CurrentCard != null && !IsSameCurrentCard(card, upright))
+        {
+            card = CurrentCard;
+            upright = CurrentUpright;
+        }
+
+        RequestCompleteInterpretation(card, upright, (payload) =>
+        {
+            interpretationPayload = payload;
+            interpretationReady = true;
+        });
+
+        yield return new WaitUntil(() => interpretationReady);
+
+        CachedPreparedReading = BuildPreparedReading(card, upright, oraclePayload, interpretationPayload);
+        MarkPreparedCache(card, upright);
+        onReady?.Invoke(CachedPreparedReading);
+    }
+
+    private TodayOraclePreparedReading BuildPreparedReading(
+        TarotCard card, bool upright, TodayOraclePayload oraclePayload,
+        CompleteInterpretationPayload interpretationPayload)
+    {
+        var cardPayload = new TodayCardPayload
+        {
+            cardId = card.cardId,
+            cardName = card.nameEn,
+            displayName = card.DisplayName(upright),
+            nameZh = card.nameZh,
+            orientation = upright ? "upright" : "reversed",
+            generatedAt = DateTime.Now.ToString("o"),
+            oracleText = oraclePayload?.oracle,
+            title = oraclePayload?.title ?? "今日塔罗"
+        };
+
+        return new TodayOraclePreparedReading
+        {
+            card = card,
+            upright = upright,
+            cardId = card.cardId,
+            cardDisplayName = card.DisplayName(upright),
+            cardDescription = FirstNonEmpty(oraclePayload?.detail, interpretationPayload?.description),
+            cardMeaning = FirstNonEmpty(interpretationPayload?.meaningAnalysis, oraclePayload?.oracle),
+            cardIcon = TarotSpriteLoader.Load(card.cardId),
+            cardPayload = cardPayload,
+            oraclePayload = oraclePayload,
+            interpretationPayload = interpretationPayload,
+            preparedAt = DateTime.Now.ToString("o")
+        };
+    }
+
+    private static string FirstNonEmpty(params string[] values)
+    {
+        if (values == null) return "";
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+        return "";
     }
 
     /// <summary>
@@ -485,12 +723,12 @@ public class DailyOracleService : MonoBehaviour
                     TagsField = "Energy Tags",
                     MeaningField = "Meaning Analysis",
                     ActionField = "Action Suggestion",
-                    TopicsField = "Suggested Topics",
+                    TopicsField = "Questions to Ask",
                     DescInstr = "A warm, narrative description of the card and its energy today, 2-4 sentences. Include the card name, orientation, and how its energy might show up in daily life. Like a gentle friend holding up a mirror.",
                     TagsInstr = "3 single words or short phrases capturing today's emotional/energetic tone, separated by your locale separator.",
                     MeaningInstr = "A deeper interpretation of the card's meaning in the context of today, 3-5 sentences. Grounded in tarot wisdom but shared conversationally, no jargon.",
                     ActionInstr = "A concrete, small action or mindset shift the user can practice today, 2-4 sentences. Practical, gentle, not prescriptive.",
-                    TopicsInstr = "4 conversation starter topics that a user might naturally want to discuss after this reading. Keep each topic under 15 words, make them feel like something a friend would actually ask.",
+                    TopicsInstr = "4 direct first-person questions the user can tap and send to the AI after this reading. Each must end with a question mark, be under 16 words, and sound like the user is asking for guidance. Avoid abstract topic labels.",
                     DescMaxChars = 300,
                     MeaningMaxChars = 400,
                     ActionMaxChars = 250,
@@ -517,12 +755,12 @@ public class DailyOracleService : MonoBehaviour
                     TagsField = "能量标签",
                     MeaningField = "牌义解析",
                     ActionField = "行动建议",
-                    TopicsField = "推荐话题",
+                    TopicsField = "推荐追问",
                     DescInstr = "用温暖叙事化的口吻描述这张牌和它今天的能量，2-4句话。包含牌名、正逆位方向，以及它的能量如何出现在日常生活中。像一位温柔的朋友为你举起一面镜子。",
                     TagsInstr = "3个词语或简短短语，捕捉今天这张牌带来的情绪/能量基调，用你的分隔符分隔。",
                     MeaningInstr = "对这张牌在今日语境下的深层解读，3-5句话。基于塔罗智慧但以对话方式分享，不堆砌术语。",
                     ActionInstr = "今天可以尝试的一个具体的小行动或心态调整，2-4句话。实用、温和，不强求。",
-                    TopicsInstr = "4个用户看完解读后可能自然想聊的话题。每个话题控制在15字以内，让人感觉是朋友真的会问的那种问题。",
+                    TopicsInstr = "4个用户可以直接点选并发给AI的第一人称追问句。每句必须是问句，以问号结尾，控制在22字以内，像用户真的在请求指引；不要写抽象话题或陈述句。",
                     DescMaxChars = 300,
                     MeaningMaxChars = 400,
                     ActionMaxChars = 250,
@@ -576,10 +814,24 @@ public class DailyOracleService : MonoBehaviour
     public void RequestCompleteInterpretation(TarotCard card, bool upright,
         Action<CompleteInterpretationPayload> onComplete = null)
     {
-        if (IsLoading)
+        if (CachedInterpretation != null && IsCachedInterpretationFor(card, upright) && !IsInterpretationLoading)
+        {
+            onComplete?.Invoke(CachedInterpretation);
+            return;
+        }
+
+        if (IsInterpretationLoading)
         {
             if (onComplete != null)
-                OnInterpretationGenerated += (payload) => onComplete(payload);
+            {
+                Action<CompleteInterpretationPayload> handler = null;
+                handler = (payload) =>
+                {
+                    OnInterpretationGenerated -= handler;
+                    onComplete(payload);
+                };
+                OnInterpretationGenerated += handler;
+            }
             return;
         }
 
@@ -589,7 +841,7 @@ public class DailyOracleService : MonoBehaviour
     private System.Collections.IEnumerator RequestCompleteInterpretationRoutine(
         TarotCard card, bool upright, Action<CompleteInterpretationPayload> onComplete)
     {
-        IsLoading = true;
+        IsInterpretationLoading = true;
         CurrentCard = card;
         CurrentUpright = upright;
 
@@ -603,7 +855,8 @@ public class DailyOracleService : MonoBehaviour
         {
             Debug.LogError("[DailyOracleService] 组装解读消息失败，使用降级模板");
             CachedInterpretation = BuildFallbackInterpretation(card, upright, CurrentLocale);
-            IsLoading = false;
+            MarkInterpretationCache(card, upright);
+            IsInterpretationLoading = false;
             onComplete?.Invoke(CachedInterpretation);
             OnInterpretationGenerated?.Invoke(CachedInterpretation);
             yield break;
@@ -628,15 +881,21 @@ public class DailyOracleService : MonoBehaviour
         if (!string.IsNullOrEmpty(aiResponse))
         {
             CachedInterpretation = ParseInterpretationResponse(aiResponse, card, upright, CurrentLocale);
+            MarkInterpretationCache(card, upright);
             Debug.Log($"[DailyOracleService] AI 完整解读生成成功: {card.nameZh}");
         }
         else
         {
             Debug.LogWarning($"[DailyOracleService] AI 解读请求失败: {errorMsg}，使用降级模板");
             CachedInterpretation = BuildFallbackInterpretation(card, upright, CurrentLocale);
+            MarkInterpretationCache(card, upright);
         }
 
-        IsLoading = false;
+        DialogSystem.Instance?.RecordExternalPrompt(
+            assemblyResult.promptRecord,
+            string.IsNullOrEmpty(aiResponse) ? CachedInterpretation?.description : aiResponse);
+
+        IsInterpretationLoading = false;
         onComplete?.Invoke(CachedInterpretation);
         OnInterpretationGenerated?.Invoke(CachedInterpretation);
     }
@@ -792,8 +1051,9 @@ public class DailyOracleService : MonoBehaviour
             result.meaningAnalysis = BuildFallbackMeaning(card, upright, locale);
         if (string.IsNullOrEmpty(result.actionSuggestion))
             result.actionSuggestion = BuildFallbackAction(card, upright, locale);
-        if (result.topics == null || result.topics.Count < 4)
+        if (result.topics == null)
             result.topics = GetFallbackTopics(card, upright, locale);
+        result.topics = NormalizeTopicQuestions(result.topics, card, upright, locale);
 
         // 确保数量正确
         while (result.tags.Count > 3) result.tags.RemoveAt(result.tags.Count - 1);
@@ -892,18 +1152,77 @@ public class DailyOracleService : MonoBehaviour
         {
             return new List<string>
             {
-                $"Tell me more about {name} and how it relates to love",
-                $"What should I pay attention to at work today?",
-                $"How can I use {name}'s energy in my relationships?",
-                $"What is the overall theme for me this week?"
+                $"What does {name} want me to notice today?",
+                $"How does this card guide my relationship question?",
+                $"What should I ask myself before acting?",
+                $"How can I work with this energy now?"
             };
         }
         return new List<string>
         {
-            $"我想更多了解{name}代表的能量",
-            $"今天在感情上我该注意什么？",
-            $"{name}对我的工作有什么启示？",
-            $"这周的运势总体怎么样？"
+            $"{name}今天想提醒我什么？",
+            $"这张牌怎么看我的关系？",
+            $"我现在该先问自己什么？",
+            $"我该怎么运用这股能量？"
+        };
+    }
+
+    private static List<string> NormalizeTopicQuestions(List<string> topics, TarotCard card, bool upright, string locale)
+    {
+        var result = new List<string>();
+        if (topics != null)
+        {
+            foreach (var raw in topics)
+            {
+                var topic = CleanTopicLine(raw);
+                if (IsUsableQuestion(topic, locale) && !result.Contains(topic))
+                    result.Add(topic);
+                if (result.Count >= 4) break;
+            }
+        }
+
+        foreach (var fallback in GetStaticFallbackQuestions(card, upright, locale))
+        {
+            if (result.Count >= 4) break;
+            if (!result.Contains(fallback))
+                result.Add(fallback);
+        }
+
+        return result;
+    }
+
+    private static bool IsUsableQuestion(string text, string locale)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var trimmed = text.Trim();
+        bool isQuestion = trimmed.EndsWith("？", StringComparison.Ordinal) || trimmed.EndsWith("?", StringComparison.Ordinal);
+        if (!isQuestion) return false;
+        if (trimmed.Contains("是否") && trimmed.Contains("基本")) return false;
+        return locale == "en-US"
+            ? trimmed.Length <= 90
+            : trimmed.Length <= 28;
+    }
+
+    private static List<string> GetStaticFallbackQuestions(TarotCard card, bool upright, string locale)
+    {
+        var name = card?.nameZh ?? (locale == "en-US" ? "this card" : "这张牌");
+        if (locale == "en-US")
+        {
+            return new List<string>
+            {
+                $"What does {name} want me to notice today?",
+                "What is the deeper message for me?",
+                "How should I handle my current situation?",
+                "What question should I ask myself next?"
+            };
+        }
+
+        return new List<string>
+        {
+            $"{name}今天想提醒我什么？",
+            "这件事更深层的讯息是什么？",
+            "我现在该如何面对现状？",
+            "我接下来该问自己什么？"
         };
     }
 

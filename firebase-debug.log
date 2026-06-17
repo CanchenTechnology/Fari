@@ -1,0 +1,78 @@
+[debug] [2026-06-17T10:04:21.812Z] ----------------------------------------------------------------------
+[debug] [2026-06-17T10:04:21.813Z] Command:       /Users/kittenhao/.workbuddy/binaries/node/versions/22.22.2/bin/node /Users/kittenhao/.workbuddy/binaries/node/versions/22.22.2/bin/firebase login --reauth
+[debug] [2026-06-17T10:04:21.813Z] CLI Version:   15.20.0
+[debug] [2026-06-17T10:04:21.813Z] Platform:      darwin
+[debug] [2026-06-17T10:04:21.813Z] Node Version:  v22.22.2
+[debug] [2026-06-17T10:04:21.813Z] Time:          Wed Jun 17 2026 18:04:21 GMT+0800 (中国标准时间)
+[debug] [2026-06-17T10:04:21.814Z] ----------------------------------------------------------------------
+[debug] 
+[info] 
+[info] Visit this URL on this device to log in:
+[info] https://accounts.google.com/o/oauth2/auth?client_id=563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com&scope=email%20openid%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloudplatformprojects.readonly%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Ffirebase%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform&response_type=code&state=411380034&redirect_uri=http%3A%2F%2Flocalhost%3A9005&login_hint=1255755615qq%40gmail.com
+[info] 
+[info] Waiting for authentication...
+[debug] [2026-06-17T10:04:27.607Z] >>> [apiv2][query] POST https://accounts.google.com/o/oauth2/token [none]
+[debug] [2026-06-17T10:04:27.607Z] >>> [apiv2][body] POST https://accounts.google.com/o/oauth2/token [omitted]
+[debug] [2026-06-17T10:05:42.920Z] *** [apiv2] error from fetch(https://accounts.google.com/o/oauth2/token, {"headers":{},"method":"POST","body":{"_overheadLength":543,"_valueLength":208,"_valuesToMeasure":[],"writable":false,"readable":true,"dataSize":0,"maxDataSize":2097152,"pauseStreams":true,"_released":true,"_streams":[],"_currentStream":null,"_insideLoop":false,"_pendingNext":false,"_boundary":"--------------------------e612badbd2b242fe6620dbbd","_events":{},"_eventsCount":1}}): FetchError: request to https://accounts.google.com/o/oauth2/token failed, reason: 
+[debug] [2026-06-17T10:05:42.921Z] Token Fetch Error: FirebaseError: Failed to make request to https://accounts.google.com/o/oauth2/token
+    at RetryOperation._fn (/Users/kittenhao/.workbuddy/binaries/node/versions/22.22.2/lib/node_modules/firebase-tools/lib/apiv2.js:282:31)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+[error] Authentication Error: Your credentials are no longer valid. Please run firebase login --reauth
+
+For CI servers and headless environments, generate a new token with firebase login:ci
+[debug] [2026-06-17T10:05:42.925Z] >>> [apiv2][query] POST https://auth.firebase.tools/attest [none]
+[debug] [2026-06-17T10:05:42.925Z] >>> [apiv2][body] POST https://auth.firebase.tools/attest {"session_id":"d6b2f15e-c7b9-41df-a57e-952d26775a94"}
+[debug] [2026-06-17T10:05:43.994Z] <<< [apiv2][status] POST https://auth.firebase.tools/attest 200
+[debug] [2026-06-17T10:05:43.994Z] <<< [apiv2][body] POST https://auth.firebase.tools/attest {"token":"rct4F7dm_eIAvAXrvpZhT28O98ftiaUnJf_MdJ3353M"}
+[info] 
+[info] To sign in to the Firebase CLI:
+[info] 
+[info] 1. Take note of your session ID:
+[info] 
+[info]    D6B2F
+[info] 
+[info] 2. Visit the URL below on any device and follow the instructions to get your code:
+[info] 
+[info]    https://auth.firebase.tools/login?code_challenge=BwDEWhMyY2v3NGmTFsYi2q8uqQBQijZTRGLw5KNxwWk&session=d6b2f15e-c7b9-41df-a57e-952d26775a94&attest=rct4F7dm_eIAvAXrvpZhT28O98ftiaUnJf_MdJ3353M
+[info] 
+[info] 3. Paste or enter the authorization code below once you have it:
+[info] 
+[debug] [2026-06-17T10:06:45.862Z] ----------------------------------------------------------------------
+[debug] [2026-06-17T10:06:45.863Z] Command:       /Users/kittenhao/.workbuddy/binaries/node/versions/22.22.2/bin/node /Users/kittenhao/.workbuddy/binaries/node/versions/22.22.2/bin/firebase login --reauth
+[debug] [2026-06-17T10:06:45.863Z] CLI Version:   15.20.0
+[debug] [2026-06-17T10:06:45.863Z] Platform:      darwin
+[debug] [2026-06-17T10:06:45.863Z] Node Version:  v22.22.2
+[debug] [2026-06-17T10:06:45.864Z] Time:          Wed Jun 17 2026 18:06:45 GMT+0800 (中国标准时间)
+[debug] [2026-06-17T10:06:45.864Z] ----------------------------------------------------------------------
+[debug] 
+[info] 
+[info] Visit this URL on this device to log in:
+[info] https://accounts.google.com/o/oauth2/auth?client_id=563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com&scope=email%20openid%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloudplatformprojects.readonly%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Ffirebase%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform&response_type=code&state=70254000&redirect_uri=http%3A%2F%2Flocalhost%3A9005&login_hint=1255755615qq%40gmail.com
+[info] 
+[info] Waiting for authentication...
+[debug] [2026-06-17T10:06:51.233Z] >>> [apiv2][query] POST https://accounts.google.com/o/oauth2/token [none]
+[debug] [2026-06-17T10:06:51.233Z] >>> [apiv2][body] POST https://accounts.google.com/o/oauth2/token [omitted]
+[debug] [2026-06-17T10:08:06.498Z] *** [apiv2] error from fetch(https://accounts.google.com/o/oauth2/token, {"headers":{},"method":"POST","body":{"_overheadLength":543,"_valueLength":208,"_valuesToMeasure":[],"writable":false,"readable":true,"dataSize":0,"maxDataSize":2097152,"pauseStreams":true,"_released":true,"_streams":[],"_currentStream":null,"_insideLoop":false,"_pendingNext":false,"_boundary":"--------------------------530c0dd36925b8f9728c896b","_events":{},"_eventsCount":1}}): FetchError: request to https://accounts.google.com/o/oauth2/token failed, reason: 
+[debug] [2026-06-17T10:08:06.500Z] Token Fetch Error: FirebaseError: Failed to make request to https://accounts.google.com/o/oauth2/token
+    at RetryOperation._fn (/Users/kittenhao/.workbuddy/binaries/node/versions/22.22.2/lib/node_modules/firebase-tools/lib/apiv2.js:282:31)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+[error] Authentication Error: Your credentials are no longer valid. Please run firebase login --reauth
+
+For CI servers and headless environments, generate a new token with firebase login:ci
+[debug] [2026-06-17T10:08:06.509Z] >>> [apiv2][query] POST https://auth.firebase.tools/attest [none]
+[debug] [2026-06-17T10:08:06.510Z] >>> [apiv2][body] POST https://auth.firebase.tools/attest {"session_id":"d80d995a-2f86-4472-a362-f7d108763862"}
+[debug] [2026-06-17T10:08:07.395Z] <<< [apiv2][status] POST https://auth.firebase.tools/attest 200
+[debug] [2026-06-17T10:08:07.396Z] <<< [apiv2][body] POST https://auth.firebase.tools/attest {"token":"m2KeFxko8W_Zem8GUr9ZFzrvzfxvMN56ROT1PPH2NYY"}
+[info] 
+[info] To sign in to the Firebase CLI:
+[info] 
+[info] 1. Take note of your session ID:
+[info] 
+[info]    D80D9
+[info] 
+[info] 2. Visit the URL below on any device and follow the instructions to get your code:
+[info] 
+[info]    https://auth.firebase.tools/login?code_challenge=-k0vNizVTdqYrawJXESoV2ix2_GCUezzre15eLrWPM0&session=d80d995a-2f86-4472-a362-f7d108763862&attest=m2KeFxko8W_Zem8GUr9ZFzrvzfxvMN56ROT1PPH2NYY
+[info] 
+[info] 3. Paste or enter the authorization code below once you have it:
+[info] 

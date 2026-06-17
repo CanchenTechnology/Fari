@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using XFGameFrameWork;
 using GamerFrameWork.OracleRuntime;
@@ -48,6 +49,20 @@ public class ChatMessageData
     public List<string> options; // AI回复的选项按钮文本
     public DivinerType divinerType; // 当messageType为AI时使用
     public string spreadKind;       // 牌阵类型（InteractionCard1/3/5 使用）
+    public bool spreadCardsDrawn;   // 牌阵是否已经完成抽牌（用于聊天列表刷新后恢复状态）
+    public List<TarotDrawData> spreadDrawnCards; // 已抽到的牌（InteractionCard 使用）
+    public string friendName;
+    public string friendContext;
+}
+
+/// <summary>
+/// 聊天牌阵抽牌结果。只保存 cardId，恢复时从 TarotDeck 查完整牌面数据。
+/// </summary>
+[System.Serializable]
+public class TarotDrawData
+{
+    public string cardId;
+    public bool upright;
 }
 
 /// <summary>
@@ -92,6 +107,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
 
     /// <summary>当前活跃的关系 ID（好友合盘场景）</summary>
     private string activeRelationshipId;
+    private string activeFriendContext = "";
 
     /// <summary>当前占卜 Reading ID</summary>
     private string activeReadingId;
@@ -101,6 +117,14 @@ public class DialogSystem : MonoSingleton<DialogSystem>
 
     /// <summary>当前动作类型（供 SceneRouter 路由）</summary>
     private string activeActionKind = "";
+
+    /// <summary>最近一次 OracleRuntime 组装结果（用于输出守卫和调试）</summary>
+    private AssemblyResult lastAssemblyResult;
+
+    /// <summary>最近的 OracleRuntime prompt 调试记录</summary>
+    private List<PromptRecord> promptRecords = new List<PromptRecord>();
+
+    private const int MAX_PROMPT_RECORDS = 50;
 
     /// <summary>今日牌数据（供 ChatPayload 使用）</summary>
     private TodayCardPayload todayCardPayload;
@@ -130,11 +154,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         base.Awake();
         if (deepSeekAPI == null)
         {
-            deepSeekAPI = gameObject.GetComponent<DeepSeekAPI>();
-            if (deepSeekAPI == null)
-            {
-                deepSeekAPI = gameObject.AddComponent<DeepSeekAPI>();
-            }
+            deepSeekAPI = DeepSeekAPI.ResolveFor(gameObject);
         }
     }
 
@@ -247,20 +267,41 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     }
     public ChatMessageData AddAtFriendMessage(string content)
     {
+        return AddAtFriendMessage(content, null);
+    }
+
+    public ChatMessageData AddAtFriendMessage(string content, FriendDataManager.FriendData friend)
+    {
+        string friendContext = friend != null ? friend.BuildOracleContext() : "";
+        string messageContent = string.IsNullOrWhiteSpace(content) && friend != null
+            ? $"@{friend.name}\n{friendContext}"
+            : content;
+
          ChatMessageData data = new ChatMessageData
         {
             id = mMessageIdCounter++,
             roleType = DialogRoleType.AI,
 
             messageType = MsgType.AtFriend,
-            content = content,
+            content = messageContent,
+            friendName = friend != null ? friend.name : "",
+            friendContext = friendContext,
 
             divinerType = CurrentDivinerType
         };
         mChatMessageList.Add(data);
 
-        // 同时添加到 API 历史
-        mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", content));
+        if (friend != null)
+        {
+            activeRelationshipId = friend.id.ToString();
+            activeFriendContext = friendContext;
+        }
+
+        // 同时添加到 API 历史，让塔罗师知道当前 @ 的好友档案。
+        if (!string.IsNullOrWhiteSpace(messageContent))
+        {
+            mApiMessageHistory.Add(new DeepSeekAPI.Message("user", messageContent));
+        }
 
         return data;
     }
@@ -401,8 +442,8 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             lastOracleReply = recentAssistantReplies.Count > 0
                 ? recentAssistantReplies[recentAssistantReplies.Count - 1]
                 : "",
-            rationaleQuestion = false,
-            friendContext = "",
+            rationaleQuestion = IsRationaleQuestion(userMessage),
+            friendContext = activeFriendContext,
             memoryUsed = new List<string>(),
             recentMessages = new List<string>(recentUserMessages),
             recentAssistantReplies = new List<string>(recentAssistantReplies),
@@ -436,6 +477,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         // [0..4] = system, [5] = user payload
         var assemblyResult = ContextAssembler.AssembleStreamingChat(
             payload, memorySource, readingLock);
+        lastAssemblyResult = assemblyResult;
 
         var messages = new List<DeepSeekAPI.Message>();
 
@@ -453,21 +495,281 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             return GetApiMessagesWithSystemPrompt();
         }
 
-        // 追加最近 N 轮对话历史（不含当前用户消息，因为已在 payload 中）
-        // 取 mApiMessageHistory 中最近几轮，跳过最后一个（即当前用户消息）
-        int historyCount = mApiMessageHistory.Count;
-        int skipLast = (historyCount > 0 && mApiMessageHistory[historyCount - 1].role == "user") ? 1 : 0;
-        int maxHistory = 6; // 最多追加 3 轮对话
-        int startIdx = Mathf.Max(0, historyCount - skipLast - maxHistory);
-        for (int i = startIdx; i < historyCount - skipLast; i++)
-        {
-            messages.Add(mApiMessageHistory[i]);
-        }
-
         Debug.Log($"[OracleRuntime] Assembled {messages.Count} messages for API request. "
-            + $"Scene={payload.scene}, Stage=auto-detected, Voice={GetOracleVoiceId()}");
+            + $"Scene={assemblyResult.promptRecord?.scene}, Stage={assemblyResult.promptRecord?.stage}, Voice={GetOracleVoiceId()}");
 
         return messages;
+    }
+
+    public PromptRecord GetLastPromptRecord()
+    {
+        return lastAssemblyResult?.promptRecord;
+    }
+
+    public IReadOnlyList<PromptRecord> GetPromptRecords()
+    {
+        return promptRecords;
+    }
+
+    public void RecordExternalPrompt(PromptRecord record, string modelOutput)
+    {
+        if (record == null) return;
+        record.modelOutput = modelOutput ?? "";
+        record.recordedAt = System.DateTime.UtcNow.ToString("o");
+        AddPromptRecord(record);
+    }
+
+    private static bool IsRationaleQuestion(string message)
+    {
+        if (string.IsNullOrEmpty(message)) return false;
+        return message.Contains("为什么这么说")
+            || message.Contains("为什么这样说")
+            || message.Contains("依据是什么")
+            || message.Contains("你凭什么")
+            || message.ToLowerInvariant().Contains("why do you say");
+    }
+
+    private OutputGuardOptions BuildOutputGuardOptions()
+    {
+        var stage = lastAssemblyResult?.promptRecord?.stage;
+        if (string.IsNullOrEmpty(stage))
+            stage = "listen";
+
+        var deckCardNames = new List<string>();
+        foreach (var card in TarotDeck.FullDeck)
+        {
+            if (!string.IsNullOrEmpty(card.nameZh))
+                deckCardNames.Add(card.nameZh);
+            if (!string.IsNullOrEmpty(card.nameEn))
+                deckCardNames.Add(card.nameEn);
+            if (!string.IsNullOrEmpty(card.cardId))
+                deckCardNames.Add(card.cardId);
+        }
+
+        return new OutputGuardOptions
+        {
+            stage = stage,
+            responseMode = lastAssemblyResult?.promptRecord?.responseMode,
+            locale = "zh-CN",
+            responseContract = ResponseContracts.GetFor(stage),
+            readingLock = readingLock,
+            deckCardNames = deckCardNames
+        };
+    }
+
+    private void StorePromptRecord(string modelOutput, string oracleMessageId = null)
+    {
+        var record = lastAssemblyResult?.promptRecord;
+        if (record == null) return;
+
+        record.modelOutput = modelOutput ?? "";
+        record.oracleMessageId = oracleMessageId ?? record.oracleMessageId;
+        record.recordedAt = System.DateTime.UtcNow.ToString("o");
+
+        AddPromptRecord(record);
+    }
+
+    private void AddPromptRecord(PromptRecord record)
+    {
+        if (record == null) return;
+
+        promptRecords.Add(record);
+        while (promptRecords.Count > MAX_PROMPT_RECORDS)
+            promptRecords.RemoveAt(0);
+    }
+
+    private string ApplyOutputGuard(string text)
+    {
+        if (!useOracleRuntime) return text;
+
+        try
+        {
+            var options = BuildOutputGuardOptions();
+            var guardResult = OutputGuard.Check(text, options);
+            if (guardResult.ok || guardResult.issues == null || guardResult.issues.Count == 0)
+                return text;
+
+            Debug.LogWarning($"[OracleRuntime] OutputGuard issues: {string.Join(", ", guardResult.issues)}");
+
+            if (guardResult.issues.Contains("unlocked_card"))
+            {
+                return "我不能引用还没有锁定的牌。先把这次 readingId 和牌面确认下来，再继续解读。";
+            }
+
+            var cleaned = CleanGuardedOutput(text, guardResult.issues, options);
+            return string.IsNullOrEmpty(cleaned) ? text : cleaned;
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning($"[OracleRuntime] OutputGuard check failed: {ex.Message}");
+            return text;
+        }
+    }
+
+    private static string CleanGuardedOutput(string text, List<string> issues, OutputGuardOptions options)
+    {
+        var value = text ?? "";
+
+        if (issues.Contains("absolute_prediction"))
+        {
+            value = value.Replace("一定会", "更可能会")
+                .Replace("肯定会", "看起来会")
+                .Replace("绝对不会", "不太像会")
+                .Replace("必然", "更像是")
+                .Replace("注定", "像是在走向");
+        }
+
+        if (issues.Contains("third_party_mind_claim"))
+        {
+            value += "\n我不能断言对方心里真正怎么想，只能根据你描述的行为模式来判断。";
+        }
+
+        if (issues.Contains("therapy_claim") || issues.Contains("clinical_diagnosis") || issues.Contains("medical_claim"))
+        {
+            value = "这部分我不能做诊断或治疗判断。更稳妥的是：先照顾好当下安全感，如果涉及健康或风险，请找专业人士确认。";
+        }
+
+        if (issues.Contains("listen_final_verdict"))
+        {
+            value = "我先不急着下结论。你现在最明显的张力，是想要一个确定回应，却又怕自己继续追会更失控。";
+        }
+
+        if (issues.Contains("too_many_sentences") || issues.Contains("too_many_words"))
+        {
+            value = TrimToContract(value, options?.responseContract);
+        }
+
+        return value.Trim();
+    }
+
+    private static string TrimToContract(string text, ResponseContract contract)
+    {
+        if (string.IsNullOrEmpty(text) || contract == null) return text;
+
+        var maxSentences = Mathf.Max(1, contract.maxSentences);
+        var parts = System.Text.RegularExpressions.Regex.Split(text.Trim(), @"(?<=[。！？.!?])")
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Take(maxSentences)
+            .ToList();
+
+        var trimmed = parts.Count > 0 ? string.Join("", parts) : text.Trim();
+        if (contract.maxWords > 0 && trimmed.Length > contract.maxWords)
+            trimmed = trimmed.Substring(0, Mathf.Min(trimmed.Length, contract.maxWords)).TrimEnd() + "…";
+        return trimmed;
+    }
+
+    private void QueueMemorySummary(string userInput, string assistantReply)
+    {
+        if (!useOracleRuntime) return;
+        if (string.IsNullOrEmpty(userInput) || string.IsNullOrEmpty(assistantReply)) return;
+
+        // 只在有明显长期价值的回合尝试提炼记忆，避免把闲聊都塞进候选记忆。
+        if (!ShouldSummarizeMemory(userInput, assistantReply)) return;
+
+        var sourcePromptId = lastAssemblyResult?.promptRecord?.promptId;
+        var summaryPayload = new ChatPayload
+        {
+            scene = "user_memory_summary",
+            locale = "zh-CN",
+            message = "请从这一轮对话中提炼长期有用的用户记忆候选，不要保存完整原话。\n"
+                + $"用户：{userInput}\n"
+                + $"助手：{assistantReply}",
+            activeRelationshipId = activeRelationshipId,
+            activeReadingId = activeReadingId,
+            user = new UserPayloadProfile
+            {
+                preferredTone = GetOracleVoiceId(),
+                locale = "zh-CN"
+            }
+        };
+
+        var assembly = ContextAssembler.AssembleSceneCall(
+            "user_memory_summary", summaryPayload, memorySource, GetOracleVoiceId());
+
+        if (assembly?.messages == null || assembly.messages.Count == 0)
+            return;
+
+        var messages = new List<DeepSeekAPI.Message>();
+        foreach (var cm in assembly.messages)
+            messages.Add(new DeepSeekAPI.Message(cm.role, cm.content));
+
+        deepSeekAPI.SendChatRequest(messages,
+            (response) =>
+            {
+                if (assembly.promptRecord != null)
+                {
+                    assembly.promptRecord.modelOutput = response ?? "";
+                    AddPromptRecord(assembly.promptRecord);
+                }
+
+                var summary = ExtractMemorySummary(response);
+                if (string.IsNullOrEmpty(summary)) return;
+
+                memorySource.candidates.Add(new MemoryCandidate
+                {
+                    id = System.Guid.NewGuid().ToString("N").Substring(0, 12),
+                    userId = "",
+                    type = "recurring_theme",
+                    text = summary,
+                    status = "pending",
+                    confidence = 0.7f,
+                    relationshipId = activeRelationshipId,
+                    sourceConversationId = "",
+                    sourceMessageId = sourcePromptId,
+                    createdAt = System.DateTime.UtcNow.ToString("o")
+                });
+
+                TrimMemoryCandidates();
+                Debug.Log($"[OracleRuntime] Memory candidate saved: {summary}");
+            },
+            (error) =>
+            {
+                Debug.LogWarning($"[OracleRuntime] Memory summary skipped: {error}");
+            });
+    }
+
+    private static bool ShouldSummarizeMemory(string userInput, string assistantReply)
+    {
+        var text = (userInput ?? "") + " " + (assistantReply ?? "");
+        return text.Contains("关系")
+            || text.Contains("喜欢")
+            || text.Contains("前任")
+            || text.Contains("朋友")
+            || text.Contains("边界")
+            || text.Contains("不要")
+            || text.Contains("总是")
+            || text.Contains("每次")
+            || text.Contains("工作")
+            || text.Contains("选择")
+            || text.Contains("焦虑")
+            || text.ToLowerInvariant().Contains("prefer");
+    }
+
+    private static string ExtractMemorySummary(string response)
+    {
+        if (string.IsNullOrEmpty(response)) return "";
+
+        var match = System.Text.RegularExpressions.Regex.Match(
+            response, "\"modelSummary\"\\s*:\\s*\"(?<value>.*?)\"",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+        if (!match.Success) return "";
+
+        var value = match.Groups["value"].Value
+            .Replace("\\n", " ")
+            .Replace("\\\"", "\"")
+            .Trim();
+
+        if (value.Length > 120)
+            value = value.Substring(0, 120).TrimEnd() + "…";
+        return value;
+    }
+
+    private void TrimMemoryCandidates()
+    {
+        const int maxCandidates = 20;
+        if (memorySource?.candidates == null) return;
+        while (memorySource.candidates.Count > maxCandidates)
+            memorySource.candidates.RemoveAt(0);
     }
 
     /// <summary>
@@ -501,6 +803,11 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     public void SetActiveRelationship(string relationshipId)
     {
         activeRelationshipId = relationshipId;
+    }
+
+    public void SetActiveFriendContext(string friendContext)
+    {
+        activeFriendContext = friendContext ?? "";
     }
 
     /// <summary>
@@ -580,22 +887,10 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         deepSeekAPI.SendChatRequest(messages,
             (aiResponse) =>
             {
-                if (useOracleRuntime)
-                {
-                    try
-                    {
-                        var guardResult = OutputGuard.Check(aiResponse);
-                        if (!guardResult.ok && guardResult.issues?.Count > 0)
-                        {
-                            Debug.LogWarning($"[OracleRuntime] OutputGuard issues: {string.Join(", ", guardResult.issues)}");
-                        }
-                    }
-                    catch (System.Exception ex)
-                    {
-                        Debug.LogWarning($"[OracleRuntime] OutputGuard check failed: {ex.Message}");
-                    }
-                }
-                onSuccess?.Invoke(aiResponse);
+                var guardedOutput = ApplyOutputGuard(aiResponse);
+                StorePromptRecord(guardedOutput);
+                QueueMemorySummary(lastAssemblyResult?.promptRecord?.userInput, guardedOutput);
+                onSuccess?.Invoke(guardedOutput);
             },
             onError
         );
@@ -612,7 +907,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     /// <param name="onChunk">每收到一个 token 的回调（delta 文本）</param>
     /// <param name="onComplete">流式完成回调（完整文本）</param>
     /// <param name="onError">错误回调</param>
-    public void SendMessageToAIStream(
+    public int SendMessageToAIStream(
         System.Action<string> onChunk,
         System.Action<string> onComplete,
         System.Action<string> onError)
@@ -632,55 +927,44 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             messages = GetApiMessagesWithSystemPrompt();
         }
 
-        // 创建占位消息
-        CreateStreamingAIMessage();
+        // 创建占位消息。每次请求都持有自己的索引，避免并发流式回复互相覆盖。
+        int streamingMessageIndex = CreateStreamingAIMessage();
 
         deepSeekAPI.SendChatRequestStream(messages,
             (chunk) =>
             {
-                AppendToStreamingMessage(chunk);
+                AppendToStreamingMessage(streamingMessageIndex, chunk);
                 onChunk?.Invoke(chunk);
             },
             (fullContent) =>
             {
-                FinalizeStreamingMessage(fullContent);
+                var guardedOutput = ApplyOutputGuard(fullContent);
+                FinalizeStreamingMessage(streamingMessageIndex, guardedOutput);
+                StorePromptRecord(guardedOutput);
+                QueueMemorySummary(lastAssemblyResult?.promptRecord?.userInput, guardedOutput);
 
-                // OutputGuard 校验
-                if (useOracleRuntime)
-                {
-                    try
-                    {
-                        var guardResult = OutputGuard.Check(fullContent);
-                        if (!guardResult.ok && guardResult.issues?.Count > 0)
-                        {
-                            Debug.LogWarning($"[OracleRuntime] OutputGuard issues: {string.Join(", ", guardResult.issues)}");
-                        }
-                    }
-                    catch (System.Exception ex)
-                    {
-                        Debug.LogWarning($"[OracleRuntime] OutputGuard check failed: {ex.Message}");
-                    }
-                }
-
-                onComplete?.Invoke(fullContent);
+                onComplete?.Invoke(guardedOutput);
             },
             (error) =>
             {
                 // 移除占位消息
-                if (mStreamingMessageIndex >= 0 && mStreamingMessageIndex < mChatMessageList.Count)
+                if (streamingMessageIndex >= 0 && streamingMessageIndex < mChatMessageList.Count)
                 {
-                    mChatMessageList.RemoveAt(mStreamingMessageIndex);
+                    mChatMessageList.RemoveAt(streamingMessageIndex);
                 }
-                mStreamingMessageIndex = -1;
+                if (mStreamingMessageIndex == streamingMessageIndex)
+                    mStreamingMessageIndex = -1;
                 onError?.Invoke(error);
             }
         );
+
+        return streamingMessageIndex;
     }
 
     /// <summary>
     /// 创建流式占位消息（空内容）
     /// </summary>
-    private void CreateStreamingAIMessage()
+    private int CreateStreamingAIMessage()
     {
         ChatMessageData data = new ChatMessageData
         {
@@ -693,6 +977,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         };
         mChatMessageList.Add(data);
         mStreamingMessageIndex = mChatMessageList.Count - 1;
+        return mStreamingMessageIndex;
     }
 
     /// <summary>
@@ -700,8 +985,13 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     /// </summary>
     private void AppendToStreamingMessage(string chunk)
     {
-        if (mStreamingMessageIndex < 0 || mStreamingMessageIndex >= mChatMessageList.Count) return;
-        mChatMessageList[mStreamingMessageIndex].content += chunk;
+        AppendToStreamingMessage(mStreamingMessageIndex, chunk);
+    }
+
+    private void AppendToStreamingMessage(int messageIndex, string chunk)
+    {
+        if (messageIndex < 0 || messageIndex >= mChatMessageList.Count) return;
+        mChatMessageList[messageIndex].content += chunk;
     }
 
     /// <summary>
@@ -709,10 +999,15 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     /// </summary>
     private void FinalizeStreamingMessage(string fullContent)
     {
-        if (mStreamingMessageIndex < 0 || mStreamingMessageIndex >= mChatMessageList.Count) return;
+        FinalizeStreamingMessage(mStreamingMessageIndex, fullContent);
+    }
+
+    private void FinalizeStreamingMessage(int messageIndex, string fullContent)
+    {
+        if (messageIndex < 0 || messageIndex >= mChatMessageList.Count) return;
 
         // 确保内容完整（防止 chunk 累加不精确）
-        mChatMessageList[mStreamingMessageIndex].content = fullContent;
+        mChatMessageList[messageIndex].content = fullContent;
 
         // 加入 API 历史
         mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", fullContent));
@@ -722,7 +1017,8 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         if (recentAssistantReplies.Count > MAX_RECENT_MESSAGES)
             recentAssistantReplies.RemoveAt(0);
 
-        mStreamingMessageIndex = -1;
+        if (mStreamingMessageIndex == messageIndex)
+            mStreamingMessageIndex = -1;
     }
 
     /// <summary>
@@ -744,6 +1040,14 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         {
             last.options = options;
         }
+    }
+
+    public void SetAIMessageOptions(int messageIndex, List<string> options)
+    {
+        if (messageIndex < 0 || messageIndex >= mChatMessageList.Count) return;
+        var message = mChatMessageList[messageIndex];
+        if (message.roleType == DialogRoleType.AI)
+            message.options = options;
     }
 
     /// <summary>

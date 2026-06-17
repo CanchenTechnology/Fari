@@ -17,6 +17,9 @@ public static class SpreadShuffleBridge
     /// <summary>待展示的牌阵定义（从 InteractionCard 传入）</summary>
     public static SpreadDefinition PendingSpread;
 
+    /// <summary>触发洗牌的聊天消息（用于把抽牌结果写回具体消息）</summary>
+    public static ChatMessageData PendingMessageData;
+
     /// <summary>洗牌完成事件（InteractionCard 订阅）</summary>
     public static event Action<List<(TarotCard card, bool upright)>> ShuffleCompleted;
 
@@ -34,6 +37,7 @@ public static class SpreadShuffleBridge
     public static void Clear()
     {
         PendingSpread = null;
+        PendingMessageData = null;
         ShuffleCompleted = null;
     }
 }

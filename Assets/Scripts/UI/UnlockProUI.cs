@@ -26,6 +26,7 @@ public class UnlockProUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		RefreshMembershipStatus();
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -51,11 +52,54 @@ public class UnlockProUI : WindowBase
 	}
 	public void OnManageSubscriptionBtnButtonClick()
 	{
-		ToastManager.ShowToast("功能待开发。。。");
+		ToastManager.ShowToast("请在 App Store / Google Play 的订阅管理中操作。");
 	}
 	public void OnRestorePurchaseBtnButtonClick()
 	{
-		ToastManager.ShowToast("功能待开发。。。");
+		RefreshMembershipStatus(true);
+	}
+
+	private void RefreshMembershipStatus(bool showToast = false)
+	{
+		var client = BackendMembershipClient.Instance;
+		if (client == null)
+		{
+			var go = new GameObject("BackendMembershipClient");
+			client = go.AddComponent<BackendMembershipClient>();
+		}
+
+		if (uiComponent.ValidityValueText != null)
+			uiComponent.ValidityValueText.text = "检查中...";
+
+		client.GetMembershipStatus(
+			(status) =>
+			{
+				if (status == null)
+				{
+					if (uiComponent.ValidityValueText != null)
+						uiComponent.ValidityValueText.text = "Free";
+					return;
+				}
+
+				if (uiComponent.ValidityLabelText != null)
+					uiComponent.ValidityLabelText.text = status.isPro ? "Pro 有效期" : "当前状态";
+
+				if (uiComponent.ValidityValueText != null)
+					uiComponent.ValidityValueText.text = status.isPro
+						? (string.IsNullOrEmpty(status.proExpiresAt) ? "Pro" : status.proExpiresAt)
+						: "Free";
+
+				if (showToast)
+					ToastManager.ShowToast(status.isPro ? "已恢复 Pro 状态" : "当前没有有效订阅");
+			},
+			(error) =>
+			{
+				if (uiComponent.ValidityValueText != null)
+					uiComponent.ValidityValueText.text = "检查失败";
+				if (showToast)
+					ToastManager.ShowToast("恢复失败：" + error);
+				Debug.LogWarning("[UnlockProUI] 会员状态检查失败: " + error);
+			});
 	}
 	#endregion
 }

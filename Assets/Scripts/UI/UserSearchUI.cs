@@ -12,6 +12,28 @@ using GamerFrameWork.UIFrameWork;
 public class UserSearchUI : WindowBase
 {
 	public UserSearchUIComponent uiComponent;
+	private string currentSearchText = string.Empty;
+
+	private readonly MockSearchUser[] mockUsers =
+	{
+		new MockSearchUser("Morgan", "@morgan", "真实好友 · 塔罗同好"),
+		new MockSearchUser("Luna", "@luna", "真实好友 · 月亮能量"),
+		new MockSearchUser("Iris Moon", "@iris", "真实好友 · 关系占卜")
+	};
+
+	private struct MockSearchUser
+	{
+		public string name;
+		public string handle;
+		public string info;
+
+		public MockSearchUser(string name, string handle, string info)
+		{
+			this.name = name;
+			this.handle = handle;
+			this.info = info;
+		}
+	}
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -26,6 +48,7 @@ public class UserSearchUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		currentSearchText = uiComponent.SearchInputInputField != null ? uiComponent.SearchInputInputField.text : string.Empty;
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -54,25 +77,37 @@ public class UserSearchUI : WindowBase
 	}
 	public void OnSearchInputInputChange(string text)
 	{
+		currentSearchText = text;
 	}
 	public void OnSearchInputInputEnd(string text)
 	{
+		currentSearchText = text;
 	}
 	public void OnSearchFriendsButtonClick()
 	{
-		ToastManager.ShowDebug();
+		string keyword = string.IsNullOrWhiteSpace(currentSearchText) ? "推荐好友" : currentSearchText.Trim();
+		ToastManager.ShowToast($"已搜索：{keyword}");
 	}
 	public void OnInvite1ButtonClick()
 	{
-		ToastManager.ShowDebug();
+		InviteMockUser(0);
 	}
 	public void OnInvite2ButtonClick()
 	{
-		ToastManager.ShowDebug();
+		InviteMockUser(1);
 	}
 	public void OnInvite3ButtonClick()
 	{
-		ToastManager.ShowDebug();
+		InviteMockUser(2);
+	}
+
+	private void InviteMockUser(int index)
+	{
+		if (index < 0 || index >= mockUsers.Length) return;
+
+		var user = mockUsers[index];
+		FriendDataManager.Instance.AddRealFriend(user.name, user.handle, user.info, null, "用户名搜索");
+		ToastManager.ShowToast($"已添加 {user.name}");
 	}
 	#endregion
 }

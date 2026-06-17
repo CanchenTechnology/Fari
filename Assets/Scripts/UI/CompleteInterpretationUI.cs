@@ -50,6 +50,7 @@ public class CompleteInterpretationUI : WindowBase
             base.OnAwake();
             return;
         }
+        ResolveTopicComponentRefs();
         uiComponent.InitComponent(this);
         // sortingOrder 已在 InitComponent 中设置，此处不再重复
         base.OnAwake();
@@ -200,10 +201,15 @@ public class CompleteInterpretationUI : WindowBase
             return;
         }
 
+        if (oracleService.IsCachedPreparedReadingFor(_currentCard, _currentUpright)
+            && oracleService.CachedPreparedReading?.interpretationPayload != null)
+        {
+            PopulateFromPayload(oracleService.CachedPreparedReading.interpretationPayload);
+            return;
+        }
+
         // 如果已有缓存且是同一张牌，直接使用
-        if (oracleService.CachedInterpretation != null
-            && oracleService.CurrentCard == _currentCard
-            && oracleService.CurrentUpright == _currentUpright)
+        if (oracleService.IsCachedInterpretationFor(_currentCard, _currentUpright))
         {
             PopulateFromPayload(oracleService.CachedInterpretation);
             return;
@@ -297,10 +303,10 @@ public class CompleteInterpretationUI : WindowBase
             SetActionText("Take a quiet moment today to sit with the card's image and notice what comes up.");
             _fallbackTopics = new List<string>
             {
-                $"Tell me more about {name}",
-                "How does this card relate to love?",
-                "What should I focus on at work?",
-                "What energy is around me this week?"
+                $"What does {name} want me to notice today?",
+                "What is the deeper message for me?",
+                "How should I handle my current situation?",
+                "What question should I ask myself next?"
             };
             SetTopicTexts(_fallbackTopics);
         }
@@ -313,10 +319,10 @@ public class CompleteInterpretationUI : WindowBase
             SetActionText("今天找一个安静的片刻，凝视这张牌的图像，看看浮现出什么感受。");
             _fallbackTopics = new List<string>
             {
-                $"我想更了解{name}",
-                "这张牌和感情有什么关系？",
-                "今天工作上我要注意什么？",
-                "这周我的整体能量怎样？"
+                $"{name}今天想提醒我什么？",
+                "这件事更深层的讯息是什么？",
+                "我现在该如何面对现状？",
+                "我接下来该问自己什么？"
             };
             SetTopicTexts(_fallbackTopics);
         }
@@ -325,6 +331,57 @@ public class CompleteInterpretationUI : WindowBase
     #endregion
 
     #region UI 赋值工具方法
+
+    private void ResolveTopicComponentRefs()
+    {
+        if (uiComponent == null) return;
+
+        uiComponent.Topic1ItemButton = uiComponent.Topic1ItemButton != null
+            ? uiComponent.Topic1ItemButton
+            : FindComponentByObjectName<Button>("[Button]Topic1Item");
+        uiComponent.Topic2ItemButton = uiComponent.Topic2ItemButton != null
+            ? uiComponent.Topic2ItemButton
+            : FindComponentByObjectName<Button>("[Button]Topic2Item");
+        uiComponent.Topic3ItemButton = uiComponent.Topic3ItemButton != null
+            ? uiComponent.Topic3ItemButton
+            : FindComponentByObjectName<Button>("[Button]Topic3Item");
+        uiComponent.Topic4ItemButton = uiComponent.Topic4ItemButton != null
+            ? uiComponent.Topic4ItemButton
+            : FindComponentByObjectName<Button>("[Button]Topic4Item");
+
+        uiComponent.TopicText1Text = uiComponent.TopicText1Text != null
+            ? uiComponent.TopicText1Text
+            : FindComponentByObjectName<Text>("[Text]TopicText1");
+        uiComponent.TopicText2Text = uiComponent.TopicText2Text != null
+            ? uiComponent.TopicText2Text
+            : FindComponentByObjectName<Text>("[Text]TopicText2");
+        uiComponent.TopicText3Text = uiComponent.TopicText3Text != null
+            ? uiComponent.TopicText3Text
+            : FindComponentByObjectName<Text>("[Text]TopicText3");
+        uiComponent.TopicText4Text = uiComponent.TopicText4Text != null
+            ? uiComponent.TopicText4Text
+            : FindComponentByObjectName<Text>("[Text]TopicText4");
+    }
+
+    private T FindComponentByObjectName<T>(string objectName) where T : Component
+    {
+        var child = FindChildRecursive(transform, objectName);
+        return child != null ? child.GetComponent<T>() : null;
+    }
+
+    private Transform FindChildRecursive(Transform root, string objectName)
+    {
+        if (root == null) return null;
+        if (root.name == objectName) return root;
+
+        for (int i = 0; i < root.childCount; i++)
+        {
+            var found = FindChildRecursive(root.GetChild(i), objectName);
+            if (found != null) return found;
+        }
+
+        return null;
+    }
 
     private void SetDescriptionText(string text)
     {
@@ -365,7 +422,8 @@ public class CompleteInterpretationUI : WindowBase
     private void SetTopicButton(Text label, List<string> topics, int index)
     {
         if (label == null) return;
-        label.text = (topics != null && index < topics.Count) ? topics[index] : "";
+        var topic = (topics != null && index < topics.Count) ? topics[index] : "";
+        label.text = string.IsNullOrEmpty(topic) || topic == "..." ? topic : $"Q  {topic}";
     }
 
     /// <summary>
@@ -376,20 +434,22 @@ public class CompleteInterpretationUI : WindowBase
     {
         // 1. 优先从 AI 缓存读取
         var oracleService = DailyOracleService.Instance;
-        if (oracleService?.CachedInterpretation?.topics != null
+        if (oracleService != null
+            && oracleService.IsCachedInterpretationFor(_currentCard, _currentUpright)
+            && oracleService.CachedInterpretation?.topics != null
             && index < oracleService.CachedInterpretation.topics.Count)
         {
             var topic = oracleService.CachedInterpretation.topics[index];
             if (!string.IsNullOrEmpty(topic) && topic != "...")
-                return topic;
+                return StripQuestionPrefix(topic);
         }
 
         // 2. 降级：使用 fallback 话题缓存
         if (_fallbackTopics != null && index < _fallbackTopics.Count)
-            return _fallbackTopics[index];
+            return StripQuestionPrefix(_fallbackTopics[index]);
 
         // 3. 最终兜底：直接读 UI 文本
-        return index switch
+        var uiText = index switch
         {
             0 => uiComponent.TopicText1Text?.text,
             1 => uiComponent.TopicText2Text?.text,
@@ -397,6 +457,18 @@ public class CompleteInterpretationUI : WindowBase
             3 => uiComponent.TopicText4Text?.text,
             _ => ""
         };
+        return StripQuestionPrefix(uiText);
+    }
+
+    private static string StripQuestionPrefix(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "";
+        var trimmed = text.Trim();
+        if (trimmed.StartsWith("Q  ", System.StringComparison.Ordinal))
+            return trimmed.Substring(3).Trim();
+        if (trimmed.StartsWith("Q ", System.StringComparison.Ordinal))
+            return trimmed.Substring(2).Trim();
+        return trimmed;
     }
 
     /// <summary>
@@ -404,10 +476,6 @@ public class CompleteInterpretationUI : WindowBase
     /// </summary>
     private void ShowLoadingState(bool isLoading)
     {
-        // 如果 Component 中有 LoadingOverlay，控制其显隐
-        if (uiComponent.LoadingOverlay != null)
-            uiComponent.LoadingOverlay.SetActive(isLoading);
-
         // 加载中禁用话题按钮，避免用户在内容未就绪时点击
         SetTopicButtonsInteractable(!isLoading);
     }

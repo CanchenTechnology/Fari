@@ -3,6 +3,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
+using Firebase.Auth;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -17,12 +19,6 @@ public class TTSManager : MonoBehaviour
     #region 火山引擎 API 配置
 
     [Header("火山引擎 TTS 配置")]
-    [Tooltip("火山引擎 AppID")]
-    public string appId = "";
-
-    [Tooltip("火山引擎 Access Token")]
-    public string accessToken = "";
-
     [Tooltip("音色类型: zh_female_qingxin / zh_male_qingrun / zh_female_shuangkuaidv2 等")]
     public string voiceType = "zh_female_qingxin";
 
@@ -37,9 +33,42 @@ public class TTSManager : MonoBehaviour
     [Tooltip("音频编码: mp3 / wav / ogg")]
     public string encoding = "mp3";
 
-    private const string TTS_API_URL = "https://openspeech.bytedance.com/api/v1/tts";
-    private const string CLUSTER = "volcano_tts";
+    [Tooltip("单次请求最大文本长度，需与 Cloud Function 限制保持一致")]
+    public int maxRequestTextLength = 1200;
+
+    private const string TTS_API_URL = "https://us-central1-fari-app-b2fd2.cloudfunctions.net/ttsSynthesize";
+    private const string VOLCANO_TTS_API_URL = "https://openspeech.bytedance.com/api/v1/tts";
+    private const string VOLCANO_TTS_V3_API_URL = "https://openspeech.bytedance.com/api/v3/tts/unidirectional";
     private const string CACHE_DIR = "TTSCache";
+
+    #endregion
+
+    #region Editor 直连调试配置
+
+    [Header("Editor 火山 TTS 调试")]
+    [Tooltip("Editor 下优先使用下面的火山参数直连 TTS。正式包不生效，正式包始终走 Firebase Functions。")]
+    public bool useEditorDirectVolcanoTTS = true;
+
+    [Tooltip("新版火山控制台 API Key。填了这个会优先走 V3 TTS 接口。")]
+    public string editorVolcanoApiKey = "";
+
+    [Tooltip("V3 TTS 资源 ID。TTS 2.0 使用 seed-tts-2.0。")]
+    public string editorVolcanoResourceId = "seed-tts-2.0";
+
+    [Tooltip("V3 TTS 发音人。为空时使用 voiceType。TTS 2.0 需要填对应的 bigtts 音色。")]
+    public string editorVolcanoSpeaker = "zh_female_vv_uranus_bigtts";
+
+    [Tooltip("V3 TTS 采样率。")]
+    public int editorVolcanoSampleRate = 24000;
+
+    [Tooltip("仅用于 Unity Editor 调试的火山 TTS App ID。")]
+    public string editorVolcanoAppId = "";
+
+    [Tooltip("仅用于 Unity Editor 调试的火山 TTS Access Token。请使用单独测试 Token。")]
+    public string editorVolcanoAccessToken = "";
+
+    [Tooltip("火山 TTS Cluster，通常是 volcano_tts。")]
+    public string editorVolcanoCluster = "volcano_tts";
 
     #endregion
 
@@ -95,6 +124,47 @@ public class TTSManager : MonoBehaviour
             Instance = null;
     }
 
+    public bool HasEditorDirectVolcanoConfig()
+    {
+#if UNITY_EDITOR
+        return ShouldUseEditorDirectVolcanoTTS();
+#else
+        return false;
+#endif
+    }
+
+    public static TTSManager ResolveFor(GameObject owner)
+    {
+#if UNITY_EDITOR
+        TTSManager[] managers = FindObjectsOfType<TTSManager>();
+        for (int i = 0; i < managers.Length; i++)
+        {
+            if (managers[i] != null && managers[i].HasEditorDirectVolcanoConfig())
+            {
+                return managers[i];
+            }
+        }
+#endif
+        if (Instance != null)
+        {
+            return Instance;
+        }
+
+        TTSManager local = owner != null ? owner.GetComponent<TTSManager>() : null;
+        if (local != null)
+        {
+            return local;
+        }
+
+        if (owner != null)
+        {
+            return owner.AddComponent<TTSManager>();
+        }
+
+        var go = new GameObject("TTSManager");
+        return go.AddComponent<TTSManager>();
+    }
+
     // ---- 公开接口 ----
 
     /// <summary>
@@ -108,6 +178,12 @@ public class TTSManager : MonoBehaviour
         if (string.IsNullOrEmpty(text))
         {
             onError?.Invoke("文本为空");
+            return;
+        }
+
+        if (maxRequestTextLength > 0 && text.Length > maxRequestTextLength)
+        {
+            onError?.Invoke($"文本过长，请先分段后再合成（当前 {text.Length} 字，限制 {maxRequestTextLength} 字）");
             return;
         }
 
@@ -193,8 +269,31 @@ public class TTSManager : MonoBehaviour
         Debug.Log($"[TTSManager] 请求 TTS: {text.Substring(0, Math.Min(text.Length, 30))}...");
 
         // 构建请求 JSON
-        string reqId = Guid.NewGuid().ToString();
-        string requestJson = BuildRequestJson(text, reqId);
+        string requestJson = BuildRequestJson(text);
+
+#if UNITY_EDITOR
+        if (ShouldUseEditorDirectVolcanoTTS())
+        {
+            yield return RequestEditorDirectVolcanoTTS(text, textHash, diskPath, onComplete, onError);
+            yield break;
+        }
+#endif
+
+        string idToken = null;
+        yield return GetFirebaseIdToken(
+            token => idToken = token,
+            error =>
+            {
+                IsSynthesizing = false;
+                _currentTextHash = null;
+                Debug.LogError($"[TTSManager] Firebase token error: {error}");
+                onError?.Invoke(error);
+                OnSynthesisError?.Invoke(text, error);
+            });
+        if (string.IsNullOrEmpty(idToken))
+            yield break;
+        if (_currentTextHash != textHash)
+            yield break;
 
         using (UnityWebRequest request = new UnityWebRequest(TTS_API_URL, "POST"))
         {
@@ -202,9 +301,11 @@ public class TTSManager : MonoBehaviour
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Authorization", $"Bearer;{accessToken}");
+            request.SetRequestHeader("Authorization", $"Bearer {idToken}");
 
             yield return request.SendWebRequest();
+            if (_currentTextHash != textHash)
+                yield break;
 
 #if UNITY_2020_1_OR_NEWER
             if (request.result == UnityWebRequest.Result.ConnectionError
@@ -248,6 +349,9 @@ public class TTSManager : MonoBehaviour
             // 转换为 AudioClip（通过加载 mp3/wav 文件）
             yield return LoadAudioClipFromBytes(audioData, textHash, (clip) =>
             {
+                if (_currentTextHash != textHash)
+                    return;
+
                 IsSynthesizing = false;
                 _currentTextHash = null;
 
@@ -271,42 +375,301 @@ public class TTSManager : MonoBehaviour
 
     // ---- 请求构建 ----
 
-    private string BuildRequestJson(string text, string reqId)
+    private string BuildRequestJson(string text)
     {
         StringBuilder sb = new StringBuilder();
         sb.Append("{");
+        sb.Append($"\"text\":\"{EscapeJson(text)}\",");
+        sb.Append($"\"voiceType\":\"{EscapeJson(voiceType)}\",");
+        sb.Append($"\"encoding\":\"{EscapeJson(encoding)}\",");
+        sb.Append($"\"speedRatio\":{speedRatio:F1},");
+        sb.Append($"\"volumeRatio\":{volumeRatio:F1}");
+        sb.Append("}");
+        return sb.ToString();
+    }
 
-        // app 配置
-        sb.Append("\"app\":{");
-        sb.Append($"\"appid\":\"{EscapeJson(appId)}\",");
-        sb.Append($"\"token\":\"{EscapeJson(accessToken)}\",");
-        sb.Append($"\"cluster\":\"{CLUSTER}\"");
-        sb.Append("},");
+#if UNITY_EDITOR
+    private bool ShouldUseEditorDirectVolcanoTTS()
+    {
+        return useEditorDirectVolcanoTTS
+            && (!string.IsNullOrWhiteSpace(editorVolcanoApiKey)
+                || (!string.IsNullOrWhiteSpace(editorVolcanoAppId)
+                    && !string.IsNullOrWhiteSpace(editorVolcanoAccessToken)));
+    }
 
-        // user 配置
+    private bool ShouldUseEditorVolcanoV3()
+    {
+        return useEditorDirectVolcanoTTS
+            && !string.IsNullOrWhiteSpace(editorVolcanoApiKey)
+            && !string.IsNullOrWhiteSpace(editorVolcanoResourceId);
+    }
+
+    private bool ShouldUseEditorVolcanoV1()
+    {
+        return useEditorDirectVolcanoTTS
+            && !string.IsNullOrWhiteSpace(editorVolcanoAppId)
+            && !string.IsNullOrWhiteSpace(editorVolcanoAccessToken);
+    }
+
+    private IEnumerator RequestEditorDirectVolcanoTTS(string text, string textHash, string diskPath,
+        Action<AudioClip> onComplete, Action<string> onError)
+    {
+        if (ShouldUseEditorVolcanoV3())
+        {
+            yield return RequestEditorDirectVolcanoTTSV3(text, textHash, diskPath, onComplete, onError);
+            yield break;
+        }
+
+        if (ShouldUseEditorVolcanoV1())
+        {
+            yield return RequestEditorDirectVolcanoTTSV1(text, textHash, diskPath, onComplete, onError);
+            yield break;
+        }
+
+        string errorMsg = "Editor 火山 TTS 未配置 API Key 或旧版 AppId/AccessToken";
+        IsSynthesizing = false;
+        _currentTextHash = null;
+        Debug.LogError($"[TTSManager] {errorMsg}");
+        onError?.Invoke(errorMsg);
+        OnSynthesisError?.Invoke(text, errorMsg);
+    }
+
+    private IEnumerator RequestEditorDirectVolcanoTTSV1(string text, string textHash, string diskPath,
+        Action<AudioClip> onComplete, Action<string> onError)
+    {
+        string requestJson = BuildVolcanoRequestJson(text);
+
+        using (UnityWebRequest request = new UnityWebRequest(VOLCANO_TTS_API_URL, "POST"))
+        {
+            byte[] bodyRaw = Encoding.UTF8.GetBytes(requestJson);
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.SetRequestHeader("Authorization", $"Bearer;{editorVolcanoAccessToken.Trim()}");
+
+            yield return request.SendWebRequest();
+            if (_currentTextHash != textHash)
+                yield break;
+
+#if UNITY_2020_1_OR_NEWER
+            if (request.result == UnityWebRequest.Result.ConnectionError
+                || request.result == UnityWebRequest.Result.ProtocolError)
+#else
+            if (request.isNetworkError || request.isHttpError)
+#endif
+            {
+                IsSynthesizing = false;
+                _currentTextHash = null;
+
+                string errorMsg = $"Editor 火山 TTS V1 错误: {request.error}, 响应: {request.downloadHandler.text}";
+                Debug.LogError($"[TTSManager] {errorMsg}");
+                onError?.Invoke(errorMsg);
+                OnSynthesisError?.Invoke(text, errorMsg);
+                yield break;
+            }
+
+            string responseText = request.downloadHandler.text;
+            byte[] audioData = ParseAudioFromResponse(responseText);
+
+            if (audioData == null || audioData.Length == 0)
+            {
+                IsSynthesizing = false;
+                _currentTextHash = null;
+
+                string errorMsg = $"Editor 火山 TTS V1 响应解析失败: {responseText.Substring(0, Math.Min(responseText.Length, 200))}";
+                Debug.LogError($"[TTSManager] {errorMsg}");
+                onError?.Invoke(errorMsg);
+                OnSynthesisError?.Invoke(text, errorMsg);
+                yield break;
+            }
+
+            if (enableDiskCache && !string.IsNullOrEmpty(diskPath))
+            {
+                SaveToDisk(diskPath, audioData, textHash);
+            }
+
+            yield return LoadAudioClipFromBytes(audioData, textHash, (clip) =>
+            {
+                if (_currentTextHash != textHash)
+                    return;
+
+                IsSynthesizing = false;
+                _currentTextHash = null;
+
+                if (clip != null)
+                {
+                    _clipCache[textHash] = clip;
+                    Debug.Log($"[TTSManager] Editor 火山 TTS V1 合成完成: {text.Substring(0, Math.Min(text.Length, 20))}... -> {clip.length:F1}s");
+                    onComplete?.Invoke(clip);
+                    OnSynthesisComplete?.Invoke(text, clip);
+                }
+                else
+                {
+                    string err = "AudioClip 创建失败";
+                    onError?.Invoke(err);
+                    OnSynthesisError?.Invoke(text, err);
+                }
+            });
+        }
+    }
+
+    private IEnumerator RequestEditorDirectVolcanoTTSV3(string text, string textHash, string diskPath,
+        Action<AudioClip> onComplete, Action<string> onError)
+    {
+        string requestJson = BuildVolcanoV3RequestJson(text);
+
+        using (UnityWebRequest request = new UnityWebRequest(VOLCANO_TTS_V3_API_URL, "POST"))
+        {
+            byte[] bodyRaw = Encoding.UTF8.GetBytes(requestJson);
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.SetRequestHeader("X-Api-Key", editorVolcanoApiKey.Trim());
+            request.SetRequestHeader("X-Api-Resource-Id", editorVolcanoResourceId.Trim());
+            request.SetRequestHeader("X-Api-Request-Id", Guid.NewGuid().ToString());
+
+            yield return request.SendWebRequest();
+            if (_currentTextHash != textHash)
+                yield break;
+
+#if UNITY_2020_1_OR_NEWER
+            if (request.result == UnityWebRequest.Result.ConnectionError
+                || request.result == UnityWebRequest.Result.ProtocolError)
+#else
+            if (request.isNetworkError || request.isHttpError)
+#endif
+            {
+                IsSynthesizing = false;
+                _currentTextHash = null;
+
+                string errorMsg = BuildVolcanoV3ErrorMessage(request.error, request.downloadHandler.text);
+                Debug.LogError($"[TTSManager] {errorMsg}");
+                onError?.Invoke(errorMsg);
+                OnSynthesisError?.Invoke(text, errorMsg);
+                yield break;
+            }
+
+            string responseText = request.downloadHandler.text;
+            byte[] audioData = ParseVolcanoV3AudioFromChunkedResponse(responseText);
+
+            if (audioData == null || audioData.Length == 0)
+            {
+                IsSynthesizing = false;
+                _currentTextHash = null;
+
+                string errorMsg = $"Editor 火山 TTS V3 响应解析失败: {responseText.Substring(0, Math.Min(responseText.Length, 200))}";
+                Debug.LogError($"[TTSManager] {errorMsg}");
+                onError?.Invoke(errorMsg);
+                OnSynthesisError?.Invoke(text, errorMsg);
+                yield break;
+            }
+
+            if (enableDiskCache && !string.IsNullOrEmpty(diskPath))
+            {
+                SaveToDisk(diskPath, audioData, textHash);
+            }
+
+            yield return LoadAudioClipFromBytes(audioData, textHash, (clip) =>
+            {
+                if (_currentTextHash != textHash)
+                    return;
+
+                IsSynthesizing = false;
+                _currentTextHash = null;
+
+                if (clip != null)
+                {
+                    _clipCache[textHash] = clip;
+                    Debug.Log($"[TTSManager] Editor 火山 TTS V3 合成完成: {text.Substring(0, Math.Min(text.Length, 20))}... -> {clip.length:F1}s");
+                    onComplete?.Invoke(clip);
+                    OnSynthesisComplete?.Invoke(text, clip);
+                }
+                else
+                {
+                    string err = "AudioClip 创建失败";
+                    onError?.Invoke(err);
+                    OnSynthesisError?.Invoke(text, err);
+                }
+            });
+        }
+    }
+
+    private string BuildVolcanoV3RequestJson(string text)
+    {
+        string speaker = string.IsNullOrWhiteSpace(editorVolcanoSpeaker)
+            ? voiceType
+            : editorVolcanoSpeaker.Trim();
+        string format = NormalizeV3AudioFormat(encoding);
+        int speechRate = RatioToVolcanoRate(speedRatio);
+        int loudnessRate = RatioToVolcanoRate(volumeRatio);
+
+        StringBuilder sb = new StringBuilder();
+        sb.Append("{");
         sb.Append("\"user\":{");
-        sb.Append($"\"uid\":\"moonly_user\"");
+        sb.Append("\"uid\":\"unity-editor\"");
         sb.Append("},");
+        sb.Append("\"namespace\":\"BidirectionalTTS\",");
+        sb.Append("\"req_params\":{");
+        sb.Append($"\"text\":\"{EscapeJson(text)}\",");
+        sb.Append($"\"speaker\":\"{EscapeJson(speaker)}\",");
+        sb.Append("\"audio_params\":{");
+        sb.Append($"\"format\":\"{EscapeJson(format)}\",");
+        sb.Append($"\"sample_rate\":{Mathf.Max(8000, editorVolcanoSampleRate)},");
+        sb.Append($"\"speech_rate\":{speechRate},");
+        sb.Append($"\"loudness_rate\":{loudnessRate}");
+        sb.Append("}");
+        sb.Append("}");
+        sb.Append("}");
+        return sb.ToString();
+    }
 
-        // audio 配置
+    private string BuildVolcanoRequestJson(string text)
+    {
+        string reqId = Guid.NewGuid().ToString();
+        StringBuilder sb = new StringBuilder();
+        sb.Append("{");
+        sb.Append("\"app\":{");
+        sb.Append($"\"appid\":\"{EscapeJson(editorVolcanoAppId.Trim())}\",");
+        sb.Append($"\"token\":\"{EscapeJson(editorVolcanoAccessToken.Trim())}\",");
+        sb.Append($"\"cluster\":\"{EscapeJson(string.IsNullOrWhiteSpace(editorVolcanoCluster) ? "volcano_tts" : editorVolcanoCluster.Trim())}\"");
+        sb.Append("},");
+        sb.Append("\"user\":{");
+        sb.Append("\"uid\":\"unity-editor\"");
+        sb.Append("},");
         sb.Append("\"audio\":{");
         sb.Append($"\"voice_type\":\"{EscapeJson(voiceType)}\",");
-        sb.Append($"\"encoding\":\"{encoding}\",");
+        sb.Append($"\"encoding\":\"{EscapeJson(encoding)}\",");
         sb.Append($"\"speed_ratio\":{speedRatio:F1},");
         sb.Append($"\"volume_ratio\":{volumeRatio:F1}");
         sb.Append("},");
-
-        // request 配置
         sb.Append("\"request\":{");
-        sb.Append($"\"reqid\":\"{EscapeJson(reqId)}\",");
+        sb.Append($"\"reqid\":\"{reqId}\",");
         sb.Append($"\"text\":\"{EscapeJson(text)}\",");
         sb.Append("\"text_type\":\"plain\",");
         sb.Append("\"operation\":\"query\"");
         sb.Append("}");
-
         sb.Append("}");
         return sb.ToString();
     }
+
+    private string BuildVolcanoV3ErrorMessage(string requestError, string responseText)
+    {
+        string resourceId = string.IsNullOrWhiteSpace(editorVolcanoResourceId)
+            ? "(empty)"
+            : editorVolcanoResourceId.Trim();
+        string speaker = string.IsNullOrWhiteSpace(editorVolcanoSpeaker)
+            ? voiceType
+            : editorVolcanoSpeaker.Trim();
+        string message = $"Editor 火山 TTS V3 错误: {requestError}, ResourceId={resourceId}, Speaker={speaker}, 响应: {responseText}";
+
+        if (!string.IsNullOrEmpty(responseText) && responseText.Contains("requested resource not granted"))
+        {
+            message += "。请在火山控制台确认这个 API Key 已开通并授权对应的 X-Api-Resource-Id；TTS 2.0 通常是 seed-tts-2.0。";
+        }
+
+        return message;
+    }
+#endif
 
     // ---- 响应解析 ----
 
@@ -320,19 +683,23 @@ public class TTSManager : MonoBehaviour
         {
             // 手动解析 JSON（避免依赖 Newtonsoft.Json）
             var resp = JsonUtility.FromJson<TTSResponse>(responseJson);
-            if (resp == null || resp.code != 3000)
+            string audioBase64 = resp != null && !string.IsNullOrEmpty(resp.audioBase64)
+                ? resp.audioBase64
+                : resp?.data;
+
+            if (resp == null || (string.IsNullOrEmpty(audioBase64) && resp.code != 3000))
             {
-                Debug.LogError($"[TTSManager] API 返回错误 code={resp?.code}, message={resp?.message}");
+                Debug.LogError($"[TTSManager] API 返回错误 code={resp?.code}, message={resp?.message}, error={resp?.error}");
                 return null;
             }
 
-            if (string.IsNullOrEmpty(resp.data))
+            if (string.IsNullOrEmpty(audioBase64))
             {
                 Debug.LogError("[TTSManager] API 返回的音频数据为空");
                 return null;
             }
 
-            return Convert.FromBase64String(resp.data);
+            return Convert.FromBase64String(audioBase64);
         }
         catch (Exception e)
         {
@@ -341,16 +708,77 @@ public class TTSManager : MonoBehaviour
         }
     }
 
+    private byte[] ParseVolcanoV3AudioFromChunkedResponse(string responseText)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(responseText))
+                return null;
+
+            List<byte> audioBytes = new List<byte>();
+            MatchCollection matches = Regex.Matches(responseText, "\"data\"\\s*:\\s*\"(?<data>(?:\\\\.|[^\"])*)\"");
+            foreach (Match match in matches)
+            {
+                string encoded = match.Groups["data"].Value;
+                if (string.IsNullOrEmpty(encoded))
+                    continue;
+
+                encoded = encoded.Replace("\\/", "/")
+                    .Replace("\\n", "")
+                    .Replace("\\r", "")
+                    .Replace("\\t", "");
+
+                byte[] chunk = Convert.FromBase64String(encoded);
+                audioBytes.AddRange(chunk);
+            }
+
+            if (audioBytes.Count > 0)
+                return audioBytes.ToArray();
+
+            return ParseAudioFromResponse(responseText);
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[TTSManager] 解析 V3 响应失败: {e.Message}");
+            return null;
+        }
+    }
+
+    private static string NormalizeV3AudioFormat(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return "mp3";
+
+        string lower = value.ToLowerInvariant();
+        if (lower == "ogg")
+            return "ogg_opus";
+        if (lower == "wav")
+            return "mp3";
+        return lower;
+    }
+
+    private static int RatioToVolcanoRate(float ratio)
+    {
+        if (ratio >= 1f)
+            return Mathf.RoundToInt(Mathf.Clamp01(ratio - 1f) * 100f);
+
+        return Mathf.RoundToInt(Mathf.Clamp(ratio - 1f, -0.5f, 0f) * 100f);
+    }
+
+#pragma warning disable 0649
     [Serializable]
     private class TTSResponse
     {
         public int code;
         public string message;
+        public string audioBase64;
         public string data;   // base64 编码的音频
         public string reqid;
         public string sequence;
         public string addition;
+        public string error;
     }
+#pragma warning restore 0649
 
     // ---- 音频加载 ----
 
@@ -516,11 +944,18 @@ public class TTSManager : MonoBehaviour
 
     // ---- 工具方法 ----
 
-    private static string GetTextHash(string text)
+    private string GetTextHash(string text)
     {
         using (MD5 md5 = MD5.Create())
         {
-            byte[] inputBytes = Encoding.UTF8.GetBytes(text + "_v1"); // 加版本号避免音色变更后缓存不更新
+            string cacheKey = string.Join("|",
+                text ?? "",
+                voiceType ?? "",
+                encoding ?? "",
+                speedRatio.ToString("F2"),
+                volumeRatio.ToString("F2"),
+                "v2");
+            byte[] inputBytes = Encoding.UTF8.GetBytes(cacheKey);
             byte[] hashBytes = md5.ComputeHash(inputBytes);
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < hashBytes.Length; i++)
@@ -537,5 +972,26 @@ public class TTSManager : MonoBehaviour
                   .Replace("\n", "\\n")
                   .Replace("\r", "\\r")
                   .Replace("\t", "\\t");
+    }
+
+    private IEnumerator GetFirebaseIdToken(Action<string> onToken, Action<string> onError)
+    {
+        var user = FirebaseAuth.DefaultInstance?.CurrentUser;
+        if (user == null)
+        {
+            onError?.Invoke("用户未登录，无法调用 TTS 服务");
+            yield break;
+        }
+
+        var task = user.TokenAsync(false);
+        yield return new WaitUntil(() => task.IsCompleted);
+
+        if (task.IsFaulted || task.IsCanceled)
+        {
+            onError?.Invoke(task.Exception?.InnerException?.Message ?? "获取 Firebase Token 失败");
+            yield break;
+        }
+
+        onToken?.Invoke(task.Result);
     }
 }

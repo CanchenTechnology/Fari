@@ -28,9 +28,6 @@ public class TodayCardUIComponent:MonoBehaviour
 	    TodayCardUI mWindow=(TodayCardUI)target;
 	    target.AddButtonClickListener(BackButton,mWindow.OnBackButtonClick);
 	    target.AddButtonClickListener(ShareButton,mWindow.OnShareButtonClick);
-	    target.AddButtonClickListener(AskQuestion1Button,mWindow.OnAskQuestion1ButtonClick);
-	    target.AddButtonClickListener(AskQuestion2Button,mWindow.OnAskQuestion2ButtonClick);
-	    target.AddButtonClickListener(AskQuestion3Button,mWindow.OnAskQuestion3ButtonClick);
 	    target.AddButtonClickListener(ContinueChatButton,mWindow.OnContinueChatButtonClick);
 	}
 }
