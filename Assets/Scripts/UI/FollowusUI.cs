@@ -12,6 +12,7 @@ using GamerFrameWork.UIFrameWork;
 public class FollowusUI : WindowBase
 {
 	public FollowusUIComponent uiComponent;
+	private SocialLinksConfig socialLinks = SocialLinksConfig.Default;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -26,6 +27,7 @@ public class FollowusUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		LoadSocialLinks();
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -40,6 +42,29 @@ public class FollowusUI : WindowBase
 	#endregion
 
 	#region API Function
+	private void LoadSocialLinks()
+	{
+		var firestore = FirestoreManager.Instance;
+		if (firestore == null || !firestore.IsInitialized) return;
+
+		firestore.LoadPublicAppConfig(config =>
+		{
+			if (config?.socialLinks != null)
+				socialLinks = config.socialLinks;
+		});
+	}
+
+	private void OpenLink(string url, string label)
+	{
+		if (string.IsNullOrWhiteSpace(url))
+		{
+			ToastManager.ShowToast("链接暂未配置");
+			return;
+		}
+
+		Application.OpenURL(url);
+		ToastManager.ShowToast($"正在打开 {label}");
+	}
 
 	#endregion
 
@@ -50,19 +75,23 @@ public class FollowusUI : WindowBase
 	}
 	public void OnOpenLink_InstaButtonClick()
 	{
-		
+		OpenLink(socialLinks.instagram, "Instagram");
 	}
 	public void OnOpenLink_FBButtonClick()
 	{
+		OpenLink(socialLinks.facebook, "Facebook");
 	}
 	public void OnOpenLink_TwitterButtonClick()
 	{
+		OpenLink(socialLinks.x, "X");
 	}
 	public void OnOpenLink_TikTokButtonClick()
 	{
+		OpenLink(socialLinks.tiktok, "TikTok");
 	}
 	public void OnOpenLink_PinterestButtonClick()
 	{
+		OpenLink(socialLinks.pinterest, "Pinterest");
 	}
 	#endregion
 }

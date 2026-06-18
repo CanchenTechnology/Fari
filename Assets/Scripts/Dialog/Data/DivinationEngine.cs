@@ -113,6 +113,7 @@ public class DivinationEngine : MonoBehaviour
         var result = TarotDeck.DrawOne();
         TodayCard = result;
         _todayCardDate = today;
+        UsageStatsManager.Instance?.TrackDailyOracle();
         Debug.Log($"[DivinationEngine] 今日牌: {result.card.nameZh} ({(result.upright ? "正位" : "逆位")})");
         return result;
     }
@@ -128,6 +129,7 @@ public class DivinationEngine : MonoBehaviour
         _todayCardDate = string.IsNullOrEmpty(localDate)
             ? DateTime.Now.ToString("yyyy-MM-dd")
             : localDate;
+        UsageStatsManager.Instance?.TrackDailyOracle();
         Debug.Log($"[DivinationEngine] 使用云端今日牌: {card.nameZh} ({(upright ? "正位" : "逆位")})");
     }
 
@@ -237,6 +239,7 @@ public class DivinationEngine : MonoBehaviour
         CurrentSession.spreadKind = spreadKind;
         CurrentSession.lockedCards = lockedCards;
         CurrentSession.phase = DivinationPhase.CardsLocked;
+        UsageStatsManager.Instance?.TrackSpreadReading();
 
         Debug.Log($"[DivinationEngine] 选牌阵 [{spreadKind}], 抽 {cardCount} 张牌");
         foreach (var lc in lockedCards)

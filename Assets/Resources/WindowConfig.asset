@@ -13,64 +13,8 @@ MonoBehaviour:
   m_Name: WindowConfig
   m_EditorClassIdentifier: 
   windowDataList:
-  - name: AccountUI
-    path: Assets/GameData/UI/Main/AccountUI
-  - name: AddEmailUI 1
-    path: Assets/GameData/UI/Main/AddEmailUI 1
-  - name: AddEmailUI
-    path: Assets/GameData/UI/Main/AddEmailUI
-  - name: AddFriendUI
-    path: Assets/GameData/UI/Main/AddFriendUI
-  - name: CompleteInterpretationUI
-    path: Assets/GameData/UI/Main/CompleteInterpretationUI
-  - name: ContactsInviteUI
-    path: Assets/GameData/UI/Main/ContactsInviteUI
-  - name: CreateFriendUI
-    path: Assets/GameData/UI/Main/CreateFriendUI
   - name: DialogUI
-    path: Assets/GameData/UI/Main/DialogUI
-  - name: DivinationInfoUI
-    path: Assets/GameData/UI/Main/DivinationInfoUI
-  - name: DivinationRecordUI
-    path: Assets/GameData/UI/Main/DivinationRecordUI
-  - name: FacebookInviteUI
-    path: Assets/GameData/UI/Main/FacebookInviteUI
-  - name: FeedbackUI
-    path: Assets/GameData/UI/Main/FeedbackUI
-  - name: FollowusUI
-    path: Assets/GameData/UI/Main/FollowusUI
-  - name: FriendUI
-    path: Assets/GameData/UI/Main/FriendUI
-  - name: HistoryUI
-    path: Assets/GameData/UI/Main/HistoryUI
-  - name: LoadingTextUI
-    path: Assets/GameData/UI/Main/LoadingTextUI
-  - name: LoginUI
-    path: Assets/GameData/UI/Main/LoginUI
-  - name: MemoryManagementUI
-    path: Assets/GameData/UI/Main/MemoryManagementUI
-  - name: MyUI
-    path: Assets/GameData/UI/Main/MyUI
-  - name: NavigationUI
-    path: Assets/GameData/UI/Main/NavigationUI
-  - name: NotionUI
-    path: Assets/GameData/UI/Main/NotionUI
-  - name: OracleReadingUI
-    path: Assets/GameData/UI/Main/OracleReadingUI
-  - name: PersonalProfileUI
-    path: Assets/GameData/UI/Main/PersonalProfileUI
-  - name: SwitchRoleUI
-    path: Assets/GameData/UI/Main/SwitchRoleUI
-  - name: TarorSingleSpreadShuffleUI
-    path: Assets/GameData/UI/Main/TarorSingleSpreadShuffleUI
-  - name: TodayCardUI
-    path: Assets/GameData/UI/Main/TodayCardUI
-  - name: TodayOracleUI
-    path: Assets/GameData/UI/Main/TodayOracleUI
-  - name: UnlockProUI
-    path: Assets/GameData/UI/Main/UnlockProUI
-  - name: UserSearchUI
-    path: Assets/GameData/UI/Main/UserSearchUI
+    path: Assets/GameData/UI/Main/Dialog/DialogUI
   - name: SelectWindow
     path: Window/SelectWindow
   - name: Toast
@@ -91,3 +35,121 @@ MonoBehaviour:
     path: Assets/GameData/UI/Register/SetNameAndAvatarUI
   - name: VerifyPhoneUI
     path: Assets/GameData/UI/Register/VerifyPhoneUI
+  - name: AddFriendUI
+    path: Assets/GameData/UI/Main/Friend/AddFriendUI
+  - name: ContactsInviteUI
+    path: Assets/GameData/UI/Main/Friend/ContactsInviteUI
+  - name: CreateFriendUI
+    path: Assets/GameData/UI/Main/Friend/CreateFriendUI
+  - name: FacebookInviteUI
+    path: Assets/GameData/UI/Main/Friend/FacebookInviteUI
+  - name: FriendUI
+    path: Assets/GameData/UI/Main/Friend/FriendUI
+  - name: NoFriendUI
+    path: Assets/GameData/UI/Main/Friend/NoFriendUI
+  - name: SelectFriendAvatarUI
+    path: Assets/GameData/UI/Main/Friend/SelectFriendAvatarUI
+  - name: SpinPickerUI
+    path: Assets/GameData/UI/Main/Friend/SpinPickerUI
+  - name: UserSearchUI
+    path: Assets/GameData/UI/Main/Friend/UserSearchUI
+  - name: AccountUI
+    path: Assets/GameData/UI/Main/My/AccountUI
+  - name: FeedbackUI
+    path: Assets/GameData/UI/Main/My/FeedbackUI
+  - name: FollowusUI
+    path: Assets/GameData/UI/Main/My/FollowusUI
+  - name: HistoryUI
+    path: Assets/GameData/UI/Main/My/HistoryUI
+  - name: MemoryManagementUI
+    path: Assets/GameData/UI/Main/My/MemoryManagementUI
+  - name: MyUI
+    path: Assets/GameData/UI/Main/My/MyUI
+  - name: NotionUI
+    path: Assets/GameData/UI/Main/My/NotionUI
+  - name: PersonalProfileUI
+    path: Assets/GameData/UI/Main/My/PersonalProfileUI
+  - name: UnlockProUI
+    path: Assets/GameData/UI/Main/My/UnlockProUI
+  - name: CompleteInterpretationUI
+    path: Assets/GameData/UI/Main/TodayDivination/CompleteInterpretationUI
+  - name: DivinationInfoUI
+    path: Assets/GameData/UI/Main/TodayDivination/DivinationInfoUI
+  - name: DivinationRecordUI
+    path: Assets/GameData/UI/Main/TodayDivination/DivinationRecordUI
+  - name: LoadingTextUI
+    path: Assets/GameData/UI/Main/TodayDivination/LoadingTextUI
+  - name: OracleReadingUI
+    path: Assets/GameData/UI/Main/TodayDivination/OracleReadingUI
+  - name: SwitchRoleUI
+    path: Assets/GameData/UI/Main/TodayDivination/SwitchRoleUI
+  - name: TarorSingleSpreadShuffleUI
+    path: Assets/GameData/UI/Main/TodayDivination/TarorSingleSpreadShuffleUI
+  - name: TodayCardUI
+    path: Assets/GameData/UI/Main/TodayDivination/TodayCardUI
+  - name: TodayOracleUI
+    path: Assets/GameData/UI/Main/TodayDivination/TodayOracleUI
+  - name: AddEmailUI 1
+    path: Assets/GameData/UI/Main/AddEmailUI 1
+  - name: AddEmailUI
+    path: Assets/GameData/UI/Main/AddEmailUI
+  - name: LoginUI
+    path: Assets/GameData/UI/Main/LoginUI
+  - name: NavigationUI
+    path: Assets/GameData/UI/Main/NavigationUI
+  - name: DialogUI
+    path: Assets/GameData/UI/Main/DialogUI
+  - name: AddFriendUI
+    path: Assets/GameData/UI/Main/AddFriendUI
+  - name: ContactsInviteUI
+    path: Assets/GameData/UI/Main/ContactsInviteUI
+  - name: CreateFriendUI
+    path: Assets/GameData/UI/Main/CreateFriendUI
+  - name: FacebookInviteUI
+    path: Assets/GameData/UI/Main/FacebookInviteUI
+  - name: FriendUI
+    path: Assets/GameData/UI/Main/FriendUI
+  - name: NoFriendUI
+    path: Assets/GameData/UI/Main/NoFriendUI
+  - name: SelectFriendAvatarUI
+    path: Assets/GameData/UI/Main/SelectFriendAvatarUI
+  - name: SpinPickerUI
+    path: Assets/GameData/UI/Main/SpinPickerUI
+  - name: UserSearchUI
+    path: Assets/GameData/UI/Main/UserSearchUI
+  - name: AccountUI
+    path: Assets/GameData/UI/Main/AccountUI
+  - name: FeedbackUI
+    path: Assets/GameData/UI/Main/FeedbackUI
+  - name: FollowusUI
+    path: Assets/GameData/UI/Main/FollowusUI
+  - name: HistoryUI
+    path: Assets/GameData/UI/Main/HistoryUI
+  - name: MemoryManagementUI
+    path: Assets/GameData/UI/Main/MemoryManagementUI
+  - name: MyUI
+    path: Assets/GameData/UI/Main/MyUI
+  - name: NotionUI
+    path: Assets/GameData/UI/Main/NotionUI
+  - name: PersonalProfileUI
+    path: Assets/GameData/UI/Main/PersonalProfileUI
+  - name: UnlockProUI
+    path: Assets/GameData/UI/Main/UnlockProUI
+  - name: CompleteInterpretationUI
+    path: Assets/GameData/UI/Main/CompleteInterpretationUI
+  - name: DivinationInfoUI
+    path: Assets/GameData/UI/Main/DivinationInfoUI
+  - name: DivinationRecordUI
+    path: Assets/GameData/UI/Main/DivinationRecordUI
+  - name: LoadingTextUI
+    path: Assets/GameData/UI/Main/LoadingTextUI
+  - name: OracleReadingUI
+    path: Assets/GameData/UI/Main/OracleReadingUI
+  - name: SwitchRoleUI
+    path: Assets/GameData/UI/Main/SwitchRoleUI
+  - name: TarorSingleSpreadShuffleUI
+    path: Assets/GameData/UI/Main/TarorSingleSpreadShuffleUI
+  - name: TodayCardUI
+    path: Assets/GameData/UI/Main/TodayCardUI
+  - name: TodayOracleUI
+    path: Assets/GameData/UI/Main/TodayOracleUI

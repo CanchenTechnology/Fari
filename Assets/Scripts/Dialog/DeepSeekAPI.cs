@@ -63,6 +63,10 @@ public class DeepSeekAPI : MonoBehaviour
         public string role;
         public string content;
 
+        public Message()
+        {
+        }
+
         public Message(string role, string content)
         {
             this.role = role;
@@ -367,6 +371,7 @@ public class DeepSeekAPI : MonoBehaviour
 
         protected override bool ReceiveData(byte[] data, int dataLength)
         {
+            if (_hasCompleted) return true;
             if (data == null || dataLength <= 0) return false;
 
             string text = Encoding.UTF8.GetString(data, 0, dataLength);
@@ -377,6 +382,8 @@ public class DeepSeekAPI : MonoBehaviour
 
         protected override void CompleteContent()
         {
+            if (_hasCompleted) return;
+
             // 处理缓冲区中可能残留的最后一行
             if (textBuffer.Length > 0)
             {
@@ -387,6 +394,8 @@ public class DeepSeekAPI : MonoBehaviour
 
         private void ProcessLines()
         {
+            if (_hasCompleted) return;
+
             string buffer = textBuffer.ToString();
             int newlineIndex;
             while ((newlineIndex = buffer.IndexOf('\n')) >= 0)
@@ -401,8 +410,7 @@ public class DeepSeekAPI : MonoBehaviour
                     string data = line.Substring(6).Trim();
                     if (data == "[DONE]")
                     {
-                        _hasCompleted = true;
-                        onComplete?.Invoke(fullContent.ToString());
+                        CompleteOnce();
                         return;
                     }
 
@@ -422,8 +430,7 @@ public class DeepSeekAPI : MonoBehaviour
                             if (!string.IsNullOrEmpty(chunk.choices[0].finish_reason)
                                 && chunk.choices[0].finish_reason != "null")
                             {
-                                _hasCompleted = true;
-                                onComplete?.Invoke(fullContent.ToString());
+                                CompleteOnce();
                                 return;
                             }
                         }
@@ -437,6 +444,15 @@ public class DeepSeekAPI : MonoBehaviour
             }
             textBuffer.Clear();
             textBuffer.Append(buffer);
+        }
+
+        private void CompleteOnce()
+        {
+            if (_hasCompleted) return;
+
+            _hasCompleted = true;
+            textBuffer.Clear();
+            onComplete?.Invoke(fullContent.ToString());
         }
     }
 

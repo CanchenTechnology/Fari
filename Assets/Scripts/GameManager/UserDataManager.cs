@@ -82,6 +82,9 @@ public class UserDataManager : MonoSingleton<UserDataManager>
     /// <summary>头像 URL（Google 头像 / Apple 头像等）</summary>
     public string PhotoUrl { get; private set; } = string.Empty;
 
+    /// <summary>Firebase Storage 中的用户上传头像路径</summary>
+    public string AvatarStoragePath { get; private set; } = string.Empty;
+
     /// <summary>Firebase UID</summary>
     public string FirebaseUid { get; private set; } = string.Empty;
 
@@ -146,6 +149,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
 
     // Firebase Auth 扩展 Key
     private const string KEY_PHOTO_URL           = "UserData_PhotoUrl";
+    private const string KEY_AVATAR_STORAGE_PATH = "UserData_AvatarStoragePath";
     private const string KEY_FIREBASE_UID        = "UserData_FirebaseUid";
     private const string KEY_AUTH_PROVIDER_ID    = "UserData_AuthProviderId";
     private const string KEY_IS_FIREBASE_AUTH    = "UserData_IsFirebaseAuth";
@@ -243,6 +247,12 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         PhotoUrl = photoUrl ?? string.Empty;
     }
 
+    /// <summary>设置 Firebase Storage 头像路径</summary>
+    public void SetAvatarStoragePath(string avatarStoragePath)
+    {
+        AvatarStoragePath = avatarStoragePath ?? string.Empty;
+    }
+
     /// <summary>设置 Firebase UID</summary>
     public void SetFirebaseUid(string firebaseUid)
     {
@@ -304,6 +314,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
 
         // Firebase Auth 扩展
         PlayerPrefs.SetString(KEY_PHOTO_URL,          PhotoUrl);
+        PlayerPrefs.SetString(KEY_AVATAR_STORAGE_PATH, AvatarStoragePath);
         PlayerPrefs.SetString(KEY_FIREBASE_UID,       FirebaseUid);
         PlayerPrefs.SetString(KEY_AUTH_PROVIDER_ID,   AuthProviderId);
         PlayerPrefs.SetInt(KEY_IS_FIREBASE_AUTH,      IsFirebaseAuthenticated ? 1 : 0);
@@ -337,6 +348,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
 
         // Firebase Auth 扩展
         PhotoUrl             = PlayerPrefs.GetString(KEY_PHOTO_URL,        string.Empty);
+        AvatarStoragePath    = PlayerPrefs.GetString(KEY_AVATAR_STORAGE_PATH, string.Empty);
         FirebaseUid          = PlayerPrefs.GetString(KEY_FIREBASE_UID,     string.Empty);
         AuthProviderId       = PlayerPrefs.GetString(KEY_AUTH_PROVIDER_ID, string.Empty);
         IsFirebaseAuthenticated = PlayerPrefs.GetInt(KEY_IS_FIREBASE_AUTH, 0) == 1;
@@ -370,6 +382,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         Status           = AccountStatus.Normal;
 
         PhotoUrl             = string.Empty;
+        AvatarStoragePath    = string.Empty;
         FirebaseUid          = string.Empty;
         AuthProviderId       = string.Empty;
         IsFirebaseAuthenticated = false;
@@ -388,6 +401,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         PlayerPrefs.DeleteKey(KEY_LOGIN_TYPE);
         PlayerPrefs.DeleteKey(KEY_STATUS);
         PlayerPrefs.DeleteKey(KEY_PHOTO_URL);
+        PlayerPrefs.DeleteKey(KEY_AVATAR_STORAGE_PATH);
         PlayerPrefs.DeleteKey(KEY_FIREBASE_UID);
         PlayerPrefs.DeleteKey(KEY_AUTH_PROVIDER_ID);
         PlayerPrefs.DeleteKey(KEY_IS_FIREBASE_AUTH);
@@ -534,6 +548,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         Status           = AccountStatus.Normal;
 
         PhotoUrl             = string.Empty;
+        AvatarStoragePath    = string.Empty;
         FirebaseUid          = string.Empty;
         AuthProviderId       = string.Empty;
         IsFirebaseAuthenticated = false;
@@ -547,6 +562,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         PlayerPrefs.DeleteKey(KEY_LOGIN_TYPE);
         PlayerPrefs.DeleteKey(KEY_STATUS);
         PlayerPrefs.DeleteKey(KEY_PHOTO_URL);
+        PlayerPrefs.DeleteKey(KEY_AVATAR_STORAGE_PATH);
         PlayerPrefs.DeleteKey(KEY_FIREBASE_UID);
         PlayerPrefs.DeleteKey(KEY_AUTH_PROVIDER_ID);
         PlayerPrefs.DeleteKey(KEY_IS_FIREBASE_AUTH);

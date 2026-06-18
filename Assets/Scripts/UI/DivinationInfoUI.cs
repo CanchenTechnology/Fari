@@ -7,6 +7,7 @@
  * 注意: 以下文件是自动生成的，再次生成不会覆盖原有的代码，会在原有的代码上进行新增，可放心使用
 ---------------------------------*/
 using System.Collections.Generic;
+using System.Collections;
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
@@ -41,6 +42,7 @@ public class DivinationInfoUI : WindowBase
 
 		// 加载数据
 		_currentRecord = SelectedRecord;
+		SelectedRecord = null;
 
 		// 如果无传入记录，尝试从当前占卜会话获取
 		if (_currentRecord == null)
@@ -50,6 +52,9 @@ public class DivinationInfoUI : WindowBase
 
 		if (_currentRecord != null)
 		{
+			DialogSystem.Instance?.ActivateReadingFromRecord(_currentRecord, HasVerdict(_currentRecord)
+				? DivinationPhase.Completed
+				: DivinationPhase.CardsLocked);
 			RenderRecord();
 		}
 		else
@@ -97,17 +102,17 @@ public class DivinationInfoUI : WindowBase
 		var cards = _currentRecord.lockedCards;
 		if (cards != null && cards.Count > 0)
 		{
-			RenderTarotItem(c.Card1TarotItem, cards, 0);
-			RenderTarotItem(c.Card2TarotItem, cards, 1);
-			RenderTarotItem(c.Card3TarotItem, cards, 2);
+			RenderTarotItem(c.Card1TarotItemTarotItem, cards, 0);
+			RenderTarotItem(c.Card2TarotItemTarotItem, cards, 1);
+			RenderTarotItem(c.Card3TarotItemTarotItem, cards, 2);
 		}
 
 		// ---- 卡牌详细信息（DivinationInfoItem） ----
 		if (cards != null && cards.Count > 0)
 		{
-			RenderInfoItem(c.Item1DivinationInfoItem, cards, 0);
-			RenderInfoItem(c.Item2DivinationInfoItem, cards, 1);
-			RenderInfoItem(c.Item3DivinationInfoItem, cards, 2);
+			RenderInfoItem(c.Item1DivinationInfoItemDivinationInfoItem, cards, 0);
+			RenderInfoItem(c.Item2DivinationInfoItemDivinationInfoItem, cards, 1);
+			RenderInfoItem(c.Item3DivinationInfoItemDivinationInfoItem, cards, 2);
 		}
 
 		// ---- 评判内容 ----
@@ -136,9 +141,9 @@ public class DivinationInfoUI : WindowBase
 			_topics = GenerateDefaultTopics();
 		}
 
-		SetupTopicButton(c.Question1Button, c.Question1Button?.GetComponentInChildren<Text>(), 0);
-		SetupTopicButton(c.Question2Button, c.Question2Button?.GetComponentInChildren<Text>(), 1);
-		SetupTopicButton(c.Question3Button, c.Question3Button?.GetComponentInChildren<Text>(), 2);
+		SetupTopicRow(c.Question1QuestRowItem, 0);
+		SetupTopicRow(c.Question2QuestRowItem, 1);
+		SetupTopicRow(c.Question3QuestRowItem, 2);
 
 		Debug.Log($"[DivinationInfoUI] 占卜详情已渲染: {_currentRecord.readingId}");
 	}
@@ -234,19 +239,18 @@ public class DivinationInfoUI : WindowBase
 	/// <summary>
 	/// 设置追问话题按钮
 	/// </summary>
-	private void SetupTopicButton(Button btn, Text label, int topicIndex)
+	private void SetupTopicRow(QuestRowItem item, int topicIndex)
 	{
-		if (btn == null) return;
+		if (item == null) return;
 
 		if (topicIndex < _topics.Count)
 		{
-			btn.gameObject.SetActive(true);
-			if (label != null)
-				label.text = _topics[topicIndex];
+			item.gameObject.SetActive(true);
+			item.SetData(_topics[topicIndex], _ => ContinueWithTopic(topicIndex));
 		}
 		else
 		{
-			btn.gameObject.SetActive(false);
+			item.gameObject.SetActive(false);
 		}
 	}
 
@@ -290,27 +294,7 @@ public class DivinationInfoUI : WindowBase
 
 	private DivinationRecordData BuildRecordFromSession()
 	{
-		var session = DivinationEngine.Instance?.CurrentSession;
-		if (session == null) return null;
-
-		return new DivinationRecordData
-		{
-			readingId = session.readingId,
-			question = session.question,
-			scene = session.scene,
-			spreadKind = session.spreadKind,
-			lockedCards = session.lockedCards ?? new List<LockedCard>(),
-			shortVerdict = session.shortVerdict ?? "",
-			judgeContent = session.judgeContent ?? "",
-			adviceContent = session.adviceContent ?? "",
-			topics = session.topics ?? new List<string>(),
-			oracleId = RoleManager.Instance != null
-				? RoleManager.Instance.characterType.ToString()
-				: "tarot",
-			createdAt = string.IsNullOrEmpty(session.createdAt)
-				? System.DateTime.Now.ToString("o")
-				: session.createdAt,
-		};
+		return DivinationRecordBuilder.FromSession();
 	}
 
 	private string BuildDefaultJudgeText()
@@ -441,33 +425,36 @@ public class DivinationInfoUI : WindowBase
 			? _topics[topicIndex]
 			: "";
 
-		// 恢复占卜会话到追问模式
-		if (DivinationEngine.Instance != null)
-		{
-			var session = new DivinationSession
-			{
-				readingId    = _currentRecord.readingId,
-				question     = _currentRecord.question,
-				scene        = _currentRecord.scene,
-				spreadKind   = _currentRecord.spreadKind,
-				lockedCards  = _currentRecord.lockedCards,
-				phase        = DivinationPhase.FollowUp,
-				shortVerdict = _currentRecord.shortVerdict,
-				judgeContent = _currentRecord.judgeContent,
-				adviceContent = _currentRecord.adviceContent,
-				createdAt    = System.DateTime.Now.ToString("o"),
-			};
-			DivinationEngine.Instance.RestoreSession(session);
-		}
+		// 恢复这条详情自己的占卜上下文，避免继续追问时串到最近一次牌阵。
+		DialogSystem.Instance?.ActivateReadingFromRecord(_currentRecord, DivinationPhase.FollowUp);
 
 		// 打开对话界面
 		HideWindow();
-		var dialog = UIModule.Instance.PopUpWindow<DialogUI>();
-		if (dialog != null && !string.IsNullOrEmpty(topic))
-		{
-			// 通过外部接口自动发送追问话题
+		UIModule.Instance.PopUpWindow<DialogUI>();
+		if (!string.IsNullOrEmpty(topic))
+			uiComponent.StartCoroutine(SendTopicToDialogNextFrame(topic));
+	}
+
+	private IEnumerator SendTopicToDialogNextFrame(string topic)
+	{
+		yield return null;
+
+		var dialog = UIModule.Instance.GetWindow<DialogUI>();
+		if (dialog == null)
+			dialog = UIModule.Instance.PopUpWindow<DialogUI>();
+
+		if (dialog != null)
 			dialog.SendMessageFromExternal(topic);
-		}
+		else
+			Debug.LogWarning($"[DivinationInfoUI] DialogUI 未找到，无法发送追问: {topic}");
+	}
+
+	private bool HasVerdict(DivinationRecordData record)
+	{
+		return record != null
+			&& (!string.IsNullOrWhiteSpace(record.judgeContent)
+				|| !string.IsNullOrWhiteSpace(record.shortVerdict)
+				|| !string.IsNullOrWhiteSpace(record.adviceContent));
 	}
 
 #if UNITY_IOS && !UNITY_EDITOR

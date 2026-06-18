@@ -116,8 +116,31 @@ public class NotificationSettingsManager : MonoSingleton<NotificationSettingsMan
     /// </summary>
     public void SetReminderTime(string time)
     {
-        ReminderTime = time ?? TIME_MORNING;
+        ReminderTime = NormalizeReminderTime(time);
         SaveSettings();
+    }
+
+    /// <summary>
+    /// 从云端或外部存储应用完整通知设置。
+    /// </summary>
+    public void ApplySettings(
+        bool dailyOracleEnabled,
+        bool dialogueReplyEnabled,
+        bool divinationReturnEnabled,
+        bool friendInteractionEnabled,
+        bool activitySystemEnabled,
+        string reminderTime,
+        bool save = true)
+    {
+        DailyOracleEnabled = dailyOracleEnabled;
+        DialogueReplyEnabled = dialogueReplyEnabled;
+        DivinationReturnEnabled = divinationReturnEnabled;
+        FriendInteractionEnabled = friendInteractionEnabled;
+        ActivitySystemEnabled = activitySystemEnabled;
+        ReminderTime = NormalizeReminderTime(reminderTime);
+
+        if (save)
+            SaveSettings();
     }
 
     #endregion
@@ -150,7 +173,7 @@ public class NotificationSettingsManager : MonoSingleton<NotificationSettingsMan
         DivinationReturnEnabled = PlayerPrefs.GetInt(KEY_DIVINATION_RETURN, 1) == 1;
         FriendInteractionEnabled = PlayerPrefs.GetInt(KEY_FRIEND_INTERACTION, 0) == 1;
         ActivitySystemEnabled = PlayerPrefs.GetInt(KEY_ACTIVITY_SYSTEM, 1) == 1;
-        ReminderTime = PlayerPrefs.GetString(KEY_REMINDER_TIME, TIME_MORNING);
+        ReminderTime = NormalizeReminderTime(PlayerPrefs.GetString(KEY_REMINDER_TIME, TIME_MORNING));
 
         Debug.Log($"[NotificationSettingsManager] 通知设置已加载，提醒时间：{ReminderTime}");
     }
@@ -169,6 +192,12 @@ public class NotificationSettingsManager : MonoSingleton<NotificationSettingsMan
 
         SaveSettings();
         Debug.Log("[NotificationSettingsManager] 通知设置已恢复默认");
+    }
+
+    private string NormalizeReminderTime(string time)
+    {
+        if (string.IsNullOrWhiteSpace(time)) return TIME_MORNING;
+        return time;
     }
 
     #endregion

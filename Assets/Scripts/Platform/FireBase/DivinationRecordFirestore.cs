@@ -24,6 +24,8 @@ using GamerFrameWork.OracleRuntime;
 /// </summary>
 public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore>
 {
+    private const string CACHE_KEY_PREFIX = "DivinationRecordCache_";
+    private const int MAX_CACHED_RECORDS = 100;
     private FirebaseFirestore _db;
     private bool _isInitialized = false;
 
@@ -62,6 +64,17 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
     /// </summary>
     public void SaveRecord(DivinationRecordData record, Action<bool> onComplete = null)
     {
+        if (record == null)
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(record.createdAt))
+            record.createdAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+
+        CacheRecord(record);
+
         if (!CheckReady(onComplete)) return;
 
         string uid = GetCurrentUid();
@@ -132,13 +145,17 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
     /// </summary>
     public void LoadAllRecords(Action<List<DivinationRecordData>> onComplete)
     {
-        if (!CheckReady(_ => onComplete?.Invoke(null))) return;
+        if (!IsReady)
+        {
+            onComplete?.Invoke(LoadCachedRecords());
+            return;
+        }
 
         string uid = GetCurrentUid();
         if (string.IsNullOrEmpty(uid))
         {
             Debug.LogWarning("[DivinationRecordFirestore] 用户未登录");
-            onComplete?.Invoke(new List<DivinationRecordData>());
+            onComplete?.Invoke(LoadCachedRecords());
             return;
         }
 
@@ -154,7 +171,7 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
                 if (task.IsFaulted || task.IsCanceled)
                 {
                     Debug.LogError($"[DivinationRecordFirestore] 加载记录失败: {task.Exception?.InnerException?.Message}");
-                    onComplete?.Invoke(records);
+                    onComplete?.Invoke(LoadCachedRecords());
                     return;
                 }
 
@@ -165,6 +182,7 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
                 }
 
                 Debug.Log($"[DivinationRecordFirestore] 加载了 {records.Count} 条记录");
+                SaveRecordsToCache(records);
                 onComplete?.Invoke(records);
             });
     }
@@ -174,12 +192,16 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
     /// </summary>
     public void LoadRecord(string readingId, Action<DivinationRecordData> onComplete)
     {
-        if (!CheckReady(_ => onComplete?.Invoke(null))) return;
+        if (!IsReady)
+        {
+            onComplete?.Invoke(FindCachedRecord(readingId));
+            return;
+        }
 
         string uid = GetCurrentUid();
         if (string.IsNullOrEmpty(uid))
         {
-            onComplete?.Invoke(null);
+            onComplete?.Invoke(FindCachedRecord(readingId));
             return;
         }
 
@@ -192,10 +214,12 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
             {
                 if (task.IsFaulted || task.IsCanceled || !task.Result.Exists)
                 {
-                    onComplete?.Invoke(null);
+                    onComplete?.Invoke(FindCachedRecord(readingId));
                     return;
                 }
-                onComplete?.Invoke(DeserializeRecord(task.Result));
+                var record = DeserializeRecord(task.Result);
+                CacheRecord(record);
+                onComplete?.Invoke(record);
             });
     }
 
@@ -208,6 +232,7 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
     /// </summary>
     public void DeleteRecord(string readingId, Action<bool> onComplete = null)
     {
+        RemoveCachedRecord(readingId);
         if (!CheckReady(onComplete)) return;
 
         string uid = GetCurrentUid();
@@ -400,7 +425,104 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
         return "";
     }
 
+    public List<DivinationRecordData> LoadCachedRecords()
+    {
+        string json = PlayerPrefs.GetString(GetCacheKey(), string.Empty);
+        if (string.IsNullOrEmpty(json)) return new List<DivinationRecordData>();
+
+        try
+        {
+            var wrapper = JsonUtility.FromJson<DivinationRecordCacheWrapper>(json);
+            var records = wrapper?.records ?? new List<DivinationRecordData>();
+            SortRecordsDescending(records);
+            return records;
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("[DivinationRecordFirestore] 本地历史缓存读取失败: " + e.Message);
+            return new List<DivinationRecordData>();
+        }
+    }
+
+    private DivinationRecordData FindCachedRecord(string readingId)
+    {
+        if (string.IsNullOrEmpty(readingId)) return null;
+
+        var records = LoadCachedRecords();
+        foreach (var record in records)
+        {
+            if (record != null && record.readingId == readingId)
+                return record;
+        }
+        return null;
+    }
+
+    private void CacheRecord(DivinationRecordData record)
+    {
+        if (record == null || string.IsNullOrEmpty(record.readingId)) return;
+
+        var records = LoadCachedRecords();
+        records.RemoveAll(item => item == null || item.readingId == record.readingId);
+        records.Insert(0, record);
+        SaveRecordsToCache(records);
+    }
+
+    private void RemoveCachedRecord(string readingId)
+    {
+        if (string.IsNullOrEmpty(readingId)) return;
+
+        var records = LoadCachedRecords();
+        int removed = records.RemoveAll(item => item == null || item.readingId == readingId);
+        if (removed > 0)
+            SaveRecordsToCache(records);
+    }
+
+    private void SaveRecordsToCache(List<DivinationRecordData> records)
+    {
+        if (records == null) records = new List<DivinationRecordData>();
+
+        records.RemoveAll(record => record == null || string.IsNullOrEmpty(record.readingId));
+        SortRecordsDescending(records);
+        if (records.Count > MAX_CACHED_RECORDS)
+            records.RemoveRange(MAX_CACHED_RECORDS, records.Count - MAX_CACHED_RECORDS);
+
+        string json = JsonUtility.ToJson(new DivinationRecordCacheWrapper { records = records });
+        PlayerPrefs.SetString(GetCacheKey(), json);
+        PlayerPrefs.Save();
+    }
+
+    private void SortRecordsDescending(List<DivinationRecordData> records)
+    {
+        records.Sort((a, b) =>
+        {
+            DateTime aTime = ParseRecordTime(a);
+            DateTime bTime = ParseRecordTime(b);
+            return bTime.CompareTo(aTime);
+        });
+    }
+
+    private DateTime ParseRecordTime(DivinationRecordData record)
+    {
+        if (record != null && DateTime.TryParse(record.createdAt, out var parsed))
+            return parsed;
+        return DateTime.MinValue;
+    }
+
+    private string GetCacheKey()
+    {
+        string uid = GetCurrentUid();
+        if (string.IsNullOrEmpty(uid))
+            uid = "local";
+        return CACHE_KEY_PREFIX + uid;
+    }
+
     #endregion
+}
+
+[Serializable]
+public class DivinationRecordCacheWrapper
+{
+    public List<DivinationRecordData> records = new List<DivinationRecordData>();
 }
 
 /// <summary>

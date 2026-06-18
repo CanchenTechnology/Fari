@@ -16,6 +16,7 @@ public class PersonalProfileUI : WindowBase
 	// 头像精灵引用（需要在 Inspector 中配置或通过 Resource 加载）
 	public Sprite moonAvatarSprite;
 	public Sprite personAvatarSprite;
+	private bool isAvatarUploading;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -30,6 +31,7 @@ public class PersonalProfileUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		EnsureAvatarUploadClick();
 		LoadDataToUI();
 	}
 	// 物体隐藏时执行
@@ -71,6 +73,20 @@ public class PersonalProfileUI : WindowBase
 		var manager = UserDataManager.Instance;
 		Sprite sprite = null;
 
+		if (!string.IsNullOrEmpty(manager.PhotoUrl) && GameManager.Instance != null)
+		{
+			GameManager.Instance.StartCoroutine(GoogleUserInfoHelper.LoadAndCacheAvatarCoroutine(
+				manager.PhotoUrl,
+				loadedSprite =>
+				{
+					if (loadedSprite != null && uiComponent.AvatarImageImage != null)
+					{
+						uiComponent.AvatarImageImage.sprite = loadedSprite;
+						uiComponent.AvatarImageImage.preserveAspect = true;
+					}
+				}));
+		}
+
 		switch (manager.CurrentAvatar)
 		{
 			case AvatarType.Moon:
@@ -84,7 +100,23 @@ public class PersonalProfileUI : WindowBase
 		if (sprite != null)
 		{
 			uiComponent.AvatarImageImage.sprite = sprite;
+			uiComponent.AvatarImageImage.preserveAspect = true;
 		}
+	}
+
+	private void EnsureAvatarUploadClick()
+	{
+		if (uiComponent == null || uiComponent.AvatarImageImage == null) return;
+
+		Button button = uiComponent.AvatarImageImage.GetComponent<Button>();
+		if (button == null)
+		{
+			button = uiComponent.AvatarImageImage.gameObject.AddComponent<Button>();
+			button.transition = Selectable.Transition.None;
+		}
+
+		button.onClick.RemoveListener(OnAvatarImageClick);
+		button.onClick.AddListener(OnAvatarImageClick);
 	}
 
 	#endregion
@@ -111,6 +143,33 @@ public class PersonalProfileUI : WindowBase
 		// 切换到人物头像
 		UserDataManager.Instance.SetAvatarType(AvatarType.Person);
 		RefreshAvatar();
+	}
+	public void OnAvatarImageClick()
+	{
+		if (isAvatarUploading) return;
+
+		isAvatarUploading = true;
+		ToastManager.ShowToast("正在上传头像...");
+		AvatarUploadManager.Instance.PickAndUploadAvatar(
+			result =>
+			{
+				isAvatarUploading = false;
+				if (result != null && result.previewSprite != null && uiComponent.AvatarImageImage != null)
+				{
+					uiComponent.AvatarImageImage.sprite = result.previewSprite;
+					uiComponent.AvatarImageImage.preserveAspect = true;
+				}
+				ToastManager.ShowToast("头像已保存");
+			},
+			error =>
+			{
+				isAvatarUploading = false;
+				if (!string.IsNullOrEmpty(error) && error != "已取消选择头像")
+				{
+					Debug.LogWarning("[PersonalProfileUI] 头像上传失败: " + error);
+					ToastManager.ShowToast(error);
+				}
+			});
 	}
 	public void OnUserNameInputInputChange(string text)
 	{
@@ -150,6 +209,11 @@ public class PersonalProfileUI : WindowBase
 	{
 		// 保存数据到本地
 		UserDataManager.Instance.SaveData();
+		FirestoreManager.Instance?.SaveUserData(success =>
+		{
+			if (!success)
+				Debug.LogWarning("[PersonalProfileUI] 用户资料云端同步失败");
+		});
 
 		// 可选：校验数据完整性
 		if (UserDataManager.Instance.IsProfileComplete())

@@ -256,10 +256,14 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
         CurrentAuthProvider = AuthProvider.Anonymous;
         IsLoggingIn = true;
 
+        SignInAnonymouslyWithFirebase();
+    }
+
+    private void SignInAnonymouslyWithFirebase()
+    {
 #if UNITY_EDITOR
-        Debug.Log("[FirebaseAuthManager] Editor 模式：模拟匿名登录");
-        SimulateLoginSuccess(AuthProvider.Anonymous);
-#else
+        Debug.Log("[FirebaseAuthManager] Editor 模式：使用真实 Firebase 匿名登录");
+#endif
         _auth.SignInAnonymouslyAsync().ContinueWithOnMainThread(task =>
         {
             IsLoggingIn = false;
@@ -286,7 +290,6 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
 
             OnLoginSuccess?.Invoke(AuthProvider.Anonymous, newUser);
         });
-#endif
     }
 
     #endregion
@@ -440,23 +443,29 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
             return;
         }
 
-        CurrentUser.DeleteAsync().ContinueWithOnMainThread(task =>
+        var userToDelete = CurrentUser;
+        FirestoreManager.Instance.DeleteUserData(firestoreDeleted =>
         {
-            if (task.IsFaulted || task.IsCanceled)
+            if (!firestoreDeleted)
             {
-                string error = task.Exception?.InnerException?.Message ?? "删除账户失败";
-                Debug.LogError($"[FirebaseAuthManager] 删除账户失败: {error}");
-                onError?.Invoke(error);
+                onError?.Invoke("删除云端用户数据失败");
                 return;
             }
 
-            Debug.Log("[FirebaseAuthManager] 账户已删除");
+            userToDelete.DeleteAsync().ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    string error = task.Exception?.InnerException?.Message ?? "删除账户失败";
+                    Debug.LogError($"[FirebaseAuthManager] 删除账户失败: {error}");
+                    onError?.Invoke(error);
+                    return;
+                }
 
-            // 同步删除云端用户数据
-            FirestoreManager.Instance.DeleteUserData();
-
-            SignOut();
-            onSuccess?.Invoke();
+                Debug.Log("[FirebaseAuthManager] 账户已删除");
+                SignOut();
+                onSuccess?.Invoke();
+            });
         });
     }
 

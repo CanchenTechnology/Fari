@@ -12,33 +12,69 @@ using GamerFrameWork.UIFrameWork;
 public class CreateFriendUI : WindowBase
 {
 	public CreateFriendUIComponent uiComponent;
-	private int selectedAvatarIndex = 1;
+
+	private const int MaxNameLength = 20;
+	private const string BirthdayPlaceholder = "选择生日";
+	private const string BirthTimePlaceholder = "选择出生时间";
+	private const string CityPlaceholder = "选择出生城市";
+
+	private int selectedAvatarIndex = 0;
+	private Sprite selectedAvatarSprite;
+	private Sprite prefabFallbackAvatarSprite;
+	private Sprite accountAvatarSprite;
+	private string selectedAvatarImagePath = string.Empty;
+	private string accountAvatarImagePath = string.Empty;
+	private bool hasUserSelectedAvatar;
+	private bool formInitialized;
+	private int avatarLoadVersion;
+	private InputField birthdayDateInputField;
+	private InputField birthdayTimeInputField;
+	private InputField birthdayCountryInputField;
 	private string username = string.Empty;
 	private string birthday = string.Empty;
 	private string birthTime = string.Empty;
 	private string city = string.Empty;
 
 	#region 生命周期函数
-	// 调用机制与 Mono Awake 一致
 	public override void OnAwake()
 	{
 		uiComponent = gameObject.GetComponent<CreateFriendUIComponent>();
 		uiComponent.InitComponent(this);
+		BindSelectionInputFields();
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		base.OnAwake();
 	}
-	// 物体显示时执行
+
 	public override void OnShow()
 	{
 		base.OnShow();
-		ReadFormValues();
+		CapturePrefabFallbackAvatar();
+
+		if (!formInitialized)
+		{
+			formInitialized = true;
+			accountAvatarSprite = null;
+			accountAvatarImagePath = string.Empty;
+			hasUserSelectedAvatar = false;
+			ResetForm();
+			LoadDefaultAccountAvatar();
+		}
+		else
+		{
+			ReadFormValues();
+			RefreshSelectionTexts();
+		}
+
+		RefreshAvatarPreview();
+		RefreshNameCounter();
 	}
-	// 物体隐藏时执行
+
 	public override void OnHide()
 	{
+		avatarLoadVersion++;
 		base.OnHide();
 	}
-	// 物体销毁时执行
+
 	public override void OnDestroy()
 	{
 		base.OnDestroy();
@@ -49,130 +85,350 @@ public class CreateFriendUI : WindowBase
 
 	#endregion
 
-	#region UI组件事件		 
-	public void OnAvatar4ButtonClick()
-	{
-		selectedAvatarIndex = 4;
-		ToastManager.ShowToast("已选择头像 4");
-	}
-	public void OnAvatar3ButtonClick()
-	{
-		selectedAvatarIndex = 3;
-		ToastManager.ShowToast("已选择头像 3");
-	}
-	public void OnAvatar2ButtonClick()
-	{
-		selectedAvatarIndex = 2;
-		ToastManager.ShowToast("已选择头像 2");
-	}
-	public void OnAvatar1ButtonClick()
-	{
-		selectedAvatarIndex = 1;
-		ToastManager.ShowToast("已选择头像 1");
-	}
-		
+	#region UI组件事件
 	public void OnBackButtonClick()
 	{
+		formInitialized = false;
 		HideWindow();
 	}
-	public void OnNotificationsButtonClick()
-	{
-		ToastManager.ShowDebug();
-	}
-	public void OnAvatarSelectionToggleChange(bool state, Toggle toggle)
-	{
-	}
-	public void OnAvatar1ToggleChange(bool state, Toggle toggle)
-	{
-	}
-	public void OnAvatar2ToggleChange(bool state, Toggle toggle)
-	{
-	}
-	public void OnAvatar3ToggleChange(bool state, Toggle toggle)
-	{
-	}
-	public void OnAvatar4ToggleChange(bool state, Toggle toggle)
-	{
-	}
+
 	public void OnUploadAvatarButtonClick()
 	{
-		ToastManager.ShowToast("头像上传将在正式版开放");
+		SelectFriendAvatarUI.Show(selectedAvatarSprite, selectedAvatarIndex, selectedAvatarImagePath, ApplySelectedAvatar);
 	}
-	public void OnUsernameInputChange(string text)
+
+	public void OnInputInputChange(string text)
 	{
-		username = text;
+		username = TrimName(text);
+		if (uiComponent.InputInputField != null && uiComponent.InputInputField.text != username)
+		{
+			uiComponent.InputInputField.text = username;
+		}
+		RefreshNameCounter();
 	}
-	public void OnUsernameInputEnd(string text)
+
+	public void OnInputInputEnd(string text)
 	{
-		username = text;
+		username = TrimName(text);
+		RefreshNameCounter();
 	}
-	public void OnBirthdayInputChange(string text)
+
+	public void OnField_birthdayDateButtonClick()
 	{
-		birthday = text;
+		SpinPickerUI.ShowDate(birthday, ApplyBirthday);
 	}
-	public void OnBirthdayInputEnd(string text)
+
+	public void OnField_birthdayTimeButtonClick()
 	{
-		birthday = text;
+		SpinPickerUI.ShowTime(birthTime, ApplyBirthTime);
 	}
-	public void OnBirthTimeInputChange(string text)
+
+	public void OnField_birthdayCountryButtonClick()
 	{
-		birthTime = text;
+		SpinPickerUI.ShowRegion(city, ApplyCity);
 	}
-	public void OnBirthTimeInputEnd(string text)
-	{
-		birthTime = text;
-	}
-	public void OnCityInputChange(string text)
-	{
-		city = text;
-	}
-	public void OnCityInputEnd(string text)
-	{
-		city = text;
-	}
+
 	public void OnSubmitButtonClick()
 	{
 		ReadFormValues();
+		username = TrimName(username);
 		if (string.IsNullOrWhiteSpace(username))
 		{
 			ToastManager.ShowToast("请先填写好友名字");
+			FocusInput(uiComponent.InputInputField);
 			return;
 		}
 
-		string notes = $"虚拟好友档案 · 头像 {selectedAvatarIndex}";
-		FriendDataManager.Instance.AddVirtualFriend(
+		string notes = BuildFriendNotes();
+		var createdFriend = FriendDataManager.Instance.AddVirtualFriend(
 			username.Trim(),
 			"好友",
 			birthday.Trim(),
 			birthTime.Trim(),
 			city.Trim(),
-			notes);
+			notes,
+			selectedAvatarSprite,
+			selectedAvatarImagePath);
 
 		ToastManager.ShowToast($"已创建 {username.Trim()}");
+		if (FirestoreManager.Instance != null)
+		{
+			FirestoreManager.Instance.SaveVirtualFriend(createdFriend, success =>
+			{
+				if (!success)
+				{
+					ToastManager.ShowToast("已保存到本地，稍后会同步云端");
+				}
+			});
+		}
+		formInitialized = false;
 		HideWindow();
 	}
+
+	public void OnAvatar1ButtonClick()
+	{
+		SelectAvatar(1);
+	}
+
+	public void OnAvatar2ButtonClick()
+	{
+		SelectAvatar(2);
+	}
+
+	public void OnAvatar3ButtonClick()
+	{
+		SelectAvatar(3);
+	}
+
+	public void OnAvatar4ButtonClick()
+	{
+		SelectAvatar(4);
+	}
+
+	public void OnNotificationsButtonClick()
+	{
+		ToastManager.ShowDebug();
+	}
+
+	public void OnAvatarSelectionToggleChange(bool state, Toggle toggle)
+	{
+	}
+
+	public void OnAvatar1ToggleChange(bool state, Toggle toggle)
+	{
+	}
+
+	public void OnAvatar2ToggleChange(bool state, Toggle toggle)
+	{
+	}
+
+	public void OnAvatar3ToggleChange(bool state, Toggle toggle)
+	{
+	}
+
+	public void OnAvatar4ToggleChange(bool state, Toggle toggle)
+	{
+	}
+
 	public void OnBottomNavToggleChange(bool state, Toggle toggle)
 	{
 	}
+
 	public void OnTabOracleToggleChange(bool state, Toggle toggle)
 	{
 	}
+
 	public void OnTabChatToggleChange(bool state, Toggle toggle)
 	{
 	}
+
 	public void OnTabFriendsToggleChange(bool state, Toggle toggle)
 	{
 	}
+
 	public void OnTabProfileToggleChange(bool state, Toggle toggle)
 	{
 	}
 
 	private void ReadFormValues()
 	{
-		username = uiComponent.UsernameInputField != null ? uiComponent.UsernameInputField.text : username;
-		birthday = uiComponent.BirthdayInputField != null ? uiComponent.BirthdayInputField.text : birthday;
-		birthTime = uiComponent.BirthTimeInputField != null ? uiComponent.BirthTimeInputField.text : birthTime;
-		city = uiComponent.CityInputField != null ? uiComponent.CityInputField.text : city;
+		username = uiComponent.InputInputField != null ? TrimName(uiComponent.InputInputField.text) : username;
+		birthday = ReadSelectedInput(birthdayDateInputField, uiComponent.birthdayDateText, BirthdayPlaceholder, birthday);
+		birthTime = ReadSelectedInput(birthdayTimeInputField, uiComponent.birthdayTimeText, BirthTimePlaceholder, birthTime);
+		city = ReadSelectedInput(birthdayCountryInputField, uiComponent.birthdayCountryText, CityPlaceholder, city);
+	}
+
+	private void ResetForm()
+	{
+		selectedAvatarIndex = accountAvatarSprite != null ? 0 : 1;
+		selectedAvatarSprite = accountAvatarSprite != null ? accountAvatarSprite : prefabFallbackAvatarSprite;
+		selectedAvatarImagePath = accountAvatarSprite != null ? accountAvatarImagePath : string.Empty;
+		username = string.Empty;
+		birthday = string.Empty;
+		birthTime = string.Empty;
+		city = string.Empty;
+
+		if (uiComponent.InputInputField != null)
+		{
+			uiComponent.InputInputField.characterLimit = MaxNameLength;
+			uiComponent.InputInputField.text = string.Empty;
+		}
+		SetSelectionValue(birthdayDateInputField, uiComponent.birthdayDateText, string.Empty, BirthdayPlaceholder);
+		SetSelectionValue(birthdayTimeInputField, uiComponent.birthdayTimeText, string.Empty, BirthTimePlaceholder);
+		SetSelectionValue(birthdayCountryInputField, uiComponent.birthdayCountryText, string.Empty, CityPlaceholder);
+	}
+
+	private void RefreshSelectionTexts()
+	{
+		SetSelectionValue(birthdayDateInputField, uiComponent.birthdayDateText, birthday, BirthdayPlaceholder);
+		SetSelectionValue(birthdayTimeInputField, uiComponent.birthdayTimeText, birthTime, BirthTimePlaceholder);
+		SetSelectionValue(birthdayCountryInputField, uiComponent.birthdayCountryText, city, CityPlaceholder);
+	}
+
+	private void SelectAvatar(int index)
+	{
+		hasUserSelectedAvatar = true;
+		selectedAvatarIndex = Mathf.Max(1, index);
+		selectedAvatarImagePath = string.Empty;
+		RefreshAvatarPreview();
+	}
+
+	private void ApplySelectedAvatar(Sprite avatarSprite, int avatarIndex)
+	{
+		ApplySelectedAvatar(avatarSprite, avatarIndex, string.Empty);
+	}
+
+	private void ApplySelectedAvatar(Sprite avatarSprite, int avatarIndex, string avatarImagePath)
+	{
+		hasUserSelectedAvatar = true;
+		selectedAvatarIndex = avatarIndex > 0 ? avatarIndex : 0;
+		selectedAvatarSprite = avatarSprite;
+		selectedAvatarImagePath = avatarImagePath ?? string.Empty;
+		RefreshAvatarPreview();
+	}
+
+	private void ApplyBirthday(string value)
+	{
+		birthday = value ?? string.Empty;
+		SetSelectionValue(birthdayDateInputField, uiComponent.birthdayDateText, birthday, BirthdayPlaceholder);
+	}
+
+	private void ApplyBirthTime(string value)
+	{
+		birthTime = value ?? string.Empty;
+		SetSelectionValue(birthdayTimeInputField, uiComponent.birthdayTimeText, birthTime, BirthTimePlaceholder);
+	}
+
+	private void ApplyCity(string value)
+	{
+		city = value ?? string.Empty;
+		SetSelectionValue(birthdayCountryInputField, uiComponent.birthdayCountryText, city, CityPlaceholder);
+	}
+
+	private void RefreshAvatarPreview()
+	{
+		if (selectedAvatarSprite == null)
+		{
+			selectedAvatarSprite = accountAvatarSprite != null ? accountAvatarSprite : prefabFallbackAvatarSprite;
+		}
+
+		if (uiComponent.AvatarPreviewImage != null && selectedAvatarSprite != null)
+		{
+			uiComponent.AvatarPreviewImage.sprite = selectedAvatarSprite;
+			uiComponent.AvatarPreviewImage.preserveAspect = true;
+		}
+	}
+
+	private void CapturePrefabFallbackAvatar()
+	{
+		if (prefabFallbackAvatarSprite == null && uiComponent.AvatarPreviewImage != null)
+		{
+			prefabFallbackAvatarSprite = uiComponent.AvatarPreviewImage.sprite;
+		}
+	}
+
+	private void LoadDefaultAccountAvatar()
+	{
+		if (GameManager.Instance == null)
+		{
+			return;
+		}
+
+		int loadVersion = ++avatarLoadVersion;
+		GameManager.Instance.StartCoroutine(FriendAvatarImageUtility.LoadCurrentUserAvatarCoroutine((sprite, path) =>
+		{
+			if (loadVersion != avatarLoadVersion || sprite == null)
+			{
+				return;
+			}
+
+			accountAvatarSprite = sprite;
+			accountAvatarImagePath = path ?? string.Empty;
+			if (hasUserSelectedAvatar)
+			{
+				return;
+			}
+
+			selectedAvatarIndex = 0;
+			selectedAvatarSprite = accountAvatarSprite;
+			selectedAvatarImagePath = accountAvatarImagePath;
+			RefreshAvatarPreview();
+		}));
+	}
+
+	private void RefreshNameCounter()
+	{
+		if (uiComponent.UsernameCountText != null)
+		{
+			uiComponent.UsernameCountText.text = $"{username.Length}/{MaxNameLength}";
+		}
+	}
+
+	private string TrimName(string value)
+	{
+		if (string.IsNullOrEmpty(value)) return string.Empty;
+		value = value.Trim();
+		return value.Length <= MaxNameLength ? value : value.Substring(0, MaxNameLength);
+	}
+
+	private void BindSelectionInputFields()
+	{
+		birthdayDateInputField = FindSelectionInputField(uiComponent.Field_birthdayDateButton, uiComponent.birthdayDateText);
+		birthdayTimeInputField = FindSelectionInputField(uiComponent.Field_birthdayTimeButton, uiComponent.birthdayTimeText);
+		birthdayCountryInputField = FindSelectionInputField(uiComponent.Field_birthdayCountryButton, uiComponent.birthdayCountryText);
+	}
+
+	private InputField FindSelectionInputField(Button button, Text text)
+	{
+		if (text != null)
+		{
+			InputField input = text.GetComponentInParent<InputField>();
+			if (input != null) return input;
+		}
+
+		return button != null ? button.GetComponentInChildren<InputField>(true) : null;
+	}
+
+	private string ReadSelectedInput(InputField input, Text text, string placeholder, string fallback)
+	{
+		string value = input != null ? input.text : text != null ? text.text : fallback;
+		return string.IsNullOrWhiteSpace(value) || value == placeholder ? string.Empty : value;
+	}
+
+	private void SetSelectionValue(InputField input, Text text, string value, string placeholder)
+	{
+		if (input != null)
+		{
+			input.text = string.IsNullOrWhiteSpace(value) ? string.Empty : value;
+			return;
+		}
+
+		SetText(text, string.IsNullOrWhiteSpace(value) ? placeholder : value);
+	}
+
+	private void SetText(Text text, string value)
+	{
+		if (text != null)
+		{
+			text.text = value;
+		}
+	}
+
+	private void FocusInput(InputField input)
+	{
+		if (input == null) return;
+		input.Select();
+		input.ActivateInputField();
+	}
+
+	private string BuildFriendNotes()
+	{
+		string avatarLabel = selectedAvatarIndex > 0 ? $"头像 {selectedAvatarIndex}" : "登录/自定义头像";
+		var parts = new System.Collections.Generic.List<string> { $"虚拟好友档案 · {avatarLabel}" };
+		parts.Add(string.IsNullOrWhiteSpace(birthday) ? "生日未知" : $"生日 {birthday.Trim()}");
+		parts.Add(string.IsNullOrWhiteSpace(birthTime) ? "出生时间未知" : $"出生时间 {birthTime.Trim()}");
+		parts.Add(string.IsNullOrWhiteSpace(city) ? "出生地区未知" : $"出生地区 {city.Trim()}");
+		return string.Join(" · ", parts);
 	}
 	#endregion
 }

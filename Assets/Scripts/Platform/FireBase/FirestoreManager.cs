@@ -5,6 +5,7 @@ using Firebase;
 using Firebase.Firestore;
 using Firebase.Extensions;
 using XFGameFrameWork;
+using GamerFrameWork.OracleRuntime;
 
 /// <summary>
 /// Firestore 数据库管理器
@@ -12,7 +13,7 @@ using XFGameFrameWork;
 ///
 /// 数据结构：
 ///   users/{firebaseUid}        ← 用户资料文档
-///     - displayName, email, photoUrl, birthday, birthTime, city
+///     - displayName, email, photoUrl, avatarStoragePath, birthday, birthTime, city
 ///     - avatarType, loginType, isEmailVerified, selectedOracle, timezone
 ///     - createdAt, lastSignInAt
 ///
@@ -22,7 +23,21 @@ using XFGameFrameWork;
 /// </summary>
 public class FirestoreManager : MonoSingleton<FirestoreManager>
 {
+    public class UserSearchResult
+    {
+        public string uid;
+        public string displayName;
+        public string email;
+        public string photoUrl;
+        public bool isSelf;
+
+        public string Handle => string.IsNullOrEmpty(email) ? $"@{uid}" : $"@{email.Split('@')[0]}";
+        public string Info => string.IsNullOrEmpty(email) ? "Firebase 注册用户" : email;
+    }
+
     #region 状态
+
+    private const string PUBLIC_APP_CONFIG_CACHE_KEY = "PublicAppConfigCache_v1";
 
     private FirebaseFirestore _db;
     private bool _isInitialized = false;
@@ -91,8 +106,11 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         var data = new Dictionary<string, object>
         {
             { "displayName",     ud.UserName },
+            { "displayNameLower", NormalizeSearchText(ud.UserName) },
             { "email",           ud.Email },
+            { "emailLower",       NormalizeSearchText(ud.Email) },
             { "photoUrl",        ud.PhotoUrl },
+            { "avatarStoragePath", ud.AvatarStoragePath },
             { "birthday",        ud.Birthday },
             { "birthTime",       ud.BirthTime },
             { "city",            ud.City },
@@ -117,6 +135,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 return;
             }
             Debug.Log("[FirestoreManager] 用户数据已保存到云端");
+            SavePublicProfile();
             onComplete?.Invoke(true);
         });
     }
@@ -135,8 +154,11 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         var data = new Dictionary<string, object>
         {
             { "displayName",     ud.UserName },
+            { "displayNameLower", NormalizeSearchText(ud.UserName) },
             { "email",           ud.Email },
+            { "emailLower",       NormalizeSearchText(ud.Email) },
             { "photoUrl",        ud.PhotoUrl },
+            { "avatarStoragePath", ud.AvatarStoragePath },
             { "birthday",        ud.Birthday },
             { "birthTime",       ud.BirthTime },
             { "city",            ud.City },
@@ -161,6 +183,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 return;
             }
             Debug.Log("[FirestoreManager] 用户数据已创建到云端");
+            SavePublicProfile();
             onComplete?.Invoke(true);
         });
     }
@@ -270,6 +293,808 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     }
 
     /// <summary>
+    /// 按用户名前缀搜索已注册用户。
+    /// 注意：Firestore 不支持任意 contains 模糊搜索。
+    /// 这里先用 displayName 精确匹配兼容老用户，再用 displayNameLower 做前缀查询。
+    /// </summary>
+    public void SearchUsersByName(string keyword, Action<List<UserSearchResult>> onComplete, int limit = 3)
+    {
+        if (!CheckReady(_ => onComplete?.Invoke(new List<UserSearchResult>()))) return;
+
+        string normalizedKeyword = NormalizeSearchText(keyword);
+        if (string.IsNullOrEmpty(normalizedKeyword))
+        {
+            onComplete?.Invoke(new List<UserSearchResult>());
+            return;
+        }
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        CollectionReference profilesRef = _db.Collection("public_profiles");
+        profilesRef
+            .WhereEqualTo("displayName", keyword.Trim())
+            .Limit(limit)
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                List<UserSearchResult> results = new List<UserSearchResult>();
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogError($"[FirestoreManager] 搜索用户失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(results);
+                    return;
+                }
+
+                AddUserSearchResults(results, task.Result.Documents, currentUid);
+
+                if (results.Count > 0)
+                {
+                    onComplete?.Invoke(results);
+                    return;
+                }
+
+                profilesRef
+                    .OrderBy("displayNameLower")
+                    .StartAt(normalizedKeyword)
+                    .EndAt(normalizedKeyword + "\uf8ff")
+                    .Limit(limit)
+                    .GetSnapshotAsync()
+                    .ContinueWithOnMainThread(fallbackTask =>
+                    {
+                        if (fallbackTask.IsFaulted || fallbackTask.IsCanceled)
+                        {
+                            Debug.LogError($"[FirestoreManager] 前缀搜索用户失败: {fallbackTask.Exception?.InnerException?.Message}");
+                            onComplete?.Invoke(results);
+                            return;
+                        }
+
+                        AddUserSearchResults(results, fallbackTask.Result.Documents, currentUid);
+                        onComplete?.Invoke(results);
+                    });
+            });
+    }
+
+    /// <summary>
+    /// 发送好友请求并在当前用户的 friends 子集合中留下待确认记录。
+    /// </summary>
+    public void SendFriendRequest(UserSearchResult targetUser, Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+        if (targetUser == null || string.IsNullOrEmpty(targetUser.uid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        var ud = UserDataManager.Instance;
+        string currentUid = ud.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid) || currentUid == targetUser.uid)
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        Dictionary<string, object> outgoingData = new Dictionary<string, object>
+        {
+            { "uid", targetUser.uid },
+            { "displayName", targetUser.displayName },
+            { "email", targetUser.email },
+            { "photoUrl", targetUser.photoUrl },
+            { "status", "pendingSent" },
+            { "source", "firebaseSearch" },
+            { "createdAt", FieldValue.ServerTimestamp },
+            { "updatedAt", FieldValue.ServerTimestamp },
+        };
+
+        Dictionary<string, object> incomingData = new Dictionary<string, object>
+        {
+            { "uid", currentUid },
+            { "displayName", ud.UserName },
+            { "email", ud.Email },
+            { "photoUrl", ud.PhotoUrl },
+            { "status", "pendingReceived" },
+            { "source", "firebaseSearch" },
+            { "createdAt", FieldValue.ServerTimestamp },
+            { "updatedAt", FieldValue.ServerTimestamp },
+        };
+
+        WriteBatch batch = _db.StartBatch();
+        DocumentReference outgoingRef = _db.Collection("users")
+            .Document(currentUid)
+            .Collection("friends")
+            .Document(targetUser.uid);
+        DocumentReference incomingRef = _db.Collection("users")
+            .Document(targetUser.uid)
+            .Collection("friend_requests")
+            .Document(currentUid);
+
+        batch.Set(outgoingRef, outgoingData, SetOptions.MergeAll);
+        batch.Set(incomingRef, incomingData, SetOptions.MergeAll);
+        batch.CommitAsync().ContinueWithOnMainThread(task =>
+        {
+            if (task.IsFaulted || task.IsCanceled)
+            {
+                Debug.LogError($"[FirestoreManager] 发送好友请求失败: {task.Exception?.InnerException?.Message}");
+                onComplete?.Invoke(false);
+                return;
+            }
+
+            FriendDataManager.Instance.UpsertRealFriendFromFirebase(
+                targetUser.uid,
+                targetUser.displayName,
+                targetUser.Handle,
+                "好友请求已发送",
+                null,
+                "Firebase 搜索");
+
+            Debug.Log($"[FirestoreManager] 好友请求已发送: {targetUser.uid}");
+            onComplete?.Invoke(true);
+        });
+    }
+
+    /// <summary>
+    /// 从当前用户的 friends 子集合拉取真实好友/待确认好友，并合并到本地缓存。
+    /// </summary>
+    public void LoadFriends(Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        _db.Collection("users")
+            .Document(currentUid)
+            .Collection("friends")
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogError($"[FirestoreManager] 拉取好友失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                foreach (DocumentSnapshot doc in task.Result.Documents)
+                {
+                    if (!doc.Exists) continue;
+
+                    Dictionary<string, object> data = doc.ToDictionary();
+                    string status = GetString(data, "status", "friend");
+                    string displayName = GetString(data, "displayName", "未命名用户");
+                    string email = GetString(data, "email", string.Empty);
+                    string handle = string.IsNullOrEmpty(email) ? $"@{doc.Id}" : $"@{email.Split('@')[0]}";
+
+                    FriendDataManager.Instance.UpsertRealFriendFromFirebase(
+                        doc.Id,
+                        displayName,
+                        handle,
+                        GetFriendStatusText(status),
+                        null,
+                        "Firebase");
+                }
+
+                onComplete?.Invoke(true);
+            });
+    }
+
+    /// <summary>
+    /// 拉取别人发给当前用户的好友请求。
+    /// </summary>
+    public void LoadFriendRequests(Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        _db.Collection("users")
+            .Document(currentUid)
+            .Collection("friend_requests")
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogError($"[FirestoreManager] 拉取好友请求失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                foreach (DocumentSnapshot doc in task.Result.Documents)
+                {
+                    if (!doc.Exists) continue;
+
+                    Dictionary<string, object> data = doc.ToDictionary();
+                    string status = GetString(data, "status", "pendingReceived");
+                    if (status != "pendingReceived") continue;
+
+                    string displayName = GetString(data, "displayName", "未命名用户");
+                    string email = GetString(data, "email", string.Empty);
+                    FriendDataManager.Instance.UpsertInvite(
+                        doc.Id,
+                        displayName,
+                        email,
+                        GetString(data, "photoUrl", string.Empty),
+                        status,
+                        "请求添加你为好友");
+                }
+
+                onComplete?.Invoke(true);
+            });
+    }
+
+    /// <summary>
+    /// 接受好友请求：双方 friends 状态置为 friend，并删除当前用户的请求记录。
+    /// </summary>
+    public void AcceptFriendRequest(FriendDataManager.InviteData invite, Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+        if (invite == null || string.IsNullOrEmpty(invite.firebaseUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        var ud = UserDataManager.Instance;
+        string currentUid = ud.FirebaseUid;
+        string requesterUid = invite.firebaseUid;
+        if (string.IsNullOrEmpty(currentUid) || currentUid == requesterUid)
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        Dictionary<string, object> requesterAsFriend = new Dictionary<string, object>
+        {
+            { "uid", requesterUid },
+            { "displayName", invite.name },
+            { "email", invite.email },
+            { "photoUrl", invite.photoUrl },
+            { "status", "friend" },
+            { "source", "friendRequest" },
+            { "updatedAt", FieldValue.ServerTimestamp },
+        };
+
+        Dictionary<string, object> currentAsFriend = new Dictionary<string, object>
+        {
+            { "uid", currentUid },
+            { "displayName", ud.UserName },
+            { "email", ud.Email },
+            { "photoUrl", ud.PhotoUrl },
+            { "status", "friend" },
+            { "source", "friendRequest" },
+            { "updatedAt", FieldValue.ServerTimestamp },
+        };
+
+        WriteBatch batch = _db.StartBatch();
+        DocumentReference currentFriendRef = _db.Collection("users")
+            .Document(currentUid)
+            .Collection("friends")
+            .Document(requesterUid);
+        DocumentReference requesterFriendRef = _db.Collection("users")
+            .Document(requesterUid)
+            .Collection("friends")
+            .Document(currentUid);
+        DocumentReference currentRequestRef = _db.Collection("users")
+            .Document(currentUid)
+            .Collection("friend_requests")
+            .Document(requesterUid);
+
+        batch.Set(currentFriendRef, requesterAsFriend, SetOptions.MergeAll);
+        batch.Set(requesterFriendRef, currentAsFriend, SetOptions.MergeAll);
+        batch.Delete(currentRequestRef);
+
+        batch.CommitAsync().ContinueWithOnMainThread(task =>
+        {
+            if (task.IsFaulted || task.IsCanceled)
+            {
+                Debug.LogError($"[FirestoreManager] 接受好友请求失败: {task.Exception?.InnerException?.Message}");
+                onComplete?.Invoke(false);
+                return;
+            }
+
+            string handle = string.IsNullOrEmpty(invite.email) ? $"@{requesterUid}" : $"@{invite.email.Split('@')[0]}";
+            FriendDataManager.Instance.UpsertRealFriendFromFirebase(
+                requesterUid,
+                invite.name,
+                handle,
+                "真实好友",
+                invite.headSprite,
+                "Firebase 请求");
+            FriendDataManager.Instance.RemoveInviteByFirebaseUid(requesterUid);
+
+            Debug.Log($"[FirestoreManager] 已接受好友请求: {requesterUid}");
+            onComplete?.Invoke(true);
+        });
+    }
+
+    /// <summary>
+    /// 拒绝好友请求：删除当前用户收到的请求。
+    /// </summary>
+    public void RejectFriendRequest(FriendDataManager.InviteData invite, Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+        if (invite == null || string.IsNullOrEmpty(invite.firebaseUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        DocumentReference requestRef = _db.Collection("users")
+            .Document(currentUid)
+            .Collection("friend_requests")
+            .Document(invite.firebaseUid);
+
+        requestRef.DeleteAsync().ContinueWithOnMainThread(task =>
+        {
+            if (task.IsFaulted || task.IsCanceled)
+            {
+                Debug.LogError($"[FirestoreManager] 拒绝好友请求失败: {task.Exception?.InnerException?.Message}");
+                onComplete?.Invoke(false);
+                return;
+            }
+
+            FriendDataManager.Instance.RemoveInviteByFirebaseUid(invite.firebaseUid);
+            onComplete?.Invoke(true);
+        });
+    }
+
+    /// <summary>
+    /// 保存用户创建的虚拟好友档案到 Firestore。
+    /// 路径：users/{uid}/virtual_friends/{virtualFriendId}
+    /// </summary>
+    public void SaveVirtualFriend(FriendDataManager.FriendData virtualFriend, Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+        if (virtualFriend == null || !virtualFriend.isVirtual)
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(virtualFriend.virtualFriendId))
+        {
+            virtualFriend.virtualFriendId = Guid.NewGuid().ToString("N");
+            FriendDataManager.Instance.SaveLocalData();
+        }
+
+        Dictionary<string, object> data = new Dictionary<string, object>
+        {
+            { "virtualFriendId", virtualFriend.virtualFriendId },
+            { "name", virtualFriend.name },
+            { "relationship", virtualFriend.relationship },
+            { "birthday", virtualFriend.birthday },
+            { "birthTime", virtualFriend.birthTime },
+            { "city", virtualFriend.city },
+            { "notes", virtualFriend.notes },
+            { "avatarKey", string.Empty },
+            { "isDeleted", false },
+            { "updatedAt", FieldValue.ServerTimestamp },
+        };
+
+        DocumentReference docRef = _db.Collection("users")
+            .Document(currentUid)
+            .Collection("virtual_friends")
+            .Document(virtualFriend.virtualFriendId);
+
+        docRef.GetSnapshotAsync().ContinueWithOnMainThread(readTask =>
+        {
+            if (!readTask.IsFaulted && !readTask.IsCanceled && !readTask.Result.Exists)
+            {
+                data["createdAt"] = FieldValue.ServerTimestamp;
+            }
+
+            docRef.SetAsync(data, SetOptions.MergeAll).ContinueWithOnMainThread(writeTask =>
+            {
+                if (writeTask.IsFaulted || writeTask.IsCanceled)
+                {
+                    Debug.LogError($"[FirestoreManager] 保存虚拟好友失败: {writeTask.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                Debug.Log($"[FirestoreManager] 虚拟好友已保存: {virtualFriend.virtualFriendId}");
+                onComplete?.Invoke(true);
+            });
+        });
+    }
+
+    /// <summary>
+    /// 从 Firestore 拉取虚拟好友档案并合并到本地缓存。
+    /// </summary>
+    public void LoadVirtualFriends(Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        _db.Collection("users")
+            .Document(currentUid)
+            .Collection("virtual_friends")
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogError($"[FirestoreManager] 拉取虚拟好友失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                foreach (DocumentSnapshot doc in task.Result.Documents)
+                {
+                    if (!doc.Exists) continue;
+
+                    Dictionary<string, object> data = doc.ToDictionary();
+                    if (GetBool(data, "isDeleted", false)) continue;
+
+                    FriendDataManager.Instance.UpsertVirtualFriendFromFirebase(
+                        doc.Id,
+                        GetString(data, "name", "未命名好友"),
+                        GetString(data, "relationship", "好友"),
+                        GetString(data, "birthday", string.Empty),
+                        GetString(data, "birthTime", string.Empty),
+                        GetString(data, "city", string.Empty),
+                        GetString(data, "notes", string.Empty));
+                }
+
+                onComplete?.Invoke(true);
+            });
+    }
+
+    /// <summary>
+    /// 保存当前 AI 记忆到 Firestore。
+    /// 路径：users/{uid}/memories/runtime
+    /// </summary>
+    public void SaveMemorySource(MemorySource source, Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        DocumentReference docRef = _db.Collection("users")
+            .Document(currentUid)
+            .Collection("memories")
+            .Document("runtime");
+
+        Dictionary<string, object> data = SerializeMemorySource(source ?? new MemorySource());
+        data["updatedAt"] = FieldValue.ServerTimestamp;
+
+        docRef.SetAsync(data, SetOptions.MergeAll).ContinueWithOnMainThread(task =>
+        {
+            if (task.IsFaulted || task.IsCanceled)
+            {
+                Debug.LogError($"[FirestoreManager] 保存 AI 记忆失败: {task.Exception?.InnerException?.Message}");
+                onComplete?.Invoke(false);
+                return;
+            }
+
+            Debug.Log("[FirestoreManager] AI 记忆已保存");
+            onComplete?.Invoke(true);
+        });
+    }
+
+    /// <summary>
+    /// 加载当前用户 AI 记忆。
+    /// </summary>
+    public void LoadMemorySource(Action<MemorySource> onComplete)
+    {
+        if (!CheckReady(_ => onComplete?.Invoke(null))) return;
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(null);
+            return;
+        }
+
+        _db.Collection("users")
+            .Document(currentUid)
+            .Collection("memories")
+            .Document("runtime")
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled || !task.Result.Exists)
+                {
+                    onComplete?.Invoke(null);
+                    return;
+                }
+
+                onComplete?.Invoke(DeserializeMemorySource(task.Result.ToDictionary()));
+            });
+    }
+
+    /// <summary>
+    /// 删除当前用户 AI 记忆。
+    /// </summary>
+    public void DeleteMemorySource(Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        _db.Collection("users")
+            .Document(currentUid)
+            .Collection("memories")
+            .Document("runtime")
+            .DeleteAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogError($"[FirestoreManager] 删除 AI 记忆失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                onComplete?.Invoke(true);
+            });
+    }
+
+    /// <summary>
+    /// 保存用户反馈。
+    /// 路径：users/{uid}/feedback/{feedbackId}
+    /// 后台镜像：feedback/{feedbackId}
+    /// </summary>
+    public void SaveFeedback(string category, string tag, string content, string source, Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        UserDataManager ud = UserDataManager.Instance;
+        string feedbackId = Guid.NewGuid().ToString("N");
+        DocumentReference docRef = _db.Collection("users")
+            .Document(currentUid)
+            .Collection("feedback")
+            .Document(feedbackId);
+
+        var data = new Dictionary<string, object>
+        {
+            { "feedbackId", feedbackId },
+            { "uid", currentUid },
+            { "displayName", ud != null ? ud.UserName : string.Empty },
+            { "email", ud != null ? ud.Email : string.Empty },
+            { "category", category ?? "community" },
+            { "tag", tag ?? "general" },
+            { "content", content ?? string.Empty },
+            { "source", source ?? "app" },
+            { "status", "new" },
+            { "appVersion", Application.version },
+            { "platform", Application.platform.ToString() },
+            { "deviceModel", SystemInfo.deviceModel },
+            { "createdAt", FieldValue.ServerTimestamp },
+            { "updatedAt", FieldValue.ServerTimestamp },
+        };
+
+        docRef.SetAsync(data, SetOptions.MergeAll).ContinueWithOnMainThread(task =>
+        {
+            if (task.IsFaulted || task.IsCanceled)
+            {
+                Debug.LogError($"[FirestoreManager] 保存反馈失败: {task.Exception?.InnerException?.Message}");
+                onComplete?.Invoke(false);
+                return;
+            }
+
+            Debug.Log($"[FirestoreManager] 反馈已保存: {feedbackId}");
+            MirrorFeedbackForBackend(feedbackId, data);
+            onComplete?.Invoke(true);
+        });
+    }
+
+    /// <summary>
+    /// 加载用户最近提交的反馈。
+    /// </summary>
+    public void LoadFeedback(Action<List<CloudFeedbackEntry>> onComplete, int limit = 30)
+    {
+        if (!CheckReady(_ => onComplete?.Invoke(new List<CloudFeedbackEntry>()))) return;
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(new List<CloudFeedbackEntry>());
+            return;
+        }
+
+        _db.Collection("users")
+            .Document(currentUid)
+            .Collection("feedback")
+            .OrderByDescending("createdAt")
+            .Limit(Mathf.Clamp(limit, 1, 100))
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                var result = new List<CloudFeedbackEntry>();
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogError($"[FirestoreManager] 加载反馈失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(result);
+                    return;
+                }
+
+                foreach (var doc in task.Result.Documents)
+                {
+                    if (!doc.Exists) continue;
+                    Dictionary<string, object> data = doc.ToDictionary();
+                    string createdAt = string.Empty;
+                    if (doc.TryGetValue("createdAt", out Timestamp ts))
+                        createdAt = ts.ToDateTime().ToLocalTime().ToString("MM/dd HH:mm");
+                    else
+                        createdAt = GetString(data, "createdAt", string.Empty);
+
+                    result.Add(new CloudFeedbackEntry
+                    {
+                        feedbackId = GetString(data, "feedbackId", doc.Id),
+                        category = GetString(data, "category", "community"),
+                        tag = GetString(data, "tag", "general"),
+                        content = GetString(data, "content", string.Empty),
+                        source = GetString(data, "source", "app"),
+                        status = GetString(data, "status", "new"),
+                        createdAt = createdAt,
+                    });
+                }
+
+                onComplete?.Invoke(result);
+            });
+    }
+
+    /// <summary>
+    /// 保存通知偏好。
+    /// 路径：users/{uid}/settings/notifications
+    /// </summary>
+    public void SaveNotificationSettings(NotificationSettingsManager settings, Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+        if (settings == null)
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        DocumentReference docRef = _db.Collection("users")
+            .Document(currentUid)
+            .Collection("settings")
+            .Document("notifications");
+
+        var data = new Dictionary<string, object>
+        {
+            { "dailyOracleEnabled", settings.DailyOracleEnabled },
+            { "dialogueReplyEnabled", settings.DialogueReplyEnabled },
+            { "divinationReturnEnabled", settings.DivinationReturnEnabled },
+            { "friendInteractionEnabled", settings.FriendInteractionEnabled },
+            { "activitySystemEnabled", settings.ActivitySystemEnabled },
+            { "reminderTime", settings.ReminderTime },
+            { "updatedAt", FieldValue.ServerTimestamp },
+        };
+
+        docRef.SetAsync(data, SetOptions.MergeAll).ContinueWithOnMainThread(task =>
+        {
+            if (task.IsFaulted || task.IsCanceled)
+            {
+                Debug.LogError($"[FirestoreManager] 保存通知设置失败: {task.Exception?.InnerException?.Message}");
+                onComplete?.Invoke(false);
+                return;
+            }
+
+            onComplete?.Invoke(true);
+        });
+    }
+
+    /// <summary>
+    /// 加载通知偏好。
+    /// </summary>
+    public void LoadNotificationSettings(Action<CloudNotificationSettings> onComplete)
+    {
+        if (!CheckReady(_ => onComplete?.Invoke(null))) return;
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(null);
+            return;
+        }
+
+        _db.Collection("users")
+            .Document(currentUid)
+            .Collection("settings")
+            .Document("notifications")
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled || !task.Result.Exists)
+                {
+                    onComplete?.Invoke(null);
+                    return;
+                }
+
+                Dictionary<string, object> data = task.Result.ToDictionary();
+                onComplete?.Invoke(new CloudNotificationSettings
+                {
+                    dailyOracleEnabled = GetBool(data, "dailyOracleEnabled", true),
+                    dialogueReplyEnabled = GetBool(data, "dialogueReplyEnabled", true),
+                    divinationReturnEnabled = GetBool(data, "divinationReturnEnabled", true),
+                    friendInteractionEnabled = GetBool(data, "friendInteractionEnabled", false),
+                    activitySystemEnabled = GetBool(data, "activitySystemEnabled", true),
+                    reminderTime = GetString(data, "reminderTime", "08:30"),
+                });
+            });
+    }
+
+    /// <summary>
+    /// 加载公开配置：社媒链接、IAP 商品 ID 等。
+    /// 路径：app_config/public
+    /// </summary>
+    public void LoadPublicAppConfig(Action<PublicAppConfig> onComplete)
+    {
+        PublicAppConfig fallback = LoadCachedPublicAppConfig() ?? PublicAppConfig.Default;
+        if (!_isInitialized || _db == null)
+        {
+            onComplete?.Invoke(fallback);
+            return;
+        }
+
+        _db.Collection("app_config")
+            .Document("public")
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled || !task.Result.Exists)
+                {
+                    onComplete?.Invoke(fallback);
+                    return;
+                }
+
+                PublicAppConfig config = DeserializePublicAppConfig(task.Result.ToDictionary());
+                SavePublicAppConfigCache(config);
+                onComplete?.Invoke(config);
+            });
+    }
+
+    /// <summary>
     /// 检查云端是否已有该用户数据
     /// </summary>
     public void CheckUserExists(string uid, Action<bool> onComplete)
@@ -301,19 +1126,35 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         if (!CheckReady(onComplete)) return;
 
         string uid = UserDataManager.Instance.FirebaseUid;
-        DocumentReference docRef = _db.Collection("users").Document(uid);
-
-        // DeleteAsync 会彻底清除这个文档节点
-        docRef.DeleteAsync().ContinueWithOnMainThread(task =>
+        if (string.IsNullOrEmpty(uid))
         {
-            if (task.IsFaulted || task.IsCanceled)
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        DeleteKnownUserCollections(uid, success =>
+        {
+            if (!success)
             {
-                Debug.LogError($"[FirestoreManager] 删除失败: {task.Exception?.InnerException?.Message}");
                 onComplete?.Invoke(false);
                 return;
             }
-            Debug.Log("[FirestoreManager] 云端用户数据已删除");
-            onComplete?.Invoke(true);
+
+            WriteBatch batch = _db.StartBatch();
+            batch.Delete(_db.Collection("public_profiles").Document(uid));
+            batch.Delete(_db.Collection("users").Document(uid));
+
+            batch.CommitAsync().ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogError($"[FirestoreManager] 删除失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+                Debug.Log("[FirestoreManager] 云端用户数据已删除");
+                onComplete?.Invoke(true);
+            });
         });
     }
 
@@ -361,6 +1202,11 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 // 情况 2：云端有数据 → 老用户换设备/重新登录
                 // 第一步：先用云端数据补齐本地的空缺部分
                 ApplyCloudToLocal(snapshot);
+                LoadMemorySource(source =>
+                {
+                    if (source != null)
+                        DialogSystem.Instance?.SetMemorySource(source);
+                });
                 // 第二步：再把本地最终的合并结果推给云端保存（同时刷新最后登录时间 lastSignInAt）
                 SaveUserData(onComplete);
             }
@@ -403,6 +1249,9 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         if (snapshot.TryGetValue("photoUrl", out string cloudPhotoUrl))
             ud.SetPhotoUrl(cloudPhotoUrl);
 
+        if (snapshot.TryGetValue("avatarStoragePath", out string cloudAvatarStoragePath))
+            ud.SetAvatarStoragePath(cloudAvatarStoragePath);
+
         if (snapshot.TryGetValue("isEmailVerified", out bool cloudVerified))
             ud.SetEmailVerified(cloudVerified);
 
@@ -443,6 +1292,37 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         };
     }
 
+    private void SavePublicProfile()
+    {
+        if (!_isInitialized || _db == null || UserDataManager.Instance == null) return;
+
+        var ud = UserDataManager.Instance;
+        if (string.IsNullOrEmpty(ud.FirebaseUid)) return;
+
+        Dictionary<string, object> data = new Dictionary<string, object>
+        {
+            { "uid", ud.FirebaseUid },
+            { "displayName", ud.UserName },
+            { "displayNameLower", NormalizeSearchText(ud.UserName) },
+            { "email", ud.Email },
+            { "emailLower", NormalizeSearchText(ud.Email) },
+            { "photoUrl", ud.PhotoUrl },
+            { "avatarStoragePath", ud.AvatarStoragePath },
+            { "updatedAt", FieldValue.ServerTimestamp },
+        };
+
+        _db.Collection("public_profiles")
+            .Document(ud.FirebaseUid)
+            .SetAsync(data, SetOptions.MergeAll)
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogError($"[FirestoreManager] 公开资料保存失败: {task.Exception?.InnerException?.Message}");
+                }
+            });
+    }
+
     private static string GetLocalTimezoneId()
     {
         try
@@ -453,6 +1333,501 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         {
             return "";
         }
+    }
+
+    private static string NormalizeSearchText(string value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToLowerInvariant();
+    }
+
+    private static string GetString(Dictionary<string, object> data, string key, string fallback)
+    {
+        if (data != null && data.TryGetValue(key, out object value) && value != null)
+        {
+            return value.ToString();
+        }
+
+        return fallback;
+    }
+
+    private static void AddUserSearchResults(
+        List<UserSearchResult> results,
+        IEnumerable<DocumentSnapshot> documents,
+        string currentUid)
+    {
+        foreach (DocumentSnapshot doc in documents)
+        {
+            if (!doc.Exists) continue;
+            if (results.Exists(result => result.uid == doc.Id)) continue;
+
+            Dictionary<string, object> data = doc.ToDictionary();
+            results.Add(new UserSearchResult
+            {
+                uid = doc.Id,
+                displayName = GetString(data, "displayName", "未命名用户"),
+                email = GetString(data, "email", string.Empty),
+                photoUrl = GetString(data, "photoUrl", string.Empty),
+                isSelf = doc.Id == currentUid,
+            });
+        }
+    }
+
+    private static bool GetBool(Dictionary<string, object> data, string key, bool fallback)
+    {
+        if (data != null && data.TryGetValue(key, out object value))
+        {
+            if (value is bool boolValue) return boolValue;
+            if (value != null && bool.TryParse(value.ToString(), out bool parsed)) return parsed;
+        }
+
+        return fallback;
+    }
+
+    private static Dictionary<string, object> SerializeMemorySource(MemorySource source)
+    {
+        source ??= new MemorySource();
+        return new Dictionary<string, object>
+        {
+            { "stableProfile", SerializeStableProfile(source.stableProfile) },
+            { "relationships", SerializeList(source.relationships, SerializeRelationshipMemory) },
+            { "readingContinuity", SerializeList(source.readingContinuity, SerializeReadingContinuity) },
+            { "candidates", SerializeList(source.candidates, SerializeMemoryCandidate) },
+            { "tomorrowHooks", SerializeList(source.tomorrowHooks, SerializeTomorrowHook) },
+        };
+    }
+
+    private static Dictionary<string, object> SerializeStableProfile(StableProfile profile)
+    {
+        profile ??= new StableProfile();
+        return new Dictionary<string, object>
+        {
+            { "preferredName", profile.preferredName ?? "" },
+            { "preferredTone", profile.preferredTone ?? "" },
+            { "recurringThemes", profile.recurringThemes ?? new List<string>() },
+            { "doNotSay", profile.doNotSay ?? new List<string>() },
+            { "safetyNotes", profile.safetyNotes ?? new List<string>() },
+        };
+    }
+
+    private static Dictionary<string, object> SerializeRelationshipMemory(RelationshipMemory memory)
+    {
+        memory ??= new RelationshipMemory();
+        return new Dictionary<string, object>
+        {
+            { "relationshipId", memory.relationshipId ?? "" },
+            { "displayName", memory.displayName ?? "" },
+            { "entityType", memory.entityType ?? "" },
+            { "consentMode", memory.consentMode ?? "" },
+            { "knownFacts", memory.knownFacts ?? new List<string>() },
+            { "openLoops", memory.openLoops ?? new List<string>() },
+            { "lastActionAdvice", memory.lastActionAdvice ?? "" },
+            { "lastReadingIds", memory.lastReadingIds ?? new List<string>() },
+            { "mentionCount30d", memory.mentionCount30d },
+            { "lastTouchedAt", memory.lastTouchedAt ?? "" },
+        };
+    }
+
+    private static Dictionary<string, object> SerializeReadingContinuity(ReadingContinuityEntry entry)
+    {
+        entry ??= new ReadingContinuityEntry();
+        return new Dictionary<string, object>
+        {
+            { "readingId", entry.readingId ?? "" },
+            { "question", entry.question ?? "" },
+            { "shortVerdict", entry.shortVerdict ?? "" },
+            { "relationshipId", entry.relationshipId ?? "" },
+            { "cards", SerializeList(entry.cards, SerializeReadingCardEntry) },
+            { "createdAt", entry.createdAt ?? "" },
+        };
+    }
+
+    private static Dictionary<string, object> SerializeReadingCardEntry(ReadingCardEntry card)
+    {
+        card ??= new ReadingCardEntry();
+        return new Dictionary<string, object>
+        {
+            { "position", card.position ?? "" },
+            { "positionName", card.positionName ?? "" },
+            { "cardId", card.cardId ?? "" },
+            { "cardName", card.cardName ?? "" },
+            { "orientation", card.orientation ?? "" },
+        };
+    }
+
+    private static Dictionary<string, object> SerializeMemoryCandidate(MemoryCandidate candidate)
+    {
+        candidate ??= new MemoryCandidate();
+        return new Dictionary<string, object>
+        {
+            { "id", candidate.id ?? "" },
+            { "userId", candidate.userId ?? "" },
+            { "type", candidate.type ?? "" },
+            { "text", candidate.text ?? "" },
+            { "status", candidate.status ?? "" },
+            { "confidence", candidate.confidence },
+            { "relationshipId", candidate.relationshipId ?? "" },
+            { "sourceConversationId", candidate.sourceConversationId ?? "" },
+            { "sourceMessageId", candidate.sourceMessageId ?? "" },
+            { "createdAt", candidate.createdAt ?? "" },
+        };
+    }
+
+    private static Dictionary<string, object> SerializeTomorrowHook(TomorrowHook hook)
+    {
+        hook ??= new TomorrowHook();
+        return new Dictionary<string, object>
+        {
+            { "hookId", hook.hookId ?? "" },
+            { "userId", hook.userId ?? "" },
+            { "relationshipId", hook.relationshipId ?? "" },
+            { "sourceReadingId", hook.sourceReadingId ?? "" },
+            { "sourceConversationId", hook.sourceConversationId ?? "" },
+            { "hookType", hook.hookType ?? "" },
+            { "triggerText", hook.triggerText ?? "" },
+            { "scheduledForLocalDate", hook.scheduledForLocalDate ?? "" },
+            { "status", hook.status ?? "" },
+        };
+    }
+
+    private static List<object> SerializeList<T>(List<T> source, Func<T, Dictionary<string, object>> serialize)
+    {
+        var result = new List<object>();
+        if (source == null || serialize == null) return result;
+        foreach (var item in source)
+            result.Add(serialize(item));
+        return result;
+    }
+
+    private static MemorySource DeserializeMemorySource(Dictionary<string, object> data)
+    {
+        var source = new MemorySource();
+        if (data == null) return source;
+
+        source.stableProfile = DeserializeStableProfile(GetMap(data, "stableProfile"));
+        source.relationships = DeserializeList(data, "relationships", DeserializeRelationshipMemory);
+        source.readingContinuity = DeserializeList(data, "readingContinuity", DeserializeReadingContinuity);
+        source.candidates = DeserializeList(data, "candidates", DeserializeMemoryCandidate);
+        source.tomorrowHooks = DeserializeList(data, "tomorrowHooks", DeserializeTomorrowHook);
+        return source;
+    }
+
+    private static StableProfile DeserializeStableProfile(Dictionary<string, object> data)
+    {
+        return new StableProfile
+        {
+            preferredName = GetString(data, "preferredName", ""),
+            preferredTone = GetString(data, "preferredTone", ""),
+            recurringThemes = GetStringList(data, "recurringThemes"),
+            doNotSay = GetStringList(data, "doNotSay"),
+            safetyNotes = GetStringList(data, "safetyNotes"),
+        };
+    }
+
+    private static RelationshipMemory DeserializeRelationshipMemory(Dictionary<string, object> data)
+    {
+        return new RelationshipMemory
+        {
+            relationshipId = GetString(data, "relationshipId", ""),
+            displayName = GetString(data, "displayName", ""),
+            entityType = GetString(data, "entityType", ""),
+            consentMode = GetString(data, "consentMode", ""),
+            knownFacts = GetStringList(data, "knownFacts"),
+            openLoops = GetStringList(data, "openLoops"),
+            lastActionAdvice = GetString(data, "lastActionAdvice", ""),
+            lastReadingIds = GetStringList(data, "lastReadingIds"),
+            mentionCount30d = GetInt(data, "mentionCount30d", 0),
+            lastTouchedAt = GetString(data, "lastTouchedAt", ""),
+        };
+    }
+
+    private static ReadingContinuityEntry DeserializeReadingContinuity(Dictionary<string, object> data)
+    {
+        return new ReadingContinuityEntry
+        {
+            readingId = GetString(data, "readingId", ""),
+            question = GetString(data, "question", ""),
+            shortVerdict = GetString(data, "shortVerdict", ""),
+            relationshipId = GetString(data, "relationshipId", ""),
+            cards = DeserializeList(data, "cards", DeserializeReadingCardEntry),
+            createdAt = GetString(data, "createdAt", ""),
+        };
+    }
+
+    private static ReadingCardEntry DeserializeReadingCardEntry(Dictionary<string, object> data)
+    {
+        return new ReadingCardEntry
+        {
+            position = GetString(data, "position", ""),
+            positionName = GetString(data, "positionName", ""),
+            cardId = GetString(data, "cardId", ""),
+            cardName = GetString(data, "cardName", ""),
+            orientation = GetString(data, "orientation", ""),
+        };
+    }
+
+    private static MemoryCandidate DeserializeMemoryCandidate(Dictionary<string, object> data)
+    {
+        return new MemoryCandidate
+        {
+            id = GetString(data, "id", ""),
+            userId = GetString(data, "userId", ""),
+            type = GetString(data, "type", ""),
+            text = GetString(data, "text", ""),
+            status = GetString(data, "status", "pending"),
+            confidence = GetFloat(data, "confidence", 0f),
+            relationshipId = GetString(data, "relationshipId", ""),
+            sourceConversationId = GetString(data, "sourceConversationId", ""),
+            sourceMessageId = GetString(data, "sourceMessageId", ""),
+            createdAt = GetString(data, "createdAt", ""),
+        };
+    }
+
+    private static TomorrowHook DeserializeTomorrowHook(Dictionary<string, object> data)
+    {
+        return new TomorrowHook
+        {
+            hookId = GetString(data, "hookId", ""),
+            userId = GetString(data, "userId", ""),
+            relationshipId = GetString(data, "relationshipId", ""),
+            sourceReadingId = GetString(data, "sourceReadingId", ""),
+            sourceConversationId = GetString(data, "sourceConversationId", ""),
+            hookType = GetString(data, "hookType", ""),
+            triggerText = GetString(data, "triggerText", ""),
+            scheduledForLocalDate = GetString(data, "scheduledForLocalDate", ""),
+            status = GetString(data, "status", ""),
+        };
+    }
+
+    private static List<T> DeserializeList<T>(
+        Dictionary<string, object> data,
+        string key,
+        Func<Dictionary<string, object>, T> deserialize)
+    {
+        var result = new List<T>();
+        if (data == null || !data.TryGetValue(key, out object value) || deserialize == null)
+            return result;
+
+        if (value is IEnumerable<object> values)
+        {
+            foreach (var item in values)
+            {
+                var map = ToMap(item);
+                if (map != null)
+                    result.Add(deserialize(map));
+            }
+        }
+
+        return result;
+    }
+
+    private static Dictionary<string, object> GetMap(Dictionary<string, object> data, string key)
+    {
+        if (data != null && data.TryGetValue(key, out object value))
+            return ToMap(value);
+        return null;
+    }
+
+    private static Dictionary<string, object> ToMap(object value)
+    {
+        if (value is Dictionary<string, object> dict) return dict;
+        if (value is IDictionary<string, object> idict) return new Dictionary<string, object>(idict);
+        return value as Dictionary<string, object>;
+    }
+
+    private static List<string> GetStringList(Dictionary<string, object> data, string key)
+    {
+        var result = new List<string>();
+        if (data == null || !data.TryGetValue(key, out object value) || value == null)
+            return result;
+
+        if (value is IEnumerable<object> objects)
+        {
+            foreach (var item in objects)
+            {
+                if (item != null)
+                    result.Add(item.ToString());
+            }
+        }
+        else if (value is IEnumerable<string> strings)
+        {
+            result.AddRange(strings);
+        }
+
+        return result;
+    }
+
+    private static int GetInt(Dictionary<string, object> data, string key, int fallback)
+    {
+        if (data != null && data.TryGetValue(key, out object value) && value != null)
+        {
+            if (value is int intValue) return intValue;
+            if (value is long longValue) return (int)longValue;
+            if (int.TryParse(value.ToString(), out int parsed)) return parsed;
+        }
+
+        return fallback;
+    }
+
+    private static float GetFloat(Dictionary<string, object> data, string key, float fallback)
+    {
+        if (data != null && data.TryGetValue(key, out object value) && value != null)
+        {
+            if (value is float floatValue) return floatValue;
+            if (value is double doubleValue) return (float)doubleValue;
+            if (float.TryParse(value.ToString(), out float parsed)) return parsed;
+        }
+
+        return fallback;
+    }
+
+    private static PublicAppConfig DeserializePublicAppConfig(Dictionary<string, object> data)
+    {
+        PublicAppConfig config = PublicAppConfig.Default;
+        Dictionary<string, object> socialLinks = GetMap(data, "socialLinks");
+        Dictionary<string, object> iapProducts = GetMap(data, "iapProducts");
+
+        config.socialLinks.instagram = GetString(socialLinks, "instagram", config.socialLinks.instagram);
+        config.socialLinks.facebook = GetString(socialLinks, "facebook", config.socialLinks.facebook);
+        config.socialLinks.x = GetString(socialLinks, "x", config.socialLinks.x);
+        config.socialLinks.tiktok = GetString(socialLinks, "tiktok", config.socialLinks.tiktok);
+        config.socialLinks.pinterest = GetString(socialLinks, "pinterest", config.socialLinks.pinterest);
+
+        config.iapProducts.proMonthly = DeserializeIapProduct(
+            GetMap(iapProducts, "proMonthly"),
+            config.iapProducts.proMonthly);
+        config.iapProducts.proYearly = DeserializeIapProduct(
+            GetMap(iapProducts, "proYearly"),
+            config.iapProducts.proYearly);
+
+        return config;
+    }
+
+    private static IapProductConfig DeserializeIapProduct(Dictionary<string, object> data, IapProductConfig fallback)
+    {
+        fallback ??= new IapProductConfig();
+        return new IapProductConfig
+        {
+            productId = GetString(data, "productId", fallback.productId),
+            type = GetString(data, "type", fallback.type),
+            store = GetString(data, "store", fallback.store),
+            displayName = GetString(data, "displayName", fallback.displayName),
+            priceLabel = GetString(data, "priceLabel", fallback.priceLabel),
+        };
+    }
+
+    private static PublicAppConfig LoadCachedPublicAppConfig()
+    {
+        string json = PlayerPrefs.GetString(PUBLIC_APP_CONFIG_CACHE_KEY, string.Empty);
+        if (string.IsNullOrEmpty(json)) return null;
+
+        try
+        {
+            return JsonUtility.FromJson<PublicAppConfig>(json);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("[FirestoreManager] 公开配置缓存读取失败: " + e.Message);
+            return null;
+        }
+    }
+
+    private static void SavePublicAppConfigCache(PublicAppConfig config)
+    {
+        if (config == null) return;
+
+        try
+        {
+            PlayerPrefs.SetString(PUBLIC_APP_CONFIG_CACHE_KEY, JsonUtility.ToJson(config));
+            PlayerPrefs.Save();
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("[FirestoreManager] 公开配置缓存保存失败: " + e.Message);
+        }
+    }
+
+    private void MirrorFeedbackForBackend(string feedbackId, Dictionary<string, object> data)
+    {
+        if (string.IsNullOrEmpty(feedbackId) || data == null || _db == null) return;
+
+        _db.Collection("feedback")
+            .Document(feedbackId)
+            .SetAsync(data, SetOptions.MergeAll)
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogWarning($"[FirestoreManager] 反馈后台镜像保存失败: {task.Exception?.InnerException?.Message}");
+                }
+            });
+    }
+
+    private void DeleteKnownUserCollections(string uid, Action<bool> onComplete)
+    {
+        string[] collectionNames =
+        {
+            "daily_oracles",
+            "divination_records",
+            "memories",
+            "tomorrow_hooks",
+            "friends",
+            "friend_requests",
+            "virtual_friends",
+            "feedback",
+            "settings",
+        };
+
+        var userRef = _db.Collection("users").Document(uid);
+        WriteBatch batch = _db.StartBatch();
+        int pending = collectionNames.Length;
+        bool failed = false;
+
+        foreach (string collectionName in collectionNames)
+        {
+            userRef.Collection(collectionName)
+                .GetSnapshotAsync()
+                .ContinueWithOnMainThread(task =>
+                {
+                    if (failed) return;
+
+                    if (task.IsFaulted || task.IsCanceled)
+                    {
+                        failed = true;
+                        Debug.LogError($"[FirestoreManager] 删除子集合 {collectionName} 失败: {task.Exception?.InnerException?.Message}");
+                        onComplete?.Invoke(false);
+                        return;
+                    }
+
+                    foreach (var doc in task.Result.Documents)
+                        batch.Delete(doc.Reference);
+
+                    pending--;
+                    if (pending > 0) return;
+
+                    batch.CommitAsync().ContinueWithOnMainThread(commitTask =>
+                    {
+                        if (commitTask.IsFaulted || commitTask.IsCanceled)
+                        {
+                            Debug.LogError($"[FirestoreManager] 删除用户子集合失败: {commitTask.Exception?.InnerException?.Message}");
+                            onComplete?.Invoke(false);
+                            return;
+                        }
+
+                        onComplete?.Invoke(true);
+                    });
+                });
+        }
+    }
+
+    private static string GetFriendStatusText(string status)
+    {
+        return status switch
+        {
+            "pendingSent" => "好友请求已发送",
+            "pendingReceived" => "等待你确认好友请求",
+            "friend" => "真实好友",
+            _ => "真实好友"
+        };
     }
 
     private static void ApplySelectedOracle(string oracleId)
@@ -470,4 +1845,98 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     }
 
     #endregion
+}
+
+public class CloudNotificationSettings
+{
+    public bool dailyOracleEnabled;
+    public bool dialogueReplyEnabled;
+    public bool divinationReturnEnabled;
+    public bool friendInteractionEnabled;
+    public bool activitySystemEnabled;
+    public string reminderTime;
+}
+
+public class CloudFeedbackEntry
+{
+    public string feedbackId;
+    public string category;
+    public string tag;
+    public string content;
+    public string source;
+    public string status;
+    public string createdAt;
+}
+
+[Serializable]
+public class PublicAppConfig
+{
+    public SocialLinksConfig socialLinks = SocialLinksConfig.Default;
+    public IapProductsConfig iapProducts = IapProductsConfig.Default;
+
+    public static PublicAppConfig Default => new PublicAppConfig
+    {
+        socialLinks = SocialLinksConfig.Default,
+        iapProducts = IapProductsConfig.Default,
+    };
+}
+
+[Serializable]
+public class SocialLinksConfig
+{
+    public string instagram;
+    public string facebook;
+    public string x;
+    public string tiktok;
+    public string pinterest;
+
+    public static SocialLinksConfig Default => new SocialLinksConfig
+    {
+        instagram = "https://www.instagram.com/",
+        facebook = "https://www.facebook.com/",
+        x = "https://x.com/",
+        tiktok = "https://www.tiktok.com/",
+        pinterest = "https://www.pinterest.com/",
+    };
+}
+
+[Serializable]
+public class IapProductsConfig
+{
+    public IapProductConfig proMonthly = IapProductConfig.MonthlyDefault;
+    public IapProductConfig proYearly = IapProductConfig.YearlyDefault;
+
+    public static IapProductsConfig Default => new IapProductsConfig
+    {
+        proMonthly = IapProductConfig.MonthlyDefault,
+        proYearly = IapProductConfig.YearlyDefault,
+    };
+}
+
+[Serializable]
+public class IapProductConfig
+{
+    public string productId;
+    public string type;
+    public string store;
+    public string displayName;
+    public string priceLabel;
+
+    public static IapProductConfig MonthlyDefault => new IapProductConfig
+    {
+        productId = "moonly.pro.monthly",
+        type = "subscription",
+        store = "app_store_google_play",
+        displayName = "Moonly Pro Monthly",
+        priceLabel = string.Empty,
+    };
+
+    public static IapProductConfig YearlyDefault => new IapProductConfig
+    {
+        productId = "moonly.pro.yearly",
+        type = "subscription",
+        store = "app_store_google_play",
+        displayName = "Moonly Pro Yearly",
+        priceLabel = string.Empty,
+    };
 }

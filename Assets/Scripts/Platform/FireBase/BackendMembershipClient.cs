@@ -12,18 +12,34 @@ using XFGameFrameWork;
 public class BackendMembershipClient : MonoSingleton<BackendMembershipClient>
 {
     private const string MEMBERSHIP_STATUS_URL = "https://us-central1-fari-app-b2fd2.cloudfunctions.net/membershipStatus";
+    private const float CACHE_SECONDS = 30f;
+    private const string CACHE_KEY_PREFIX = "MembershipStatusCache_";
+    private MembershipStatusResponse _cachedStatus;
+    private float _cachedAt;
+    private string _cachedUid;
 
-    public void GetMembershipStatus(Action<MembershipStatusResponse> onSuccess, Action<string> onError = null)
+    public void GetMembershipStatus(Action<MembershipStatusResponse> onSuccess, Action<string> onError = null, bool forceRefresh = false)
     {
+        string currentUid = FirebaseAuth.DefaultInstance?.CurrentUser?.UserId ?? string.Empty;
+        if (_cachedStatus == null)
+            LoadPersistedCache(currentUid);
+
+        if (!forceRefresh && IsCacheUsableForUid(currentUid))
+        {
+            onSuccess?.Invoke(_cachedStatus);
+            return;
+        }
+
         StartCoroutine(GetMembershipStatusRoutine(onSuccess, onError));
     }
 
     private IEnumerator GetMembershipStatusRoutine(Action<MembershipStatusResponse> onSuccess, Action<string> onError)
     {
         string idToken = null;
+        string requestUid = FirebaseAuth.DefaultInstance?.CurrentUser?.UserId ?? string.Empty;
         yield return GetFirebaseIdToken(
             token => idToken = token,
-            error => onError?.Invoke(error));
+            error => HandleError(requestUid, error, onSuccess, onError));
 
         if (string.IsNullOrEmpty(idToken))
             yield break;
@@ -41,20 +57,91 @@ public class BackendMembershipClient : MonoSingleton<BackendMembershipClient>
 #endif
             if (failed)
             {
-                onError?.Invoke($"{request.error}: {request.downloadHandler.text}");
+                HandleError(requestUid, $"{request.error}: {request.downloadHandler.text}", onSuccess, onError);
                 yield break;
             }
 
             try
             {
                 var response = JsonUtility.FromJson<MembershipStatusResponse>(request.downloadHandler.text);
+                _cachedStatus = response;
+                _cachedAt = Time.realtimeSinceStartup;
+                _cachedUid = string.IsNullOrEmpty(response?.uid) ? requestUid : response.uid;
+                PersistCache();
                 onSuccess?.Invoke(response);
             }
             catch (Exception e)
             {
-                onError?.Invoke("会员状态解析失败: " + e.Message);
+                HandleError(requestUid, "会员状态解析失败: " + e.Message, onSuccess, onError);
             }
         }
+    }
+
+    private bool IsCacheUsableForUid(string uid)
+    {
+        return _cachedStatus != null
+            && _cachedUid == uid
+            && Time.realtimeSinceStartup - _cachedAt < CACHE_SECONDS;
+    }
+
+    private bool HasStaleCacheForUid(string uid)
+    {
+        return _cachedStatus != null && _cachedUid == uid;
+    }
+
+    private void HandleError(string uid, string error, Action<MembershipStatusResponse> onSuccess, Action<string> onError)
+    {
+        if (HasStaleCacheForUid(uid))
+        {
+            onSuccess?.Invoke(_cachedStatus);
+            return;
+        }
+
+        onError?.Invoke(error);
+    }
+
+    private void LoadPersistedCache(string uid)
+    {
+        if (string.IsNullOrEmpty(uid)) return;
+
+        string json = PlayerPrefs.GetString(CACHE_KEY_PREFIX + uid, string.Empty);
+        if (string.IsNullOrEmpty(json)) return;
+
+        try
+        {
+            var cache = JsonUtility.FromJson<MembershipStatusCache>(json);
+            if (cache == null || cache.status == null || cache.uid != uid) return;
+
+            _cachedStatus = cache.status;
+            _cachedUid = cache.uid;
+            _cachedAt = Time.realtimeSinceStartup - Mathf.Max(0f, TimeSinceCached(cache.cachedAtUnix));
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("[BackendMembershipClient] 会员状态缓存读取失败: " + e.Message);
+        }
+    }
+
+    private void PersistCache()
+    {
+        if (_cachedStatus == null || string.IsNullOrEmpty(_cachedUid)) return;
+
+        var cache = new MembershipStatusCache
+        {
+            uid = _cachedUid,
+            cachedAtUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            status = _cachedStatus,
+        };
+
+        PlayerPrefs.SetString(CACHE_KEY_PREFIX + _cachedUid, JsonUtility.ToJson(cache));
+        PlayerPrefs.Save();
+    }
+
+    private float TimeSinceCached(long cachedAtUnix)
+    {
+        if (cachedAtUnix <= 0) return CACHE_SECONDS + 1f;
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        return Mathf.Max(0f, now - cachedAtUnix);
     }
 
     private IEnumerator GetFirebaseIdToken(Action<string> onToken, Action<string> onError)
@@ -86,4 +173,12 @@ public class MembershipStatusResponse
     public string membershipStatus;
     public bool isPro;
     public string proExpiresAt;
+}
+
+[Serializable]
+public class MembershipStatusCache
+{
+    public string uid;
+    public long cachedAtUnix;
+    public MembershipStatusResponse status;
 }

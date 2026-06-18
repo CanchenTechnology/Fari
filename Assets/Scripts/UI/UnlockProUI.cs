@@ -12,6 +12,7 @@ using GamerFrameWork.UIFrameWork;
 public class UnlockProUI : WindowBase
 {
 	public UnlockProUIComponent uiComponent;
+	private IapProductsConfig iapProducts = IapProductsConfig.Default;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -26,6 +27,7 @@ public class UnlockProUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		LoadIapProducts();
 		RefreshMembershipStatus();
 	}
 	// 物体隐藏时执行
@@ -52,7 +54,9 @@ public class UnlockProUI : WindowBase
 	}
 	public void OnManageSubscriptionBtnButtonClick()
 	{
-		ToastManager.ShowToast("请在 App Store / Google Play 的订阅管理中操作。");
+		Debug.Log($"[UnlockProUI] 打开订阅管理。IAP: {iapProducts.proMonthly?.productId}, {iapProducts.proYearly?.productId}");
+		GetIapManager().OpenSubscriptionManagement();
+		ToastManager.ShowToast("已打开订阅管理");
 	}
 	public void OnRestorePurchaseBtnButtonClick()
 	{
@@ -99,7 +103,47 @@ public class UnlockProUI : WindowBase
 				if (showToast)
 					ToastManager.ShowToast("恢复失败：" + error);
 				Debug.LogWarning("[UnlockProUI] 会员状态检查失败: " + error);
-			});
+			},
+			forceRefresh: showToast);
+	}
+
+	private void LoadIapProducts()
+	{
+		var firestore = FirestoreManager.Instance;
+		if (firestore == null || !firestore.IsInitialized) return;
+
+		firestore.LoadPublicAppConfig(config =>
+		{
+			if (config?.iapProducts != null)
+				iapProducts = config.iapProducts;
+		});
+	}
+
+	public void OnPurchaseMonthlyButtonClick()
+	{
+		StartPurchase(iapProducts.proMonthly);
+	}
+
+	public void OnPurchaseYearlyButtonClick()
+	{
+		StartPurchase(iapProducts.proYearly);
+	}
+
+	private void StartPurchase(IapProductConfig product)
+	{
+		GetIapManager().PurchaseSubscription(product, (success, message) =>
+		{
+			ToastManager.ShowToast(success ? "购买处理中" : message);
+		});
+	}
+
+	private IapPurchaseManager GetIapManager()
+	{
+		var manager = IapPurchaseManager.Instance;
+		if (manager != null) return manager;
+
+		var go = new GameObject("IapPurchaseManager");
+		return go.AddComponent<IapPurchaseManager>();
 	}
 	#endregion
 }

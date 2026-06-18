@@ -10,6 +10,7 @@ public class QuestRowItem : MonoBehaviour
 {
     public Text desText;
     public Button btn;
+    private Button _selfButton;
 
     private string _question;
     private Action<string> _onClick;
@@ -29,12 +30,21 @@ public class QuestRowItem : MonoBehaviour
             btn.onClick.RemoveListener(OnButtonClick);
             btn.onClick.AddListener(OnButtonClick);
         }
+
+        _selfButton = GetComponent<Button>();
+        if (_selfButton != null && _selfButton != btn)
+        {
+            _selfButton.onClick.RemoveListener(OnButtonClick);
+            _selfButton.onClick.AddListener(OnButtonClick);
+        }
     }
 
     private void OnDisable()
     {
         if (btn != null)
             btn.onClick.RemoveListener(OnButtonClick);
+        if (_selfButton != null && _selfButton != btn)
+            _selfButton.onClick.RemoveListener(OnButtonClick);
     }
 
     private void OnButtonClick()

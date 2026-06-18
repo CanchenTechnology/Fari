@@ -93,7 +93,7 @@
 | 事项 | 说明 |
 |------|------|
 | **DeepSeek API Key** | 已迁移到 Firebase Cloud Functions Secret `DEEPSEEK_API_KEY`，不应放在 Unity 客户端 |
-| **火山引擎 TTS Key** | 已预留 Firebase Cloud Functions Secret：`VOLC_TTS_APP_ID`、`VOLC_TTS_ACCESS_TOKEN` |
+| **火山引擎 TTS Key** | 已迁移到 Firebase Cloud Functions Secret `VOLC_TTS_API_KEY`，不应放在 Unity 客户端 |
 | **Firebase 项目** | `fari-app-b2fd2` 已存在，如换新项目需重建 |
 | **Apple Developer 账号** | Sign in with Apple 需要 Apple Developer 后台配置 |
 | **Facebook App** | Facebook 登录需要 Facebook Developer 后台配置 |

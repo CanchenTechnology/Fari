@@ -12,6 +12,8 @@ using GamerFrameWork.UIFrameWork;
 public class AccountUI : WindowBase
 {
 	public AccountUIComponent uiComponent;
+	private bool _deleteConfirmArmed;
+	private float _deleteConfirmArmedAt;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -26,6 +28,7 @@ public class AccountUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		_deleteConfirmArmed = false;
 		RefreshUI();
 	}
 	// 物体隐藏时执行
@@ -113,13 +116,36 @@ public class AccountUI : WindowBase
 	/// </summary>
 	public void OndeleteButtonClick()
 	{
-		// 强确认流程：需要多次确认或输入确认文本
-		// TODO: 可以替换为打开一个专门的删除确认弹窗
-		UserDataManager.Instance.ClearData();
-		Debug.Log("[AccountUI] 用户账户数据已删除");
+		if (!_deleteConfirmArmed || Time.time - _deleteConfirmArmedAt > 8f)
+		{
+			_deleteConfirmArmed = true;
+			_deleteConfirmArmedAt = Time.time;
+			ToastManager.ShowToast("再次点击删除账户，将清除云端数据且不可恢复");
+			return;
+		}
 
-		// 删除后返回登录界面或初始界面
-		HideWindow();
+		_deleteConfirmArmed = false;
+		var authManager = FirebaseAuthManager.Instance;
+		if (authManager == null || !authManager.IsLoggedIn)
+		{
+			UserDataManager.Instance.ClearData();
+			ToastManager.ShowToast("本地账户数据已清除");
+			HideWindow();
+			return;
+		}
+
+		authManager.DeleteUser(
+			() =>
+			{
+				UserDataManager.Instance.ClearData();
+				ToastManager.ShowToast("账户已删除");
+				HideWindow();
+			},
+			error =>
+			{
+				ToastManager.ShowToast("删除失败：" + error);
+				Debug.LogError("[AccountUI] 删除账户失败: " + error);
+			});
 	}
 	#endregion
 }

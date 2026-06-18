@@ -14,6 +14,22 @@ public class InviteItem : MonoBehaviour
 
     private FriendDataManager.InviteData data;
 
+    private void OnEnable()
+    {
+        if (atBtn != null)
+        {
+            atBtn.onClick.AddListener(OnActionButtonClick);
+        }
+    }
+
+    private void OnDisable()
+    {
+        if (atBtn != null)
+        {
+            atBtn.onClick.RemoveListener(OnActionButtonClick);
+        }
+    }
+
     /// <summary>
     /// 当前绑定的邀请数据
     /// </summary>
@@ -47,5 +63,25 @@ public class InviteItem : MonoBehaviour
         headImage.sprite = defaultSprite;
         nameText.text = string.Empty;
         infoText.text = string.Empty;
+    }
+
+    private void OnActionButtonClick()
+    {
+        if (data == null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrEmpty(data.firebaseUid))
+        {
+            Debug.LogWarning("[InviteItem] 邀请数据不完整");
+            return;
+        }
+
+        Debug.Log($"[InviteItem] 正在接受好友请求：{data.name}");
+        FirestoreManager.Instance.AcceptFriendRequest(data, success =>
+        {
+            Debug.Log(success ? $"[InviteItem] 已添加好友：{data.name}" : "[InviteItem] 接受好友请求失败");
+        });
     }
 }

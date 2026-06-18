@@ -94,14 +94,6 @@ HTTPS_PROXY=http://127.0.0.1:7897 HTTP_PROXY=http://127.0.0.1:7897 ALL_PROXY=soc
 
 `VOLC_TTS_API_KEY` 对应新版火山语音控制台的 API Key，会走 `https://openspeech.bytedance.com/api/v3/tts/unidirectional`，并使用 `X-Api-Key` + `X-Api-Resource-Id` 鉴权。
 
-旧版火山控制台参数仍保留兼容，只有未配置 `VOLC_TTS_API_KEY` 时才会使用：
-
-```bash
-HTTPS_PROXY=http://127.0.0.1:7897 HTTP_PROXY=http://127.0.0.1:7897 ALL_PROXY=socks5://127.0.0.1:7897 firebase functions:secrets:set VOLC_TTS_APP_ID
-HTTPS_PROXY=http://127.0.0.1:7897 HTTP_PROXY=http://127.0.0.1:7897 ALL_PROXY=socks5://127.0.0.1:7897 firebase functions:secrets:set VOLC_TTS_ACCESS_TOKEN
-HTTPS_PROXY=http://127.0.0.1:7897 HTTP_PROXY=http://127.0.0.1:7897 ALL_PROXY=socks5://127.0.0.1:7897 firebase functions:secrets:set VOLC_TTS_CLUSTER
-```
-
 支付回调密钥单独设置：
 
 ```bash

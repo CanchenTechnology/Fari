@@ -10,6 +10,14 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
+    function isAdmin() {
+      return signedIn()
+        && (request.auth.token.admin == true
+          || request.auth.token.role == "admin"
+          || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
+          || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin");
+    }
+
     match /users/{uid} {
       allow read, create, update, delete: if isOwner(uid);
 
@@ -18,6 +26,10 @@ service cloud.firestore {
       }
 
       match /divination_records/{readingId} {
+        allow read, create, update, delete: if isOwner(uid);
+      }
+
+      match /dialog_sessions/{sessionId} {
         allow read, create, update, delete: if isOwner(uid);
       }
 
@@ -30,8 +42,48 @@ service cloud.firestore {
       }
 
       match /friends/{friendId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          || (signedIn()
+            && request.auth.uid == friendId
+            && request.resource.data.uid == request.auth.uid);
+      }
+
+      match /friend_requests/{requesterUid} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if signedIn()
+          && request.auth.uid == requesterUid
+          && request.resource.data.uid == request.auth.uid;
+      }
+
+      match /virtual_friends/{virtualFriendId} {
         allow read, create, update, delete: if isOwner(uid);
       }
+
+      match /feedback/{feedbackId} {
+        allow read, create, update, delete: if isOwner(uid);
+      }
+
+      match /settings/{settingId} {
+        allow read, create, update, delete: if isOwner(uid);
+      }
+    }
+
+    match /public_profiles/{uid} {
+      allow read: if signedIn();
+      allow create, update, delete: if isOwner(uid);
+    }
+
+    match /app_config/{configId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /feedback/{feedbackId} {
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == "new";
+      allow read, update, delete: if isAdmin();
     }
 
     match /quick_reading/{oracleId} {

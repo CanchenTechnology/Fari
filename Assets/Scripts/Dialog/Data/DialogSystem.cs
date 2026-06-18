@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -51,6 +52,15 @@ public class ChatMessageData
     public string spreadKind;       // 牌阵类型（InteractionCard1/3/5 使用）
     public bool spreadCardsDrawn;   // 牌阵是否已经完成抽牌（用于聊天列表刷新后恢复状态）
     public List<TarotDrawData> spreadDrawnCards; // 已抽到的牌（InteractionCard 使用）
+    public bool spreadDrawResultAddedToHistory; // 抽牌结果是否已写入 AI 上下文，避免重复追加
+    public string readingId;        // 这条牌阵消息对应的占卜 ID
+    public string divinationQuestion;
+    public string divinationScene;
+    public string divinationCreatedAt;
+    public string shortVerdict;
+    public string judgeContent;
+    public string adviceContent;
+    public List<string> followupTopics;
     public string friendName;
     public string friendContext;
 }
@@ -148,6 +158,24 @@ public class DialogSystem : MonoSingleton<DialogSystem>
 
     // 消息ID计数器
     private int mMessageIdCounter = 0;
+    private bool _cloudHistoryLoaded;
+    private bool _isRestoringCloudHistory;
+    private Coroutine _cloudSaveCoroutine;
+
+    private const int MAX_SAVED_CHAT_MESSAGES = 80;
+    private const int MAX_SAVED_API_MESSAGES = 120;
+    private const float CLOUD_SAVE_DEBOUNCE_SECONDS = 1.2f;
+
+    private void OnApplicationPause(bool pause)
+    {
+        if (pause)
+            FlushCloudDialogHistory();
+    }
+
+    private void OnApplicationQuit()
+    {
+        FlushCloudDialogHistory();
+    }
 
     protected override void Awake()
     {
@@ -206,6 +234,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             divinerType = CurrentDivinerType
         };
         mChatMessageList.Add(data);
+        UsageStatsManager.Instance?.TrackDialogMessage();
 
         // 同时添加到 API 历史
         mApiMessageHistory.Add(new DeepSeekAPI.Message("user", content));
@@ -215,6 +244,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         if (recentUserMessages.Count > MAX_RECENT_MESSAGES)
             recentUserMessages.RemoveAt(0);
 
+        SaveCloudDialogHistory();
         return data;
     }
 
@@ -243,6 +273,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         if (recentAssistantReplies.Count > MAX_RECENT_MESSAGES)
             recentAssistantReplies.RemoveAt(0);
 
+        SaveCloudDialogHistory();
         return data;
     }
 
@@ -263,6 +294,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         // 同时添加到 API 历史
         mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", content));
 
+        SaveCloudDialogHistory();
         return data;
     }
     public ChatMessageData AddAtFriendMessage(string content)
@@ -303,6 +335,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             mApiMessageHistory.Add(new DeepSeekAPI.Message("user", messageContent));
         }
 
+        SaveCloudDialogHistory();
         return data;
     }
 
@@ -323,12 +356,14 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             options = GetTarotOptions(),
             divinerType = CurrentDivinerType
         };
+        CaptureDivinationSnapshot(data);
         mChatMessageList.Add(data);
 
         // 同时添加到 API 历史
         mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", content));
 
         Debug.Log($"[DialogSystem] 添加 InteractionCard3 消息, spreadKind={spreadKind}");
+        SaveCloudDialogHistory();
         return data;
     }
 
@@ -349,12 +384,14 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             options = GetTarotOptions(),
             divinerType = CurrentDivinerType
         };
+        CaptureDivinationSnapshot(data);
         mChatMessageList.Add(data);
 
         // 同时添加到 API 历史
         mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", content));
 
         Debug.Log($"[DialogSystem] 添加 InteractionCard1 消息, spreadKind={spreadKind}");
+        SaveCloudDialogHistory();
         return data;
     }
 
@@ -375,13 +412,389 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             options = GetTarotOptions(),
             divinerType = CurrentDivinerType
         };
+        CaptureDivinationSnapshot(data);
         mChatMessageList.Add(data);
 
         // 同时添加到 API 历史
         mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", content));
 
         Debug.Log($"[DialogSystem] 添加 InteractionCard5 消息, spreadKind={spreadKind}");
+        SaveCloudDialogHistory();
         return data;
+    }
+
+    public void CaptureDivinationSnapshot(ChatMessageData data)
+    {
+        if (data == null) return;
+
+        var session = DivinationEngine.Instance?.CurrentSession;
+        if (session == null)
+        {
+            if (string.IsNullOrEmpty(data.readingId))
+                data.readingId = $"chat_{data.id}";
+            if (string.IsNullOrEmpty(data.divinationCreatedAt))
+                data.divinationCreatedAt = DateTime.Now.ToString("o");
+            return;
+        }
+
+        data.readingId = FirstNonEmpty(data.readingId, session.readingId, $"chat_{data.id}");
+        data.divinationQuestion = FirstNonEmpty(data.divinationQuestion, session.question);
+        data.divinationScene = FirstNonEmpty(data.divinationScene, session.scene);
+        data.spreadKind = FirstNonEmpty(data.spreadKind, session.spreadKind);
+        data.shortVerdict = FirstNonEmpty(data.shortVerdict, session.shortVerdict);
+        data.judgeContent = FirstNonEmpty(data.judgeContent, session.judgeContent);
+        data.adviceContent = FirstNonEmpty(data.adviceContent, session.adviceContent);
+        data.divinationCreatedAt = FirstNonEmpty(data.divinationCreatedAt, session.createdAt, DateTime.Now.ToString("o"));
+
+        if ((data.followupTopics == null || data.followupTopics.Count == 0) && session.topics != null)
+            data.followupTopics = new List<string>(session.topics);
+    }
+
+    public void RecordSpreadDrawResult(ChatMessageData data)
+    {
+        if (data == null || data.spreadDrawResultAddedToHistory) return;
+        if (data.spreadDrawnCards == null || data.spreadDrawnCards.Count == 0) return;
+
+        string summary = BuildSpreadDrawHistorySummary(data);
+        if (string.IsNullOrWhiteSpace(summary)) return;
+
+        mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", summary));
+        recentAssistantReplies.Add(summary);
+        if (recentAssistantReplies.Count > MAX_RECENT_MESSAGES)
+            recentAssistantReplies.RemoveAt(0);
+
+        data.spreadDrawResultAddedToHistory = true;
+        SaveCloudDialogHistory();
+    }
+
+    public void ApplyDivinationReplyToActiveSpread(string reply)
+    {
+        if (string.IsNullOrWhiteSpace(reply)) return;
+
+        ChatMessageData target = null;
+        for (int i = mChatMessageList.Count - 1; i >= 0; i--)
+        {
+            var message = mChatMessageList[i];
+            if (message == null) continue;
+            if (!IsSpreadMessage(message)) continue;
+
+            if (!string.IsNullOrEmpty(activeReadingId) && message.readingId == activeReadingId)
+            {
+                target = message;
+                break;
+            }
+
+            if (target == null && message.spreadCardsDrawn)
+                target = message;
+        }
+
+        if (target == null) return;
+
+        var parsed = ParseDivinationReply(reply);
+        target.shortVerdict = FirstNonEmpty(parsed.shortVerdict, target.shortVerdict, reply);
+        target.judgeContent = FirstNonEmpty(parsed.judgeContent, reply);
+        target.adviceContent = FirstNonEmpty(parsed.adviceContent, target.adviceContent);
+        if (parsed.topics.Count > 0)
+            target.followupTopics = parsed.topics;
+
+        var session = DivinationEngine.Instance?.CurrentSession;
+        if (session != null && session.readingId == target.readingId)
+        {
+            session.shortVerdict = target.shortVerdict;
+            session.judgeContent = target.judgeContent;
+            session.adviceContent = target.adviceContent;
+            session.topics = target.followupTopics;
+        }
+
+        CaptureDivinationSnapshot(target);
+        SaveCloudDialogHistory();
+        DivinationRecordFirestore.Instance?.SaveRecord(DivinationRecordBuilder.FromChatMessage(target));
+    }
+
+    public void ActivateReadingFromRecord(DivinationRecordData record, DivinationPhase phase = DivinationPhase.FollowUp)
+    {
+        if (record?.lockedCards == null || record.lockedCards.Count == 0) return;
+
+        var restoredLock = new ReadingLock
+        {
+            readingId = record.readingId,
+            readingType = record.spreadKind,
+            allowedCards = record.lockedCards,
+            locked = true
+        };
+
+        readingLock = restoredLock;
+        activeReadingId = record.readingId;
+        activeReadingState = phase == DivinationPhase.Completed ? "completed" :
+            phase == DivinationPhase.CardsLocked ? "cards_locked" :
+            "completed";
+        activeActionKind = phase == DivinationPhase.CardsLocked ? "complete_verdict" : "dive_deeper";
+
+        var session = new DivinationSession
+        {
+            readingId = record.readingId,
+            question = record.question,
+            scene = record.scene,
+            spreadKind = record.spreadKind,
+            lockedCards = record.lockedCards,
+            readingLock = restoredLock,
+            shortVerdict = record.shortVerdict,
+            judgeContent = record.judgeContent,
+            adviceContent = record.adviceContent,
+            topics = record.topics,
+            createdAt = string.IsNullOrEmpty(record.createdAt) ? DateTime.Now.ToString("o") : record.createdAt,
+            phase = phase
+        };
+
+        DivinationEngine.Instance?.RestoreSession(session);
+        SaveCloudDialogHistory();
+    }
+
+    private bool IsSpreadMessage(ChatMessageData message)
+    {
+        return message.messageType == MsgType.InteractionCard1
+            || message.messageType == MsgType.InteractionCard3
+            || message.messageType == MsgType.InteractionCard5;
+    }
+
+    private ParsedDivinationReply ParseDivinationReply(string reply)
+    {
+        if (TryParseStructuredDivinationReply(reply, out var structured))
+            return structured;
+
+        var parsed = new ParsedDivinationReply();
+        if (string.IsNullOrWhiteSpace(reply)) return parsed;
+
+        string currentSection = "judge";
+        var judgeLines = new List<string>();
+        var adviceLines = new List<string>();
+
+        var lines = reply.Replace("\r", "\n")
+            .Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .ToList();
+
+        foreach (var rawLine in lines)
+        {
+            string line = CleanSectionPrefix(rawLine);
+            string normalized = line.Replace("：", "").Replace(":", "").Trim();
+
+            if (IsJudgeSection(normalized))
+            {
+                currentSection = "judge";
+                continue;
+            }
+            if (IsAdviceSection(normalized))
+            {
+                currentSection = "advice";
+                continue;
+            }
+            if (IsTopicSection(normalized))
+            {
+                currentSection = "topics";
+                continue;
+            }
+
+            if (currentSection == "topics")
+            {
+                string topic = CleanTopicText(line);
+                if (!string.IsNullOrEmpty(topic) && parsed.topics.Count < 4)
+                    parsed.topics.Add(topic);
+                continue;
+            }
+
+            if (currentSection == "advice")
+                adviceLines.Add(line);
+            else
+                judgeLines.Add(line);
+        }
+
+        parsed.judgeContent = string.Join("\n", judgeLines).Trim();
+        parsed.adviceContent = string.Join("\n", adviceLines).Trim();
+        parsed.shortVerdict = BuildShortVerdict(parsed.judgeContent, reply);
+        return parsed;
+    }
+
+    private bool TryParseStructuredDivinationReply(string reply, out ParsedDivinationReply parsed)
+    {
+        parsed = null;
+        string json = ExtractJsonObject(reply);
+        if (string.IsNullOrWhiteSpace(json)) return false;
+
+        try
+        {
+            var dto = JsonUtility.FromJson<StructuredDivinationReply>(json);
+            if (dto == null) return false;
+
+            parsed = new ParsedDivinationReply
+            {
+                displayReply = dto.displayReply ?? "",
+                shortVerdict = dto.shortVerdict ?? "",
+                judgeContent = dto.judgeContent ?? "",
+                adviceContent = dto.adviceContent ?? "",
+                topics = NormalizeTopics(dto.topics)
+            };
+
+            return !string.IsNullOrWhiteSpace(parsed.displayReply)
+                || !string.IsNullOrWhiteSpace(parsed.shortVerdict)
+                || !string.IsNullOrWhiteSpace(parsed.judgeContent)
+                || !string.IsNullOrWhiteSpace(parsed.adviceContent)
+                || parsed.topics.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[DialogSystem] 结构化占卜 JSON 解析失败: {ex.Message}");
+            return false;
+        }
+    }
+
+    private string ExtractJsonObject(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "";
+
+        string value = text.Trim();
+        if (value.StartsWith("```"))
+        {
+            value = value.Replace("```json", "")
+                .Replace("```JSON", "")
+                .Replace("```", "")
+                .Trim();
+        }
+
+        int start = value.IndexOf('{');
+        int end = value.LastIndexOf('}');
+        if (start < 0 || end <= start) return "";
+        return value.Substring(start, end - start + 1);
+    }
+
+    private List<string> NormalizeTopics(List<string> rawTopics)
+    {
+        var topics = new List<string>();
+        if (rawTopics == null) return topics;
+
+        foreach (var rawTopic in rawTopics)
+        {
+            string topic = (rawTopic ?? "").Trim();
+            if (string.IsNullOrEmpty(topic)) continue;
+            if (!topic.EndsWith("?") && !topic.EndsWith("？"))
+                topic += "？";
+            topics.Add(topic);
+            if (topics.Count >= 4) break;
+        }
+
+        return topics;
+    }
+
+    private bool IsJudgeSection(string line)
+    {
+        return line == "综合判断"
+            || line == "完整解读"
+            || line == "牌意解析"
+            || line == "解读"
+            || line == "判断";
+    }
+
+    private bool IsAdviceSection(string line)
+    {
+        return line == "行动建议"
+            || line == "建议"
+            || line == "今天可以做的一件小事"
+            || line == "下一步";
+    }
+
+    private bool IsTopicSection(string line)
+    {
+        return line == "继续追问"
+            || line == "适合继续聊的话题"
+            || line == "推荐追问"
+            || line == "追问话题";
+    }
+
+    private string CleanSectionPrefix(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return "";
+        return line.Trim()
+            .TrimStart('#', ' ', '◆', '◇', '✦', '•', '-', '*')
+            .Trim();
+    }
+
+    private string CleanTopicText(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return "";
+        string value = line.Trim()
+            .TrimStart('Q', 'q', '：', ':', '>', ' ', '◆', '◇', '✦', '•', '-', '*');
+
+        int dotIndex = value.IndexOf('.');
+        if (dotIndex >= 0 && dotIndex < 3)
+            value = value.Substring(dotIndex + 1);
+
+        value = value.Trim();
+        return value.EndsWith("?") || value.EndsWith("？") ? value : "";
+    }
+
+    private string BuildShortVerdict(string judgeContent, string fallback)
+    {
+        string source = FirstNonEmpty(judgeContent, fallback);
+        if (string.IsNullOrWhiteSpace(source)) return "";
+
+        var parts = System.Text.RegularExpressions.Regex.Split(source.Trim(), @"(?<=[。！？.!?])")
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Take(2)
+            .ToList();
+        return parts.Count > 0 ? string.Join("", parts).Trim() : source.Trim();
+    }
+
+    private class ParsedDivinationReply
+    {
+        public string displayReply = "";
+        public string shortVerdict = "";
+        public string judgeContent = "";
+        public string adviceContent = "";
+        public List<string> topics = new List<string>();
+    }
+
+    [Serializable]
+    private class StructuredDivinationReply
+    {
+        public string displayReply;
+        public string shortVerdict;
+        public string judgeContent;
+        public string adviceContent;
+        public List<string> topics;
+    }
+
+    private string BuildSpreadDrawHistorySummary(ChatMessageData data)
+    {
+        var spreadDef = DivinationEngine.Instance?.GetSpreadDefinition(data.spreadKind);
+        var parts = new List<string>();
+        for (int i = 0; i < data.spreadDrawnCards.Count; i++)
+        {
+            var draw = data.spreadDrawnCards[i];
+            var card = TarotDeck.GetById(draw.cardId);
+            if (card == null) continue;
+
+            string position = spreadDef?.positions != null && i < spreadDef.positions.Count
+                ? spreadDef.positions[i].label
+                : $"第{i + 1}张";
+            string orientation = draw.upright ? "正位" : "逆位";
+            parts.Add($"{position}：{card.nameZh}（{orientation}）");
+        }
+
+        if (parts.Count == 0) return "";
+        string spreadName = string.IsNullOrEmpty(spreadDef?.label) ? data.spreadKind : spreadDef.label;
+        return $"[已锁定牌阵] readingId={data.readingId}，牌阵={spreadName}，抽牌结果：{string.Join("；", parts)}。";
+    }
+
+    private static string FirstNonEmpty(params string[] values)
+    {
+        if (values == null) return "";
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+        return "";
     }
     /// <summary>
     /// 获取所有消息
@@ -389,6 +802,219 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     public List<ChatMessageData> GetAllMessages()
     {
         return mChatMessageList;
+    }
+
+    public void LoadCloudDialogHistoryOnce(Action<bool> onComplete = null)
+    {
+        if (_cloudHistoryLoaded)
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        var store = DialogHistoryFirestore.Instance;
+        if (store == null)
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        store.LoadDefault(snapshot =>
+        {
+            if (snapshot == null || snapshot.messages == null || snapshot.messages.Count == 0)
+            {
+                onComplete?.Invoke(false);
+                return;
+            }
+
+            if (mChatMessageList.Count > 0)
+            {
+                _cloudHistoryLoaded = true;
+                onComplete?.Invoke(false);
+                return;
+            }
+
+            RestoreDialogHistory(snapshot);
+            _cloudHistoryLoaded = true;
+            onComplete?.Invoke(true);
+        });
+    }
+
+    public void SaveCloudDialogHistory(Action<bool> onComplete = null)
+    {
+        if (_isRestoringCloudHistory)
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        if (onComplete != null)
+        {
+            SaveCloudDialogHistoryNow(onComplete);
+            return;
+        }
+
+        if (_cloudSaveCoroutine != null)
+            StopCoroutine(_cloudSaveCoroutine);
+        _cloudSaveCoroutine = StartCoroutine(SaveCloudDialogHistoryDebounced());
+    }
+
+    public void FlushCloudDialogHistory(Action<bool> onComplete = null)
+    {
+        if (_cloudSaveCoroutine != null)
+        {
+            StopCoroutine(_cloudSaveCoroutine);
+            _cloudSaveCoroutine = null;
+        }
+
+        SaveCloudDialogHistoryNow(onComplete);
+    }
+
+    private IEnumerator SaveCloudDialogHistoryDebounced()
+    {
+        yield return new WaitForSeconds(CLOUD_SAVE_DEBOUNCE_SECONDS);
+        _cloudSaveCoroutine = null;
+        SaveCloudDialogHistoryNow();
+    }
+
+    private void SaveCloudDialogHistoryNow(Action<bool> onComplete = null)
+    {
+        var store = DialogHistoryFirestore.Instance;
+        if (store == null)
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        store.SaveDefault(BuildDialogHistorySnapshot(), onComplete);
+    }
+
+    private DialogHistorySnapshot BuildDialogHistorySnapshot()
+    {
+        return new DialogHistorySnapshot
+        {
+            messages = TakeRecent(mChatMessageList, MAX_SAVED_CHAT_MESSAGES),
+            apiMessages = TakeRecent(mApiMessageHistory, MAX_SAVED_API_MESSAGES),
+            activeReadingId = activeReadingId ?? "",
+            activeReadingState = activeReadingState ?? "",
+            activeActionKind = activeActionKind ?? "",
+            activeRelationshipId = activeRelationshipId ?? "",
+            activeFriendContext = activeFriendContext ?? ""
+        };
+    }
+
+    private void RestoreDialogHistory(DialogHistorySnapshot snapshot)
+    {
+        _isRestoringCloudHistory = true;
+
+        mChatMessageList = snapshot.messages ?? new List<ChatMessageData>();
+        mApiMessageHistory = snapshot.apiMessages ?? new List<DeepSeekAPI.Message>();
+        activeReadingId = snapshot.activeReadingId ?? "";
+        activeReadingState = snapshot.activeReadingState ?? "";
+        activeActionKind = snapshot.activeActionKind ?? "";
+        activeRelationshipId = snapshot.activeRelationshipId ?? "";
+        activeFriendContext = snapshot.activeFriendContext ?? "";
+        mStreamingMessageIndex = -1;
+
+        mMessageIdCounter = 0;
+        foreach (var message in mChatMessageList)
+        {
+            if (message != null)
+                mMessageIdCounter = Math.Max(mMessageIdCounter, message.id + 1);
+        }
+
+        RebuildRecentMessageCaches();
+        RestoreRuntimeReadingStateFromHistory();
+        _isRestoringCloudHistory = false;
+    }
+
+    private void RestoreRuntimeReadingStateFromHistory()
+    {
+        var spreadMessage = FindLatestDrawnSpreadMessage();
+        if (spreadMessage == null) return;
+
+        var record = DivinationRecordBuilder.FromChatMessage(spreadMessage);
+        if (record?.lockedCards == null || record.lockedCards.Count == 0) return;
+
+        bool hasVerdict = !string.IsNullOrWhiteSpace(record.judgeContent)
+            || !string.IsNullOrWhiteSpace(record.shortVerdict);
+
+        var restoredLock = new ReadingLock
+        {
+            readingId = record.readingId,
+            readingType = record.spreadKind,
+            allowedCards = record.lockedCards,
+            locked = true
+        };
+
+        readingLock = restoredLock;
+        activeReadingId = record.readingId;
+        activeReadingState = hasVerdict ? "completed" : "cards_locked";
+        activeActionKind = hasVerdict ? "dive_deeper" : "complete_verdict";
+
+        var session = new DivinationSession
+        {
+            readingId = record.readingId,
+            question = record.question,
+            scene = record.scene,
+            spreadKind = record.spreadKind,
+            lockedCards = record.lockedCards,
+            readingLock = restoredLock,
+            shortVerdict = record.shortVerdict,
+            judgeContent = record.judgeContent,
+            adviceContent = record.adviceContent,
+            topics = record.topics,
+            createdAt = record.createdAt,
+            phase = hasVerdict ? DivinationPhase.Completed : DivinationPhase.CardsLocked
+        };
+
+        DivinationEngine.Instance?.RestoreSession(session);
+    }
+
+    private ChatMessageData FindLatestDrawnSpreadMessage()
+    {
+        for (int i = mChatMessageList.Count - 1; i >= 0; i--)
+        {
+            var message = mChatMessageList[i];
+            if (message == null) continue;
+            if (!IsSpreadMessage(message)) continue;
+            if (!message.spreadCardsDrawn) continue;
+            if (message.spreadDrawnCards == null || message.spreadDrawnCards.Count == 0) continue;
+            return message;
+        }
+
+        return null;
+    }
+
+    private void RebuildRecentMessageCaches()
+    {
+        recentUserMessages.Clear();
+        recentAssistantReplies.Clear();
+
+        foreach (var message in mChatMessageList)
+        {
+            if (message == null || string.IsNullOrWhiteSpace(message.content)) continue;
+
+            if (message.roleType == DialogRoleType.User)
+            {
+                recentUserMessages.Add(message.content);
+                if (recentUserMessages.Count > MAX_RECENT_MESSAGES)
+                    recentUserMessages.RemoveAt(0);
+            }
+            else if (message.roleType == DialogRoleType.AI)
+            {
+                recentAssistantReplies.Add(message.content);
+                if (recentAssistantReplies.Count > MAX_RECENT_MESSAGES)
+                    recentAssistantReplies.RemoveAt(0);
+            }
+        }
+    }
+
+    private List<T> TakeRecent<T>(List<T> source, int maxCount)
+    {
+        if (source == null) return new List<T>();
+        if (source.Count <= maxCount) return new List<T>(source);
+        return source.GetRange(source.Count - maxCount, maxCount);
     }
 
     /// <summary>
@@ -487,6 +1113,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             {
                 messages.Add(new DeepSeekAPI.Message(cm.role, cm.content));
             }
+            AppendStructuredDivinationOutputContract(messages);
         }
         else
         {
@@ -499,6 +1126,42 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             + $"Scene={assemblyResult.promptRecord?.scene}, Stage={assemblyResult.promptRecord?.stage}, Voice={GetOracleVoiceId()}");
 
         return messages;
+    }
+
+    private void AppendStructuredDivinationOutputContract(List<DeepSeekAPI.Message> messages)
+    {
+        if (!ShouldRequestStructuredDivinationReply()) return;
+
+        messages.Add(new DeepSeekAPI.Message("system",
+            "本轮是在完成已锁定牌阵的完整解读。请只返回严格 JSON，不要 Markdown，不要代码块，不要额外解释。"
+            + "JSON 字段必须是："
+            + "{\"displayReply\":\"给聊天气泡显示的自然语言回复，短、直接、具体，不超过140字\","
+            + "\"shortVerdict\":\"1到2句摘要\","
+            + "\"judgeContent\":\"详情页综合判断，2到5句\","
+            + "\"adviceContent\":\"详情页行动建议，2到4条，可用换行分隔\","
+            + "\"topics\":[\"适合继续追问的问题1？\",\"适合继续追问的问题2？\",\"适合继续追问的问题3？\"]}"));
+    }
+
+    private bool ShouldRequestStructuredDivinationReply()
+    {
+        if (readingLock == null) return false;
+        return activeReadingState == "cards_locked"
+            || activeActionKind == "complete_verdict"
+            || activeActionKind == "reveal_card";
+    }
+
+    private string BuildVisibleReplyFromStructuredOutput(string output)
+    {
+        if (!TryParseStructuredDivinationReply(output, out var parsed))
+            return output;
+
+        string display = FirstNonEmpty(parsed.displayReply, parsed.shortVerdict, parsed.judgeContent);
+        if (!string.IsNullOrWhiteSpace(parsed.adviceContent))
+            display = string.IsNullOrWhiteSpace(display)
+                ? parsed.adviceContent
+                : $"{display}\n\n{parsed.adviceContent}";
+
+        return string.IsNullOrWhiteSpace(display) ? output : display.Trim();
     }
 
     public PromptRecord GetLastPromptRecord()
@@ -581,6 +1244,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     private string ApplyOutputGuard(string text)
     {
         if (!useOracleRuntime) return text;
+        if (TryParseStructuredDivinationReply(text, out _)) return text;
 
         try
         {
@@ -720,6 +1384,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
                 });
 
                 TrimMemoryCandidates();
+                FirestoreManager.Instance?.SaveMemorySource(memorySource);
                 Debug.Log($"[OracleRuntime] Memory candidate saved: {summary}");
             },
             (error) =>
@@ -795,6 +1460,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     {
         readingLock = rl;
         activeReadingId = rl?.readingId;
+        SaveCloudDialogHistory();
     }
 
     /// <summary>
@@ -803,11 +1469,13 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     public void SetActiveRelationship(string relationshipId)
     {
         activeRelationshipId = relationshipId;
+        SaveCloudDialogHistory();
     }
 
     public void SetActiveFriendContext(string friendContext)
     {
         activeFriendContext = friendContext ?? "";
+        SaveCloudDialogHistory();
     }
 
     /// <summary>
@@ -816,6 +1484,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     public void SetActiveReadingState(string state)
     {
         activeReadingState = state ?? "";
+        SaveCloudDialogHistory();
     }
 
     /// <summary>
@@ -824,6 +1493,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     public void SetActiveActionKind(string actionKind)
     {
         activeActionKind = actionKind ?? "";
+        SaveCloudDialogHistory();
     }
 
     /// <summary>
@@ -832,6 +1502,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     public void SetActiveReadingId(string readingId)
     {
         activeReadingId = readingId;
+        SaveCloudDialogHistory();
     }
 
     /// <summary>
@@ -861,6 +1532,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         recentUserMessages.Clear();
         recentAssistantReplies.Clear();
         mMessageIdCounter = 0;
+        SaveCloudDialogHistory();
     }
 
     /// <summary>
@@ -890,6 +1562,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
                 var guardedOutput = ApplyOutputGuard(aiResponse);
                 StorePromptRecord(guardedOutput);
                 QueueMemorySummary(lastAssemblyResult?.promptRecord?.userInput, guardedOutput);
+                SaveCloudDialogHistory();
                 onSuccess?.Invoke(guardedOutput);
             },
             onError
@@ -939,9 +1612,11 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             (fullContent) =>
             {
                 var guardedOutput = ApplyOutputGuard(fullContent);
-                FinalizeStreamingMessage(streamingMessageIndex, guardedOutput);
+                string displayOutput = BuildVisibleReplyFromStructuredOutput(guardedOutput);
+                FinalizeStreamingMessage(streamingMessageIndex, displayOutput);
                 StorePromptRecord(guardedOutput);
-                QueueMemorySummary(lastAssemblyResult?.promptRecord?.userInput, guardedOutput);
+                QueueMemorySummary(lastAssemblyResult?.promptRecord?.userInput, displayOutput);
+                SaveCloudDialogHistory();
 
                 onComplete?.Invoke(guardedOutput);
             },
@@ -1047,7 +1722,10 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         if (messageIndex < 0 || messageIndex >= mChatMessageList.Count) return;
         var message = mChatMessageList[messageIndex];
         if (message.roleType == DialogRoleType.AI)
+        {
             message.options = options;
+            SaveCloudDialogHistory();
+        }
     }
 
     /// <summary>

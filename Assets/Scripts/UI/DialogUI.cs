@@ -9,6 +9,7 @@ using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 using SuperScrollView;
+using System.Collections;
 using System.Collections.Generic;
 using GamerFrameWork;
 using XFGameFrameWork;
@@ -42,8 +43,11 @@ public class DialogUI : WindowBase
     private TTSManager ttsManager;
     private ChatItem _currentTTSItem; // 当前正在播放语音的 ChatItem
     private Coroutine _ttsPlaybackCoroutine;
+    private Coroutine _cloudDialogLoadCoroutine;
     private readonly Queue<System.Action> _pendingAIRequests = new Queue<System.Action>();
     private bool _forceNextAIMessageAsThreeCardSpread;
+    private const float CLOUD_DIALOG_LOAD_RETRY_SECONDS = 8f;
+    private const float CLOUD_DIALOG_LOAD_RETRY_INTERVAL = 0.5f;
 
     #region 生命周期函数
     // 调用机制与 Mono Awake 一致
@@ -82,6 +86,7 @@ public class DialogUI : WindowBase
     public override void OnShow()
     {
         base.OnShow();
+        LoadCloudDialogState();
     }
     // 物体隐藏时执行
     public override void OnHide()
@@ -99,6 +104,69 @@ public class DialogUI : WindowBase
     #endregion
 
     #region 初始化
+
+    private void LoadCloudDialogState()
+    {
+        if (dialogSystem == null) return;
+        if (_cloudDialogLoadCoroutine != null) return;
+
+        if (uiComponent != null)
+            _cloudDialogLoadCoroutine = uiComponent.StartCoroutine(LoadCloudDialogStateRoutine());
+    }
+
+    private IEnumerator LoadCloudDialogStateRoutine()
+    {
+        bool memoryRequested = false;
+        bool historyCompleted = false;
+        bool historyRequestInFlight = false;
+        float elapsed = 0f;
+
+        while (elapsed <= CLOUD_DIALOG_LOAD_RETRY_SECONDS)
+        {
+            if (!memoryRequested && FirestoreManager.Instance != null && FirestoreManager.Instance.IsInitialized)
+            {
+                memoryRequested = true;
+                FirestoreManager.Instance.LoadMemorySource(source =>
+                {
+                    if (source != null)
+                        dialogSystem.SetMemorySource(source);
+                });
+            }
+
+            var dialogHistoryStore = DialogHistoryFirestore.Instance;
+            if (!historyCompleted && !historyRequestInFlight && dialogHistoryStore != null)
+            {
+                historyRequestInFlight = true;
+                bool attemptedCloud = dialogHistoryStore.IsReady;
+                dialogSystem.LoadCloudDialogHistoryOnce(loaded =>
+                {
+                    historyRequestInFlight = false;
+                    if (loaded)
+                    {
+                        historyCompleted = true;
+                        UpdateChatScrollView();
+                    }
+                    else if (attemptedCloud)
+                    {
+                        historyCompleted = true;
+                    }
+                });
+            }
+
+            if (dialogHistoryStore != null && dialogHistoryStore.IsReady && dialogSystem.GetMessageCount() > 0)
+            {
+                dialogSystem.FlushCloudDialogHistory();
+            }
+
+            if (memoryRequested && historyCompleted)
+                break;
+
+            elapsed += CLOUD_DIALOG_LOAD_RETRY_INTERVAL;
+            yield return new WaitForSeconds(CLOUD_DIALOG_LOAD_RETRY_INTERVAL);
+        }
+
+        _cloudDialogLoadCoroutine = null;
+    }
 
     /// <summary>
     /// 初始化 TTS 管理器
@@ -285,6 +353,7 @@ public class DialogUI : WindowBase
                     && divinationEngine.CurrentPhase == DivinationPhase.CardsLocked)
                 {
                     divinationEngine.CompleteDivination(fullContent);
+                    dialogSystem.ApplyDivinationReplyToActiveSpread(fullContent);
                 }
 
                 // ---- 检查是否需要展示 InteractionCard ----
@@ -368,6 +437,7 @@ public class DialogUI : WindowBase
             lastMsg.messageType = msgType;
             lastMsg.spreadKind = spreadKind;
             lastMsg.options = dialogSystem.GetCurrentDivinerOptions();
+            dialogSystem.CaptureDivinationSnapshot(lastMsg);
         }
     }
     /// <summary>
@@ -554,7 +624,9 @@ public class DialogUI : WindowBase
 
         if (mIsLoading)
         {
-            ToastManager.ShowToast("请等待AI回复完成。");
+            SendUserMessage(inputText);
+            uiComponent.questionInputField.text = "";
+            ToastManager.ShowToast("AI正在回复，已为你排队发送。");
             return;
         }
         Debug.Log($"发送信息：{inputText}");

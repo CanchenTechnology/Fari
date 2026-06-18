@@ -22,9 +22,16 @@ public class TarorSingleSpreadShuffleUIComponent:MonoBehaviour
 	public CardSlotItem CardSlotItem4CardSlotItem;
 	public CardSlotItem CardSlotItem5CardSlotItem;
 	public Text cardTitleText;
-	public Text cardDescriptionText;
 	public Text InstructionTextText;
 	public Button StartShuffleButton;
+
+	[Header("洗牌配置")]
+    public float shuffleCycleDuration = 0.08f;   // 每张牌快速切换的间隔
+    public int shuffleCycles = 3;                 // 洗牌动画循环次数
+    public float flipDuration = 0.4f;             // 单张翻牌持续时间
+    public float cardRevealGap = 0.25f;           // 两张牌之间揭示间隔
+    public Sprite cardBackSprite;                 // 卡牌背面图（可在 Inspector 覆盖）
+
 	public void InitComponent(WindowBase target)
 	{
 	    //组件事件绑定

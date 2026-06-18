@@ -37,12 +37,18 @@ public class FriendUI : WindowBase
 	{
 		base.OnShow();
 		InitPoolIfNeeded();
+		FriendDataManager.Instance.DataChanged -= HandleFriendDataChanged;
+		FriendDataManager.Instance.DataChanged += HandleFriendDataChanged;
 		RefreshAllViews();
+		FirestoreManager.Instance.LoadFriends(_ => RefreshAllViews());
+		FirestoreManager.Instance.LoadFriendRequests(_ => RefreshAllViews());
+		FirestoreManager.Instance.LoadVirtualFriends(_ => RefreshAllViews());
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
 	{
 		base.OnHide();
+		FriendDataManager.Instance.DataChanged -= HandleFriendDataChanged;
 		// 隐藏时回收所有对象到池中
 		ReleaseAllItems();
 	}
@@ -80,6 +86,14 @@ public class FriendUI : WindowBase
 		RefreshVirtualFriendView();
 		RefreshInviteView();
 		UpdateCountText();
+	}
+
+	private void HandleFriendDataChanged()
+	{
+		if (gameObject.activeInHierarchy)
+		{
+			RefreshAllViews();
+		}
 	}
 
 	/// <summary>

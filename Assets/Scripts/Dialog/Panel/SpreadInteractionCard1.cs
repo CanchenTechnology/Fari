@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using GamerFrameWork;
 using GamerFrameWork.UIFrameWork;
+using GamerFrameWork.OracleRuntime;
 using UnityEngine;
 using UnityEngine.UI;
 using XFGameFrameWork;
@@ -42,6 +43,7 @@ public class SpreadInteractionCard1 : MonoBehaviour
 
     // ========== 内部状态 ==========
     private SpreadDefinition _currentSpread;
+    private ChatMessageData _messageData;
     private List<(TarotCard card, bool upright)> _drawnCards;
     private bool _cardsDrawn;
     private Coroutine _revealCoroutine;
@@ -62,7 +64,7 @@ public class SpreadInteractionCard1 : MonoBehaviour
 
         // 操作按钮
         if (selectSpreadBtn != null)
-            selectSpreadBtn.onClick.AddListener(() => OnSelectSpreadClicked?.Invoke());
+            selectSpreadBtn.onClick.AddListener(OnSelectSpreadButtonClicked);
         if (continueAskBtn != null)
             continueAskBtn.onClick.AddListener(() => OnContinueAskClicked?.Invoke());
     }
@@ -88,9 +90,18 @@ public class SpreadInteractionCard1 : MonoBehaviour
     /// <param name="spreadDef">牌阵定义（如 single_mirror）</param>
     public void Setup(SpreadDefinition spreadDef)
     {
+        Setup(spreadDef, null);
+    }
+
+    /// <summary>
+    /// 初始化牌阵面板，并绑定聊天消息数据用于状态恢复。
+    /// </summary>
+    public void Setup(SpreadDefinition spreadDef, ChatMessageData messageData)
+    {
         ResetPanel();
 
         _currentSpread = spreadDef;
+        _messageData = messageData;
         if (_currentSpread == null) return;
 
         // 标题
@@ -126,6 +137,11 @@ public class SpreadInteractionCard1 : MonoBehaviour
         // 操作按钮初始隐藏
         SetActionButtonsVisible(false);
 
+        if (TryRestoreDrawnCardsFromMessage())
+        {
+            RenderDrawnCardsImmediate();
+        }
+
         Debug.Log($"[SpreadInteractionCard1] Setup 完成: {_currentSpread.label}");
     }
 
@@ -148,7 +164,11 @@ public class SpreadInteractionCard1 : MonoBehaviour
 
     private void OnDrawCardClicked()
     {
-        if (_cardsDrawn) return;
+        if (_cardsDrawn)
+        {
+            OpenDivinationDetail();
+            return;
+        }
 
         drawCardBtn.interactable = false;
         if (drawCardBtnText != null)
@@ -156,6 +176,8 @@ public class SpreadInteractionCard1 : MonoBehaviour
 
         // 设置桥接数据，打开洗牌界面
         SpreadShuffleBridge.PendingSpread = _currentSpread;
+        SpreadShuffleBridge.PendingMessageData = _messageData;
+        SpreadShuffleBridge.ShuffleCompleted -= OnShuffleCompleted;
         SpreadShuffleBridge.ShuffleCompleted += OnShuffleCompleted;
 
         UIModule.Instance.PopUpWindow<TarorSingleSpreadShuffleUI>();
@@ -168,9 +190,17 @@ public class SpreadInteractionCard1 : MonoBehaviour
     {
         SpreadShuffleBridge.ShuffleCompleted -= OnShuffleCompleted;
 
-        if (drawnCards == null || drawnCards.Count == 0) return;
+        if (drawnCards == null || drawnCards.Count == 0)
+        {
+            if (drawCardBtn != null)
+                drawCardBtn.interactable = true;
+            if (drawCardBtnText != null)
+                drawCardBtnText.text = "开始抽牌";
+            return;
+        }
 
         _drawnCards = drawnCards;
+        SaveDrawnCardsToMessage();
 
         // 翻牌揭示（洗牌界面关闭后，这里播放揭示动画）
         _revealCoroutine = StartCoroutine(RevealCardRoutine());
@@ -191,9 +221,8 @@ public class SpreadInteractionCard1 : MonoBehaviour
         // 完成
         _cardsDrawn = true;
 
-        if (drawCardBtn != null)
-            drawCardBtn.gameObject.SetActive(false);
-
+        SyncToDivinationEngine();
+        ShowDetailButton();
         SetActionButtonsVisible(true);
 
         Debug.Log($"[SpreadInteractionCard1] 抽牌完成: "
@@ -248,9 +277,119 @@ public class SpreadInteractionCard1 : MonoBehaviour
     private void SetActionButtonsVisible(bool visible)
     {
         if (selectSpreadBtn != null)
+        {
             selectSpreadBtn.gameObject.SetActive(visible);
+            SetButtonText(selectSpreadBtn, _cardsDrawn ? "查看占卜详情" : "选择牌阵");
+        }
         if (continueAskBtn != null)
             continueAskBtn.gameObject.SetActive(visible);
+    }
+
+    private bool TryRestoreDrawnCardsFromMessage()
+    {
+        if (_messageData == null || !_messageData.spreadCardsDrawn)
+            return false;
+
+        if (_messageData.spreadDrawnCards == null || _messageData.spreadDrawnCards.Count == 0)
+            return false;
+
+        _drawnCards = new List<(TarotCard card, bool upright)>();
+        foreach (var drawData in _messageData.spreadDrawnCards)
+        {
+            var card = TarotDeck.GetById(drawData.cardId);
+            if (card != null)
+                _drawnCards.Add((card, drawData.upright));
+        }
+
+        _cardsDrawn = _drawnCards.Count >= 1;
+        return _cardsDrawn;
+    }
+
+    private void SaveDrawnCardsToMessage()
+    {
+        if (_messageData == null || _drawnCards == null) return;
+
+        DialogSystem.Instance?.CaptureDivinationSnapshot(_messageData);
+        _messageData.spreadCardsDrawn = true;
+        _messageData.spreadDrawnCards = new List<TarotDrawData>();
+        foreach (var (card, upright) in _drawnCards)
+        {
+            if (card == null) continue;
+            _messageData.spreadDrawnCards.Add(new TarotDrawData
+            {
+                cardId = card.cardId,
+                upright = upright
+            });
+        }
+        DialogSystem.Instance?.RecordSpreadDrawResult(_messageData);
+    }
+
+    private void RenderDrawnCardsImmediate()
+    {
+        if (_drawnCards == null || _drawnCards.Count < 1) return;
+
+        SetCardSlotFace(cardSlotItem, _drawnCards[0]);
+        ShowDetailButton();
+        SetActionButtonsVisible(true);
+    }
+
+    private void SetCardSlotFace(CardSlotItem slot, (TarotCard card, bool upright) draw)
+    {
+        if (slot == null) return;
+
+        if (slot.cardImage != null)
+        {
+            slot.cardImage.sprite = LoadCardSprite(draw.card.cardId);
+            slot.cardImage.transform.localScale = Vector3.one;
+            slot.cardImage.transform.localRotation = draw.upright
+                ? Quaternion.identity
+                : Quaternion.Euler(0, 0, 180);
+        }
+
+        if (slot.cardTag != null)
+            slot.cardTag.text = $"{draw.card.nameZh}（{(draw.upright ? "正" : "逆")}）";
+    }
+
+    private void SetButtonText(Button button, string text)
+    {
+        var label = button != null ? button.GetComponentInChildren<Text>(true) : null;
+        if (label != null)
+            label.text = text;
+    }
+
+    private void OnSelectSpreadButtonClicked()
+    {
+        if (!_cardsDrawn)
+        {
+            OnSelectSpreadClicked?.Invoke();
+            return;
+        }
+
+        OpenDivinationDetail();
+    }
+
+    private void ShowDetailButton()
+    {
+        if (drawCardBtn == null) return;
+
+        drawCardBtn.gameObject.SetActive(true);
+        drawCardBtn.interactable = true;
+        SetButtonText(drawCardBtn, "查看占卜详情");
+        if (drawCardBtnText != null)
+            drawCardBtnText.text = "查看占卜详情";
+    }
+
+    private void OpenDivinationDetail()
+    {
+        DivinationInfoUI.SelectedRecord = DivinationRecordBuilder.FromChatMessage(_messageData, _currentSpread);
+        if (DivinationInfoUI.SelectedRecord == null)
+        {
+            SyncToDivinationEngine();
+            DivinationInfoUI.SelectedRecord = DivinationRecordBuilder.FromSession();
+        }
+
+        DialogSystem.Instance?.ActivateReadingFromRecord(DivinationInfoUI.SelectedRecord, DivinationPhase.Completed);
+        UIModule.Instance.PopUpWindow<DivinationInfoUI>();
     }
 
     private void SyncToDivinationEngine()
@@ -260,12 +399,11 @@ public class SpreadInteractionCard1 : MonoBehaviour
         var session = DivinationEngine.Instance.CurrentSession;
         if (session == null) return;
 
-        // 如果已经有 lockedCards，跳过
-        if (session.lockedCards != null && session.lockedCards.Count > 0) return;
+        if (_drawnCards == null || _drawnCards.Count == 0) return;
 
         // 构建 LockedCard 列表
         var spreadKind = _currentSpread?.kind ?? "single_mirror";
-        var lockedList = new List<GamerFrameWork.OracleRuntime.LockedCard>();
+        var lockedList = new List<LockedCard>();
 
         for (int i = 0; i < _drawnCards.Count; i++)
         {
@@ -277,7 +415,7 @@ public class SpreadInteractionCard1 : MonoBehaviour
                 ? _currentSpread.positions[i].label
                 : $"第{i + 1}张";
 
-            lockedList.Add(new GamerFrameWork.OracleRuntime.LockedCard
+            lockedList.Add(new LockedCard
             {
                 positionKey = posKey,
                 position = posLabel,
@@ -292,7 +430,7 @@ public class SpreadInteractionCard1 : MonoBehaviour
         session.phase = DivinationPhase.CardsLocked;
 
         // 创建 ReadingLock
-        session.readingLock = new GamerFrameWork.OracleRuntime.ReadingLock
+        session.readingLock = new ReadingLock
         {
             readingId = session.readingId,
             readingType = spreadKind,
@@ -334,6 +472,7 @@ public class SpreadInteractionCard1 : MonoBehaviour
         }
 
         _currentSpread = null;
+        _messageData = null;
         _drawnCards = null;
         _cardsDrawn = false;
 

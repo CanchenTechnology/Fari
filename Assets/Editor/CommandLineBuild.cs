@@ -3,10 +3,18 @@ using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using YooAsset;
+using YooAsset.Editor;
+using UnityBuildResult = UnityEditor.Build.Reporting.BuildResult;
+using YooBuildResult = YooAsset.Editor.BuildResult;
 
 public static class CommandLineBuild
 {
+    private const string DefaultYooPackageName = "DefaultPackage";
+    private const string DefaultYooPipelineName = nameof(EBuildPipeline.ScriptableBuildPipeline);
+
     public static void BuildIOSProject()
     {
         var outputPath = GetArg("-outputPath", "Builds/iOS");
@@ -26,7 +34,7 @@ public static class CommandLineBuild
         var summary = report.summary;
         Debug.Log($"iOS build result: {summary.result}, output: {outputPath}, size: {summary.totalSize} bytes");
 
-        if (summary.result != BuildResult.Succeeded)
+        if (summary.result != UnityBuildResult.Succeeded)
         {
             throw new InvalidOperationException($"iOS build failed: {summary.result}");
         }
@@ -39,25 +47,234 @@ public static class CommandLineBuild
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
 
         EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Android, BuildTarget.Android);
-        EditorUserBuildSettings.buildAppBundle = false;
+        var oldBuildAppBundle = EditorUserBuildSettings.buildAppBundle;
+        var oldExportAndroidProject = EditorUserBuildSettings.exportAsGoogleAndroidProject;
 
-        ApplySigningPasswords();
-
-        var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+        try
         {
-            scenes = GetEnabledScenes(),
-            locationPathName = outputPath,
-            target = BuildTarget.Android,
-            options = BuildOptions.None
-        });
+            EditorUserBuildSettings.buildAppBundle = false;
+            EditorUserBuildSettings.exportAsGoogleAndroidProject = false;
 
-        var summary = report.summary;
-        Debug.Log($"Android build result: {summary.result}, output: {outputPath}, size: {summary.totalSize} bytes");
+            SetGameStartPlayMode(EPlayMode.OfflinePlayMode);
+            BuildYooAssetPackage(BuildTarget.Android);
+            GenerateHybridClrFiles();
+            ApplySigningPasswords();
+            ClearBuildOutputPath(outputPath);
 
-        if (summary.result != BuildResult.Succeeded)
-        {
-            throw new InvalidOperationException($"Android build failed: {summary.result}");
+            var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+            {
+                scenes = GetEnabledScenes(),
+                locationPathName = outputPath,
+                target = BuildTarget.Android,
+                options = BuildOptions.None
+            });
+
+            var summary = report.summary;
+            Debug.Log($"Android build result: {summary.result}, output: {outputPath}, size: {summary.totalSize} bytes");
+
+            if (summary.result != UnityBuildResult.Succeeded)
+            {
+                throw new InvalidOperationException($"Android build failed: {summary.result}");
+            }
         }
+        finally
+        {
+            EditorUserBuildSettings.buildAppBundle = oldBuildAppBundle;
+            EditorUserBuildSettings.exportAsGoogleAndroidProject = oldExportAndroidProject;
+        }
+    }
+
+    private static void ClearBuildOutputPath(string outputPath)
+    {
+        if (Directory.Exists(outputPath))
+        {
+            Directory.Delete(outputPath, true);
+        }
+        else if (File.Exists(outputPath))
+        {
+            File.Delete(outputPath);
+        }
+    }
+
+    private static void BuildYooAssetPackage(BuildTarget buildTarget)
+    {
+        var packageName = GetArg("-yooPackage", DefaultYooPackageName);
+        var pipelineName = GetArg("-yooPipeline", AssetBundleBuilderSetting.GetPackageBuildPipeline(packageName));
+        if (string.IsNullOrEmpty(pipelineName))
+        {
+            pipelineName = DefaultYooPipelineName;
+        }
+
+        var packageVersion = GetArg("-yooPackageVersion", GetDefaultYooPackageVersion());
+        var copyOption = GetYooBuildinCopyOption(packageName, pipelineName);
+        var buildParameters = CreateYooBuildParameters(packageName, pipelineName, packageVersion, buildTarget, copyOption);
+        var pipeline = CreateYooBuildPipeline(pipelineName);
+
+        Debug.Log($"YooAsset build start. package={packageName}, pipeline={pipelineName}, version={packageVersion}, copyOption={copyOption}");
+        YooBuildResult result = pipeline.Run(buildParameters, true);
+        if (!result.Success)
+        {
+            throw new InvalidOperationException($"YooAsset build failed. task={result.FailedTask}, error={result.ErrorInfo}");
+        }
+
+        Debug.Log($"YooAsset build succeeded. output={result.OutputPackageDirectory}");
+        AssetDatabase.Refresh();
+    }
+
+    private static BuildParameters CreateYooBuildParameters(
+        string packageName,
+        string pipelineName,
+        string packageVersion,
+        BuildTarget buildTarget,
+        EBuildinFileCopyOption copyOption)
+    {
+        var fileNameStyle = AssetBundleBuilderSetting.GetPackageFileNameStyle(packageName, pipelineName);
+        var buildinFileCopyParams = AssetBundleBuilderSetting.GetPackageBuildinFileCopyParams(packageName, pipelineName);
+        var clearBuildCache = AssetBundleBuilderSetting.GetPackageClearBuildCache(packageName, pipelineName);
+        var useAssetDependencyDB = AssetBundleBuilderSetting.GetPackageUseAssetDependencyDB(packageName, pipelineName);
+
+        if (pipelineName == nameof(EBuildPipeline.RawFileBuildPipeline))
+        {
+            return ApplyCommonYooParameters(new RawFileBuildParameters(), packageName, pipelineName, packageVersion,
+                buildTarget, (int)EBuildBundleType.RawBundle, fileNameStyle, copyOption, buildinFileCopyParams,
+                clearBuildCache, useAssetDependencyDB);
+        }
+
+        var compressOption = AssetBundleBuilderSetting.GetPackageCompressOption(packageName, pipelineName);
+        if (pipelineName == nameof(EBuildPipeline.BuiltinBuildPipeline))
+        {
+            var parameters = ApplyCommonYooParameters(new BuiltinBuildParameters(), packageName, pipelineName,
+                packageVersion, buildTarget, (int)EBuildBundleType.AssetBundle, fileNameStyle, copyOption,
+                buildinFileCopyParams, clearBuildCache, useAssetDependencyDB);
+            parameters.CompressOption = compressOption;
+            return parameters;
+        }
+
+        var scriptableParameters = ApplyCommonYooParameters(new ScriptableBuildParameters(), packageName, pipelineName,
+            packageVersion, buildTarget, (int)EBuildBundleType.AssetBundle, fileNameStyle, copyOption,
+            buildinFileCopyParams, clearBuildCache, useAssetDependencyDB);
+        scriptableParameters.CompressOption = compressOption;
+        scriptableParameters.BuiltinShadersBundleName = GetBuiltinShaderBundleName(packageName);
+        return scriptableParameters;
+    }
+
+    private static T ApplyCommonYooParameters<T>(
+        T parameters,
+        string packageName,
+        string pipelineName,
+        string packageVersion,
+        BuildTarget buildTarget,
+        int buildBundleType,
+        EFileNameStyle fileNameStyle,
+        EBuildinFileCopyOption copyOption,
+        string buildinFileCopyParams,
+        bool clearBuildCache,
+        bool useAssetDependencyDB)
+        where T : BuildParameters
+    {
+        parameters.BuildOutputRoot = AssetBundleBuilderHelper.GetDefaultBuildOutputRoot();
+        parameters.BuildinFileRoot = AssetBundleBuilderHelper.GetStreamingAssetsRoot();
+        parameters.BuildPipeline = pipelineName;
+        parameters.BuildBundleType = buildBundleType;
+        parameters.BuildTarget = buildTarget;
+        parameters.PackageName = packageName;
+        parameters.PackageVersion = packageVersion;
+        parameters.EnableSharePackRule = true;
+        parameters.VerifyBuildingResult = true;
+        parameters.FileNameStyle = fileNameStyle;
+        parameters.BuildinFileCopyOption = copyOption;
+        parameters.BuildinFileCopyParams = buildinFileCopyParams;
+        parameters.ClearBuildCacheFiles = clearBuildCache;
+        parameters.UseAssetDependencyDB = useAssetDependencyDB;
+        parameters.EncryptionServices = CreateYooService<IEncryptionServices>(
+            AssetBundleBuilderSetting.GetPackageEncyptionServicesClassName(packageName, pipelineName));
+        parameters.ManifestProcessServices = CreateYooService<IManifestProcessServices>(
+            AssetBundleBuilderSetting.GetPackageManifestProcessServicesClassName(packageName, pipelineName));
+        parameters.ManifestRestoreServices = CreateYooService<IManifestRestoreServices>(
+            AssetBundleBuilderSetting.GetPackageManifestRestoreServicesClassName(packageName, pipelineName));
+        return parameters;
+    }
+
+    private static IBuildPipeline CreateYooBuildPipeline(string pipelineName)
+    {
+        if (pipelineName == nameof(EBuildPipeline.RawFileBuildPipeline))
+        {
+            return new RawFileBuildPipeline();
+        }
+
+        if (pipelineName == nameof(EBuildPipeline.BuiltinBuildPipeline))
+        {
+            return new BuiltinBuildPipeline();
+        }
+
+        return new ScriptableBuildPipeline();
+    }
+
+    private static EBuildinFileCopyOption GetYooBuildinCopyOption(string packageName, string pipelineName)
+    {
+        var argValue = GetArg("-yooCopyOption", null);
+        if (!string.IsNullOrEmpty(argValue) && Enum.TryParse(argValue, true, out EBuildinFileCopyOption argOption))
+        {
+            return argOption;
+        }
+
+        var option = AssetBundleBuilderSetting.GetPackageBuildinFileCopyOption(packageName, pipelineName);
+        return option == EBuildinFileCopyOption.None ? EBuildinFileCopyOption.ClearAndCopyAll : option;
+    }
+
+    private static string GetBuiltinShaderBundleName(string packageName)
+    {
+        var uniqueBundleName = AssetBundleCollectorSettingData.Setting.UniqueBundleName;
+        var packRuleResult = DefaultPackRule.CreateShadersPackRuleResult();
+        return packRuleResult.GetBundleName(packageName, uniqueBundleName);
+    }
+
+    private static T CreateYooService<T>(string className) where T : class
+    {
+        var serviceType = EditorTools.GetAssignableTypes(typeof(T)).FirstOrDefault(type => type.FullName == className);
+        return serviceType == null ? null : Activator.CreateInstance(serviceType) as T;
+    }
+
+    private static string GetDefaultYooPackageVersion()
+    {
+        int totalMinutes = DateTime.Now.Hour * 60 + DateTime.Now.Minute;
+        return DateTime.Now.ToString("yyyy-MM-dd") + "-" + totalMinutes;
+    }
+
+    private static void SetGameStartPlayMode(EPlayMode playMode)
+    {
+        foreach (var scenePath in GetEnabledScenes())
+        {
+            var scene = EditorSceneManager.OpenScene(scenePath);
+            bool changed = false;
+
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                foreach (var gameStart in root.GetComponentsInChildren<GameStart>(true))
+                {
+                    if (gameStart.PlayMode == playMode)
+                    {
+                        continue;
+                    }
+
+                    gameStart.PlayMode = playMode;
+                    EditorUtility.SetDirty(gameStart);
+                    changed = true;
+                    Debug.Log($"Set {scenePath} GameStart.PlayMode to {playMode}");
+                }
+            }
+
+            if (changed)
+            {
+                EditorSceneManager.MarkSceneDirty(scene);
+                EditorSceneManager.SaveScene(scene);
+            }
+        }
+    }
+
+    private static void GenerateHybridClrFiles()
+    {
+        HybridCLR.Editor.Commands.PrebuildCommand.GenerateAll();
     }
 
     private static void ApplySigningPasswords()

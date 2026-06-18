@@ -27,6 +27,9 @@ public class DivinationRecordUI : WindowBase
 
 	/// <summary>是否正在删除中（防重复点击）</summary>
 	private bool _isDeleting = false;
+	private string _pendingDeleteReadingId;
+	private float _deleteConfirmDeadline;
+	private const float DELETE_CONFIRM_SECONDS = 8f;
 
 	[Header("详情页样式配置")]
 	public float cardItemHeight = 60f;             // 每张牌的显示高度
@@ -213,6 +216,10 @@ public class DivinationRecordUI : WindowBase
 			currentY += verdictHeight + 20f;
 		}
 
+		currentY = AddTextSection("综合判断", _currentRecord.judgeContent, textWidth, currentY);
+		currentY = AddTextSection("行动建议", _currentRecord.adviceContent, textWidth, currentY);
+		currentY = AddTextSection("继续追问", BuildTopicsText(_currentRecord.topics), textWidth, currentY);
+
 		// ===== 6. 更新 Content 总高度 =====
 		_contentRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, currentY + 100f);
 
@@ -298,6 +305,45 @@ public class DivinationRecordUI : WindowBase
 		return go;
 	}
 
+	private float AddTextSection(string title, string body, float textWidth, float currentY)
+	{
+		if (string.IsNullOrWhiteSpace(body)) return currentY;
+
+		GameObject sectionTitle = CreateTextElement(
+			title + "Title", _contentRect,
+			title,
+			fontSize: 14, fontStyle: FontStyle.Bold, color: new Color(0.75f, 0.55f, 0.9f, 1f),
+			width: textWidth, height: 22f,
+			yOffset: currentY, alignment: TextAnchor.MiddleLeft);
+		_dynamicElements.Add(sectionTitle);
+		currentY += 28f;
+
+		float sectionHeight = Mathf.Max(EstimateTextHeight(body, 16, textWidth - 32f), 70f);
+		GameObject sectionText = CreateTextElement(
+			title + "Text", _contentRect,
+			body,
+			fontSize: 16, color: bodyColor,
+			width: textWidth - 16f, height: sectionHeight,
+			yOffset: currentY, alignment: TextAnchor.UpperLeft, paddingX: 12f, paddingY: 8f,
+			bgColor: cardBgColor);
+		_dynamicElements.Add(sectionText);
+		currentY += sectionHeight + 20f;
+		return currentY;
+	}
+
+	private string BuildTopicsText(List<string> topics)
+	{
+		if (topics == null || topics.Count == 0) return string.Empty;
+
+		var lines = new List<string>();
+		for (int i = 0; i < topics.Count; i++)
+		{
+			if (string.IsNullOrWhiteSpace(topics[i])) continue;
+			lines.Add($"{i + 1}. {topics[i]}");
+		}
+		return string.Join("\n", lines);
+	}
+
 	#endregion
 
 	#region UI组件事件
@@ -351,10 +397,20 @@ public class DivinationRecordUI : WindowBase
 			firestore.SaveRecord(_currentRecord, success =>
 			{
 				if (success)
+				{
 					Debug.Log("[DivinationRecordUI] 已保存到日记");
+					ToastManager.ShowToast("已保存到占卜历史");
+				}
 				else
+				{
 					Debug.LogWarning("[DivinationRecordUI] 保存到日记失败");
+					ToastManager.ShowToast("保存失败，请稍后再试");
+				}
 			});
+		}
+		else
+		{
+			ToastManager.ShowToast("历史服务未就绪");
 		}
 	}
 
@@ -374,6 +430,7 @@ public class DivinationRecordUI : WindowBase
 		string shareText = BuildShareText();
 		GUIUtility.systemCopyBuffer = shareText;
 		Debug.Log("[DivinationRecordUI] Editor 模式：已复制分享文本到剪贴板");
+		ToastManager.ShowToast("分享内容已复制");
 #endif
 	}
 
@@ -385,8 +442,17 @@ public class DivinationRecordUI : WindowBase
 		_isDeleting = true;
 
 		string readingId = _currentRecord.readingId;
+		if (_pendingDeleteReadingId != readingId || Time.time > _deleteConfirmDeadline)
+		{
+			_isDeleting = false;
+			_pendingDeleteReadingId = readingId;
+			_deleteConfirmDeadline = Time.time + DELETE_CONFIRM_SECONDS;
+			ToastManager.ShowToast("再次点击删除这条占卜记录");
+			return;
+		}
 
-		// TODO: 后续可以添加确认弹窗
+		_pendingDeleteReadingId = null;
+
 		Debug.Log($"[DivinationRecordUI] 删除记录: {readingId}");
 
 		var firestore = DivinationRecordFirestore.Instance;
@@ -399,6 +465,7 @@ public class DivinationRecordUI : WindowBase
 				if (success)
 				{
 					Debug.Log($"[DivinationRecordUI] 已删除记录: {readingId}");
+					ToastManager.ShowToast("占卜记录已删除");
 					// 清除选中状态
 					HistoryUI.SelectedRecord = null;
 					// 返回上一页（HistoryUI 会刷新列表）
@@ -407,6 +474,7 @@ public class DivinationRecordUI : WindowBase
 				else
 				{
 					Debug.LogError($"[DivinationRecordUI] 删除失败: {readingId}");
+					ToastManager.ShowToast("删除失败，请稍后再试");
 				}
 			});
 		}
@@ -414,6 +482,7 @@ public class DivinationRecordUI : WindowBase
 		{
 			_isDeleting = false;
 			Debug.LogWarning("[DivinationRecordUI] Firestore 未就绪，无法删除");
+			ToastManager.ShowToast("历史服务未就绪");
 		}
 	}
 

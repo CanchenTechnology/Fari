@@ -81,19 +81,14 @@ public class HistoryUI : WindowBase
 	{
 		if (_isLoading) return;
 
-		// 优先从 Firestore 加载
 		var firestore = DivinationRecordFirestore.Instance;
-		if (firestore != null && firestore.IsReady)
+		if (firestore == null)
 		{
-			LoadFromFirestore();
+			var go = new GameObject("DivinationRecordFirestore");
+			firestore = go.AddComponent<DivinationRecordFirestore>();
 		}
-		else
-		{
-			// 离线：从本地缓存加载（TODO: 本地 SQLite/JSON 缓存）
-			Debug.Log("[HistoryUI] Firestore 未就绪，暂无本地缓存，列表为空");
-			ClearItems();
-			SetContentHeight(0);
-		}
+
+		LoadFromFirestore();
 	}
 
 	/// <summary>
@@ -116,6 +111,8 @@ public class HistoryUI : WindowBase
 			RenderList();
 
 			Debug.Log($"[HistoryUI] 渲染了 {records.Count} 条记录");
+			if (records.Count > 0 && !DivinationRecordFirestore.Instance.IsReady)
+				ToastManager.ShowToast("已显示本地历史缓存");
 		});
 	}
 
@@ -378,6 +375,7 @@ public class HistoryUI : WindowBase
 		else
 		{
 			Debug.Log("[HistoryUI] 没有可用记录");
+			ToastManager.ShowToast("暂无占卜记录");
 		}
 	}
 

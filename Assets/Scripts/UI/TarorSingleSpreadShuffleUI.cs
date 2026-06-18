@@ -29,14 +29,8 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     private Text _startShuffleButtonText;
     private int _latestRevealedIndex = -1;
     private int _cardInfoRequestVersion;
+    private bool _isCardInfoLoading;
     private DeepSeekAPI _deepSeekAPI;
-
-    [Header("洗牌配置")]
-    public float shuffleCycleDuration = 0.08f;   // 每张牌快速切换的间隔
-    public int shuffleCycles = 3;                 // 洗牌动画循环次数
-    public float flipDuration = 0.4f;             // 单张翻牌持续时间
-    public float cardRevealGap = 0.25f;           // 两张牌之间揭示间隔
-    public Sprite cardBackSprite;                 // 卡牌背面图（可在 Inspector 覆盖）
 
     // CardSlotItem 数组（懒加载）
     private CardSlotItem[] _slots;
@@ -61,6 +55,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         _nextDrawIndex = 0;
         _latestRevealedIndex = -1;
         _cardInfoRequestVersion++;
+        _isCardInfoLoading = false;
         _drawnCards = null;
 
         // 从桥梁读取牌阵数据
@@ -156,14 +151,8 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
         ClearCardInfoTexts(keepInstructionText: true);
 
-        // ---- 牌背图（优先从桥接的牌阵获取，否则使用本地 sprite 或默认） ----
-        Sprite backSprite = cardBackSprite;
-        if (backSprite == null && _spread != null)
-        {
-            backSprite = Resources.Load<Sprite>($"TarotCards/CardBack");
-        }
-
         // ---- 卡槽显示/隐藏 ----
+        Sprite backSprite = ResolveCardBackSprite();
         for (int i = 0; i < _slots.Length; i++)
         {
             var slot = _slots[i];
@@ -171,27 +160,14 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
             if (i < _cardCount)
             {
-                slot.gameObject.SetActive(true);
-
-                // 设置卡牌背面
-                if (backSprite != null)
-                    slot.cardImage.sprite = backSprite;
-
-                slot.cardImage.transform.localScale = Vector3.one;
-                slot.cardImage.transform.localRotation = Quaternion.identity;
-
-                // 设置槽位标签
-                if (_spread?.positions != null && i < _spread.positions.Count)
-                {
-                    slot.cardTag.text = _spread.positions[i].label;
-                }
-                else
-                {
-                    slot.cardTag.text = GetDefaultSlotLabel(i, _cardCount);
-                }
+                string label = _spread?.positions != null && i < _spread.positions.Count
+                    ? _spread.positions[i].label
+                    : GetDefaultSlotLabel(i, _cardCount);
+                ResetSlotToBack(slot, label, backSprite);
             }
             else
             {
+                ResetSlotToBack(slot, "", backSprite);
                 slot.gameObject.SetActive(false);
             }
         }
@@ -266,13 +242,23 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     /// </summary>
     public void OnBackButtonClick()
     {
-        Debug.Log("[TarorSingleSpreadShuffleUI] 用户取消洗牌");
-
-        // 如果还没洗牌就关闭，清理桥接
-        if (!_shuffleDone)
+        if (_isCardInfoLoading)
         {
-            SpreadShuffleBridge.NotifyComplete(null);
-            SpreadShuffleBridge.Clear();
+            ToastManager.ShowToast("请等这张牌解读完成后，再继续。");
+            return;
+        }
+
+        if (!_shuffleDone && !AreAllCardsRevealed())
+        {
+            ToastManager.ShowToast("请先抽完所有牌，再查看结果。");
+            Debug.Log("[TarorSingleSpreadShuffleUI] 未抽完牌，阻止退出");
+            return;
+        }
+
+        if (!_shuffleDone && AreAllCardsRevealed())
+        {
+            CompleteShuffle();
+            return;
         }
 
         UIModule.Instance.HideWindow<TarorSingleSpreadShuffleUI>();
@@ -285,6 +271,11 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     {
         if (_shuffleDone) return;
         if (_shuffleCoroutine != null) return;
+        if (_isCardInfoLoading)
+        {
+            ToastManager.ShowToast("请等这张牌解读完成后，再抽下一张。");
+            return;
+        }
 
         if (!_cardsReadyToDraw)
         {
@@ -307,6 +298,8 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
     private IEnumerator ShuffleAndPrepareDraws()
     {
+        ResetVisibleSlotsToBack();
+
         if (uiComponent.StartShuffleButton != null)
         {
             uiComponent.StartShuffleButton.interactable = false;
@@ -316,6 +309,8 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         yield return uiComponent.StartCoroutine(PlayShuffleAnimation());
 
         _drawnCards = TarotDeck.DrawMultiple(_cardCount);
+        // 牌一旦生成就先锁定到运行时上下文，避免 AI 在逐张翻牌期间被 OutputGuard 判定为引用未锁定卡牌。
+        SyncToDivinationEngine();
         _cardsReadyToDraw = true;
         _nextDrawIndex = 0;
         _shuffleCoroutine = null;
@@ -353,7 +348,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         _nextDrawIndex++;
         _shuffleCoroutine = null;
 
-        if (uiComponent.StartShuffleButton != null)
+        if (uiComponent.StartShuffleButton != null && !_isCardInfoLoading)
             uiComponent.StartShuffleButton.interactable = true;
 
         SetStartShuffleButtonText(_nextDrawIndex >= _cardCount
@@ -366,11 +361,14 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         _shuffleDone = true;
         SyncToDivinationEngine();
         SaveDrawnCardsToPendingMessage();
+        DivinationInfoUI.SelectedRecord = DivinationRecordBuilder.FromChatMessage(SpreadShuffleBridge.PendingMessageData, _spread)
+            ?? DivinationRecordBuilder.FromSession();
+        DialogSystem.Instance?.ActivateReadingFromRecord(DivinationInfoUI.SelectedRecord, DivinationPhase.CardsLocked);
         SpreadShuffleBridge.NotifyComplete(_drawnCards);
         SpreadShuffleBridge.PendingSpread = null;
         SpreadShuffleBridge.PendingMessageData = null;
         UIModule.Instance.HideWindow<TarorSingleSpreadShuffleUI>();
-
+        UIModule.Instance.PopUpWindow<DivinationInfoUI>();
         Debug.Log($"[TarorSingleSpreadShuffleUI] 洗牌完成: {_cardCount} 张牌已揭示");
     }
 
@@ -379,6 +377,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         var message = SpreadShuffleBridge.PendingMessageData;
         if (message == null || _drawnCards == null) return;
 
+        DialogSystem.Instance?.CaptureDivinationSnapshot(message);
         message.spreadCardsDrawn = true;
         message.spreadDrawnCards = new List<TarotDrawData>();
         foreach (var (card, upright) in _drawnCards)
@@ -390,6 +389,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
                 upright = upright
             });
         }
+        DialogSystem.Instance?.RecordSpreadDrawResult(message);
     }
 
     private void SetStartShuffleButtonText(string text)
@@ -412,23 +412,29 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         };
     }
 
+    private bool AreAllCardsRevealed()
+    {
+        return _drawnCards != null
+            && _drawnCards.Count >= _cardCount
+            && _nextDrawIndex >= _cardCount;
+    }
+
     private void ClearCardInfoTexts(bool keepInstructionText = false)
     {
         if (uiComponent.cardTitleText != null)
+        {
             uiComponent.cardTitleText.text = "";
+            uiComponent.cardTitleText.gameObject.SetActive(false);
+        }
 
-        var descriptionText = GetCardDescriptionText();
+        var descriptionText = uiComponent.InstructionTextText;
         if (descriptionText != null && (!keepInstructionText || descriptionText != uiComponent.InstructionTextText))
+        {
             descriptionText.text = "";
+            descriptionText.gameObject.SetActive(false);
+        }
     }
 
-    private Text GetCardDescriptionText()
-    {
-        if (uiComponent == null) return null;
-        return uiComponent.cardDescriptionText != null
-            ? uiComponent.cardDescriptionText
-            : uiComponent.InstructionTextText;
-    }
 
     private void SetRevealedCardInfo(int index, (TarotCard card, bool upright) draw)
     {
@@ -436,14 +442,21 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
         _latestRevealedIndex = index;
         int requestVersion = ++_cardInfoRequestVersion;
+        _isCardInfoLoading = true;
 
         if (uiComponent.cardTitleText != null)
+        {
+            uiComponent.cardTitleText.gameObject.SetActive(true);
             uiComponent.cardTitleText.text = draw.card.DisplayName(draw.upright);
+        }
 
         string fallback = BuildCardInfoDescription(draw.card, draw.upright, index);
-        var descriptionText = GetCardDescriptionText();
+        var descriptionText = uiComponent.InstructionTextText;
         if (descriptionText != null)
-            descriptionText.text = fallback;
+        {
+            descriptionText.gameObject.SetActive(true);
+            descriptionText.text = "正在解读这张牌...";
+        }
 
         RequestAiCardDescription(index, requestVersion, draw.card, draw.upright, fallback);
     }
@@ -454,7 +467,11 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
         if (_deepSeekAPI == null)
             _deepSeekAPI = DeepSeekAPI.ResolveFor(gameObject);
-        if (_deepSeekAPI == null) return;
+        if (_deepSeekAPI == null)
+        {
+            SetCardDescriptionIfCurrent(index, requestVersion, fallback);
+            return;
+        }
 
         var messages = BuildCardDescriptionMessages(card, upright, index);
         _deepSeekAPI.SendChatRequest(messages, response =>
@@ -463,13 +480,34 @@ public class TarorSingleSpreadShuffleUI : WindowBase
             if (_latestRevealedIndex != index || _cardInfoRequestVersion != requestVersion) return;
 
             string aiDescription = FirstNonEmpty(CleanAiCardDescription(response), fallback);
-            var descriptionText = GetCardDescriptionText();
-            if (descriptionText != null)
-                descriptionText.text = aiDescription;
+            SetCardDescriptionIfCurrent(index, requestVersion, aiDescription);
         }, error =>
         {
             Debug.LogWarning($"[TarorSingleSpreadShuffleUI] 卡牌描述 AI 生成失败，使用本地描述: {error}");
+            SetCardDescriptionIfCurrent(index, requestVersion, fallback);
         });
+    }
+
+    private void SetCardDescriptionIfCurrent(int index, int requestVersion, string text)
+    {
+        if (uiComponent == null) return;
+        if (_latestRevealedIndex != index || _cardInfoRequestVersion != requestVersion) return;
+
+        _isCardInfoLoading = false;
+
+        var descriptionText = uiComponent.InstructionTextText;
+        if (descriptionText == null)
+        {
+            if (uiComponent.StartShuffleButton != null && !_shuffleDone)
+                uiComponent.StartShuffleButton.interactable = true;
+            return;
+        }
+
+        descriptionText.gameObject.SetActive(true);
+        descriptionText.text = text;
+
+        if (uiComponent.StartShuffleButton != null && !_shuffleDone)
+            uiComponent.StartShuffleButton.interactable = true;
     }
 
     private List<DeepSeekAPI.Message> BuildCardDescriptionMessages(TarotCard card, bool upright, int index)
@@ -546,34 +584,71 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     /// </summary>
     private IEnumerator PlayShuffleAnimation()
     {
-        // 分别给每张槽位的卡牌做快速缩放震动
-        // 只对可见槽位洗牌
         var visibleSlots = new List<CardSlotItem>();
         for (int i = 0; i < _cardCount && i < _slots.Length; i++)
         {
-            if (_slots[i] != null)
+            if (_slots[i] != null && _slots[i].cardImage != null)
                 visibleSlots.Add(_slots[i]);
         }
 
-        for (int cycle = 0; cycle < shuffleCycles; cycle++)
+        if (visibleSlots.Count == 0)
+            yield break;
+
+        var originalPositions = new Vector2[visibleSlots.Count];
+        var originalRotations = new Quaternion[visibleSlots.Count];
+        for (int i = 0; i < visibleSlots.Count; i++)
         {
-            foreach (var slot in visibleSlots)
-            {
-                // 快速缩放脉冲
-                float elapsed = 0f;
-                while (elapsed < shuffleCycleDuration)
-                {
-                    elapsed += Time.deltaTime;
-                    float t = elapsed / shuffleCycleDuration;
-                    float scale = 1f + 0.05f * Mathf.Sin(t * Mathf.PI * 4f);
-                    slot.cardImage.transform.localScale = new Vector3(scale, scale, 1f);
-                    yield return null;
-                }
-                slot.cardImage.transform.localScale = Vector3.one;
-            }
+            var image = visibleSlots[i].cardImage;
+            image.enabled = true;
+            if (image.sprite == null)
+                image.color = new Color(1f, 1f, 1f, 0.45f);
+
+            var rect = image.transform as RectTransform;
+            originalPositions[i] = rect != null ? rect.anchoredPosition : Vector2.zero;
+            originalRotations[i] = image.transform.localRotation;
         }
 
-        // 完成时短暂停顿
+        float totalDuration = Mathf.Max(0.8f, uiComponent.shuffleCycleDuration * Mathf.Max(1, uiComponent.shuffleCycles) * Mathf.Max(1, visibleSlots.Count));
+        float elapsed = 0f;
+        while (elapsed < totalDuration)
+        {
+            elapsed += Time.deltaTime;
+            float normalized = Mathf.Clamp01(elapsed / totalDuration);
+            float fade = Mathf.Sin(normalized * Mathf.PI);
+
+            for (int i = 0; i < visibleSlots.Count; i++)
+            {
+                var image = visibleSlots[i].cardImage;
+                float wave = elapsed * 18f + i * 0.85f;
+                float scale = 1f + Mathf.Sin(wave) * 0.08f * fade;
+                float rotation = Mathf.Sin(wave * 0.75f) * 7f * fade;
+                float xOffset = Mathf.Sin(wave * 0.6f) * 12f * fade;
+                float yOffset = Mathf.Cos(wave * 0.8f) * 4f * fade;
+
+                image.transform.localScale = new Vector3(scale, scale, 1f);
+                image.transform.localRotation = originalRotations[i] * Quaternion.Euler(0f, 0f, rotation);
+
+                var rect = image.transform as RectTransform;
+                if (rect != null)
+                {
+                    rect.anchoredPosition = originalPositions[i] + new Vector2(xOffset, yOffset);
+                }
+            }
+
+            yield return null;
+        }
+
+        for (int i = 0; i < visibleSlots.Count; i++)
+        {
+            var image = visibleSlots[i].cardImage;
+            image.transform.localScale = Vector3.one;
+            image.transform.localRotation = originalRotations[i];
+
+            var rect = image.transform as RectTransform;
+            if (rect != null)
+                rect.anchoredPosition = originalPositions[i];
+        }
+
         yield return new WaitForSeconds(0.2f);
     }
 
@@ -585,7 +660,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         if (cardImage == null) yield break;
 
         Sprite frontSprite = LoadCardSprite(draw.card.cardId);
-        float halfDuration = flipDuration / 2f;
+        float halfDuration = uiComponent.flipDuration / 2f;
 
         // 阶段 1：缩小到 0（翻面）
         float elapsed = 0f;
@@ -599,7 +674,9 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         }
 
         // 切换图片
-        cardImage.sprite = frontSprite ?? cardBackSprite;
+        cardImage.enabled = true;
+        cardImage.color = Color.white;
+        cardImage.sprite = frontSprite ?? ResolveCardBackSprite();
 
         // 逆位旋转
         cardImage.transform.localRotation = draw.upright
@@ -633,13 +710,58 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         }
     }
 
+    private Sprite ResolveCardBackSprite()
+    {
+        if (uiComponent.cardBackSprite != null) return uiComponent.cardBackSprite;
+
+        uiComponent.cardBackSprite = Resources.Load<Sprite>("TarotCards/CardBack");
+        if (uiComponent.cardBackSprite != null) return uiComponent.cardBackSprite;
+
+        uiComponent.cardBackSprite = Resources.Load<Sprite>("CardBack");
+        return uiComponent.cardBackSprite;
+    }
+
+    private void ResetVisibleSlotsToBack()
+    {
+        Sprite backSprite = ResolveCardBackSprite();
+        for (int i = 0; i < _cardCount && i < _slots.Length; i++)
+        {
+            var slot = _slots[i];
+            if (slot == null) continue;
+
+            string label = _spread?.positions != null && i < _spread.positions.Count
+                ? _spread.positions[i].label
+                : GetDefaultSlotLabel(i, _cardCount);
+            ResetSlotToBack(slot, label, backSprite);
+        }
+    }
+
+    private void ResetSlotToBack(CardSlotItem slot, string label, Sprite backSprite)
+    {
+        if (slot == null) return;
+
+        slot.gameObject.SetActive(true);
+
+        if (slot.cardImage != null)
+        {
+            slot.cardImage.sprite = backSprite;
+            slot.cardImage.enabled = true;
+            slot.cardImage.color = backSprite != null ? Color.white : new Color(1f, 1f, 1f, 0.45f);
+            slot.cardImage.transform.localScale = Vector3.one;
+            slot.cardImage.transform.localRotation = Quaternion.identity;
+        }
+
+        if (slot.cardTag != null)
+            slot.cardTag.text = label;
+    }
+
     /// <summary>
     /// 加载卡牌正面图片
     /// </summary>
     private Sprite LoadCardSprite(string cardId)
     {
-        if (string.IsNullOrEmpty(cardId)) return cardBackSprite;
-        return TarotSpriteLoader.Load(cardId) ?? cardBackSprite;
+        if (string.IsNullOrEmpty(cardId)) return ResolveCardBackSprite();
+        return TarotSpriteLoader.Load(cardId) ?? ResolveCardBackSprite();
     }
 
     /// <summary>
@@ -651,9 +773,6 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
         var session = DivinationEngine.Instance.CurrentSession;
         if (session == null) return;
-
-        // 如果已经有 lockedCards，跳过
-        if (session.lockedCards != null && session.lockedCards.Count > 0) return;
 
         var spreadKind = _spread?.kind ?? "self_repair";
         var lockedList = new List<GamerFrameWork.OracleRuntime.LockedCard>();

@@ -133,11 +133,11 @@ public class ChatItem : MonoBehaviour
                 break;
             case MsgType.InteractionCard1:
                 interactionCard1.gameObject.SetActive(true);
-                SetSpreadInteractionCard1(data.spreadKind);
+                SetSpreadInteractionCard1(data);
                 break;
             case MsgType.InteractionCard5:
                 interactionCard5.gameObject.SetActive(true);
-                SetSpreadInteractionCard5(data.spreadKind);
+                SetSpreadInteractionCard5(data);
                 break;
             default:
                 break;
@@ -257,7 +257,7 @@ public class ChatItem : MonoBehaviour
 
         // 调整整个Item高度
         RectTransform tf = gameObject.GetComponent<RectTransform>();
-        float y = size.y;
+        float y = size.y+70;  //70 是新加的音频高度
 
         // 最小高度限制
         if (y < headImage.GetComponent<RectTransform>().sizeDelta.y)
@@ -469,14 +469,24 @@ public class ChatItem : MonoBehaviour
     /// </summary>
     public void SetSpreadInteractionCard1(string spreadKind)
     {
+        SetSpreadInteractionCard1(new ChatMessageData { spreadKind = spreadKind });
+    }
+
+    /// <summary>
+    /// 初始化单排牌阵（带消息数据）
+    /// </summary>
+    public void SetSpreadInteractionCard1(ChatMessageData data)
+    {
         if (interactionCard1 == null) return;
+
+        string spreadKind = data?.spreadKind;
 
         // 从 DivinationEngine 获取牌阵定义
         SpreadDefinition spreadDef = null;
         if (DivinationEngine.Instance != null)
             spreadDef = DivinationEngine.Instance.GetSpreadDefinition(spreadKind);
 
-        interactionCard1.Setup(spreadDef);
+        interactionCard1.Setup(spreadDef, data);
 
         // 绑定事件到 DialogUI
         var dialogUI = UIModule.Instance.GetWindow<DialogUI>();
@@ -496,14 +506,24 @@ public class ChatItem : MonoBehaviour
     /// </summary>
     public void SetSpreadInteractionCard5(string spreadKind)
     {
+        SetSpreadInteractionCard5(new ChatMessageData { spreadKind = spreadKind });
+    }
+
+    /// <summary>
+    /// 初始化五排牌阵（带消息数据）
+    /// </summary>
+    public void SetSpreadInteractionCard5(ChatMessageData data)
+    {
         if (interactionCard5 == null) return;
+
+        string spreadKind = data?.spreadKind;
 
         // 从 DivinationEngine 获取牌阵定义
         SpreadDefinition spreadDef = null;
         if (DivinationEngine.Instance != null)
             spreadDef = DivinationEngine.Instance.GetSpreadDefinition(spreadKind);
 
-        interactionCard5.Setup(spreadDef);
+        interactionCard5.Setup(spreadDef, data);
 
         // 绑定事件到 DialogUI
         var dialogUI = UIModule.Instance.GetWindow<DialogUI>();

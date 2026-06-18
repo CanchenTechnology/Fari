@@ -12,6 +12,7 @@ using GamerFrameWork.UIFrameWork;
 public class NotionUI : WindowBase
 {
 	public NotionUIComponent uiComponent;
+	private bool _isRefreshing;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -26,7 +27,7 @@ public class NotionUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
-		RefreshUI();
+		LoadCloudSettingsThenRefresh();
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -50,6 +51,7 @@ public class NotionUI : WindowBase
 		if (uiComponent == null) return;
 
 		var settings = NotificationSettingsManager.Instance;
+		_isRefreshing = true;
 
 		// 刷新各 Toggle 状态（避免触发事件循环）
 		if (uiComponent.DailyOracleToggle != null)
@@ -70,6 +72,50 @@ public class NotionUI : WindowBase
 		// 刷新提醒时间显示
 		if (uiComponent.TimeValueText != null)
 			uiComponent.TimeValueText.text = settings.ReminderTime;
+
+		if (uiComponent.DivinationDescText != null)
+			uiComponent.DivinationDescText.text = settings.DivinationReturnEnabled
+				? "占卜结果回访提醒已开启"
+				: "占卜结果回访提醒已关闭";
+
+		_isRefreshing = false;
+	}
+
+	private void LoadCloudSettingsThenRefresh()
+	{
+		var firestore = FirestoreManager.Instance;
+		if (firestore == null || !firestore.IsInitialized)
+		{
+			RefreshUI();
+			return;
+		}
+
+		firestore.LoadNotificationSettings(cloud =>
+		{
+			if (cloud != null)
+			{
+				NotificationSettingsManager.Instance.ApplySettings(
+					cloud.dailyOracleEnabled,
+					cloud.dialogueReplyEnabled,
+					cloud.divinationReturnEnabled,
+					cloud.friendInteractionEnabled,
+					cloud.activitySystemEnabled,
+					cloud.reminderTime);
+			}
+			RefreshUI();
+		});
+	}
+
+	private void SaveCloudSettings()
+	{
+		var firestore = FirestoreManager.Instance;
+		if (firestore == null || !firestore.IsInitialized) return;
+
+		firestore.SaveNotificationSettings(NotificationSettingsManager.Instance, success =>
+		{
+			if (!success)
+				Debug.LogWarning("[NotionUI] 通知设置云端同步失败");
+		});
 	}
 
 	#endregion
@@ -81,27 +127,38 @@ public class NotionUI : WindowBase
 	}
 	public void OnDailyOracleToggleChange(bool state, Toggle toggle)
 	{
+		if (_isRefreshing) return;
 		NotificationSettingsManager.Instance.SetDailyOracle(state);
+		SaveCloudSettings();
 		ToastManager.ShowToast("偏好设置已保存");
 	}
 	public void OnDialogueReplyToggleChange(bool state, Toggle toggle)
 	{
+		if (_isRefreshing) return;
 		NotificationSettingsManager.Instance.SetDialogueReply(state);
+		SaveCloudSettings();
 		ToastManager.ShowToast("偏好设置已保存");
 	}
 	public void OnDivinationReturnToggleChange(bool state, Toggle toggle)
 	{
+		if (_isRefreshing) return;
 		NotificationSettingsManager.Instance.SetDivinationReturn(state);
+		SaveCloudSettings();
+		RefreshUI();
 		ToastManager.ShowToast("偏好设置已保存");
 	}
 	public void OnFriendInteractionToggleChange(bool state, Toggle toggle)
 	{
+		if (_isRefreshing) return;
 		NotificationSettingsManager.Instance.SetFriendInteraction(state);
+		SaveCloudSettings();
 		ToastManager.ShowToast("偏好设置已保存");
 	}
 	public void OnActivitySystemToggleChange(bool state, Toggle toggle)
 	{
+		if (_isRefreshing) return;
 		NotificationSettingsManager.Instance.SetActivitySystem(state);
+		SaveCloudSettings();
 		ToastManager.ShowToast("偏好设置已保存");
 	}
 	public void OnTimeSettingButtonClick()
@@ -110,6 +167,7 @@ public class NotionUI : WindowBase
 		if (uiComponent.TimeValueText != null)
 			uiComponent.TimeValueText.text = newTime;
 
+		SaveCloudSettings();
 		ToastManager.ShowToast($"每日提醒时间设置为 {newTime}");
 		Debug.Log($"[NotionUI] 每日提醒时间切换为：{newTime}");
 	}
