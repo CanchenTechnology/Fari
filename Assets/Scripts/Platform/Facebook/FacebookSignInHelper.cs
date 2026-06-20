@@ -268,7 +268,7 @@ public class FacebookSignInHelper : MonoSingleton<FacebookSignInHelper>
         Debug.Log("[FacebookSignInHelper] Editor 模式：模拟 Facebook 登录");
         StartCoroutine(SimulateFacebookSignInCoroutine());
         return;
-#endif
+#else
 
         if (fbType == null)
         {
@@ -310,6 +310,7 @@ public class FacebookSignInHelper : MonoSingleton<FacebookSignInHelper>
         logInMethod.Invoke(null, new object[] { Permissions, callback });
 
         Debug.Log("[FacebookSignInHelper] 已发起 Facebook 登录请求，等待用户授权...");
+#endif
     }
 
     #endregion

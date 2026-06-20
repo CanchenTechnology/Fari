@@ -1135,11 +1135,11 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     [Serializable]
     private class StructuredDivinationReply
     {
-        public string displayReply;
-        public string shortVerdict;
-        public string judgeContent;
-        public string adviceContent;
-        public List<string> topics;
+        public string displayReply = "";
+        public string shortVerdict = "";
+        public string judgeContent = "";
+        public string adviceContent = "";
+        public List<string> topics = new List<string>();
     }
 
     private string BuildSpreadDrawHistorySummary(ChatMessageData data)

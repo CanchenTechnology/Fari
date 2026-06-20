@@ -349,103 +349,12 @@ public static class RelationshipDivinationOverlay
 {
     public static void StartForFriend(Transform anchor, FriendDataManager.FriendData friend)
     {
-        if (friend == null)
-        {
-            ToastManager.ShowToast("好友资料不完整");
-            return;
-        }
-
-        RelationshipDivinationFirestore service = RelationshipDivinationFirestore.Instance;
-        if (service == null)
-        {
-            ToastManager.ShowToast("关系占卜服务初始化中，请稍后再试");
-            return;
-        }
-
-        string friendName = string.IsNullOrWhiteSpace(friend.name) ? "好友" : friend.name.Trim();
-        string question = $"我和 {friendName} 的关系接下来会如何发展？";
-        ToastManager.ShowToast(friend.isVirtual ? "正在生成关系占卜" : $"正在邀请 {friendName} 进行关系占卜");
-        service.CreateInvite(friend, question, record =>
-        {
-            if (record == null) return;
-            Show(anchor, record, friend);
-        });
+        RelationshipDivinationFlow.ShowInviteConfirm(friend);
     }
 
     public static void Show(Transform anchor, RelationshipDivinationRecord record, FriendDataManager.FriendData friend = null)
     {
-        if (record == null) return;
-
-        Transform parent = ResolveOverlayParent(anchor);
-        GameObject overlay = CreateOverlay(parent);
-        RectTransform root = overlay.GetComponent<RectTransform>();
-
-        GameObject panel = CreatePanel(root);
-        VerticalLayoutGroup layout = panel.AddComponent<VerticalLayoutGroup>();
-        layout.padding = new RectOffset(28, 28, 26, 26);
-        layout.spacing = 14f;
-        layout.childControlWidth = true;
-        layout.childControlHeight = true;
-        layout.childForceExpandWidth = true;
-        layout.childForceExpandHeight = false;
-
-        string currentUid = GetCurrentUid();
-        string otherName = GetOtherName(record, currentUid);
-
-        Text title = CreateText(panel.transform, "双人关系占卜", 30, FontStyle.Bold, new Color(1f, 0.78f, 0.45f, 1f), 46f);
-        title.alignment = TextAnchor.MiddleCenter;
-        Text subtitle = CreateText(panel.transform, $"与 {otherName} 的三张关系牌", 20, FontStyle.Normal, new Color(0.86f, 0.82f, 0.92f, 1f), 34f);
-        subtitle.alignment = TextAnchor.MiddleCenter;
-
-        CreateText(panel.transform, record.GetStatusText(currentUid), 18, FontStyle.Normal, new Color(0.74f, 0.70f, 0.84f, 1f), 52f);
-        CreateText(panel.transform, "隐私提示：你的私牌只对你可见；对方私牌只对对方可见；共同牌在双方完成后共同揭示。", 16, FontStyle.Normal, new Color(0.62f, 0.56f, 0.72f, 1f), 52f);
-
-        CreateCardRow(panel.transform, record.InitiatorCard, record, currentUid);
-        CreateCardRow(panel.transform, record.SharedCard, record, currentUid);
-        CreateCardRow(panel.transform, record.ReceiverCard, record, currentUid);
-
-        if (record.CanCurrentUserReveal(currentUid))
-        {
-            Button revealButton = CreateButton(panel.transform, record.IsCurrentUserReceiver(currentUid) ? "加入并翻开我的牌" : "翻开我的牌", false);
-            revealButton.onClick.AddListener(() =>
-            {
-                RelationshipDivinationFirestore.Instance.RevealMyCard(record, updated =>
-                {
-                    UnityEngine.Object.Destroy(overlay);
-                    if (updated != null) Show(anchor, updated, friend);
-                });
-            });
-        }
-
-        if (record.IsCompleted || record.isLocalOnly)
-        {
-            Button dialogButton = CreateButton(panel.transform, "进入对话解读", false);
-            dialogButton.onClick.AddListener(() =>
-            {
-                UnityEngine.Object.Destroy(overlay);
-                OpenDialogWithContext(record, friend);
-            });
-        }
-
-        if (!record.isLocalOnly && !record.IsCompleted && !record.IsCancelled)
-        {
-            Button cancelButton = CreateButton(panel.transform, "取消邀请", true);
-            cancelButton.onClick.AddListener(() =>
-            {
-                RelationshipDivinationFirestore.Instance.CancelInvite(record, success =>
-                {
-                    ToastManager.ShowToast(success ? "已取消关系占卜邀请" : "取消失败，请稍后再试");
-                    UnityEngine.Object.Destroy(overlay);
-                });
-            });
-        }
-
-        Button closeButton = CreateButton(panel.transform, "关闭", false);
-        closeButton.onClick.AddListener(() => UnityEngine.Object.Destroy(overlay));
-
-        RectTransform panelRect = panel.GetComponent<RectTransform>();
-        panelRect.SetAsLastSibling();
-        LayoutRebuilder.ForceRebuildLayoutImmediate(panelRect);
+        RelationshipDivinationFlow.ShowRecord(record, friend);
     }
 
     private static void CreateCardRow(Transform parent, RelationshipDivinationCard card, RelationshipDivinationRecord record, string currentUid)

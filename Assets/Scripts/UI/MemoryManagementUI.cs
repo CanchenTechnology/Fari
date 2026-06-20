@@ -17,6 +17,14 @@ public class MemoryManagementUI : WindowBase
 	private readonly List<GameObject> _renderedItems = new List<GameObject>();
 	private RectTransform _contentRect;
 	private const string KEY_SHARE_ALL_MEMORY = "MemoryManagement_ShareAll";
+	private const float CLEAR_CONFIRM_SECONDS = 8f;
+	private Text _clearTitleText;
+	private Text _clearDescText;
+	private string _clearTitleDefault;
+	private string _clearDescDefault;
+	private bool _clearConfirmArmed;
+	private bool _isClearing;
+	private float _clearConfirmDeadline;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -29,11 +37,14 @@ public class MemoryManagementUI : WindowBase
 		_contentRect = uiComponent.MemoryScrollContainerScrollRect != null
 			? uiComponent.MemoryScrollContainerScrollRect.content
 			: null;
+		BindClearTexts();
 	}
 	// 物体显示时执行
 	public override void OnShow()
 	{
 		base.OnShow();
+		BindClearTexts();
+		ResetClearConfirmation();
 		if (uiComponent.ShareAllToggle != null)
 			uiComponent.ShareAllToggle.isOn = PlayerPrefs.GetInt(KEY_SHARE_ALL_MEMORY, 1) == 1;
 		LoadCloudMemoryThenRender();
@@ -41,6 +52,7 @@ public class MemoryManagementUI : WindowBase
 	// 物体隐藏时执行
 	public override void OnHide()
 	{
+		ResetClearConfirmation();
 		base.OnHide();
 	}
 	// 物体销毁时执行
@@ -257,6 +269,57 @@ public class MemoryManagementUI : WindowBase
 		_renderedItems.Clear();
 	}
 
+	private void BindClearTexts()
+	{
+		_clearTitleText = _clearTitleText != null ? _clearTitleText : FindTextByObjectName("ClearTitleText");
+		_clearDescText = _clearDescText != null ? _clearDescText : FindTextByObjectName("ClearDescText");
+
+		if (_clearTitleText != null && string.IsNullOrEmpty(_clearTitleDefault))
+			_clearTitleDefault = _clearTitleText.text;
+		if (_clearDescText != null && string.IsNullOrEmpty(_clearDescDefault))
+			_clearDescDefault = _clearDescText.text;
+	}
+
+	private Text FindTextByObjectName(string objectName)
+	{
+		if (string.IsNullOrEmpty(objectName))
+			return null;
+
+		Text[] texts = gameObject.GetComponentsInChildren<Text>(true);
+		foreach (Text text in texts)
+		{
+			if (text != null && text.gameObject.name == objectName)
+				return text;
+		}
+
+		return null;
+	}
+
+	private void ArmClearConfirmation()
+	{
+		_clearConfirmArmed = true;
+		_clearConfirmDeadline = Time.time + CLEAR_CONFIRM_SECONDS;
+		SetClearTexts("再次点击确认清除", "这会清空本地和云端 AI 记忆，8 秒内再次点击才会执行。");
+		ToastManager.ShowToast("再次点击清除全部 AI 记忆");
+	}
+
+	private void ResetClearConfirmation(bool restoreText = true)
+	{
+		_clearConfirmArmed = false;
+		_clearConfirmDeadline = 0f;
+		if (restoreText)
+			SetClearTexts(_clearTitleDefault, _clearDescDefault);
+	}
+
+	private void SetClearTexts(string title, string desc)
+	{
+		BindClearTexts();
+		if (_clearTitleText != null && !string.IsNullOrEmpty(title))
+			_clearTitleText.text = title;
+		if (_clearDescText != null && !string.IsNullOrEmpty(desc))
+			_clearDescText.text = desc;
+	}
+
 	#endregion
 
 	#region UI组件事件
@@ -271,6 +334,8 @@ public class MemoryManagementUI : WindowBase
 	}
 	public void OnSyncMemoryButtonClick()
 	{
+		ResetClearConfirmation();
+
 		var firestore = FirestoreManager.Instance;
 		var source = DialogSystem.Instance?.GetMemorySource();
 		if (firestore != null && firestore.IsInitialized)
@@ -289,18 +354,35 @@ public class MemoryManagementUI : WindowBase
 	}
 	public void OnClearAllButtonClick()
 	{
+		if (_isClearing)
+			return;
+
+		if (!_clearConfirmArmed || Time.time > _clearConfirmDeadline)
+		{
+			ArmClearConfirmation();
+			return;
+		}
+
+		_isClearing = true;
+		ResetClearConfirmation(false);
+		SetClearTexts("正在清除记忆", "正在清空本地和云端 AI 记忆，请稍候。");
+
 		DialogSystem.Instance?.SetMemorySource(new MemorySource());
 		var firestore = FirestoreManager.Instance;
 		if (firestore != null && firestore.IsInitialized)
 		{
 			firestore.DeleteMemorySource(success =>
 			{
+				_isClearing = false;
+				ResetClearConfirmation();
 				RenderMemoryList();
 				ToastManager.ShowToast(success ? "AI 记忆已清空" : "本地记忆已清空，云端删除失败");
 			});
 		}
 		else
 		{
+			_isClearing = false;
+			ResetClearConfirmation();
 			RenderMemoryList();
 			ToastManager.ShowToast("本地 AI 记忆已清空");
 		}

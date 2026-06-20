@@ -251,6 +251,78 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         return data;
     }
 
+    public bool EnsureDebugRealFriends()
+    {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        bool changed = false;
+        changed |= UpsertDebugRealFriend("test_real_friend_luna_001", "Luna 测试好友", "@luna.test", "真实好友测试账号 · 双人占卜流程", "好友");
+        changed |= UpsertDebugRealFriend("test_real_friend_orion_002", "Orion 测试好友", "@orion.test", "真实好友测试账号 · 邀请/等待测试", "同事");
+        changed |= UpsertDebugRealFriend("test_real_friend_mira_003", "Mira 测试好友", "@mira.test", "真实好友测试账号 · 结果页测试", "朋友");
+
+        if (changed)
+            SaveAndNotify();
+        return changed;
+#else
+        return false;
+#endif
+    }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+    private bool UpsertDebugRealFriend(string firebaseUid, string name, string handle, string info, string relationship)
+    {
+        FriendData existing = FindRealFriendByFirebaseUid(firebaseUid);
+        if (existing == null)
+            existing = FindRealFriendByHandleOrName(handle, name);
+
+        if (existing == null)
+        {
+            realFriendList.Add(new FriendData
+            {
+                id = nextId++,
+                firebaseUid = firebaseUid,
+                virtualFriendId = string.Empty,
+                name = name,
+                handle = handle,
+                info = info,
+                relationship = relationship,
+                birthday = string.Empty,
+                birthTime = string.Empty,
+                city = string.Empty,
+                notes = string.Empty,
+                source = "本地测试数据",
+                photoUrl = string.Empty,
+                avatarImagePath = string.Empty,
+                avatarStoragePath = string.Empty,
+                isVirtual = false
+            });
+            return true;
+        }
+
+        bool changed = false;
+        changed |= SetIfDifferent(ref existing.firebaseUid, firebaseUid);
+        changed |= SetIfDifferent(ref existing.virtualFriendId, string.Empty);
+        changed |= SetIfDifferent(ref existing.name, name);
+        changed |= SetIfDifferent(ref existing.handle, handle);
+        changed |= SetIfDifferent(ref existing.info, info);
+        changed |= SetIfDifferent(ref existing.relationship, relationship);
+        changed |= SetIfDifferent(ref existing.source, "本地测试数据");
+        if (existing.isVirtual)
+        {
+            existing.isVirtual = false;
+            changed = true;
+        }
+        return changed;
+    }
+
+    private static bool SetIfDifferent(ref string target, string value)
+    {
+        value ??= string.Empty;
+        if (target == value) return false;
+        target = value;
+        return true;
+    }
+#endif
+
     /// <summary>
     /// 添加虚拟好友
     /// </summary>

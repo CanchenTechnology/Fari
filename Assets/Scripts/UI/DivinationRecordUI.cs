@@ -103,7 +103,17 @@ public class DivinationRecordUI : WindowBase
 	private void TryLoadLatest()
 	{
 		var firestore = DivinationRecordFirestore.Instance;
-		if (firestore == null || !firestore.IsReady) return;
+		if (firestore == null)
+		{
+			var go = new GameObject("DivinationRecordFirestore");
+			firestore = go.AddComponent<DivinationRecordFirestore>();
+		}
+
+		if (firestore == null)
+		{
+			RenderEmptyState("历史服务暂不可用");
+			return;
+		}
 
 		firestore.LoadAllRecords(records =>
 		{
@@ -111,7 +121,10 @@ public class DivinationRecordUI : WindowBase
 			{
 				_currentRecord = records[0];
 				RenderRecord();
+				return;
 			}
+
+			RenderEmptyState("暂无占卜记录");
 		});
 	}
 
@@ -224,6 +237,42 @@ public class DivinationRecordUI : WindowBase
 		_contentRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, currentY + 100f);
 
 		// 重置滚动到顶部
+		if (uiComponent.RecordScrollContainerScrollRect != null)
+			uiComponent.RecordScrollContainerScrollRect.verticalNormalizedPosition = 1f;
+	}
+
+	private void RenderEmptyState(string message)
+	{
+		if (_contentRect == null)
+		{
+			ToastManager.ShowToast(message);
+			return;
+		}
+
+		ClearDynamicElements();
+		float textWidth = _contentRect.rect.width - 40f;
+		if (textWidth <= 0f)
+			textWidth = 520f;
+
+		GameObject title = CreateTextElement(
+			"EmptyTitle", _contentRect,
+			"占卜记录",
+			fontSize: 24, fontStyle: FontStyle.Bold, color: titleColor,
+			width: textWidth, height: 36f,
+			yOffset: 24f, alignment: TextAnchor.MiddleCenter);
+		_dynamicElements.Add(title);
+
+		GameObject body = CreateTextElement(
+			"EmptyBody", _contentRect,
+			string.IsNullOrWhiteSpace(message) ? "暂无可展示的占卜记录。" : message,
+			fontSize: 16, color: bodyColor,
+			width: textWidth, height: 80f,
+			yOffset: 76f, alignment: TextAnchor.MiddleCenter,
+			paddingX: 16f, paddingY: 8f,
+			bgColor: cardBgColor);
+		_dynamicElements.Add(body);
+
+		_contentRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 220f);
 		if (uiComponent.RecordScrollContainerScrollRect != null)
 			uiComponent.RecordScrollContainerScrollRect.verticalNormalizedPosition = 1f;
 	}
@@ -392,7 +441,13 @@ public class DivinationRecordUI : WindowBase
 
 		// 将记录重新保存到 Firestore（确保云端有最新数据）
 		var firestore = DivinationRecordFirestore.Instance;
-		if (firestore != null && firestore.IsReady)
+		if (firestore == null)
+		{
+			var go = new GameObject("DivinationRecordFirestore");
+			firestore = go.AddComponent<DivinationRecordFirestore>();
+		}
+
+		if (firestore != null)
 		{
 			firestore.SaveRecord(_currentRecord, success =>
 			{
@@ -403,8 +458,8 @@ public class DivinationRecordUI : WindowBase
 				}
 				else
 				{
-					Debug.LogWarning("[DivinationRecordUI] 保存到日记失败");
-					ToastManager.ShowToast("保存失败，请稍后再试");
+					Debug.LogWarning("[DivinationRecordUI] 云端保存失败，已保留本地历史缓存");
+					ToastManager.ShowToast("已保存到本地历史缓存");
 				}
 			});
 		}
@@ -456,16 +511,23 @@ public class DivinationRecordUI : WindowBase
 		Debug.Log($"[DivinationRecordUI] 删除记录: {readingId}");
 
 		var firestore = DivinationRecordFirestore.Instance;
-		if (firestore != null && firestore.IsReady)
+		if (firestore == null)
 		{
+			var go = new GameObject("DivinationRecordFirestore");
+			firestore = go.AddComponent<DivinationRecordFirestore>();
+		}
+
+		if (firestore != null)
+		{
+			bool canDeleteCloud = firestore.IsReady && UserDataManager.Instance != null && !string.IsNullOrEmpty(UserDataManager.Instance.FirebaseUid);
 			firestore.DeleteRecord(readingId, success =>
 			{
 				_isDeleting = false;
 
-				if (success)
+				if (success || !canDeleteCloud)
 				{
 					Debug.Log($"[DivinationRecordUI] 已删除记录: {readingId}");
-					ToastManager.ShowToast("占卜记录已删除");
+					ToastManager.ShowToast(success ? "占卜记录已删除" : "已从本地历史缓存删除");
 					// 清除选中状态
 					HistoryUI.SelectedRecord = null;
 					// 返回上一页（HistoryUI 会刷新列表）

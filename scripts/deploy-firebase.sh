@@ -56,6 +56,7 @@ build_default_targets() {
   DEPLOY_TARGETS=(
     "firestore:rules"
     "firestore:indexes"
+    "storage"
     "functions:membershipStatus"
     "functions:readinessStatus"
     "functions:publicConfig"
@@ -63,8 +64,13 @@ build_default_targets() {
     "functions:adminPublicConfigUpdate"
     "functions:adminFeedbackList"
     "functions:adminFeedbackUpdate"
+    "functions:deleteMyAccountData"
   )
   SKIPPED_TARGETS=()
+
+  if [[ "${MOONLY_DEPLOY_HOSTING:-0}" == "1" ]]; then
+    DEPLOY_TARGETS+=("hosting")
+  fi
 
   if secret_enabled DEEPSEEK_API_KEY || [[ "$DEPLOY_INCOMPLETE_FUNCTIONS" == "1" ]]; then
     DEPLOY_TARGETS+=("functions:aiChat" "functions:aiChatStream")
@@ -223,4 +229,3 @@ NODE
 else
   echo "[WARN] readinessStatus check failed; run ./scripts/check-firebase-network.sh for endpoint details." >&2
 fi
-NODE

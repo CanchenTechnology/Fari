@@ -63,6 +63,7 @@ namespace GamerFrameWork.UIFrameWork
             uiComponent.ContentText.text = content;
             uiComponent.ContentText.alignment = aligment;
             uiComponent.CancelText.text = cancelText;
+            uiComponent.OKText.text = sureText;
             uiComponent.OKButton.gameObject.SetActive(type==SelectType.Normal||type==SelectType.Only_OK);
             uiComponent.CancelButton.gameObject.SetActive(type==SelectType.Normal);
         }
@@ -83,4 +84,3 @@ namespace GamerFrameWork.UIFrameWork
         #endregion
     }
 }
-

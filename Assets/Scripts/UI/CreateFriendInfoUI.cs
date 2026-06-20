@@ -55,11 +55,12 @@ public class CreateFriendInfoUI : WindowBase
 			return;
 		}
 
-		requestVersion++;
-		RefreshProfile();
-		EnsureRelationshipDivinationButton();
-		LoadRecentOracleHistory();
-		LoadSyncSettingsThenRefresh();
+			requestVersion++;
+			RefreshProfile();
+			EnsureRelationshipDivinationButton();
+			SetRelationshipDivinationButtonVisible(true);
+			LoadRecentOracleHistory();
+			LoadSyncSettingsThenRefresh();
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -399,6 +400,12 @@ public class CreateFriendInfoUI : WindowBase
 		}
 	}
 
+	private void SetRelationshipDivinationButtonVisible(bool visible)
+	{
+		if (relationshipDivinationButton != null)
+			relationshipDivinationButton.gameObject.SetActive(visible);
+	}
+
 	private void SetButtonText(Button button, string value)
 	{
 		if (button == null) return;
@@ -440,11 +447,12 @@ public class CreateFriendInfoUI : WindowBase
 			LoadRecentOracleHistory();
 		});
 	}
-	public void OnRelationshipDivinationButtonClick()
-	{
-		if (currentFriend == null) return;
-		RelationshipDivinationOverlay.StartForFriend(transform, currentFriend);
-	}
+		public void OnRelationshipDivinationButtonClick()
+		{
+			if (currentFriend == null) return;
+			if (!RelationshipDivinationFlow.CanUseTwoPersonDivination(currentFriend, true)) return;
+			RelationshipDivinationOverlay.StartForFriend(transform, currentFriend);
+		}
 	public void OnSyncSwitchClick()
 	{
 		if (isRefreshingSyncSwitch || uiComponent?.SwitchSwitch == null) return;

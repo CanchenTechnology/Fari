@@ -58,6 +58,9 @@ public class UserDataManager : MonoSingleton<UserDataManager>
     /// <summary>出生城市</summary>
     public string City { get; private set; } = string.Empty;
 
+    /// <summary>用户简介 / 签名</summary>
+    public string ProfileBio { get; private set; } = string.Empty;
+
     /// <summary>当前头像类型</summary>
     public AvatarType CurrentAvatar { get; private set; } = AvatarType.Moon;
 
@@ -143,6 +146,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
     private const string KEY_BIRTHDAY         = "UserData_Birthday";
     private const string KEY_BIRTH_TIME       = "UserData_BirthTime";
     private const string KEY_CITY             = "UserData_City";
+    private const string KEY_PROFILE_BIO      = "UserData_ProfileBio";
     private const string KEY_AVATAR_TYPE      = "UserData_AvatarType";
 
     // 账户信息 Key
@@ -199,6 +203,12 @@ public class UserDataManager : MonoSingleton<UserDataManager>
     public void SetCity(string city)
     {
         City = city ?? string.Empty;
+    }
+
+    /// <summary>设置用户简介 / 签名</summary>
+    public void SetProfileBio(string bio)
+    {
+        ProfileBio = bio ?? string.Empty;
     }
 
     /// <summary>设置头像类型</summary>
@@ -315,6 +325,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         PlayerPrefs.SetString(KEY_BIRTHDAY,    Birthday);
         PlayerPrefs.SetString(KEY_BIRTH_TIME,  BirthTime);
         PlayerPrefs.SetString(KEY_CITY,        City);
+        PlayerPrefs.SetString(KEY_PROFILE_BIO, ProfileBio);
         PlayerPrefs.SetInt(KEY_AVATAR_TYPE,    (int)CurrentAvatar);
 
         // 账户信息
@@ -350,6 +361,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         Birthday      = PlayerPrefs.GetString(KEY_BIRTHDAY,   string.Empty);
         BirthTime     = PlayerPrefs.GetString(KEY_BIRTH_TIME, string.Empty);
         City          = PlayerPrefs.GetString(KEY_CITY,       string.Empty);
+        ProfileBio    = PlayerPrefs.GetString(KEY_PROFILE_BIO, string.Empty);
         CurrentAvatar = (AvatarType)PlayerPrefs.GetInt(KEY_AVATAR_TYPE, (int)AvatarType.Moon);
 
         // 账户信息
@@ -387,6 +399,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         Birthday      = string.Empty;
         BirthTime     = string.Empty;
         City          = string.Empty;
+        ProfileBio    = string.Empty;
         CurrentAvatar = AvatarType.Moon;
 
         Email            = string.Empty;
@@ -409,6 +422,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         PlayerPrefs.DeleteKey(KEY_BIRTHDAY);
         PlayerPrefs.DeleteKey(KEY_BIRTH_TIME);
         PlayerPrefs.DeleteKey(KEY_CITY);
+        PlayerPrefs.DeleteKey(KEY_PROFILE_BIO);
         PlayerPrefs.DeleteKey(KEY_AVATAR_TYPE);
         PlayerPrefs.DeleteKey(KEY_EMAIL);
         PlayerPrefs.DeleteKey(KEY_USER_ID);

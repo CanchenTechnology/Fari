@@ -2,7 +2,10 @@
 set -euo pipefail
 
 PROJECT_ID="${FIREBASE_PROJECT:-fari-app-b2fd2}"
+READINESS_URL="${READINESS_URL:-https://us-central1-$PROJECT_ID.cloudfunctions.net/readinessStatus}"
 TMP_DIR="$(mktemp -d)"
+READINESS_JSON="$TMP_DIR/readiness.json"
+READINESS_STATE="unfetched"
 
 REQUIRED_SECRETS=(
   DEEPSEEK_API_KEY
@@ -52,6 +55,60 @@ require_command() {
 
 require_command firebase
 require_command node
+
+fetch_readiness_status() {
+  if [[ "$READINESS_STATE" != "unfetched" ]]; then
+    return
+  fi
+
+  READINESS_STATE="unavailable"
+  if ! command -v curl >/dev/null 2>&1; then
+    return
+  fi
+
+  if ! curl -fsS --max-time "${READINESS_TIMEOUT_SECONDS:-20}" "$READINESS_URL" >"$READINESS_JSON" 2>"$TMP_DIR/readiness.err"; then
+    return
+  fi
+
+  if node -e 'const fs=require("fs"); const data=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.exit(data && data.secrets ? 0 : 1);' "$READINESS_JSON" >/dev/null 2>&1; then
+    READINESS_STATE="available"
+  fi
+}
+
+readiness_secret_state() {
+  local key="$1"
+  fetch_readiness_status
+
+  if [[ "$READINESS_STATE" != "available" ]]; then
+    echo "unknown"
+    return
+  fi
+
+  node - "$key" "$READINESS_JSON" <<'NODE'
+const fs = require("fs");
+const key = process.argv[2];
+const file = process.argv[3];
+const data = JSON.parse(fs.readFileSync(file, "utf8"));
+const map = {
+  DEEPSEEK_API_KEY: "deepseekApiKey",
+  VOLC_TTS_API_KEY: "volcanoTtsApiKey",
+  APPLE_SHARED_SECRET: "appleSharedSecret",
+  GOOGLE_PACKAGE_NAME: "googlePackageName",
+  GOOGLE_SERVICE_ACCOUNT_JSON: "googleServiceAccountJson",
+  PAYMENT_WEBHOOK_SECRET: "paymentWebhookSecret",
+};
+
+const field = map[key];
+const value = field && data.secrets ? data.secrets[field] : undefined;
+if (value === true) {
+  process.stdout.write("present");
+} else if (value === false) {
+  process.stdout.write("missing");
+} else {
+  process.stdout.write("unknown");
+}
+NODE
+}
 
 if ! firebase login:list --json >/tmp/moonly_secrets_login.json 2>/tmp/moonly_secrets_login.err; then
   fail "Firebase CLI is not logged in; run firebase login --reauth"
@@ -109,6 +166,24 @@ check_secret() {
 
     return 0
   fi
+
+  local readiness_state
+  readiness_state="$(readiness_secret_state "$key")"
+  case "$readiness_state" in
+    present)
+      ok "$key exists according to readinessStatus (Firebase CLI could not directly access Secret Manager)"
+      return 0
+      ;;
+    missing)
+      if [[ "$required" == "1" ]]; then
+        fail "$key is missing according to readinessStatus"
+        return 1
+      fi
+
+      warn "$key is missing according to readinessStatus"
+      return 0
+      ;;
+  esac
 
   if [[ "$required" == "1" ]]; then
     fail "$key is missing or inaccessible"

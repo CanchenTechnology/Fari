@@ -114,12 +114,16 @@ PY
   for needle in \
     "CODE_SIGN_ENTITLEMENTS" \
     "com.apple.GameCenter" \
-    "com.apple.SignInWithApple" \
     "com.apple.InAppPurchase"; do
     if ! grep -q "$needle" "$pbxproj"; then
       fail "project.pbxproj missing $needle"
     fi
   done
+
+  if ! grep -q "com.apple.SignInWithApple" "$pbxproj" \
+    && ! grep -q "com.apple.developer.applesignin" "$pbxproj"; then
+    fail "project.pbxproj missing Sign in with Apple capability"
+  fi
 
   ok "iOS export contains contacts usage, Game Center, Apple Sign-In, and In-App Purchase capabilities"
 }

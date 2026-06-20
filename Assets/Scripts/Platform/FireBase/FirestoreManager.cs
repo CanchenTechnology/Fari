@@ -44,6 +44,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     #region 状态
 
     private const string PUBLIC_APP_CONFIG_CACHE_KEY = "PublicAppConfigCache_v1";
+    private const int FIRESTORE_DELETE_BATCH_LIMIT = 450;
 
     private FirebaseFirestore _db;
     private bool _isInitialized = false;
@@ -126,6 +127,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             { "birthday",        ud.Birthday },
             { "birthTime",       ud.BirthTime },
             { "city",            ud.City },
+            { "bio",             ud.ProfileBio },
             { "avatarType",      (int)ud.CurrentAvatar },
             { "loginType",       ud.CurrentLoginType.ToString() },
             { "isEmailVerified", ud.IsEmailVerified },
@@ -177,6 +179,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             { "birthday",        ud.Birthday },
             { "birthTime",       ud.BirthTime },
             { "city",            ud.City },
+            { "bio",             ud.ProfileBio },
             { "avatarType",      (int)ud.CurrentAvatar },
             { "loginType",       ud.CurrentLoginType.ToString() },
             { "isEmailVerified", ud.IsEmailVerified },
@@ -1547,7 +1550,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     /// 路径：users/{uid}/feedback/{feedbackId}
     /// 后台镜像：feedback/{feedbackId}
     /// </summary>
-    public void SaveFeedback(string category, string tag, string content, string source, Action<bool> onComplete = null)
+    public void SaveFeedback(string category, string tag, string content, string source, Action<bool> onComplete = null, string feedbackId = null)
     {
         if (!CheckReady(onComplete)) return;
 
@@ -1559,7 +1562,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         }
 
         UserDataManager ud = UserDataManager.Instance;
-        string feedbackId = Guid.NewGuid().ToString("N");
+        feedbackId = string.IsNullOrWhiteSpace(feedbackId) ? Guid.NewGuid().ToString("N") : feedbackId.Trim();
         DocumentReference docRef = _db.Collection("users")
             .Document(currentUid)
             .Collection("feedback")
@@ -1898,20 +1901,29 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 return;
             }
 
-            WriteBatch batch = _db.StartBatch();
-            batch.Delete(_db.Collection("public_profiles").Document(uid));
-            batch.Delete(_db.Collection("users").Document(uid));
-
-            batch.CommitAsync().ContinueWithOnMainThread(task =>
+            DeleteTopLevelUserReferences(uid, topLevelDeleted =>
             {
-                if (task.IsFaulted || task.IsCanceled)
+                if (!topLevelDeleted)
                 {
-                    Debug.LogError($"[FirestoreManager] 删除失败: {task.Exception?.InnerException?.Message}");
                     onComplete?.Invoke(false);
                     return;
                 }
-                Debug.Log("[FirestoreManager] 云端用户数据已删除");
-                onComplete?.Invoke(true);
+
+                WriteBatch batch = _db.StartBatch();
+                batch.Delete(_db.Collection("public_profiles").Document(uid));
+                batch.Delete(_db.Collection("users").Document(uid));
+
+                batch.CommitAsync().ContinueWithOnMainThread(task =>
+                {
+                    if (task.IsFaulted || task.IsCanceled)
+                    {
+                        Debug.LogError($"[FirestoreManager] 删除失败: {task.Exception?.InnerException?.Message}");
+                        onComplete?.Invoke(false);
+                        return;
+                    }
+                    Debug.Log("[FirestoreManager] 云端用户数据已删除");
+                    onComplete?.Invoke(true);
+                });
             });
         });
     }
@@ -1999,6 +2011,9 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         if (string.IsNullOrWhiteSpace(ud.City) && snapshot.TryGetValue("city", out string cloudCity))
             ud.SetCity(cloudCity);
 
+        if (string.IsNullOrWhiteSpace(ud.ProfileBio) && snapshot.TryGetValue("bio", out string cloudBio))
+            ud.SetProfileBio(cloudBio);
+
         // === 账户信息策略：云端优先 ===
         // 因为这些数据（如邮箱、头像验证状态等）是高权限或第三方获取的，必须以服务器状态为准
         if (snapshot.TryGetValue("email", out string cloudEmail))
@@ -2068,6 +2083,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             { "emailLower", NormalizeSearchText(ud.Email) },
             { "photoUrl", ud.PhotoUrl },
             { "avatarStoragePath", ud.AvatarStoragePath },
+            { "bio", ud.ProfileBio },
             { "facebookProviderId", facebookProviderId },
             { "updatedAt", FieldValue.ServerTimestamp },
         };
@@ -3067,6 +3083,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         {
             "daily_oracles",
             "divination_records",
+            "dialog_sessions",
             "memories",
             "tomorrow_hooks",
             "friends",
@@ -3078,44 +3095,67 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         };
 
         var userRef = _db.Collection("users").Document(uid);
-        WriteBatch batch = _db.StartBatch();
-        int pending = collectionNames.Length;
-        bool failed = false;
-
-        foreach (string collectionName in collectionNames)
+        DeleteKnownUserCollectionsAsync(userRef, collectionNames).ContinueWithOnMainThread(task =>
         {
-            userRef.Collection(collectionName)
-                .GetSnapshotAsync()
-                .ContinueWithOnMainThread(task =>
-                {
-                    if (failed) return;
+            if (task.IsFaulted || task.IsCanceled)
+            {
+                Debug.LogError($"[FirestoreManager] 删除用户子集合失败: {task.Exception?.InnerException?.Message}");
+                onComplete?.Invoke(false);
+                return;
+            }
 
-                    if (task.IsFaulted || task.IsCanceled)
-                    {
-                        failed = true;
-                        Debug.LogError($"[FirestoreManager] 删除子集合 {collectionName} 失败: {task.Exception?.InnerException?.Message}");
-                        onComplete?.Invoke(false);
-                        return;
-                    }
+            onComplete?.Invoke(true);
+        });
+    }
 
-                    foreach (var doc in task.Result.Documents)
-                        batch.Delete(doc.Reference);
+    private async Task DeleteKnownUserCollectionsAsync(DocumentReference userRef, string[] collectionNames)
+    {
+        foreach (string collectionName in collectionNames)
+            await DeleteQueryInBatchesAsync(userRef.Collection(collectionName));
+    }
 
-                    pending--;
-                    if (pending > 0) return;
+    private void DeleteTopLevelUserReferences(string uid, Action<bool> onComplete)
+    {
+        DeleteTopLevelUserReferencesAsync(uid).ContinueWithOnMainThread(task =>
+        {
+            if (task.IsFaulted || task.IsCanceled)
+            {
+                Debug.LogError($"[FirestoreManager] 删除顶层用户关联记录失败: {task.Exception?.InnerException?.Message}");
+                onComplete?.Invoke(false);
+                return;
+            }
 
-                    batch.CommitAsync().ContinueWithOnMainThread(commitTask =>
-                    {
-                        if (commitTask.IsFaulted || commitTask.IsCanceled)
-                        {
-                            Debug.LogError($"[FirestoreManager] 删除用户子集合失败: {commitTask.Exception?.InnerException?.Message}");
-                            onComplete?.Invoke(false);
-                            return;
-                        }
+            onComplete?.Invoke(true);
+        });
+    }
 
-                        onComplete?.Invoke(true);
-                    });
-                });
+    private async Task DeleteTopLevelUserReferencesAsync(string uid)
+    {
+        await DeleteQueryInBatchesAsync(_db.Collection("daily_oracle_summaries").WhereEqualTo("ownerUid", uid));
+        await DeleteQueryInBatchesAsync(_db.Collection("relationship_divinations").WhereEqualTo("initiatorUid", uid));
+        await DeleteQueryInBatchesAsync(_db.Collection("relationship_divinations").WhereEqualTo("receiverUid", uid));
+    }
+
+    private async Task DeleteQueryInBatchesAsync(Query query)
+    {
+        while (true)
+        {
+            QuerySnapshot snapshot = await query.Limit(FIRESTORE_DELETE_BATCH_LIMIT).GetSnapshotAsync();
+            WriteBatch batch = _db.StartBatch();
+            int deleteCount = 0;
+
+            foreach (var doc in snapshot.Documents)
+            {
+                batch.Delete(doc.Reference);
+                deleteCount++;
+            }
+
+            if (deleteCount == 0)
+                return;
+
+            await batch.CommitAsync();
+            if (deleteCount < FIRESTORE_DELETE_BATCH_LIMIT)
+                return;
         }
     }
 

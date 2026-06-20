@@ -17,6 +17,7 @@ public class MyUI : WindowBase
 	private DivinationRecordData _latestRecord;
 	private int _dashboardRequestId;
 	private string _profileSubtitle = string.Empty;
+	private Button _latestRecordButton;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -26,11 +27,13 @@ public class MyUI : WindowBase
 		uiComponent.InitComponent(this);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		base.OnAwake();
+		EnsureLatestRecordEntryClick();
 	}
 	// 物体显示时执行
 	public override void OnShow()
 	{
 		base.OnShow();
+		EnsureLatestRecordEntryClick();
 		RefreshDashboard();
 	}
 	// 物体隐藏时执行
@@ -104,8 +107,11 @@ public class MyUI : WindowBase
 	private string BuildProfileSubtitle()
 	{
 		var userData = UserDataManager.Instance;
+		if (!string.IsNullOrWhiteSpace(userData.ProfileBio))
+			return userData.ProfileBio.Length > 40 ? userData.ProfileBio.Substring(0, 40) + "..." : userData.ProfileBio;
+
 		return userData.IsProfileComplete()
-			? $"{userData.City} · {userData.Birthday}"
+			? $"{userData.City} · {userData.Birthday} {userData.BirthTime}"
 			: "完善出生信息，让神谕更贴近你";
 	}
 
@@ -184,6 +190,22 @@ public class MyUI : WindowBase
 		uiComponent.StatTodaydesText.text = $"最近占卜：{title} · {question}";
 	}
 
+	private void EnsureLatestRecordEntryClick()
+	{
+		if (uiComponent == null || uiComponent.StatTodaydesText == null) return;
+
+		_latestRecordButton = uiComponent.StatTodaydesText.GetComponent<Button>();
+		if (_latestRecordButton == null)
+		{
+			_latestRecordButton = uiComponent.StatTodaydesText.gameObject.AddComponent<Button>();
+			_latestRecordButton.transition = Selectable.Transition.None;
+		}
+
+		uiComponent.StatTodaydesText.raycastTarget = true;
+		_latestRecordButton.onClick.RemoveListener(OnLatestRecordEntryClick);
+		_latestRecordButton.onClick.AddListener(OnLatestRecordEntryClick);
+	}
+
 	#endregion
 
 	#region UI组件事件		 
@@ -194,9 +216,19 @@ public class MyUI : WindowBase
 
 	public void Onbtn_divinationButtonClick()
 	{
-		if (_latestRecord != null)
-			HistoryUI.SelectedRecord = _latestRecord;
+		HistoryUI.SelectedRecord = _latestRecord;
 		UIModule.Instance.PopUpWindow<HistoryUI>();
+	}
+	public void OnLatestRecordEntryClick()
+	{
+		if (_latestRecord == null)
+		{
+			UIModule.Instance.PopUpWindow<HistoryUI>();
+			return;
+		}
+
+		HistoryUI.SelectedRecord = _latestRecord;
+		UIModule.Instance.PopUpWindow<DivinationRecordUI>();
 	}
 	public void Onbtn_myinfoButtonClick()
 	{

@@ -14,28 +14,6 @@ public class ContactsInviteUI : WindowBase
 	public ContactsInviteUIComponent uiComponent;
 	private Button[] contactInviteButtons;
 
-	private readonly MockContact[] mockContacts =
-	{
-		new MockContact("Alice", "138 **** 8888"),
-		new MockContact("Bob", "139 **** 6666"),
-		new MockContact("Cindy", "137 **** 1234"),
-		new MockContact("David", "136 **** 4321"),
-		new MockContact("Emma", "138 **** 1010"),
-		new MockContact("Frank", "137 **** 5678")
-	};
-
-	private struct MockContact
-	{
-		public string name;
-		public string phone;
-
-		public MockContact(string name, string phone)
-		{
-			this.name = name;
-			this.phone = phone;
-		}
-	}
-
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
 	public override void OnAwake()
@@ -130,21 +108,16 @@ public class ContactsInviteUI : WindowBase
 		}
 
 		contactInviteButtons = list.ToArray();
-		for (int i = 0; i < contactInviteButtons.Length && i < mockContacts.Length; i++)
+		foreach (Button button in contactInviteButtons)
 		{
-			int index = i;
-			contactInviteButtons[i].onClick.RemoveAllListeners();
-			contactInviteButtons[i].onClick.AddListener(() => InviteMockContact(index));
+			button.onClick.RemoveAllListeners();
+			button.onClick.AddListener(OpenNativeContactInvite);
 		}
 	}
 
-	private void InviteMockContact(int index)
+	private void OpenNativeContactInvite()
 	{
-		if (index < 0 || index >= mockContacts.Length) return;
-
-		var contact = mockContacts[index];
-		Debug.Log($"[ContactsInviteUI] 准备邀请通讯录联系人：{contact.name} {contact.phone}");
-		FriendInviteShareUtility.OpenSmsInvite();
+		NativeContactInviteManager.OpenContactInvite(transform);
 	}
 	#endregion
 }

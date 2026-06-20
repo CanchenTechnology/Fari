@@ -2,11 +2,34 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RELEASE_ENV_FILE="${RELEASE_ENV_FILE:-}"
+
+if [[ -n "$RELEASE_ENV_FILE" ]]; then
+  if [[ "$RELEASE_ENV_FILE" != /* ]]; then
+    RELEASE_ENV_FILE="$ROOT_DIR/$RELEASE_ENV_FILE"
+  fi
+
+  if [[ ! -f "$RELEASE_ENV_FILE" ]]; then
+    echo "Release env file does not exist: $RELEASE_ENV_FILE" >&2
+    exit 3
+  fi
+
+  set -a
+  # shellcheck disable=SC1090
+  . "$RELEASE_ENV_FILE"
+  set +a
+  export MOONLY_RELEASE_ENV_FILE="$RELEASE_ENV_FILE"
+fi
+
 UNITY_BIN="${UNITY_BIN:-/Users/kittenhao/Unity/UnityEditor/2022.3.34f1c1/Unity.app/Contents/MacOS/Unity}"
 OUTPUT_PATH="${ANDROID_APK_PATH:-$ROOT_DIR/Builds/Android/MoonlyApp.apk}"
 LOG_FILE="${ANDROID_BUILD_LOG:-$ROOT_DIR/Logs/android-apk-build.log}"
 
 cd "$ROOT_DIR"
+
+if [[ -n "${MOONLY_RELEASE_ENV_FILE:-}" ]]; then
+  echo "Release env file: $MOONLY_RELEASE_ENV_FILE"
+fi
 
 if [[ ! -x "$UNITY_BIN" ]]; then
   echo "Unity executable not found: $UNITY_BIN" >&2
@@ -19,6 +42,20 @@ if [[ -f Temp/UnityLockfile ]] && command -v lsof >/dev/null 2>&1 && lsof Temp/U
   exit 2
 fi
 
+if grep -q "androidUseCustomKeystore: 1" ProjectSettings/ProjectSettings.asset; then
+  missing_signing=()
+  [[ -n "${ANDROID_KEYSTORE_PASS:-}" ]] || missing_signing+=("ANDROID_KEYSTORE_PASS")
+  [[ -n "${ANDROID_KEYALIAS_PASS:-}" ]] || missing_signing+=("ANDROID_KEYALIAS_PASS")
+
+  if [[ "${#missing_signing[@]}" -gt 0 ]]; then
+    echo "Android custom keystore is enabled, but signing password env is missing: ${missing_signing[*]}" >&2
+    echo "Set ANDROID_KEYSTORE_PASS and ANDROID_KEYALIAS_PASS before running this release APK build." >&2
+    exit 3
+  fi
+
+  "$ROOT_DIR/scripts/check-android-keystore.sh"
+fi
+
 mkdir -p "$(dirname "$LOG_FILE")"
 mkdir -p "$(dirname "$OUTPUT_PATH")"
 
@@ -29,6 +66,7 @@ fi
 if ! "$UNITY_BIN" \
   -batchmode \
   -quit \
+  -buildTarget Android \
   -projectPath "$ROOT_DIR" \
   -executeMethod CommandLineBuild.BuildAndroidApk \
   -outputPath "$OUTPUT_PATH" \

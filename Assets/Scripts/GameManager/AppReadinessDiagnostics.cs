@@ -37,7 +37,7 @@ public static class AppReadinessDiagnostics
             $"Platform: {Application.platform}, Unity {Application.unityVersion}, App {Application.version}",
             $"Firebase: {BuildFirebaseLine()}",
             $"Auth providers: gameCenter={FormatBool(IsGameCenterAuthProviderResolved())}",
-            $"Functions: membershipStatus={BackendMembershipClient.MembershipStatusFunctionUrl}, submitIapReceipt={IapPurchaseManager.SubmitReceiptFunctionUrl}",
+            $"Functions: membershipStatus={BackendMembershipClient.MembershipStatusFunctionUrl}, deleteMyAccountData={FirebaseAuthManager.DeleteAccountDataFunctionUrl}, submitIapReceipt={IapPurchaseManager.SubmitReceiptFunctionUrl}",
             $"Functions readiness endpoint: {BackendMembershipClient.ReadinessStatusFunctionUrl}",
             $"Unity IAP: manifest={FormatBool(ManifestHasPackage(IapPackageName))}, packageResolved={FormatBool(IsUnityIapPackageResolved())}, bridgeCompiled={FormatBool(IsUnityPurchasingSymbolCompiled())}",
             $"Mobile Notifications: manifest={FormatBool(ManifestHasPackage(NotificationsPackageName))}, apiResolved={FormatBool(IsMobileNotificationsApiResolved())}, androidPostPermission={FormatBool(AndroidManifestHasPermission(AndroidPostNotificationsPermission))}",
@@ -174,7 +174,7 @@ public static class AppReadinessDiagnostics
         if (user == null)
             blockers.Add("Firebase user not signed in");
 
-        blockers.Add("Firebase deploy/secrets still require CLI/account verification");
+        blockers.Add("IAP receipt verification secrets must be verified remotely before release");
         return blockers.Count == 0 ? "none detected locally" : string.Join("; ", blockers);
     }
 

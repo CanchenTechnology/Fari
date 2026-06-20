@@ -50,7 +50,8 @@ public class NotionUI : WindowBase
 	{
 		if (uiComponent == null) return;
 
-		var settings = NotificationSettingsManager.Instance;
+		var settings = GetSettingsManager();
+		if (settings == null) return;
 		_isRefreshing = true;
 
 		// 刷新各 Toggle 状态（避免触发事件循环）
@@ -83,6 +84,12 @@ public class NotionUI : WindowBase
 
 	private void LoadCloudSettingsThenRefresh()
 	{
+		if (GetSettingsManager() == null)
+		{
+			RefreshUI();
+			return;
+		}
+
 		var firestore = FirestoreManager.Instance;
 		if (firestore == null || !firestore.IsInitialized)
 		{
@@ -94,7 +101,7 @@ public class NotionUI : WindowBase
 		{
 			if (cloud != null)
 			{
-				NotificationSettingsManager.Instance.ApplySettings(
+				GetSettingsManager()?.ApplySettings(
 					cloud.dailyOracleEnabled,
 					cloud.dialogueReplyEnabled,
 					cloud.divinationReturnEnabled,
@@ -111,11 +118,24 @@ public class NotionUI : WindowBase
 		var firestore = FirestoreManager.Instance;
 		if (firestore == null || !firestore.IsInitialized) return;
 
-		firestore.SaveNotificationSettings(NotificationSettingsManager.Instance, success =>
+		var settings = GetSettingsManager();
+		if (settings == null) return;
+
+		firestore.SaveNotificationSettings(settings, success =>
 		{
 			if (!success)
 				Debug.LogWarning("[NotionUI] 通知设置云端同步失败");
 		});
+	}
+
+	private NotificationSettingsManager GetSettingsManager()
+	{
+		var settings = NotificationSettingsManager.Instance;
+		if (settings != null)
+			return settings;
+
+		var go = new GameObject("NotificationSettingsManager");
+		return go.AddComponent<NotificationSettingsManager>();
 	}
 
 	#endregion
@@ -128,21 +148,21 @@ public class NotionUI : WindowBase
 	public void OnDailyOracleToggleChange(bool state, Toggle toggle)
 	{
 		if (_isRefreshing) return;
-		NotificationSettingsManager.Instance.SetDailyOracle(state);
+		GetSettingsManager()?.SetDailyOracle(state);
 		SaveCloudSettings();
 		ToastManager.ShowToast("偏好设置已保存");
 	}
 	public void OnDialogueReplyToggleChange(bool state, Toggle toggle)
 	{
 		if (_isRefreshing) return;
-		NotificationSettingsManager.Instance.SetDialogueReply(state);
+		GetSettingsManager()?.SetDialogueReply(state);
 		SaveCloudSettings();
 		ToastManager.ShowToast("偏好设置已保存");
 	}
 	public void OnDivinationReturnToggleChange(bool state, Toggle toggle)
 	{
 		if (_isRefreshing) return;
-		NotificationSettingsManager.Instance.SetDivinationReturn(state);
+		GetSettingsManager()?.SetDivinationReturn(state);
 		SaveCloudSettings();
 		RefreshUI();
 		ToastManager.ShowToast("偏好设置已保存");
@@ -150,20 +170,23 @@ public class NotionUI : WindowBase
 	public void OnFriendInteractionToggleChange(bool state, Toggle toggle)
 	{
 		if (_isRefreshing) return;
-		NotificationSettingsManager.Instance.SetFriendInteraction(state);
+		GetSettingsManager()?.SetFriendInteraction(state);
 		SaveCloudSettings();
 		ToastManager.ShowToast("偏好设置已保存");
 	}
 	public void OnActivitySystemToggleChange(bool state, Toggle toggle)
 	{
 		if (_isRefreshing) return;
-		NotificationSettingsManager.Instance.SetActivitySystem(state);
+		GetSettingsManager()?.SetActivitySystem(state);
 		SaveCloudSettings();
 		ToastManager.ShowToast("偏好设置已保存");
 	}
 	public void OnTimeSettingButtonClick()
 	{
-		string newTime = NotificationSettingsManager.Instance.ToggleReminderTime();
+		var settings = GetSettingsManager();
+		if (settings == null) return;
+
+		string newTime = settings.ToggleReminderTime();
 		if (uiComponent.TimeValueText != null)
 			uiComponent.TimeValueText.text = newTime;
 

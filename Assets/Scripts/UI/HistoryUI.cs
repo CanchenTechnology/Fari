@@ -107,6 +107,7 @@ public class HistoryUI : WindowBase
 
 			if (records == null) records = new List<DivinationRecordData>();
 			_records = records;
+			ValidateSelectedRecord();
 
 			RenderList();
 
@@ -278,6 +279,30 @@ public class HistoryUI : WindowBase
 		// 通过静态变量传递选中的记录给 DivinationRecordUI
 		SelectedRecord = record;
 		UIModule.Instance.PopUpWindow<DivinationRecordUI>();
+	}
+
+	private void ValidateSelectedRecord()
+	{
+		if (SelectedRecord == null || _records == null || _records.Count == 0)
+		{
+			SelectedRecord = null;
+			return;
+		}
+
+		string selectedId = SelectedRecord.readingId;
+		if (string.IsNullOrEmpty(selectedId))
+		{
+			SelectedRecord = null;
+			return;
+		}
+
+		foreach (DivinationRecordData record in _records)
+		{
+			if (record != null && record.readingId == selectedId)
+				return;
+		}
+
+		SelectedRecord = null;
 	}
 
 	#endregion

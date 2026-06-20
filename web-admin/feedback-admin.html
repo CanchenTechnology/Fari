@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Moonly Feedback Admin</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f2ee;
+      --panel: #ffffff;
+      --line: #dad5cb;
+      --text: #211f1b;
+      --muted: #6d675e;
+      --primary: #365c8d;
+      --primary-dark: #24436a;
+      --accent: #a85f3f;
+      --ok: #34745a;
+      --warn: #a46b22;
+      --closed: #5b6370;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 76px;
+      padding: 18px 28px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      min-height: 40px;
+      border: 0;
+      border-radius: 6px;
+      padding: 0 14px;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover { background: var(--primary-dark); }
+    button.secondary { background: #e8e2d9; color: var(--text); }
+    button.secondary:hover { background: #ddd4c8; }
+    button.ghost { background: transparent; color: var(--primary); border: 1px solid var(--line); }
+    button.ghost:hover { background: #f0ece6; }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 10px 12px;
+    }
+
+    textarea {
+      min-height: 78px;
+      resize: vertical;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: 340px minmax(0, 1fr);
+      min-height: calc(100vh - 76px);
+    }
+
+    aside {
+      border-right: 1px solid var(--line);
+      background: #fbfaf7;
+      padding: 22px;
+    }
+
+    section {
+      padding: 22px 28px 34px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .panel h2 {
+      margin: 0 0 12px;
+      font-size: 15px;
+      letter-spacing: 0;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .status {
+      min-height: 22px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: 160px 120px 1fr auto auto;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .summary {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 16px;
+    }
+
+    .card-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 10px;
+    }
+
+    .title {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .content {
+      margin: 10px 0 14px;
+      white-space: pre-wrap;
+      line-height: 1.55;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border-radius: 999px;
+      padding: 0 9px;
+      color: #fff;
+      background: var(--primary);
+      font-size: 12px;
+      font-weight: 740;
+    }
+
+    .badge.new { background: var(--accent); }
+    .badge.triaged,
+    .badge.in_progress { background: var(--warn); }
+    .badge.resolved { background: var(--ok); }
+    .badge.closed { background: var(--closed); }
+
+    .admin-row {
+      display: grid;
+      grid-template-columns: 160px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: start;
+      margin-top: 12px;
+    }
+
+    .empty {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 28px;
+      color: var(--muted);
+      text-align: center;
+      background: rgba(255, 255, 255, 0.55);
+    }
+
+    @media (max-width: 880px) {
+      header { align-items: flex-start; flex-direction: column; }
+      main { grid-template-columns: 1fr; }
+      aside { border-right: 0; border-bottom: 1px solid var(--line); }
+      .toolbar { grid-template-columns: 1fr 1fr; }
+      .admin-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Moonly Feedback Admin</h1>
+    <div class="row">
+      <span id="accountLabel" class="status">未登录</span>
+      <button id="signOutButton" class="ghost" type="button">退出</button>
+    </div>
+  </header>
+
+  <main>
+    <aside>
+      <div class="panel">
+        <h2>管理员登录</h2>
+        <div class="field">
+          <label for="emailInput">邮箱</label>
+          <input id="emailInput" type="email" autocomplete="username" placeholder="admin@example.com">
+        </div>
+        <div class="field">
+          <label for="passwordInput">密码</label>
+          <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Firebase Auth 密码">
+        </div>
+        <button id="signInButton" type="button">登录</button>
+      </div>
+
+      <div class="panel">
+        <h2>手动 Token</h2>
+        <div class="field">
+          <label for="tokenInput">Firebase ID Token</label>
+          <textarea id="tokenInput" spellcheck="false" placeholder="粘贴管理员 ID token"></textarea>
+        </div>
+        <button id="useTokenButton" class="secondary" type="button">使用 Token</button>
+      </div>
+
+      <div id="messageBox" class="status"></div>
+    </aside>
+
+    <section>
+      <div class="toolbar">
+        <select id="statusFilter">
+          <option value="">全部状态</option>
+          <option value="new">New</option>
+          <option value="triaged">Triaged</option>
+          <option value="in_progress">In Progress</option>
+          <option value="resolved">Resolved</option>
+          <option value="closed">Closed</option>
+        </select>
+        <select id="limitSelect">
+          <option value="25">25 条</option>
+          <option value="50" selected>50 条</option>
+          <option value="100">100 条</option>
+        </select>
+        <div id="summaryLabel" class="summary">等待加载</div>
+        <button id="refreshButton" type="button">刷新</button>
+        <button id="exportButton" class="secondary" type="button">导出 CSV</button>
+      </div>
+
+      <div id="feedbackList" class="list">
+        <div class="empty">登录管理员账号后加载反馈。</div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import {
+      getAuth,
+      onAuthStateChanged,
+      signInWithEmailAndPassword,
+      signOut
+    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyD8wysQincWAGA0Ee7-BffRrf_PA-hlUEs",
+      authDomain: "fari-app-b2fd2.firebaseapp.com",
+      projectId: "fari-app-b2fd2",
+      storageBucket: "fari-app-b2fd2.firebasestorage.app",
+      messagingSenderId: "963943083905",
+      appId: "1:963943083905:android:0dcb83384ddcf394158280"
+    };
+
+    const functionsBaseUrl = "https://us-central1-fari-app-b2fd2.cloudfunctions.net";
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    let idToken = "";
+    let items = [];
+
+    const $ = (id) => document.getElementById(id);
+    const statusFilter = $("statusFilter");
+    const limitSelect = $("limitSelect");
+    const feedbackList = $("feedbackList");
+    const summaryLabel = $("summaryLabel");
+    const messageBox = $("messageBox");
+    const accountLabel = $("accountLabel");
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        idToken = "";
+        accountLabel.textContent = "未登录";
+        return;
+      }
+
+      idToken = await user.getIdToken(true);
+      accountLabel.textContent = user.email || user.uid;
+      await loadFeedback();
+    });
+
+    $("signInButton").addEventListener("click", async () => {
+      setMessage("登录中...");
+      try {
+        await signInWithEmailAndPassword(auth, $("emailInput").value.trim(), $("passwordInput").value);
+        $("passwordInput").value = "";
+        setMessage("已登录");
+      } catch (error) {
+        setMessage(error.message);
+      }
+    });
+
+    $("signOutButton").addEventListener("click", async () => {
+      await signOut(auth);
+      idToken = "";
+      items = [];
+      render();
+      setMessage("已退出");
+    });
+
+    $("useTokenButton").addEventListener("click", async () => {
+      idToken = $("tokenInput").value.trim();
+      if (!idToken) {
+        setMessage("Token 为空");
+        return;
+      }
+      accountLabel.textContent = "手动 Token";
+      await loadFeedback();
+    });
+
+    $("refreshButton").addEventListener("click", loadFeedback);
+    $("exportButton").addEventListener("click", exportCsv);
+    statusFilter.addEventListener("change", loadFeedback);
+    limitSelect.addEventListener("change", loadFeedback);
+
+    async function loadFeedback() {
+      if (!idToken) {
+        render();
+        setMessage("请先登录");
+        return;
+      }
+
+      setMessage("加载中...");
+      const params = new URLSearchParams({
+        limit: limitSelect.value
+      });
+      if (statusFilter.value) params.set("status", statusFilter.value);
+
+      try {
+        const data = await callFunction(`/adminFeedbackList?${params.toString()}`, { method: "GET" });
+        items = Array.isArray(data.items) ? data.items : [];
+        render();
+        setMessage(`已加载 ${items.length} 条`);
+      } catch (error) {
+        setMessage(error.message);
+      }
+    }
+
+    async function updateFeedback(feedbackId, status, note) {
+      setMessage("保存中...");
+      await callFunction("/adminFeedbackUpdate", {
+        method: "POST",
+        body: JSON.stringify({
+          feedbackId,
+          status,
+          adminNote: note
+        })
+      });
+      await loadFeedback();
+    }
+
+    async function callFunction(path, options) {
+      const response = await fetch(functionsBaseUrl + path, {
+        ...options,
+        headers: {
+          "Authorization": `Bearer ${idToken}`,
+          "Content-Type": "application/json",
+          ...(options.headers || {})
+        }
+      });
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+      return data;
+    }
+
+    function render() {
+      summaryLabel.textContent = `${items.length} 条反馈`;
+      if (!items.length) {
+        feedbackList.innerHTML = `<div class="empty">${idToken ? "暂无反馈。" : "登录管理员账号后加载反馈。"}</div>`;
+        return;
+      }
+
+      feedbackList.innerHTML = "";
+      for (const item of items) {
+        const card = document.createElement("article");
+        card.className = "card";
+        card.innerHTML = `
+          <div class="card-head">
+            <div class="title">
+              <span class="badge ${escapeAttr(item.status)}">${escapeHtml(item.status || "new")}</span>
+              <strong>${escapeHtml(item.tag || "general")}</strong>
+              <span class="meta">${escapeHtml(item.category || "community")}</span>
+            </div>
+            <span class="meta">${formatDate(item.createdAt)}</span>
+          </div>
+          <div class="content">${escapeHtml(item.content || "")}</div>
+          <div class="meta">
+            ${escapeHtml(item.displayName || "未命名用户")} · ${escapeHtml(item.email || item.uid || "unknown")}
+            <br>${escapeHtml(item.platform || "")} ${escapeHtml(item.appVersion || "")} ${escapeHtml(item.deviceModel || "")}
+            <br>ID: ${escapeHtml(item.feedbackId || item.id || "")}
+          </div>
+          <div class="admin-row">
+            <select data-role="status">
+              ${statusOptions(item.status)}
+            </select>
+            <textarea data-role="note" placeholder="管理员备注">${escapeHtml(item.adminNote || "")}</textarea>
+            <button type="button" data-role="save">保存</button>
+          </div>
+        `;
+
+        card.querySelector('[data-role="save"]').addEventListener("click", async () => {
+          const status = card.querySelector('[data-role="status"]').value;
+          const note = card.querySelector('[data-role="note"]').value;
+          try {
+            await updateFeedback(item.feedbackId || item.id, status, note);
+          } catch (error) {
+            setMessage(error.message);
+          }
+        });
+
+        feedbackList.appendChild(card);
+      }
+    }
+
+    function statusOptions(current) {
+      return ["new", "triaged", "in_progress", "resolved", "closed"]
+        .map((status) => `<option value="${status}" ${status === current ? "selected" : ""}>${status}</option>`)
+        .join("");
+    }
+
+    function exportCsv() {
+      if (!items.length) {
+        setMessage("没有可导出的反馈");
+        return;
+      }
+
+      const rows = [
+        ["feedbackId", "status", "category", "tag", "content", "uid", "email", "createdAt", "adminNote"],
+        ...items.map((item) => [
+          item.feedbackId || item.id || "",
+          item.status || "",
+          item.category || "",
+          item.tag || "",
+          item.content || "",
+          item.uid || "",
+          item.email || "",
+          item.createdAt || "",
+          item.adminNote || ""
+        ])
+      ];
+      const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `moonly-feedback-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function csvCell(value) {
+      return `"${String(value).replaceAll('"', '""')}"`;
+    }
+
+    function formatDate(value) {
+      if (!value) return "";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+    }
+
+    function setMessage(message) {
+      messageBox.textContent = message || "";
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function escapeAttr(value) {
+      return String(value ?? "").replace(/[^a-z0-9_-]/gi, "");
+    }
+  </script>
+</body>
+</html>

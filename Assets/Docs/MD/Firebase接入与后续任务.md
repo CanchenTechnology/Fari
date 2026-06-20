@@ -162,9 +162,15 @@ MOONLY_DEPLOY_INCOMPLETE_FUNCTIONS=1 ./scripts/deploy-firebase.sh
 
 可用 `FIREBASE_ONLY` 覆盖部署范围，例如全量 Functions：`FIREBASE_ONLY=functions MOONLY_BIND_ALL_SECRETS=1 ./scripts/deploy-firebase.sh`。
 
+如果要同时发布反馈后台静态页，追加：
+
+```bash
+MOONLY_DEPLOY_HOSTING=1 ./scripts/deploy-firebase.sh
+```
+
 当前已验证：Firestore Rules/Indexes 已部署；基础 Functions 已部署；`readinessStatus` 在线返回 HTTP 200。线上 Functions 列表显示 `membershipStatus`、`readinessStatus`、`publicConfig`、反馈/后台配置、`aiChat`、`aiChatStream`、`ttsSynthesize`、`paymentWebhook`、`submitIapReceipt` 均已存在；客户端 Functions authenticated smoke test 通过，`aiChat` / `ttsSynthesize` 当前返回 `HTTP 200`；`submitIapReceipt` 无 token 请求返回 401，authenticated smoke test 返回 `HTTP 202` + `pending_configuration`，说明 endpoint 已上线且能接收带 Firebase ID Token 的 receipt。客户端 Game Center 登录入口已接 Firebase `GameCenterAuthProvider.GetCredentialAsync()`，iOS 导出后处理器会自动写入 Game Center / Sign in with Apple / In-App Purchase capabilities，本地 readiness 会检查接线、provider 类型解析和后处理器配置；真实登录仍需要 iOS/tvOS 真机或模拟器、Apple Game Center 后台能力和 Firebase Auth Game Center provider 配置。`readinessStatus.secretDiagnostics` 已明确说明：未绑定给健康检查函数的 secret 会显示为 false，但客户端 smoke 通过时仍以目标函数真实调用结果为准。
 
-当前远端 Functions Secrets 状态：`DEEPSEEK_API_KEY`、`VOLC_TTS_API_KEY`、`PAYMENT_WEBHOOK_SECRET` 已存在并已重新绑定部署到对应函数；`APPLE_SHARED_SECRET`、`GOOGLE_PACKAGE_NAME`、`GOOGLE_SERVICE_ACCOUNT_JSON` 仍缺失，所以真实 IAP receipt 校验仍处于待配置状态。
+当前远端 Functions Secrets 状态：`DEEPSEEK_API_KEY`、`VOLC_TTS_API_KEY`、`PAYMENT_WEBHOOK_SECRET`、`GOOGLE_PACKAGE_NAME` 已存在，并已重新绑定部署到对应 Functions / readiness 检查；`APPLE_SHARED_SECRET`、`GOOGLE_SERVICE_ACCOUNT_JSON` 仍缺失，所以真实 IAP receipt 校验仍处于待配置状态。
 
 本地状态可先跑：
 
@@ -181,7 +187,16 @@ MOONLY_PROXY='http://[::1]:7897' MOONLY_ALL_PROXY=socks5://127.0.0.1:10808 CURL_
 MOONLY_PROXY='http://[::1]:7897' ./scripts/check-firebase-secrets.sh
 ```
 
-该脚本不会打印密钥值，只检查 Secret 是否存在、是否非空，并验证 `GOOGLE_SERVICE_ACCOUNT_JSON` 是否为合法服务账号 JSON。`scripts/setup-firebase-secrets.sh` 支持 `GOOGLE_SERVICE_ACCOUNT_JSON_FILE` 文件输入，避免把整段服务账号 JSON 粘进 shell；本地 readiness 也会识别该文件来源并校验 `type == service_account`、`client_email` 和 `private_key`。正式 IAP 上线前可以把它接入总检查：
+该脚本不会打印密钥值，只检查 Secret 是否存在、是否非空，并验证 `GOOGLE_SERVICE_ACCOUNT_JSON` 是否为合法服务账号 JSON。`scripts/setup-firebase-secrets.sh` 支持 `GOOGLE_SERVICE_ACCOUNT_JSON_FILE` 文件输入，避免把整段服务账号 JSON 粘进 shell；也支持 `MOONLY_SECRET_NAMES` / `SET_SECRET_NAMES` 只写入指定 secrets。当前远端只缺 Apple 共享密钥和 Google Play 服务账号 JSON 时，可以只补这两个：
+
+```bash
+MOONLY_SECRET_NAMES=APPLE_SHARED_SECRET,GOOGLE_SERVICE_ACCOUNT_JSON \
+APPLE_SHARED_SECRET='<apple_shared_secret>' \
+GOOGLE_SERVICE_ACCOUNT_JSON_FILE='/path/to/google-play-service-account.json' \
+./scripts/setup-firebase-secrets.sh
+```
+
+本地 readiness 也会识别 `GOOGLE_SERVICE_ACCOUNT_JSON_FILE` 文件来源并校验 `type == service_account`、`client_email` 和 `private_key`。正式 IAP 上线前可以把它接入总检查：
 
 ```bash
 MOONLY_PROXY='http://[::1]:7897' MOONLY_ALL_PROXY=socks5://127.0.0.1:10808 CURL_MAX_TIME=180 CHECK_FIREBASE_SECRETS=1 CHECK_REGISTRY=1 CHECK_FIREBASE=1 CHECK_FIREBASE_NETWORK=1 CHECK_FIREBASE_FUNCTIONS=1 CHECK_FUNCTIONS_SMOKE=1 CHECK_FUNCTIONS_SMOKE_STRICT=1 CHECK_IAP_SMOKE=1 CHECK_BUILD=1 ./scripts/check-local-readiness.sh
@@ -222,6 +237,47 @@ IAP_RECEIPT='<App Store sandbox receipt or Unity receipt JSON>' \
 
 真实 receipt 模式要求返回 `HTTP 200` + `verified` + `membershipStatus=pro` + `isPro=true`。该模式默认不删除临时 Auth 用户，便于你在 Firebase Console 里检查 `users/{uid}` 的会员状态；如需清理 Auth 测试用户，可显式设置 `CLEANUP_AUTH_USER=1`。
 
+`scripts/prepare-release.sh` 和 `scripts/check-release-blockers.sh` 会在真实 receipt 网络验证前先检查 `IAP_RECEIPT` / `REAL_IAP_RECEIPT`、`IAP_PRODUCT_ID` 和 `IAP_STORE`。`IAP_STORE` 目前应为 `AppleAppStore` 或 `GooglePlay`，避免缺 receipt 或商店名拼错时才跑到远端失败。
+
+IAP 商品配置一致性可以单独检查：
+
+```bash
+./scripts/check-iap-products.sh
+```
+
+该脚本会比对以下位置是否都使用同一组商品 ID：
+
+- `functions/public-config.example.json`
+- `functions/index.js` 的 `DEFAULT_PUBLIC_CONFIG`
+- 客户端 `IapProductConfig.MonthlyDefault / YearlyDefault`
+- `scripts/smoke-submit-iap-receipt.sh` 的默认 fake receipt 商品
+- `scripts/deploy-iap-functions.sh` 的真实 receipt 示例
+- `UnlockProUI` 是否读取 `LoadPublicAppConfig` 并传给 `IapPurchaseManager`
+- `UnityIapPurchaseBridge` 是否注册月度 / 年度订阅商品
+
+当前默认商品 ID：
+
+```text
+moonly.pro.monthly
+moonly.pro.yearly
+```
+
+如果 App Store Connect / Google Play Console 最终商品 ID 需要改名，要同时改 `functions/public-config.example.json`、客户端默认值和相关 smoke 示例，再运行 `./scripts/check-iap-products.sh` 和完整 readiness。
+
+写入线上公开配置前，先做 dry-run 验证：
+
+```bash
+node functions/scripts/set-public-config.js --dry-run functions/public-config.example.json
+```
+
+验证通过后再写入 Firestore：
+
+```bash
+MOONLY_PROXY='http://[::1]:7897' node functions/scripts/set-public-config.js functions/public-config.example.json
+```
+
+`set-public-config.js` 会校验社媒链接必须是 `https` URL，月度 / 年度 Pro 商品必须存在、类型必须为 `subscription`、商品 ID 不能重复。完整 readiness 也会自动运行 dry-run，避免把坏配置推到 `app_config/public`。
+
 如果 Unity Editor 里 Firestore 报 `Unavailable`、搜索用户一直失败，可以单独跑网络检查：
 
 ```bash
@@ -251,6 +307,7 @@ iOS 真机前可以导出并验证 Xcode 工程：
 
 ```bash
 CLEAN_IOS_EXPORT=1 ./scripts/build-ios-xcode.sh
+RELEASE_ENV_FILE=scripts/release.env CLEAN_IOS_EXPORT=1 ./scripts/build-ios-xcode.sh
 ```
 
 该脚本会调用 `CommandLineBuild.BuildIOSProject` 导出到 `Builds/iOS`，然后运行：
@@ -295,13 +352,21 @@ Android 真机前可以先检查源配置：
 打 Android APK 并验证：
 
 ```bash
+ANDROID_KEYSTORE_PASS='<keystore_password>' \
+ANDROID_KEYALIAS_PASS='<alias_password>' \
 CLEAN_ANDROID_BUILD=1 ./scripts/build-android-apk.sh
+
+RELEASE_ENV_FILE=scripts/release.env CLEAN_ANDROID_BUILD=1 ./scripts/build-android-apk.sh
 ```
+
+当前 `ProjectSettings` 已启用自定义 keystore：`user.keystore` / alias `chenhao`。脚本会在 Unity batchmode 前检查 `ANDROID_KEYSTORE_PASS` 和 `ANDROID_KEYALIAS_PASS`，并通过 `scripts/check-android-keystore.sh` 验证 keystore 密码能打开文件、alias 存在、alias 密码能读取签名 key，避免跑到 Unity 构建末尾才报错。`build-ios-xcode.sh` 和 `build-android-apk.sh` 都支持 `RELEASE_ENV_FILE=scripts/release.env`，可以和 release gate 共用同一个本地忽略配置文件。
 
 如果后续要启用 Google Play Games 服务，先在 Google Play Console 拿到数字 App ID，再写入插件 manifest：
 
 ```bash
+DRY_RUN=1 GOOGLE_PLAY_GAMES_APP_ID=123456789012 ./scripts/configure-google-play-games.sh
 GOOGLE_PLAY_GAMES_APP_ID=123456789012 ./scripts/configure-google-play-games.sh
+./scripts/configure-google-play-games.sh --check
 ./scripts/check-android-config.sh
 ```
 
@@ -351,10 +416,51 @@ Unity 客户端购买入口：
 - 如果 Unity IAP 尚未完成 Package Manager 解析，代码会安全降级为“Unity IAP 包未安装”提示。
 - 当前桥接使用 Unity IAP v4 的 `IDetailedStoreListener` API；Unity IAP v5 已切换到 `StoreController` / `UnityIAPServices`，如未来升级 v5 需要重写桥接层。
 - `AppReadinessDiagnostics` 会在启动、Firebase 初始化和登录成功后输出 IAP/通知/Firebase/Functions 就绪状态；如果 `manifest=yes` 但 `packageResolved=no`，说明 `Packages/manifest.json` 已写入但 Unity Editor 还没有完成 Package Manager 解析。通知诊断会额外输出 Android 通知权限、通知设置摘要和最近排程快照。
-- Unity Editor 菜单 `Tools/Moonly/Log Readiness Report` 可以手动输出同一份报告；`Tools/Moonly/Copy Firebase Deploy Command` 会复制标准部署命令；`Tools/Moonly/Copy Full Readiness Command` 会复制完整验收命令；`Tools/Moonly/Open Functions Readiness URL` 会打开 `readinessStatus`；`Tools/Moonly/Schedule Test Notification (10s)` 可排程测试通知，`Tools/Moonly/Log Scheduled Notifications` 可查看最近排程状态。
+- Unity Editor 菜单 `Tools/Moonly/Log Readiness Report` 可以手动输出同一份报告；`Tools/Moonly/Copy Firebase Deploy Command` 会复制标准部署命令；`Tools/Moonly/Copy Full Readiness Command` 会复制完整验收命令；`Tools/Moonly/Copy Release Blockers Command` 会复制发版阻断项检查命令；`Tools/Moonly/Copy Release Blockers Env Command` 会复制使用 `scripts/release.env` 的发版阻断项检查命令；`Tools/Moonly/Copy Prepare Release Command` 会复制发布准备报告命令；`Tools/Moonly/Copy Prepare Release Env Command` 会复制使用 `scripts/release.env` 的发布准备命令；`Tools/Moonly/Copy Check Release Env Command` 会复制本地 release env 校验命令；`Tools/Moonly/Copy Android Keystore Check Command` 会复制 Android 签名预检命令；`Tools/Moonly/Copy Finish Release Env Command` 会复制最终一键续跑命令；`Tools/Moonly/Open Functions Readiness URL` 会打开 `readinessStatus`；`Tools/Moonly/Schedule Test Notification (10s)` 可排程测试通知，`Tools/Moonly/Log Scheduled Notifications` 可查看最近排程状态。
 - `scripts/check-firebase-network.sh` 可单独验证 Editor/本机是否能访问 Firebase REST、Auth、Secure Token 和 Functions 端点；遇到 Firestore `Unavailable` 时优先跑它区分网络问题和数据/规则问题。
 - `scripts/smoke-functions-auth.sh` 可单独验证 `publicConfig`、`membershipStatus`、`aiChat`、`ttsSynthesize` 的 authenticated 客户端调用面。
 - `scripts/smoke-submit-iap-receipt.sh` 可单独验证线上 `submitIapReceipt` 的 Auth 和 receipt 提交流程；在 IAP secrets 缺失时应返回 `pending_configuration`，不会误开 Pro。
+- `scripts/check-release-blockers.sh` 是发版前总检查。它会把开发健康检查之外的发布阻断项集中列出：Unity 项目锁、旧 iOS 导出、旧 Android APK、远端 Firebase Functions Secrets、严格 Functions smoke、真实沙盒 IAP receipt。Google Play Games 检查会复用 `scripts/configure-google-play-games.sh --check`，但当前 Google 登录不依赖 Play Games SDK，所以未配置 App ID 默认只是 warning；只有设置 `REQUIRE_GOOGLE_PLAY_GAMES=1` 时才会作为 blocker。真实 receipt 验证前会先做本地输入检查；IAP secret 补救命令会按远端实际缺失项生成。默认只要存在阻断项就返回失败；临时只看报告可运行 `ALLOW_RELEASE_BLOCKERS=1 ./scripts/check-release-blockers.sh`。
+- `scripts/prepare-release.sh` 是发布准备编排入口。默认只跑发版阻断项检查；`REPORT_ONLY=1` 可生成报告不让阻断项中断 shell；拿到外部材料后可组合 `RUN_IAP_SECRET_SETUP=1`、`RUN_DEPLOY=1`、`RUN_BUILDS=1` 执行“补 IAP secrets -> 部署 Functions -> 重导 iOS/重打 Android -> release gate”的完整流程。它会在执行前 dry-run 校验可选的 Google Play Games App ID、IAP secrets 和真实 receipt 输入。先预览可用 `DRY_RUN=1 RUN_IAP_SECRET_SETUP=1 RUN_DEPLOY=1 RUN_BUILDS=1 ./scripts/prepare-release.sh`，即使 Unity 当前打开也不会因为 dry-run 失败；真实构建时可设置 `WAIT_FOR_UNITY_CLOSE=1`，脚本会按 `UNITY_WAIT_TIMEOUT_SECONDS` / `UNITY_WAIT_POLL_SECONDS` 等待 Unity 关闭后再继续。
+- `scripts/check-release-env.sh` 是本地 release env 校验器，不上传 secrets、不部署、不构建，也不会打印密钥值。它会检查 Android 签名密码、Apple 共享密钥、Google package name、Google service account JSON、真实 sandbox receipt、IAP store/product 是否已经填到可以跑最终链路的程度；默认读取 `scripts/release.env`，也支持 `--no-env-file` 直接读取当前 shell 环境变量。
+- `scripts/check-android-keystore.sh` 会读取 `ProjectSettings` 中的 `AndroidKeystoreName` / `AndroidKeyaliasName`，用 Unity Android OpenJDK 的 `keytool` 验证 `user.keystore`、alias、`ANDROID_KEYSTORE_PASS` 和 `ANDROID_KEYALIAS_PASS`。它不会打印密码，也不会修改原 keystore；`build-android-apk.sh` 和 release gate 会在构建前自动调用它。
+- `scripts/finish-release.sh` 是最终一键续跑入口。默认读取本地 `scripts/release.env`；也可以用 `--no-env-file` 完全依赖当前 shell 环境变量。它会强制进入真实发布续跑模式：补 IAP Secrets、以 secret bindings 重新部署 Functions、重导 iOS、重打 Android APK，并用真实 sandbox receipt 跑最终 release gate；`--dry-run` 可预演同一套命令。
+
+发布参数可以用本地 env 文件管理：
+
+```bash
+cp scripts/release.env.example scripts/release.env
+# 编辑 scripts/release.env，填入本机真实 App ID、IAP secrets、服务账号 JSON 路径和 receipt
+RELEASE_ENV_FILE=scripts/release.env ./scripts/check-release-env.sh
+RELEASE_ENV_FILE=scripts/release.env ./scripts/check-android-keystore.sh
+RELEASE_ENV_FILE=scripts/release.env REPORT_ONLY=1 ./scripts/prepare-release.sh
+```
+
+确认 `scripts/release.env` 填完整后，一条命令继续完整发布链路：
+
+```bash
+RELEASE_ENV_FILE=scripts/release.env ./scripts/finish-release.sh
+```
+
+如果只想临时从 shell 环境变量传入密钥，不落本地 env 文件：
+
+```bash
+APPLE_SHARED_SECRET='<apple_shared_secret>' \
+GOOGLE_PACKAGE_NAME='com.canchentechnology.fari' \
+GOOGLE_SERVICE_ACCOUNT_JSON_FILE='/path/to/google-play-service-account.json' \
+ANDROID_KEYSTORE_PASS='<keystore_password>' \
+ANDROID_KEYALIAS_PASS='<alias_password>' \
+IAP_RECEIPT='<sandbox_receipt>' \
+./scripts/finish-release.sh --no-env-file
+```
+
+同一个 env 文件也可以直接给 release gate 使用：
+
+```bash
+RELEASE_ENV_FILE=scripts/release.env ./scripts/check-release-blockers.sh
+```
+
+`scripts/release.env`、`scripts/release.local.env`、`.env.release` 和 `.env.moonly-release` 已加入 `.gitignore`；仓库只提交 `scripts/release.env.example` 模板。
 
 `submitIapReceipt` 会：
 
@@ -482,10 +588,12 @@ quick_reading/{oracleId}
 
 ## 后续建议优先级
 
-1. P0：设置 Functions Secrets：`DEEPSEEK_API_KEY`、`VOLC_TTS_API_KEY`、`APPLE_SHARED_SECRET`、`GOOGLE_PACKAGE_NAME`、`GOOGLE_SERVICE_ACCOUNT_JSON`。
-2. P0：用 `MOONLY_BIND_ALL_SECRETS=1 ./scripts/deploy-firebase.sh` 部署 AI / TTS / `submitIapReceipt`；Firestore Rules/Indexes 和基础 Functions 已部署。
-3. P0：在 Unity Editor 完成 `com.unity.purchasing@4.12.2` 和 `com.unity.mobile.notifications@2.3.2` Package Manager 解析后，重新运行并查看 `AppReadinessDiagnostics`。
-4. P0：配置 App Store / Google Play 商品，用沙盒账号验证 Unity IAP 购买、恢复和 receipt 校验。
-5. P1：真机验证 Android/iOS 通知权限、每日重复提醒、Tomorrow Hook 和好友互动即时提醒。
-6. P1：继续扩展 `users/{uid}/memories` 的可视化管理和云端长期画像清理策略。
-7. P2：按产品确认结果补邀请码、更多分享入口和社交平台审核项。
+1. P0：先运行 `REPORT_ONLY=1 ./scripts/prepare-release.sh` 或 `ALLOW_RELEASE_BLOCKERS=1 ./scripts/check-release-blockers.sh`，按报告处理发版阻断项；如果 `scripts/release.env` 已填完整，可直接运行 `RELEASE_ENV_FILE=scripts/release.env ./scripts/finish-release.sh` 续跑完整发布链路。
+2. P0：补齐真实 IAP Secrets：`APPLE_SHARED_SECRET`、`GOOGLE_SERVICE_ACCOUNT_JSON`；`DEEPSEEK_API_KEY`、`VOLC_TTS_API_KEY`、`PAYMENT_WEBHOOK_SECRET`、`GOOGLE_PACKAGE_NAME` 已存在。
+3. P0：IAP secrets 齐全后用 `MOONLY_BIND_ALL_SECRETS=1 ./scripts/deploy-firebase.sh` 或 `./scripts/deploy-iap-functions.sh` 重新部署 `submitIapReceipt`；Firestore Rules/Indexes、基础 Functions、AI/TTS/Webhook 和 readiness 已部署。
+4. P0：关闭 Unity 后重新导出 iOS Xcode 工程、重新构建 Android APK。
+5. P0：配置 App Store / Google Play 商品，用沙盒账号验证 Unity IAP 购买、恢复和真实 receipt 校验。
+6. P1：真机验证 Android/iOS 通知权限、每日重复提醒、Tomorrow Hook 和好友互动即时提醒。
+7. P1：如果后续启用 Google Play Games 服务，再配置 Google Play Games App ID；当前 Google 登录不依赖 Play Games SDK。
+8. P1：继续扩展 `users/{uid}/memories` 的可视化管理和云端长期画像清理策略。
+9. P2：按产品确认结果补邀请码、更多分享入口和社交平台审核项。

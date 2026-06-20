@@ -57,9 +57,9 @@ public class FollowusUI : WindowBase
 		private void OpenLink(string url, string label)
 		{
 			url = string.IsNullOrWhiteSpace(url) ? GetDefaultLink(label) : url.Trim();
-			if (string.IsNullOrWhiteSpace(url))
+			if (!IsConfiguredSocialLink(url, label))
 			{
-				ToastManager.ShowToast("链接不可用，请稍后再试");
+				ToastManager.ShowToast($"{label} 链接尚未配置");
 				return;
 			}
 
@@ -92,6 +92,28 @@ public class FollowusUI : WindowBase
 				"Pinterest" => defaults.pinterest,
 				_ => string.Empty,
 			};
+		}
+
+		private static bool IsConfiguredSocialLink(string url, string label)
+		{
+			if (string.IsNullOrWhiteSpace(url))
+				return false;
+
+			string normalized = url.Trim().TrimEnd('/').ToLowerInvariant();
+			if (!normalized.StartsWith("https://") && !normalized.StartsWith("http://"))
+				return false;
+
+			string placeholder = label switch
+			{
+				"Instagram" => "https://www.instagram.com",
+				"Facebook" => "https://www.facebook.com",
+				"X" => "https://x.com",
+				"TikTok" => "https://www.tiktok.com",
+				"Pinterest" => "https://www.pinterest.com",
+				_ => string.Empty,
+			};
+
+			return string.IsNullOrEmpty(placeholder) || normalized.Length > placeholder.Length;
 		}
 
 		#endregion

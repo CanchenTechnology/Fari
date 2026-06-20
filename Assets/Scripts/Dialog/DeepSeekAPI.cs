@@ -113,9 +113,9 @@ public class DeepSeekAPI : MonoBehaviour
     [System.Serializable]
     private class BackendAIResponse
     {
-        public string content;
-        public string error;
-        public string code;
+        public string content = "";
+        public string error = "";
+        public string code = "";
     }
 
     // ---- 流式响应解析 ----

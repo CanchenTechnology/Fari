@@ -24,10 +24,12 @@ public class FeedbackUI : WindowBase
 	private static string _loadedFeedbackUid = string.Empty;
 	private string _selectedTag = DEFAULT_TAG;
 	private string _searchText = string.Empty;
+	private bool _isSyncingPendingFeedback;
 
 	[Serializable]
 	private class FeedbackEntry
 	{
+		public string feedbackId;
 		public string category;
 		public string tag;
 		public string content;
@@ -91,26 +93,6 @@ public class FeedbackUI : WindowBase
 		if (_feedbackEntries.Count == 0)
 			LoadCachedFeedbackEntries();
 
-		if (_feedbackEntries.Count == 0)
-		{
-			_feedbackEntries.Add(new FeedbackEntry
-			{
-				category = "community",
-				tag = "Feature",
-				content = "希望历史记录能更清楚地区分每日神谕、单牌和三张牌阵。",
-				createdAt = DateTime.Now.AddDays(-1).ToString("MM/dd HH:mm"),
-				status = "示例"
-			});
-			_feedbackEntries.Add(new FeedbackEntry
-			{
-				category = "community",
-				tag = "Role",
-				content = "神谕师切换后，语气和 TTS 音色最好也能一起变化。",
-				createdAt = DateTime.Now.AddDays(-2).ToString("MM/dd HH:mm"),
-				status = "示例"
-			});
-		}
-
 		if (_chatMessages.Count == 0)
 		{
 			_chatMessages.Add(new FeedbackChatMessage
@@ -152,12 +134,14 @@ public class FeedbackUI : WindowBase
 		{
 			if (entries != null && entries.Count > 0)
 			{
+				List<FeedbackEntry> pendingEntries = CollectPendingFeedbackEntries();
 				_feedbackEntries.Clear();
 				foreach (var entry in entries)
 				{
 					if (entry == null || string.IsNullOrWhiteSpace(entry.content)) continue;
 					_feedbackEntries.Add(new FeedbackEntry
 					{
+						feedbackId = entry.feedbackId,
 						category = entry.category,
 						tag = entry.tag,
 						content = entry.content,
@@ -165,10 +149,12 @@ public class FeedbackUI : WindowBase
 						status = GetStatusDisplay(entry.status)
 					});
 				}
+				MergePendingFeedbackEntries(pendingEntries);
 				SaveFeedbackEntriesToCache();
 			}
 
 			RefreshViews();
+			TrySyncPendingFeedbackEntries();
 		});
 	}
 
@@ -193,7 +179,12 @@ public class FeedbackUI : WindowBase
 		}
 
 		if (count == 0)
-			AddText(content, _communityItems, "没有匹配的反馈。", 16, FontStyle.Normal, new Color(0.72f, 0.66f, 0.82f), ref y, 44f);
+		{
+			string emptyText = string.IsNullOrWhiteSpace(_searchText)
+				? "暂无反馈记录，写下你的想法后会显示在这里。"
+				: "没有匹配的反馈。";
+			AddText(content, _communityItems, emptyText, 16, FontStyle.Normal, new Color(0.72f, 0.66f, 0.82f), ref y, 52f);
+		}
 
 		SetContentHeight(content, y + 24f, 420f);
 	}
@@ -357,26 +348,38 @@ public class FeedbackUI : WindowBase
 
 	private void SubmitFeedback(string category, string tag, string content, string source, Action<bool> onComplete)
 	{
+		var firestore = FirestoreManager.Instance;
+		bool canSyncNow = firestore != null
+			&& firestore.IsInitialized
+			&& UserDataManager.Instance != null
+			&& !string.IsNullOrEmpty(UserDataManager.Instance.FirebaseUid);
+
 		var entry = new FeedbackEntry
 		{
+			feedbackId = Guid.NewGuid().ToString("N"),
 			category = category,
 			tag = tag,
 			content = content,
 			createdAt = DateTime.Now.ToString("MM/dd HH:mm"),
-			status = "已提交"
+			status = canSyncNow ? "提交中" : "待同步"
 		};
 		_feedbackEntries.Insert(0, entry);
 		SaveFeedbackEntriesToCache();
 		RenderCommunityList();
 
-		var firestore = FirestoreManager.Instance;
-		if (firestore == null || !firestore.IsInitialized)
+		if (!canSyncNow)
 		{
 			onComplete?.Invoke(false);
 			return;
 		}
 
-		firestore.SaveFeedback(category, tag, content, source, onComplete);
+		firestore.SaveFeedback(category, tag, content, source, success =>
+		{
+			entry.status = success ? "已提交" : "待同步";
+			SaveFeedbackEntriesToCache();
+			RenderCommunityList();
+			onComplete?.Invoke(success);
+		}, entry.feedbackId);
 	}
 
 	private string GetTagDisplay(string tag)
@@ -398,6 +401,8 @@ public class FeedbackUI : WindowBase
 			"new" => "已提交",
 			"reviewing" => "处理中",
 			"closed" => "已处理",
+			"pending" => "待同步",
+			"syncing" => "同步中",
 			_ => string.IsNullOrWhiteSpace(status) ? "已提交" : status
 		};
 	}
@@ -415,7 +420,11 @@ public class FeedbackUI : WindowBase
 			foreach (var entry in cache.entries)
 			{
 				if (entry != null && !string.IsNullOrWhiteSpace(entry.content))
+				{
+					if (string.IsNullOrEmpty(entry.feedbackId))
+						entry.feedbackId = Guid.NewGuid().ToString("N");
 					_feedbackEntries.Add(entry);
+				}
 			}
 		}
 		catch (Exception e)
@@ -451,6 +460,73 @@ public class FeedbackUI : WindowBase
 		if (string.IsNullOrEmpty(uid))
 			uid = "local";
 		return uid;
+	}
+
+	private List<FeedbackEntry> CollectPendingFeedbackEntries()
+	{
+		var pending = new List<FeedbackEntry>();
+		foreach (var entry in _feedbackEntries)
+		{
+			if (entry != null && IsPendingStatus(entry.status))
+				pending.Add(entry);
+		}
+		return pending;
+	}
+
+	private void MergePendingFeedbackEntries(List<FeedbackEntry> pendingEntries)
+	{
+		if (pendingEntries == null || pendingEntries.Count == 0) return;
+
+		foreach (var pending in pendingEntries)
+		{
+			if (pending == null || string.IsNullOrWhiteSpace(pending.content)) continue;
+			bool exists = _feedbackEntries.Exists(entry =>
+				entry != null
+				&& !string.IsNullOrEmpty(entry.feedbackId)
+				&& entry.feedbackId == pending.feedbackId);
+			if (!exists)
+				_feedbackEntries.Add(pending);
+		}
+	}
+
+	private bool IsPendingStatus(string status)
+	{
+		return status == "待同步" || status == "提交中" || status == "同步中" || status == "pending" || status == "syncing";
+	}
+
+	private void TrySyncPendingFeedbackEntries()
+	{
+		if (_isSyncingPendingFeedback) return;
+
+		var firestore = FirestoreManager.Instance;
+		if (firestore == null || !firestore.IsInitialized) return;
+		if (UserDataManager.Instance == null || string.IsNullOrEmpty(UserDataManager.Instance.FirebaseUid)) return;
+
+		List<FeedbackEntry> pendingEntries = CollectPendingFeedbackEntries();
+		if (pendingEntries.Count == 0) return;
+
+		_isSyncingPendingFeedback = true;
+		int remaining = pendingEntries.Count;
+		foreach (var entry in pendingEntries)
+		{
+			if (string.IsNullOrEmpty(entry.feedbackId))
+				entry.feedbackId = Guid.NewGuid().ToString("N");
+			entry.status = "同步中";
+
+			firestore.SaveFeedback(entry.category, entry.tag, entry.content, "pending_feedback_sync", success =>
+			{
+				entry.status = success ? "已提交" : "待同步";
+				remaining--;
+				SaveFeedbackEntriesToCache();
+				RenderCommunityList();
+
+				if (remaining <= 0)
+					_isSyncingPendingFeedback = false;
+			}, entry.feedbackId);
+		}
+
+		SaveFeedbackEntriesToCache();
+		RenderCommunityList();
 	}
 
 	#endregion

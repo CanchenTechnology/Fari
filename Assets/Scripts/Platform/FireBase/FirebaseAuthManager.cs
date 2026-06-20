@@ -1,7 +1,9 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
+using UnityEngine.Networking;
 using Firebase;
 using Firebase.Auth;
 using Firebase.Extensions;
@@ -75,8 +77,11 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
 
     #region 内部引用
 
+    public const string DeleteAccountDataFunctionUrl = "https://us-central1-fari-app-b2fd2.cloudfunctions.net/deleteMyAccountData";
+
     private FirebaseAuth _auth;
     private DependencyStatus _dependencyStatus = DependencyStatus.UnavailableDisabled;
+    private bool _isDeletingAccount;
 
     #endregion
 
@@ -643,8 +648,84 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
             return;
         }
 
+        if (_isDeletingAccount)
+        {
+            onError?.Invoke("正在删除账户，请稍候");
+            return;
+        }
+
         var userToDelete = CurrentUser;
-        FirestoreManager.Instance.DeleteUserData(firestoreDeleted =>
+        StartCoroutine(DeleteUserRoutine(userToDelete, onSuccess, onError));
+    }
+
+    private IEnumerator DeleteUserRoutine(FirebaseUser userToDelete, Action onSuccess, Action<string> onError)
+    {
+        _isDeletingAccount = true;
+        bool deletedByBackend = false;
+
+        var tokenTask = userToDelete.TokenAsync(false);
+        yield return new WaitUntil(() => tokenTask.IsCompleted);
+
+        if (!tokenTask.IsFaulted && !tokenTask.IsCanceled && !string.IsNullOrEmpty(tokenTask.Result))
+        {
+            using (UnityWebRequest request = new UnityWebRequest(DeleteAccountDataFunctionUrl, "POST"))
+            {
+                request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes("{}"));
+                request.downloadHandler = new DownloadHandlerBuffer();
+                request.SetRequestHeader("Content-Type", "application/json");
+                request.SetRequestHeader("Authorization", "Bearer " + tokenTask.Result);
+                request.timeout = 45;
+
+                yield return request.SendWebRequest();
+
+                if (!IsRequestFailed(request))
+                {
+                    deletedByBackend = true;
+                    Debug.Log("[FirebaseAuthManager] 账户已通过 Functions 删除");
+                    SignOut();
+                    _isDeletingAccount = false;
+                    onSuccess?.Invoke();
+                }
+                else
+                {
+                    string error = string.IsNullOrEmpty(request.downloadHandler.text)
+                        ? request.error
+                        : request.downloadHandler.text;
+                    Debug.LogWarning("[FirebaseAuthManager] Functions 删除账户失败，尝试客户端兜底: " + error);
+                }
+            }
+        }
+        else
+        {
+            Debug.LogWarning("[FirebaseAuthManager] 获取删除账户 token 失败，尝试客户端兜底");
+        }
+
+        if (deletedByBackend)
+            yield break;
+
+        DeleteUserWithClientFallback(userToDelete,
+            () =>
+            {
+                _isDeletingAccount = false;
+                onSuccess?.Invoke();
+            },
+            error =>
+            {
+                _isDeletingAccount = false;
+                onError?.Invoke(error);
+            });
+    }
+
+    private void DeleteUserWithClientFallback(FirebaseUser userToDelete, Action onSuccess, Action<string> onError)
+    {
+        var firestore = FirestoreManager.Instance;
+        if (firestore == null)
+        {
+            onError?.Invoke("Firestore 未初始化，无法删除云端用户数据");
+            return;
+        }
+
+        firestore.DeleteUserData(firestoreDeleted =>
         {
             if (!firestoreDeleted)
             {
@@ -667,6 +748,16 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
                 onSuccess?.Invoke();
             });
         });
+    }
+
+    private static bool IsRequestFailed(UnityWebRequest request)
+    {
+#if UNITY_2020_1_OR_NEWER
+        return request.result == UnityWebRequest.Result.ConnectionError
+            || request.result == UnityWebRequest.Result.ProtocolError;
+#else
+        return request.isNetworkError || request.isHttpError;
+#endif
     }
 
     #endregion

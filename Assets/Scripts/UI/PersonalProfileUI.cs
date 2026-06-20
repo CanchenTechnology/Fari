@@ -5,6 +5,8 @@
  * Description: UI 表现层，该层只负责界面的交互、表现相关的更新，不允许编写任何业务逻辑代码
  * 注意: 以下文件是自动生成的，再次生成不会覆盖原有的代码，会在原有的代码上进行新增，可放心使用
 ---------------------------------*/
+using System;
+using System.Globalization;
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
@@ -17,6 +19,7 @@ public class PersonalProfileUI : WindowBase
 	public Sprite moonAvatarSprite;
 	public Sprite personAvatarSprite;
 	private bool isAvatarUploading;
+	private InputField _bioInputField;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -32,6 +35,7 @@ public class PersonalProfileUI : WindowBase
 	{
 		base.OnShow();
 		EnsureAvatarUploadClick();
+		EnsureBioInputField();
 		LoadDataToUI();
 	}
 	// 物体隐藏时执行
@@ -60,6 +64,8 @@ public class PersonalProfileUI : WindowBase
 		uiComponent.BirthdayInputInputField.text = manager.Birthday;
 		uiComponent.TimeInputInputField.text = manager.BirthTime;
 		uiComponent.CityInputInputField.text = manager.City;
+		if (_bioInputField != null)
+			_bioInputField.text = manager.ProfileBio;
 
 		// 加载头像
 		RefreshAvatar();
@@ -119,9 +125,274 @@ public class PersonalProfileUI : WindowBase
 		button.onClick.AddListener(OnAvatarImageClick);
 	}
 
+	private void EnsureBioInputField()
+	{
+		if (_bioInputField != null) return;
+
+		_bioInputField = FindRuntimeBioInput();
+		if (_bioInputField != null)
+		{
+			BindBioInput();
+			return;
+		}
+
+		if (uiComponent == null || uiComponent.SaveBtnButton == null) return;
+		Transform infoRoot = uiComponent.SaveBtnButton.transform.parent;
+		if (infoRoot == null) return;
+
+		GameObject row = new GameObject("RuntimeBioRow", typeof(RectTransform));
+		row.transform.SetParent(infoRoot, false);
+		var rowRect = row.GetComponent<RectTransform>();
+		rowRect.anchorMin = new Vector2(0f, 0f);
+		rowRect.anchorMax = new Vector2(0f, 0f);
+		rowRect.pivot = new Vector2(0.5f, 0.5f);
+		rowRect.sizeDelta = new Vector2(864f, 165.517f);
+		row.transform.SetSiblingIndex(uiComponent.SaveBtnButton.transform.GetSiblingIndex());
+
+		Text label = CreateRuntimeText(row.transform, "BioLabel", "个人简介", 30, FontStyle.Normal, new Color(0.9f, 0.84f, 1f, 1f));
+		var labelRect = label.GetComponent<RectTransform>();
+		labelRect.anchorMin = new Vector2(0f, 1f);
+		labelRect.anchorMax = new Vector2(1f, 1f);
+		labelRect.pivot = new Vector2(0f, 1f);
+		labelRect.anchoredPosition = new Vector2(0f, 0f);
+		labelRect.sizeDelta = new Vector2(0f, 56f);
+		label.alignment = TextAnchor.MiddleLeft;
+
+		GameObject inputGo = new GameObject("[InputField]BioInput", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(InputField));
+		inputGo.transform.SetParent(row.transform, false);
+		var inputRect = inputGo.GetComponent<RectTransform>();
+		inputRect.anchorMin = new Vector2(0.5f, 0.5f);
+		inputRect.anchorMax = new Vector2(0.5f, 0.5f);
+		inputRect.pivot = new Vector2(0.5f, 0.5f);
+		inputRect.anchoredPosition = new Vector2(0f, -32.384f);
+		inputRect.sizeDelta = new Vector2(864f, 100.75f);
+
+		Image inputBg = inputGo.GetComponent<Image>();
+		inputBg.color = new Color(0f, 0f, 0f, 1f);
+
+		Text text = CreateRuntimeText(inputGo.transform, "Text", string.Empty, 28, FontStyle.Normal, Color.white);
+		var textRect = text.GetComponent<RectTransform>();
+		textRect.anchorMin = Vector2.zero;
+		textRect.anchorMax = Vector2.one;
+		textRect.offsetMin = new Vector2(28f, 8f);
+		textRect.offsetMax = new Vector2(-28f, -8f);
+		text.alignment = TextAnchor.MiddleLeft;
+		text.horizontalOverflow = HorizontalWrapMode.Wrap;
+
+		Text placeholder = CreateRuntimeText(inputGo.transform, "Placeholder", "写一句给自己的简介或签名", 28, FontStyle.Italic, new Color(0.58f, 0.54f, 0.66f, 1f));
+		var placeholderRect = placeholder.GetComponent<RectTransform>();
+		placeholderRect.anchorMin = Vector2.zero;
+		placeholderRect.anchorMax = Vector2.one;
+		placeholderRect.offsetMin = new Vector2(28f, 8f);
+		placeholderRect.offsetMax = new Vector2(-28f, -8f);
+		placeholder.alignment = TextAnchor.MiddleLeft;
+		placeholder.horizontalOverflow = HorizontalWrapMode.Wrap;
+
+		_bioInputField = inputGo.GetComponent<InputField>();
+		_bioInputField.targetGraphic = inputBg;
+		_bioInputField.textComponent = text;
+		_bioInputField.placeholder = placeholder;
+		_bioInputField.characterLimit = 80;
+		_bioInputField.lineType = InputField.LineType.SingleLine;
+		BindBioInput();
+	}
+
+	private InputField FindRuntimeBioInput()
+	{
+		foreach (InputField input in gameObject.GetComponentsInChildren<InputField>(true))
+		{
+			if (input != null && input.gameObject.name.Contains("Bio"))
+				return input;
+		}
+
+		return null;
+	}
+
+	private Text CreateRuntimeText(Transform parent, string name, string content, int fontSize, FontStyle style, Color color)
+	{
+		GameObject go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+		go.transform.SetParent(parent, false);
+		Text text = go.GetComponent<Text>();
+		text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+		text.fontSize = fontSize;
+		text.fontStyle = style;
+		text.color = color;
+		text.text = content ?? string.Empty;
+		text.raycastTarget = false;
+		text.horizontalOverflow = HorizontalWrapMode.Wrap;
+		text.verticalOverflow = VerticalWrapMode.Truncate;
+		return text;
+	}
+
+	private void BindBioInput()
+	{
+		if (_bioInputField == null) return;
+		_bioInputField.onEndEdit.RemoveListener(OnBioInputEnd);
+		_bioInputField.onEndEdit.AddListener(OnBioInputEnd);
+	}
+
 	#endregion
 
 	#region API Function
+
+	private bool TryApplyProfileInputs(out string validationMessage)
+	{
+		validationMessage = string.Empty;
+
+		string userName = uiComponent.UserNameInputInputField != null
+			? uiComponent.UserNameInputInputField.text.Trim()
+			: UserDataManager.Instance.UserName;
+		string birthday = uiComponent.BirthdayInputInputField != null
+			? uiComponent.BirthdayInputInputField.text.Trim()
+			: UserDataManager.Instance.Birthday;
+		string birthTime = uiComponent.TimeInputInputField != null
+			? uiComponent.TimeInputInputField.text.Trim()
+			: UserDataManager.Instance.BirthTime;
+		string city = uiComponent.CityInputInputField != null
+			? uiComponent.CityInputInputField.text.Trim()
+			: UserDataManager.Instance.City;
+		string bio = _bioInputField != null
+			? NormalizeBio(_bioInputField.text)
+			: UserDataManager.Instance.ProfileBio;
+
+		if (!TryNormalizeBirthday(birthday, out string normalizedBirthday))
+		{
+			validationMessage = "生日格式请填写为 1998-08-08";
+			return false;
+		}
+
+		if (!TryNormalizeBirthTime(birthTime, out string normalizedBirthTime))
+		{
+			validationMessage = "出生时间格式请填写为 08:30";
+			return false;
+		}
+
+		if (uiComponent.UserNameInputInputField != null)
+			uiComponent.UserNameInputInputField.text = userName;
+		if (uiComponent.BirthdayInputInputField != null)
+			uiComponent.BirthdayInputInputField.text = normalizedBirthday;
+		if (uiComponent.TimeInputInputField != null)
+			uiComponent.TimeInputInputField.text = normalizedBirthTime;
+		if (uiComponent.CityInputInputField != null)
+			uiComponent.CityInputInputField.text = city;
+		if (_bioInputField != null)
+			_bioInputField.text = bio;
+
+		UserDataManager.Instance.SetUserName(userName);
+		UserDataManager.Instance.SetBirthday(normalizedBirthday);
+		UserDataManager.Instance.SetBirthTime(normalizedBirthTime);
+		UserDataManager.Instance.SetCity(city);
+		UserDataManager.Instance.SetProfileBio(bio);
+		return true;
+	}
+
+	private string NormalizeBio(string input)
+	{
+		string value = string.IsNullOrWhiteSpace(input)
+			? string.Empty
+			: input.Trim().Replace("\r", " ").Replace("\n", " ");
+
+		while (value.Contains("  ", StringComparison.Ordinal))
+			value = value.Replace("  ", " ");
+
+		return value.Length > 80 ? value.Substring(0, 80) : value;
+	}
+
+	private bool TryNormalizeBirthday(string input, out string normalized)
+	{
+		normalized = string.Empty;
+		if (string.IsNullOrWhiteSpace(input))
+			return true;
+
+		string value = input.Trim()
+			.Replace("年", "-")
+			.Replace("月", "-")
+			.Replace("日", "")
+			.Replace("/", "-")
+			.Replace(".", "-");
+
+		string[] formats =
+		{
+			"yyyy-M-d",
+			"yyyy-MM-dd",
+			"yyyy-M-dd",
+			"yyyy-MM-d"
+		};
+
+		if (!DateTime.TryParseExact(value, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime date))
+			return false;
+
+		if (date.Date > DateTime.Today || date.Year < 1900)
+			return false;
+
+		normalized = date.ToString("yyyy-MM-dd");
+		return true;
+	}
+
+	private bool TryNormalizeBirthTime(string input, out string normalized)
+	{
+		normalized = string.Empty;
+		if (string.IsNullOrWhiteSpace(input))
+			return true;
+
+		string value = input.Trim()
+			.Replace("点", ":")
+			.Replace("时", ":")
+			.Replace("分", "");
+
+		if (value.EndsWith(":", StringComparison.Ordinal))
+			value += "00";
+
+		string[] formats =
+		{
+			"H:m",
+			"H:mm",
+			"HH:m",
+			"HH:mm"
+		};
+
+		if (!DateTime.TryParseExact(value, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime time))
+			return false;
+
+		normalized = time.ToString("HH:mm");
+		return true;
+	}
+
+	private void NormalizeBirthdayField(bool showToast)
+	{
+		if (uiComponent.BirthdayInputInputField == null) return;
+
+		string value = uiComponent.BirthdayInputInputField.text;
+		if (TryNormalizeBirthday(value, out string normalized))
+		{
+			uiComponent.BirthdayInputInputField.text = normalized;
+			return;
+		}
+
+		if (showToast)
+			ToastManager.ShowToast("生日格式请填写为 1998-08-08");
+	}
+
+	private void NormalizeBirthTimeField(bool showToast)
+	{
+		if (uiComponent.TimeInputInputField == null) return;
+
+		string value = uiComponent.TimeInputInputField.text;
+		if (TryNormalizeBirthTime(value, out string normalized))
+		{
+			uiComponent.TimeInputInputField.text = normalized;
+			return;
+		}
+
+		if (showToast)
+			ToastManager.ShowToast("出生时间格式请填写为 08:30");
+	}
+
+	private void TrimTextField(InputField field)
+	{
+		if (field != null)
+			field.text = field.text.Trim();
+	}
 
 	#endregion
 
@@ -173,40 +444,45 @@ public class PersonalProfileUI : WindowBase
 	}
 	public void OnUserNameInputInputChange(string text)
 	{
-		// 输入变化时实时更新数据
-		UserDataManager.Instance.SetUserName(text);
 	}
 	public void OnUserNameInputInputEnd(string text)
 	{
-		// 输入结束时更新数据
-		UserDataManager.Instance.SetUserName(text);
+		TrimTextField(uiComponent.UserNameInputInputField);
 	}
 	public void OnBirthdayInputInputChange(string text)
 	{
-		UserDataManager.Instance.SetBirthday(text);
 	}
 	public void OnBirthdayInputInputEnd(string text)
 	{
-		UserDataManager.Instance.SetBirthday(text);
+		NormalizeBirthdayField(true);
 	}
 	public void OnTimeInputInputChange(string text)
 	{
-		UserDataManager.Instance.SetBirthTime(text);
 	}
 	public void OnTimeInputInputEnd(string text)
 	{
-		UserDataManager.Instance.SetBirthTime(text);
+		NormalizeBirthTimeField(true);
 	}
 	public void OnCityInputInputChange(string text)
 	{
-		UserDataManager.Instance.SetCity(text);
 	}
 	public void OnCityInputInputEnd(string text)
 	{
-		UserDataManager.Instance.SetCity(text);
+		TrimTextField(uiComponent.CityInputInputField);
+	}
+	private void OnBioInputEnd(string text)
+	{
+		if (_bioInputField != null)
+			_bioInputField.text = NormalizeBio(text);
 	}
 	public void OnSaveBtnButtonClick()
 	{
+		if (!TryApplyProfileInputs(out string validationMessage))
+		{
+			ToastManager.ShowToast(validationMessage);
+			return;
+		}
+
 		// 保存数据到本地
 		UserDataManager.Instance.SaveData();
 		FirestoreManager.Instance?.SaveUserData(success =>

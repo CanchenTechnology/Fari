@@ -46,6 +46,7 @@ public class FriendUI : WindowBase
 	{
 		base.OnShow();
 		InitPoolIfNeeded();
+		FriendDataManager.Instance.EnsureDebugRealFriends();
 		FriendDataManager.Instance.DataChanged -= HandleFriendDataChanged;
 		FriendDataManager.Instance.DataChanged += HandleFriendDataChanged;
 		RefreshAllViews();

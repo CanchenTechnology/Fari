@@ -2,11 +2,34 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RELEASE_ENV_FILE="${RELEASE_ENV_FILE:-}"
+
+if [[ -n "$RELEASE_ENV_FILE" ]]; then
+  if [[ "$RELEASE_ENV_FILE" != /* ]]; then
+    RELEASE_ENV_FILE="$ROOT_DIR/$RELEASE_ENV_FILE"
+  fi
+
+  if [[ ! -f "$RELEASE_ENV_FILE" ]]; then
+    echo "Release env file does not exist: $RELEASE_ENV_FILE" >&2
+    exit 3
+  fi
+
+  set -a
+  # shellcheck disable=SC1090
+  . "$RELEASE_ENV_FILE"
+  set +a
+  export MOONLY_RELEASE_ENV_FILE="$RELEASE_ENV_FILE"
+fi
+
 UNITY_BIN="${UNITY_BIN:-/Users/kittenhao/Unity/UnityEditor/2022.3.34f1c1/Unity.app/Contents/MacOS/Unity}"
 OUTPUT_PATH="${IOS_EXPORT_PATH:-$ROOT_DIR/Builds/iOS}"
 LOG_FILE="${IOS_BUILD_LOG:-$ROOT_DIR/Logs/ios-xcode-build.log}"
 
 cd "$ROOT_DIR"
+
+if [[ -n "${MOONLY_RELEASE_ENV_FILE:-}" ]]; then
+  echo "Release env file: $MOONLY_RELEASE_ENV_FILE"
+fi
 
 if [[ ! -x "$UNITY_BIN" ]]; then
   echo "Unity executable not found: $UNITY_BIN" >&2
@@ -29,6 +52,7 @@ fi
 if ! "$UNITY_BIN" \
   -batchmode \
   -quit \
+  -buildTarget iOS \
   -projectPath "$ROOT_DIR" \
   -executeMethod CommandLineBuild.BuildIOSProject \
   -outputPath "$OUTPUT_PATH" \

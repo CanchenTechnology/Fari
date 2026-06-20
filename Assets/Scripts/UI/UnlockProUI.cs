@@ -18,6 +18,14 @@ public class UnlockProUI : WindowBase
 	private Text monthlyPurchaseText;
 	private Text yearlyPurchaseText;
 	private Text purchaseHintText;
+	private Text pageTitleText;
+	private Text proStatusTitleText;
+	private Text proStatusDescText;
+	private Text currentPlanLabelText;
+	private Text currentPlanValueText;
+	private readonly Text[] featureTitleTexts = new Text[4];
+	private readonly Text[] featureDescTexts = new Text[4];
+	private bool isCurrentPro;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -27,15 +35,18 @@ public class UnlockProUI : WindowBase
 		uiComponent.InitComponent(this);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		base.OnAwake();
+		BindPrefabTexts();
 		EnsureRuntimePurchaseControls();
 	}
 	// 物体显示时执行
 	public override void OnShow()
 	{
 		base.OnShow();
+		BindPrefabTexts();
 		EnsureRuntimePurchaseControls();
 		LoadIapProducts();
 		RefreshMembershipStatus();
+		RefreshStaticCopy();
 		RefreshPurchaseControls();
 	}
 	// 物体隐藏时执行
@@ -94,10 +105,17 @@ public class UnlockProUI : WindowBase
 			{
 				if (status == null)
 				{
+					isCurrentPro = false;
+					if (uiComponent.ValidityLabelText != null)
+						uiComponent.ValidityLabelText.text = "当前状态";
 					if (uiComponent.ValidityValueText != null)
 						uiComponent.ValidityValueText.text = "Free";
+					RefreshStaticCopy();
+					RefreshPurchaseControls();
 					return;
 				}
+
+				isCurrentPro = status.isPro;
 
 				if (uiComponent.ValidityLabelText != null)
 					uiComponent.ValidityLabelText.text = status.isPro ? "Pro 有效期" : "当前状态";
@@ -109,14 +127,19 @@ public class UnlockProUI : WindowBase
 
 				if (showToast)
 					ToastManager.ShowToast(status.isPro ? "已恢复 Pro 状态" : "当前没有有效订阅");
+				RefreshStaticCopy();
+				RefreshPurchaseControls();
 			},
 			(error) =>
 			{
+				isCurrentPro = false;
 				if (uiComponent.ValidityValueText != null)
 					uiComponent.ValidityValueText.text = "检查失败";
 				if (showToast)
 					ToastManager.ShowToast("恢复失败：" + error);
 				Debug.LogWarning("[UnlockProUI] 会员状态检查失败: " + error);
+				RefreshStaticCopy();
+				RefreshPurchaseControls();
 			},
 			forceRefresh: showToast);
 	}
@@ -151,6 +174,12 @@ public class UnlockProUI : WindowBase
 
 	private void StartPurchase(IapProductConfig product)
 	{
+		if (isCurrentPro)
+		{
+			ToastManager.ShowToast("你已经是 Pro，可在订阅管理中调整方案。");
+			return;
+		}
+
 		var manager = GetIapManager();
 		manager.ConfigureProducts(iapProducts);
 		manager.PurchaseSubscription(product, (success, message) =>
@@ -284,15 +313,97 @@ public class UnlockProUI : WindowBase
 		rect.anchoredPosition = anchoredPosition;
 	}
 
+	private void BindPrefabTexts()
+	{
+		pageTitleText = pageTitleText != null ? pageTitleText : FindTextByObjectName("TitleText");
+		proStatusTitleText = proStatusTitleText != null ? proStatusTitleText : FindTextByObjectName("ProStatusTitle");
+		proStatusDescText = proStatusDescText != null ? proStatusDescText : FindTextByObjectName("ProStatusDesc");
+		currentPlanLabelText = currentPlanLabelText != null ? currentPlanLabelText : FindTextByObjectName("CurrentPlanLabel");
+		currentPlanValueText = currentPlanValueText != null ? currentPlanValueText : FindTextByObjectName("CurrentPlanValue");
+
+		for (int i = 0; i < featureTitleTexts.Length; i++)
+		{
+			int index = i + 1;
+			featureTitleTexts[i] = featureTitleTexts[i] != null ? featureTitleTexts[i] : FindTextByObjectName($"Title{index}");
+			featureDescTexts[i] = featureDescTexts[i] != null ? featureDescTexts[i] : FindTextByObjectName($"Desc{index}");
+		}
+	}
+
+	private Text FindTextByObjectName(string objectName)
+	{
+		if (string.IsNullOrEmpty(objectName))
+			return null;
+
+		Text[] texts = gameObject.GetComponentsInChildren<Text>(true);
+		foreach (Text text in texts)
+		{
+			if (text != null && text.gameObject.name == objectName)
+				return text;
+		}
+
+		return null;
+	}
+
+	private void RefreshStaticCopy()
+	{
+		BindPrefabTexts();
+
+		SetText(pageTitleText, isCurrentPro ? "Pro 已开通" : "解锁所有功能");
+		SetText(proStatusTitleText, isCurrentPro ? "PRO 已开通" : "升级到 PRO");
+		SetText(proStatusDescText, isCurrentPro
+			? "你已解锁完整占卜体验。"
+			: "解锁更多占卜额度、深度记录和神谕师体验。");
+		SetText(currentPlanLabelText, "当前方案");
+		SetText(currentPlanValueText, isCurrentPro ? "Pro" : "Free");
+
+		SetFeatureText(0, "占卜额度", isCurrentPro
+			? "每日牌与牌阵可持续使用"
+			: $"免费：每日牌 {UsageStatsManager.FreeDailyOracleLimit}/日，牌阵 {UsageStatsManager.FreeReadingLimit}/日");
+		SetFeatureText(1, "今日对话", isCurrentPro
+			? "Pro 对话额度 300 句/日"
+			: $"免费：{UsageStatsManager.FreeDialogLimit} 句/日");
+		SetFeatureText(2, "神谕师角色", "切换塔罗师、冥想师和占星师");
+		SetFeatureText(3, "记忆与历史", "完整查看历史、记忆与回访线索");
+	}
+
+	private void SetFeatureText(int index, string title, string desc)
+	{
+		if (index < 0 || index >= featureTitleTexts.Length)
+			return;
+
+		SetText(featureTitleTexts[index], title);
+		SetText(featureDescTexts[index], desc);
+	}
+
+	private static void SetText(Text target, string value)
+	{
+		if (target == null)
+			return;
+
+		target.text = value;
+		target.resizeTextForBestFit = true;
+		target.resizeTextMinSize = Mathf.Clamp(target.resizeTextMinSize <= 0 ? 12 : target.resizeTextMinSize, 10, 18);
+		target.resizeTextMaxSize = Mathf.Max(target.fontSize, target.resizeTextMaxSize);
+	}
+
 	private void RefreshPurchaseControls()
 	{
+		RefreshStaticCopy();
+
 		if (monthlyPurchaseText != null)
-			monthlyPurchaseText.text = BuildProductButtonText(iapProducts.proMonthly, "月度 Pro");
+			monthlyPurchaseText.text = isCurrentPro ? "已开通 Pro" : BuildProductButtonText(iapProducts.proMonthly, "月度 Pro");
 		if (yearlyPurchaseText != null)
-			yearlyPurchaseText.text = BuildProductButtonText(iapProducts.proYearly, "年度 Pro");
+			yearlyPurchaseText.text = isCurrentPro ? "可在订阅管理中调整方案" : BuildProductButtonText(iapProducts.proYearly, "年度 Pro");
+
+		if (monthlyPurchaseButton != null)
+			monthlyPurchaseButton.interactable = !isCurrentPro;
+		if (yearlyPurchaseButton != null)
+			yearlyPurchaseButton.interactable = !isCurrentPro;
 
 		var manager = GetIapManager();
-		SetPurchaseHint(manager.IsUnityIapAvailable
+		SetPurchaseHint(isCurrentPro
+			? "当前账号已是 Pro。续订、取消或更换方案请使用订阅管理。"
+			: manager.IsUnityIapAvailable
 			? "购买完成后会自动刷新 Pro 状态，也可以手动恢复购买。"
 			: "当前未安装 Unity IAP 包，购买按钮会显示降级提示。");
 	}

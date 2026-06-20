@@ -22,9 +22,6 @@ public class DialogUI : WindowBase
 
     private LoopListView2 chatListView;
 
-    private string userItemPrefabName = "ChatRootRight";
-    private string aiItemPrefabName = "MessageItem";
-
     /// <summary>对话系统实例</summary>
     private DialogSystem dialogSystem;
     /// <summary>占卜引擎实例</summary>

@@ -1,0 +1,93 @@
+[debug] [2026-06-20T15:55:56.006Z] ----------------------------------------------------------------------
+[debug] [2026-06-20T15:55:56.010Z] Command:       /Users/kittenhao/.workbuddy/binaries/node/versions/22.22.2/bin/node /Users/kittenhao/.workbuddy/binaries/node/versions/22.22.2/bin/firebase deploy --project fari-app-b2fd2 --only hosting --debug
+[debug] [2026-06-20T15:55:56.010Z] CLI Version:   15.20.0
+[debug] [2026-06-20T15:55:56.011Z] Platform:      darwin
+[debug] [2026-06-20T15:55:56.011Z] Node Version:  v22.22.2
+[debug] [2026-06-20T15:55:56.012Z] Time:          Sat Jun 20 2026 23:55:56 GMT+0800 (China Standard Time)
+[debug] [2026-06-20T15:55:56.012Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-06-20T15:55:56.725Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-06-20T15:55:56.725Z] > authorizing via signed-in user (1255755615qq@gmail.com)
+[debug] [2026-06-20T15:55:56.726Z] [iam] checking project fari-app-b2fd2 for permissions ["firebase.projects.get","firebasehosting.sites.update"]
+[debug] [2026-06-20T15:55:56.726Z] Checked if tokens are valid: true, expires at: 1781973645491
+[debug] [2026-06-20T15:55:56.726Z] Checked if tokens are valid: true, expires at: 1781973645491
+[debug] [2026-06-20T15:55:56.727Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/fari-app-b2fd2:testIamPermissions [none]
+[debug] [2026-06-20T15:55:56.727Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/fari-app-b2fd2:testIamPermissions  x-goog-user-project=fari-app-b2fd2
+[debug] [2026-06-20T15:55:56.727Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/fari-app-b2fd2:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-06-20T15:55:58.238Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/fari-app-b2fd2:testIamPermissions 200
+[debug] [2026-06-20T15:55:58.239Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/fari-app-b2fd2:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-06-20T15:55:58.239Z] Checked if tokens are valid: true, expires at: 1781973645491
+[debug] [2026-06-20T15:55:58.239Z] Checked if tokens are valid: true, expires at: 1781973645491
+[debug] [2026-06-20T15:55:58.240Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/fari-app-b2fd2 [none]
+[debug] [2026-06-20T15:55:59.184Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/fari-app-b2fd2 200
+[debug] [2026-06-20T15:55:59.184Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/fari-app-b2fd2 {"projectId":"fari-app-b2fd2","projectNumber":"963943083905","displayName":"fari-app","name":"projects/fari-app-b2fd2","resources":{"hostingSite":"fari-app-b2fd2"},"state":"ACTIVE","etag":"1_82f86dc5-1264-4c4d-b34d-ce5fde252b06"}
+[info] 
+[info] === Deploying to 'fari-app-b2fd2'...
+[info] 
+[info] i  deploying hosting 
+[debug] [2026-06-20T15:55:59.187Z] Checked if tokens are valid: true, expires at: 1781973645491
+[debug] [2026-06-20T15:55:59.187Z] Checked if tokens are valid: true, expires at: 1781973645491
+[debug] [2026-06-20T15:55:59.187Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/fari-app-b2fd2/sites/fari-app-b2fd2 [none]
+[debug] [2026-06-20T15:56:00.454Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/fari-app-b2fd2/sites/fari-app-b2fd2 200
+[debug] [2026-06-20T15:56:00.454Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/fari-app-b2fd2/sites/fari-app-b2fd2 {"name":"projects/fari-app-b2fd2/sites/fari-app-b2fd2","defaultUrl":"https://fari-app-b2fd2.web.app","type":"DEFAULT_SITE"}
+[debug] [2026-06-20T15:56:00.455Z] Checked if tokens are valid: true, expires at: 1781973645491
+[debug] [2026-06-20T15:56:00.455Z] Checked if tokens are valid: true, expires at: 1781973645491
+[debug] [2026-06-20T15:56:00.455Z] >>> [apiv2][query] POST https://firebasehosting.googleapis.com/v1beta1/projects/-/sites/fari-app-b2fd2/versions [none]
+[debug] [2026-06-20T15:56:00.455Z] >>> [apiv2][body] POST https://firebasehosting.googleapis.com/v1beta1/projects/-/sites/fari-app-b2fd2/versions {"status":"CREATED","labels":{"deployment-tool":"cli-firebase"}}
+[debug] [2026-06-20T15:56:02.855Z] <<< [apiv2][status] POST https://firebasehosting.googleapis.com/v1beta1/projects/-/sites/fari-app-b2fd2/versions 200
+[debug] [2026-06-20T15:56:02.856Z] <<< [apiv2][body] POST https://firebasehosting.googleapis.com/v1beta1/projects/-/sites/fari-app-b2fd2/versions {"name":"projects/963943083905/sites/fari-app-b2fd2/versions/f614e896df8ee25d","status":"CREATED","config":{},"labels":{"deployment-tool":"cli-firebase"}}
+[info] i  hosting[fari-app-b2fd2]: beginning deploy... 
+[info] i  hosting[fari-app-b2fd2]: found 1 files in web-admin 
+[debug] [2026-06-20T15:56:02.880Z] [hosting] uploading with 200 concurrency
+[debug] [2026-06-20T15:56:02.881Z] [hosting] hash cache [d2ViLWFkbWlu] not populated
+[debug] [2026-06-20T15:56:02.885Z] Checked if tokens are valid: true, expires at: 1781973645491
+[debug] [2026-06-20T15:56:02.885Z] Checked if tokens are valid: true, expires at: 1781973645491
+[debug] [2026-06-20T15:56:02.885Z] [hosting] hash cache [d2ViLWFkbWlu] stored for 1 files
+[debug] [2026-06-20T15:56:02.886Z] [hosting][hash queue][FINAL] {"max":3,"min":3,"avg":3,"active":0,"complete":1,"success":1,"errored":0,"retried":0,"total":1,"elapsed":5}
+[debug] [2026-06-20T15:56:02.886Z] >>> [apiv2][query] POST https://firebasehosting.googleapis.com/v1beta1/projects/963943083905/sites/fari-app-b2fd2/versions/f614e896df8ee25d:populateFiles [none]
+[debug] [2026-06-20T15:56:02.886Z] >>> [apiv2][body] POST https://firebasehosting.googleapis.com/v1beta1/projects/963943083905/sites/fari-app-b2fd2/versions/f614e896df8ee25d:populateFiles {"files":{"/feedback-admin.html":"f5478d916c6be117c2fda696f34e86bcd3ed3027884ab3ac938c8a4164202440"}}
+[debug] [2026-06-20T15:56:04.285Z] <<< [apiv2][status] POST https://firebasehosting.googleapis.com/v1beta1/projects/963943083905/sites/fari-app-b2fd2/versions/f614e896df8ee25d:populateFiles 200
+[debug] [2026-06-20T15:56:04.285Z] <<< [apiv2][body] POST https://firebasehosting.googleapis.com/v1beta1/projects/963943083905/sites/fari-app-b2fd2/versions/f614e896df8ee25d:populateFiles {"uploadRequiredHashes":["f5478d916c6be117c2fda696f34e86bcd3ed3027884ab3ac938c8a4164202440"],"uploadUrl":"https://upload-firebasehosting.googleapis.com/upload/sites/fari-app-b2fd2/versions/f614e896df8ee25d/files"}
+[debug] [2026-06-20T15:56:04.286Z] Checked if tokens are valid: true, expires at: 1781973645491
+[debug] [2026-06-20T15:56:04.286Z] Checked if tokens are valid: true, expires at: 1781973645491
+[debug] [2026-06-20T15:56:04.287Z] >>> [apiv2][query] POST https://upload-firebasehosting.googleapis.com/upload/sites/fari-app-b2fd2/versions/f614e896df8ee25d/files/f5478d916c6be117c2fda696f34e86bcd3ed3027884ab3ac938c8a4164202440 [none]
+[debug] [2026-06-20T15:56:04.287Z] >>> [apiv2][body] POST https://upload-firebasehosting.googleapis.com/upload/sites/fari-app-b2fd2/versions/f614e896df8ee25d/files/f5478d916c6be117c2fda696f34e86bcd3ed3027884ab3ac938c8a4164202440 [stream]
+[debug] [2026-06-20T15:56:04.288Z] [hosting][populate queue][FINAL] {"max":1402,"min":1402,"avg":1402,"active":0,"complete":1,"success":1,"errored":0,"retried":0,"total":1,"elapsed":1404}
+[debug] [2026-06-20T15:56:04.288Z] [hosting] uploads queued: 1
+[info] i  hosting: uploading new files [0/1] (0%) 
+[debug] [2026-06-20T15:56:06.421Z] <<< [apiv2][status] POST https://upload-firebasehosting.googleapis.com/upload/sites/fari-app-b2fd2/versions/f614e896df8ee25d/files/f5478d916c6be117c2fda696f34e86bcd3ed3027884ab3ac938c8a4164202440 200
+[debug] [2026-06-20T15:56:06.421Z] <<< [apiv2][body] POST https://upload-firebasehosting.googleapis.com/upload/sites/fari-app-b2fd2/versions/f614e896df8ee25d/files/f5478d916c6be117c2fda696f34e86bcd3ed3027884ab3ac938c8a4164202440 [stream]
+[debug] [2026-06-20T15:56:06.421Z] [hosting][upload queue][FINAL] {"max":2136,"min":2136,"avg":2136,"active":0,"complete":1,"success":1,"errored":0,"retried":0,"total":1,"elapsed":2136}
+[info] i  hosting: upload complete 
+[info] ✔  hosting[fari-app-b2fd2]: file upload complete 
+[debug] [2026-06-20T15:56:06.422Z] [hosting] deploy completed after 3563ms
+[debug] [2026-06-20T15:56:06.422Z] [
+  {
+    "config": {
+      "site": "fari-app-b2fd2",
+      "public": "web-admin",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "cleanUrls": true
+    },
+    "version": "projects/963943083905/sites/fari-app-b2fd2/versions/f614e896df8ee25d"
+  }
+]
+[info] i  hosting[fari-app-b2fd2]: finalizing version... 
+[debug] [2026-06-20T15:56:06.423Z] Checked if tokens are valid: true, expires at: 1781973645491
+[debug] [2026-06-20T15:56:06.423Z] Checked if tokens are valid: true, expires at: 1781973645491
+[debug] [2026-06-20T15:56:06.423Z] >>> [apiv2][query] PATCH https://firebasehosting.googleapis.com/v1beta1/projects/-/sites/fari-app-b2fd2/versions/f614e896df8ee25d updateMask=status%2Cconfig
+[debug] [2026-06-20T15:56:06.423Z] >>> [apiv2][body] PATCH https://firebasehosting.googleapis.com/v1beta1/projects/-/sites/fari-app-b2fd2/versions/f614e896df8ee25d {"status":"FINALIZED","config":{"cleanUrls":true}}
+[debug] [2026-06-20T15:56:07.793Z] <<< [apiv2][status] PATCH https://firebasehosting.googleapis.com/v1beta1/projects/-/sites/fari-app-b2fd2/versions/f614e896df8ee25d 200
+[debug] [2026-06-20T15:56:07.793Z] <<< [apiv2][body] PATCH https://firebasehosting.googleapis.com/v1beta1/projects/-/sites/fari-app-b2fd2/versions/f614e896df8ee25d {"name":"projects/963943083905/sites/fari-app-b2fd2/versions/f614e896df8ee25d","status":"FINALIZED","config":{"cleanUrls":true},"labels":{"deployment-tool":"cli-firebase"},"createTime":"2026-06-20T15:56:01.688484Z","createUser":{"email":"1255755615qq@gmail.com"},"finalizeTime":"2026-06-20T15:56:07.810309Z","finalizeUser":{"email":"1255755615qq@gmail.com"}}
+[debug] [2026-06-20T15:56:07.793Z] [hosting] finalized version for fari-app-b2fd2:[object Object]
+[info] ✔  hosting[fari-app-b2fd2]: version finalized 
+[info] i  hosting[fari-app-b2fd2]: releasing new version... 
+[debug] [2026-06-20T15:56:07.793Z] Checked if tokens are valid: true, expires at: 1781973645491
+[debug] [2026-06-20T15:56:07.793Z] Checked if tokens are valid: true, expires at: 1781973645491
+[debug] [2026-06-20T15:56:07.794Z] >>> [apiv2][query] POST https://firebasehosting.googleapis.com/v1beta1/projects/-/sites/fari-app-b2fd2/channels/live/releases versionName=projects%2F963943083905%2Fsites%2Ffari-app-b2fd2%2Fversions%2Ff614e896df8ee25d
+[debug] [2026-06-20T15:56:07.794Z] >>> [apiv2][body] POST https://firebasehosting.googleapis.com/v1beta1/projects/-/sites/fari-app-b2fd2/channels/live/releases {}
+[debug] [2026-06-20T15:56:09.125Z] <<< [apiv2][status] POST https://firebasehosting.googleapis.com/v1beta1/projects/-/sites/fari-app-b2fd2/channels/live/releases 200

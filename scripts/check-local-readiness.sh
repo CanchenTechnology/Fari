@@ -61,7 +61,7 @@ PY
 grep_file() {
   local pattern="$1"
   local file="$2"
-  grep -q "$pattern" "$ROOT_DIR/$file"
+  grep -q -- "$pattern" "$ROOT_DIR/$file"
 }
 
 project_settings_group_has_define() {
@@ -134,8 +134,15 @@ has_file "scripts/check-firebase-network.sh"
 has_file "scripts/check-ios-export.sh"
 has_file "scripts/build-ios-xcode.sh"
 has_file "scripts/check-android-config.sh"
+has_file "scripts/check-android-keystore.sh"
 has_file "scripts/build-android-apk.sh"
 has_file "scripts/configure-google-play-games.sh"
+has_file "scripts/check-iap-products.sh"
+has_file "scripts/check-release-blockers.sh"
+has_file "scripts/prepare-release.sh"
+has_file "scripts/finish-release.sh"
+has_file "scripts/check-release-env.sh"
+has_file "scripts/release.env.example"
 has_file "scripts/smoke-submit-iap-receipt.sh"
 has_file "scripts/smoke-functions-auth.sh"
 has_file "Assets/Scripts/GameManager/AppReadinessDiagnostics.cs"
@@ -221,7 +228,7 @@ else
 fi
 echo
 
-for export_name in membershipStatus readinessStatus submitIapReceipt aiChat aiChatStream ttsSynthesize; do
+for export_name in membershipStatus readinessStatus publicConfig submitFeedback adminPublicConfigUpdate adminFeedbackList adminFeedbackUpdate deleteMyAccountData submitIapReceipt aiChat aiChatStream ttsSynthesize; do
   if grep_file "exports\\.$export_name" "functions/index.js"; then
     ok "functions exports $export_name"
   else
@@ -242,31 +249,249 @@ else
   fail "deploy script does not include readinessStatus"
 fi
 
+if bash -n scripts/deploy-firebase.sh >/tmp/moonly_readiness_deploy_firebase_syntax.log 2>&1; then
+  ok "Firebase deploy script syntax check passed"
+else
+  fail "Firebase deploy script syntax check failed; see /tmp/moonly_readiness_deploy_firebase_syntax.log"
+fi
+
 if grep_file "submitIapReceipt" "scripts/deploy-iap-functions.sh"; then
   ok "IAP deploy script includes submitIapReceipt"
 else
   fail "IAP deploy script does not include submitIapReceipt"
 fi
 
+if bash -n scripts/deploy-iap-functions.sh >/tmp/moonly_readiness_deploy_iap_syntax.log 2>&1; then
+  ok "IAP deploy script syntax check passed"
+else
+  fail "IAP deploy script syntax check failed; see /tmp/moonly_readiness_deploy_iap_syntax.log"
+fi
+
+if [[ -x scripts/check-iap-products.sh ]]; then
+  if scripts/check-iap-products.sh >/tmp/moonly_readiness_iap_products.log 2>&1; then
+    ok "IAP product config consistency check passed"
+  else
+    fail "IAP product config consistency check failed; see /tmp/moonly_readiness_iap_products.log"
+  fi
+else
+  fail "scripts/check-iap-products.sh is not executable"
+fi
+
+if [[ -x scripts/check-release-blockers.sh ]]; then
+  if bash -n scripts/check-release-blockers.sh >/tmp/moonly_readiness_release_blockers_syntax.log 2>&1; then
+    ok "release blockers script syntax check passed"
+  else
+    fail "release blockers script syntax check failed; see /tmp/moonly_readiness_release_blockers_syntax.log"
+  fi
+else
+  fail "scripts/check-release-blockers.sh is not executable"
+fi
+
+if [[ -x scripts/prepare-release.sh ]]; then
+  if bash -n scripts/prepare-release.sh >/tmp/moonly_readiness_prepare_release_syntax.log 2>&1; then
+    ok "release preparation script syntax check passed"
+  else
+    fail "release preparation script syntax check failed; see /tmp/moonly_readiness_prepare_release_syntax.log"
+  fi
+else
+  fail "scripts/prepare-release.sh is not executable"
+fi
+
+if [[ -x scripts/finish-release.sh ]]; then
+  if bash -n scripts/finish-release.sh >/tmp/moonly_readiness_finish_release_syntax.log 2>&1; then
+    ok "final release continuation script syntax check passed"
+  else
+    fail "final release continuation script syntax check failed; see /tmp/moonly_readiness_finish_release_syntax.log"
+  fi
+else
+  fail "scripts/finish-release.sh is not executable"
+fi
+
+if [[ -x scripts/check-release-env.sh ]]; then
+  if bash -n scripts/check-release-env.sh >/tmp/moonly_readiness_check_release_env_syntax.log 2>&1; then
+    ok "release env check script syntax check passed"
+  else
+    fail "release env check script syntax check failed; see /tmp/moonly_readiness_check_release_env_syntax.log"
+  fi
+else
+  fail "scripts/check-release-env.sh is not executable"
+fi
+
+if [[ -x scripts/check-android-keystore.sh ]]; then
+  if bash -n scripts/check-android-keystore.sh >/tmp/moonly_readiness_android_keystore_syntax.log 2>&1; then
+    ok "Android keystore check script syntax check passed"
+  else
+    fail "Android keystore check script syntax check failed; see /tmp/moonly_readiness_android_keystore_syntax.log"
+  fi
+else
+  fail "scripts/check-android-keystore.sh is not executable"
+fi
+
+if grep_file "RELEASE_ENV_FILE" "scripts/prepare-release.sh" \
+  && grep_file "MOONLY_RELEASE_ENV_FILE" "scripts/prepare-release.sh"; then
+  ok "release preparation script can load a local release env file"
+else
+  fail "release preparation script missing release env file loading support"
+fi
+
+if grep_file "RELEASE_ENV_FILE" "scripts/check-release-blockers.sh" \
+  && grep_file "MOONLY_RELEASE_ENV_FILE" "scripts/check-release-blockers.sh"; then
+  ok "release blockers script can load a local release env file"
+else
+  fail "release blockers script missing release env file loading support"
+fi
+
+if grep_file "RUN_IAP_SECRET_SETUP=1" "scripts/finish-release.sh" \
+  && grep_file "RUN_DEPLOY=1" "scripts/finish-release.sh" \
+  && grep_file "RUN_BUILDS=1" "scripts/finish-release.sh" \
+  && grep_file "CHECK_IAP_REAL_RECEIPT=1" "scripts/finish-release.sh" \
+  && grep_file "--no-env-file" "scripts/finish-release.sh" \
+  && grep_file "scripts/prepare-release.sh" "scripts/finish-release.sh"; then
+  ok "final release continuation script wires secret setup, deploy, builds, release gate, and env-free mode"
+else
+  fail "final release continuation script missing required final release steps"
+fi
+
+if env \
+  ANDROID_KEYSTORE_PASS=readiness_keystore \
+  ANDROID_KEYALIAS_PASS=readiness_alias \
+  APPLE_SHARED_SECRET=readiness_apple_shared_secret \
+  GOOGLE_PACKAGE_NAME=com.canchentechnology.fari \
+  GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account","client_email":"readiness@fari-app-b2fd2.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\nREADINESS\n-----END PRIVATE KEY-----\n"}' \
+  IAP_RECEIPT=readiness_receipt \
+  IAP_STORE=AppleAppStore \
+  IAP_PRODUCT_ID=moonly.pro.monthly \
+  SKIP_ANDROID_KEYSTORE_VALIDATION=1 \
+  ./scripts/check-release-env.sh --no-env-file >/tmp/moonly_readiness_release_env_check.log 2>&1; then
+  ok "release env check script validates complete release inputs without printing secrets"
+else
+  fail "release env check script dry-run validation failed; see /tmp/moonly_readiness_release_env_check.log"
+fi
+
+if node functions/scripts/set-public-config.js --dry-run functions/public-config.example.json >/tmp/moonly_readiness_public_config.log 2>&1; then
+  ok "public config validation dry-run passed"
+else
+  fail "public config validation dry-run failed; see /tmp/moonly_readiness_public_config.log"
+fi
+
 if grep_file "CommandLineBuild.BuildIOSProject" "scripts/build-ios-xcode.sh" \
+  && grep_file "-buildTarget iOS" "scripts/build-ios-xcode.sh" \
   && grep_file "check-ios-export.sh" "scripts/build-ios-xcode.sh"; then
   ok "iOS Xcode export script builds and validates exported project"
 else
-  fail "iOS Xcode export script is missing build or validation step"
+  fail "iOS Xcode export script is missing build target, build method, or validation step"
+fi
+
+if grep_file "RELEASE_ENV_FILE" "scripts/build-ios-xcode.sh" \
+  && grep_file "MOONLY_RELEASE_ENV_FILE" "scripts/build-ios-xcode.sh"; then
+  ok "iOS Xcode export script can load local release env file"
+else
+  fail "iOS Xcode export script missing release env file support"
 fi
 
 if grep_file "CommandLineBuild.BuildAndroidApk" "scripts/build-android-apk.sh" \
-  && grep_file "check-android-config.sh" "scripts/build-android-apk.sh"; then
+  && grep_file "-buildTarget Android" "scripts/build-android-apk.sh" \
+  && grep_file "check-android-config.sh" "scripts/build-android-apk.sh" \
+  && grep_file "check-android-keystore.sh" "scripts/build-android-apk.sh"; then
   ok "Android APK build script builds and validates APK"
 else
-  fail "Android APK build script is missing build or validation step"
+  fail "Android APK build script is missing build target, build method, keystore check, or validation step"
+fi
+
+if grep_file "RELEASE_ENV_FILE" "scripts/build-android-apk.sh" \
+  && grep_file "MOONLY_RELEASE_ENV_FILE" "scripts/build-android-apk.sh"; then
+  ok "Android APK build script can load local release env file"
+else
+  fail "Android APK build script missing release env file support"
+fi
+
+if grep_file "ANDROID_KEYSTORE_PASS" "scripts/build-android-apk.sh" \
+  && grep_file "ANDROID_KEYALIAS_PASS" "scripts/build-android-apk.sh" \
+  && grep_file "androidUseCustomKeystore" "scripts/build-android-apk.sh"; then
+  ok "Android APK build script validates custom keystore signing passwords before batchmode build"
+else
+  fail "Android APK build script missing custom keystore signing preflight"
 fi
 
 if grep_file "GOOGLE_PLAY_GAMES_APP_ID" "scripts/configure-google-play-games.sh" \
-  && grep_file "com.google.android.gms.games.APP_ID" "scripts/configure-google-play-games.sh"; then
-  ok "Google Play Games APP_ID configure script is available"
+  && grep_file "com.google.android.gms.games.APP_ID" "scripts/configure-google-play-games.sh" \
+  && grep_file "DRY_RUN" "scripts/configure-google-play-games.sh" \
+  && grep_file "CHECK_ONLY" "scripts/configure-google-play-games.sh"; then
+  ok "Google Play Games APP_ID configure script is available with dry-run/check support"
 else
-  fail "Google Play Games APP_ID configure script is missing required update logic"
+  fail "Google Play Games APP_ID configure script is missing required update or validation logic"
+fi
+
+if grep_file "validate_google_play_games_app_id" "scripts/prepare-release.sh" \
+  && grep_file "validate_iap_secret_inputs" "scripts/prepare-release.sh" \
+  && grep_file "validate_real_iap_receipt_inputs" "scripts/prepare-release.sh"; then
+  ok "release preparation script validates external release inputs before running steps"
+else
+  fail "release preparation script missing external input validation"
+fi
+
+if grep_file "WAIT_FOR_UNITY_CLOSE" "scripts/prepare-release.sh" \
+  && grep_file "UNITY_WAIT_TIMEOUT_SECONDS" "scripts/prepare-release.sh" \
+  && grep_file "wait_for_unity_close" "scripts/prepare-release.sh"; then
+  ok "release preparation script can wait for Unity to close before batchmode builds"
+else
+  fail "release preparation script missing wait-for-Unity-close support"
+fi
+
+if grep_file "configure-google-play-games.sh --check" "scripts/check-release-blockers.sh" \
+  && grep_file "check_real_iap_receipt_input" "scripts/check-release-blockers.sh"; then
+  ok "release blockers script reuses Google Play Games check and validates real IAP receipt input"
+else
+  fail "release blockers script missing Google Play Games check reuse or real IAP receipt input validation"
+fi
+
+if grep_file "REQUIRE_GOOGLE_PLAY_GAMES" "scripts/check-release-blockers.sh" \
+  && grep_file "current Google login does not require Play Games" "scripts/check-release-blockers.sh"; then
+  ok "release blockers script treats Google Play Games APP_ID as optional unless explicitly required"
+else
+  fail "release blockers script should not require Google Play Games APP_ID by default"
+fi
+
+if grep_file "check_android_signing_env" "scripts/check-release-blockers.sh" \
+  && grep_file "ANDROID_KEYSTORE_PASS" "scripts/check-release-blockers.sh" \
+  && grep_file "ANDROID_KEYALIAS_PASS" "scripts/check-release-blockers.sh" \
+  && grep_file "check-android-keystore.sh" "scripts/check-release-blockers.sh"; then
+  ok "release blockers script reports and validates Android signing env when APK rebuild is needed"
+else
+  fail "release blockers script missing Android signing env release check"
+fi
+
+if grep_file "AndroidKeystoreName" "scripts/check-android-keystore.sh" \
+  && grep_file "AndroidKeyaliasName" "scripts/check-android-keystore.sh" \
+  && grep_file "ANDROID_KEYSTORE_PASS" "scripts/check-android-keystore.sh" \
+  && grep_file "ANDROID_KEYALIAS_PASS" "scripts/check-android-keystore.sh" \
+  && grep_file "-importkeystore" "scripts/check-android-keystore.sh"; then
+  ok "Android keystore check validates configured keystore, alias, store password, and key password"
+else
+  fail "Android keystore check missing required signing validation logic"
+fi
+
+if grep_file "collect_remote_missing_secrets" "scripts/check-release-blockers.sh" \
+  && grep_file "print_iap_secret_unblock_command" "scripts/check-release-blockers.sh"; then
+  ok "release blockers script prints IAP secret unblock commands from actual remote missing secrets"
+else
+  fail "release blockers script missing dynamic IAP secret unblock command output"
+fi
+
+if grep_file "APPLE_SHARED_SECRET" "scripts/release.env.example" \
+  && grep_file "GOOGLE_SERVICE_ACCOUNT_JSON_FILE" "scripts/release.env.example" \
+  && grep_file "IAP_RECEIPT" "scripts/release.env.example"; then
+  ok "release env template documents IAP and release inputs"
+else
+  fail "release env template missing required release inputs"
+fi
+
+if grep_file "scripts/release.env" ".gitignore" \
+  && grep_file "scripts/release.local.env" ".gitignore" \
+  && grep_file "!scripts/release.env.example" ".gitignore"; then
+  ok "gitignore protects local release env files while keeping the example template"
+else
+  fail "gitignore missing local release env protections"
 fi
 
 if [[ -x scripts/check-ios-export.sh ]]; then
@@ -291,6 +516,48 @@ else
   fail "Editor menu missing Android APK build command"
 fi
 
+if grep_file "Copy Android Keystore Check Command" "Assets/Editor/AppReadinessDiagnosticsMenu.cs"; then
+  ok "Editor menu can copy Android keystore check command"
+else
+  fail "Editor menu missing Android keystore check command"
+fi
+
+if grep_file "Copy Release Blockers Command" "Assets/Editor/AppReadinessDiagnosticsMenu.cs"; then
+  ok "Editor menu can copy release blockers command"
+else
+  fail "Editor menu missing release blockers command"
+fi
+
+if grep_file "Copy Release Blockers Env Command" "Assets/Editor/AppReadinessDiagnosticsMenu.cs"; then
+  ok "Editor menu can copy release blockers env command"
+else
+  fail "Editor menu missing release blockers env command"
+fi
+
+if grep_file "Copy Prepare Release Command" "Assets/Editor/AppReadinessDiagnosticsMenu.cs"; then
+  ok "Editor menu can copy prepare release command"
+else
+  fail "Editor menu missing prepare release command"
+fi
+
+if grep_file "Copy Prepare Release Env Command" "Assets/Editor/AppReadinessDiagnosticsMenu.cs"; then
+  ok "Editor menu can copy prepare release env command"
+else
+  fail "Editor menu missing prepare release env command"
+fi
+
+if grep_file "Copy Check Release Env Command" "Assets/Editor/AppReadinessDiagnosticsMenu.cs"; then
+  ok "Editor menu can copy release env check command"
+else
+  fail "Editor menu missing release env check command"
+fi
+
+if grep_file "Copy Finish Release Env Command" "Assets/Editor/AppReadinessDiagnosticsMenu.cs"; then
+  ok "Editor menu can copy final release continuation command"
+else
+  fail "Editor menu missing final release continuation command"
+fi
+
 if [[ -x scripts/check-android-config.sh ]]; then
   if scripts/check-android-config.sh >/tmp/moonly_readiness_android_config.log 2>&1; then
     ok "Android source config check passed"
@@ -308,6 +575,13 @@ if grep_file "functions:secrets:set" "scripts/setup-firebase-secrets.sh"; then
   ok "secret setup script can write Firebase Functions secrets"
 else
   fail "secret setup script is missing functions:secrets:set"
+fi
+
+if grep_file "MOONLY_SECRET_NAMES" "scripts/setup-firebase-secrets.sh" \
+  && grep_file "REQUESTED_SECRET_NAMES" "scripts/setup-firebase-secrets.sh"; then
+  ok "secret setup script supports partial secret updates"
+else
+  fail "secret setup script missing partial secret update support"
 fi
 
 if grep_file "functions:secrets:access" "scripts/check-firebase-secrets.sh"; then
@@ -509,7 +783,7 @@ fi
 if [[ "${CHECK_FIREBASE_FUNCTIONS:-0}" == "1" ]]; then
   if command -v firebase >/dev/null 2>&1; then
     if firebase functions:list --project "$PROJECT_ID" --json >/tmp/moonly_readiness_functions_list.json 2>/tmp/moonly_readiness_functions_list.err; then
-      for function_name in membershipStatus readinessStatus publicConfig submitFeedback adminPublicConfigUpdate adminFeedbackList adminFeedbackUpdate; do
+      for function_name in membershipStatus readinessStatus publicConfig submitFeedback adminPublicConfigUpdate adminFeedbackList adminFeedbackUpdate deleteMyAccountData; do
         if node - "$function_name" <<'NODE' >/dev/null 2>&1
 const fs = require("fs");
 const functionName = process.argv[2];
