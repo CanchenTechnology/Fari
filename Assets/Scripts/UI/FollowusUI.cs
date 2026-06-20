@@ -47,26 +47,54 @@ public class FollowusUI : WindowBase
 		var firestore = FirestoreManager.Instance;
 		if (firestore == null || !firestore.IsInitialized) return;
 
-		firestore.LoadPublicAppConfig(config =>
-		{
-			if (config?.socialLinks != null)
-				socialLinks = config.socialLinks;
-		});
-	}
-
-	private void OpenLink(string url, string label)
-	{
-		if (string.IsNullOrWhiteSpace(url))
-		{
-			ToastManager.ShowToast("链接暂未配置");
-			return;
+			firestore.LoadPublicAppConfig(config =>
+			{
+				if (config?.socialLinks != null)
+					socialLinks = MergeWithDefaults(config.socialLinks);
+			});
 		}
 
-		Application.OpenURL(url);
-		ToastManager.ShowToast($"正在打开 {label}");
-	}
+		private void OpenLink(string url, string label)
+		{
+			url = string.IsNullOrWhiteSpace(url) ? GetDefaultLink(label) : url.Trim();
+			if (string.IsNullOrWhiteSpace(url))
+			{
+				ToastManager.ShowToast("链接不可用，请稍后再试");
+				return;
+			}
 
-	#endregion
+			Application.OpenURL(url);
+			ToastManager.ShowToast($"正在打开 {label}");
+		}
+
+		private static SocialLinksConfig MergeWithDefaults(SocialLinksConfig config)
+		{
+			SocialLinksConfig defaults = SocialLinksConfig.Default;
+			return new SocialLinksConfig
+			{
+				instagram = string.IsNullOrWhiteSpace(config.instagram) ? defaults.instagram : config.instagram,
+				facebook = string.IsNullOrWhiteSpace(config.facebook) ? defaults.facebook : config.facebook,
+				x = string.IsNullOrWhiteSpace(config.x) ? defaults.x : config.x,
+				tiktok = string.IsNullOrWhiteSpace(config.tiktok) ? defaults.tiktok : config.tiktok,
+				pinterest = string.IsNullOrWhiteSpace(config.pinterest) ? defaults.pinterest : config.pinterest,
+			};
+		}
+
+		private static string GetDefaultLink(string label)
+		{
+			SocialLinksConfig defaults = SocialLinksConfig.Default;
+			return label switch
+			{
+				"Instagram" => defaults.instagram,
+				"Facebook" => defaults.facebook,
+				"X" => defaults.x,
+				"TikTok" => defaults.tiktok,
+				"Pinterest" => defaults.pinterest,
+				_ => string.Empty,
+			};
+		}
+
+		#endregion
 
 	#region UI组件事件
 	public void OnBackButtonClick()

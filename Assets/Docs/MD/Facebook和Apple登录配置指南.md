@@ -398,11 +398,13 @@ private static extern void _fariAppleStartSignIn(
 
 #### Xcode Capability
 
-构建出 Xcode 项目后：
-1. 打开 `.xcworkspace`（不是 `.xcodeproj`）
-2. 选择 Target → **Signing & Capabilities**
-3. 点击 **+ Capability** → 搜索 **Sign In With Apple** → 添加
-4. 确认 Team 选择了正确的 Apple Developer 账号
+`FariIOSContactsPostprocessor` 会在 Unity 导出 iOS Xcode 工程时自动添加 **Sign In With Apple** capability，并写入 `fari.entitlements`。导出后可运行：
+
+```bash
+./scripts/check-ios-export.sh Builds/iOS
+```
+
+检查通过后，再在 Xcode 中确认 Team / Provisioning Profile 使用正确的 Apple Developer 账号。
 
 #### 文件位置确认
 

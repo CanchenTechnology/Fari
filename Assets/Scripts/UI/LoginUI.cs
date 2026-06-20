@@ -5,6 +5,7 @@
  * Description: UI 表现层，该层只负责界面的交互、表现相关的更新，不允许编写任何业务逻辑代码
  * 注意: 以下文件是自动生成的，再次生成不会覆盖原有的代码，会在原有的代码上进行新增，可放心使用
 ---------------------------------*/
+using System;
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
@@ -13,6 +14,12 @@ using Firebase.Auth;
 public class LoginUI : WindowBase
 {
 	public LoginUIComponent uiComponent;
+	private InputField emailInputField;
+	private Button emailLoginButton;
+	private Button createAccountButton;
+	private Button gameCenterSignInButton;
+	private Button anonymousSignInButton;
+	private Button dontSignInButton;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -21,6 +28,7 @@ public class LoginUI : WindowBase
 		uiComponent = gameObject.GetComponent<LoginUIComponent>();
 		uiComponent.InitComponent(this);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
+		BindOptionalRuntimeButtons();
 		base.OnAwake();
 	}
 	// 物体显示时执行
@@ -28,6 +36,7 @@ public class LoginUI : WindowBase
 	{
 		base.OnShow();
 		RegisterFirebaseEvents();
+		BindOptionalRuntimeButtons();
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -115,6 +124,16 @@ public class LoginUI : WindowBase
 				uiComponent.AppleSignInButton.interactable = interactable;
 			if (uiComponent.FaceBookSignInButton != null)
 				uiComponent.FaceBookSignInButton.interactable = interactable;
+			if (emailLoginButton != null)
+				emailLoginButton.interactable = interactable;
+			if (createAccountButton != null)
+				createAccountButton.interactable = interactable;
+			if (gameCenterSignInButton != null)
+				gameCenterSignInButton.interactable = interactable;
+			if (anonymousSignInButton != null)
+				anonymousSignInButton.interactable = interactable;
+			if (dontSignInButton != null)
+				dontSignInButton.interactable = interactable;
 		}
 	}
 
@@ -135,6 +154,110 @@ public class LoginUI : WindowBase
 			return false;
 		}
 		return true;
+	}
+
+	private void BindOptionalRuntimeButtons()
+	{
+		emailInputField = emailInputField != null
+			? emailInputField
+			: FindInputFieldByName(transform, "[InputField]Email", "EmailInput", "Email");
+
+		emailLoginButton = BindButton(emailLoginButton, OnEmailSignInButtonClick, "[Button]EmailLogin", "EmailLogin", "EmailSignInButton");
+		createAccountButton = BindButton(createAccountButton, OnCreateAccountButtonClick, "[Button]CreateAccount", "CreateAccountButton", "CreateAccount");
+		gameCenterSignInButton = BindButton(gameCenterSignInButton, OnGameCenterSignInButtonClick, "[Button]GameCenterLogin", "GameCenterLogin", "GameCenterSignInButton");
+		anonymousSignInButton = BindButton(anonymousSignInButton, OnAnonymousSignInButtonClick, "[Button]AnonymousLogin", "AnonymousLogin", "AnonymousSignInButton");
+		dontSignInButton = BindButton(dontSignInButton, OnDontSignInButtonClick, "[Button]DontSignIn", "DontSignInButton", "SkipLoginButton");
+	}
+
+	private Button BindButton(Button cached, UnityEngine.Events.UnityAction action, params string[] names)
+	{
+		Button button = cached != null ? cached : FindButtonByName(transform, names);
+		if (button == null)
+		{
+			return null;
+		}
+
+		button.onClick.RemoveListener(action);
+		button.onClick.AddListener(action);
+		return button;
+	}
+
+	private string GetPrefilledEmail()
+	{
+		string email = emailInputField != null ? emailInputField.text : string.Empty;
+		return (email ?? string.Empty).Trim();
+	}
+
+	private void ShowEmailAuthDialog()
+	{
+		if (!CheckFirebaseReady()) return;
+
+		LoginEmailAuthOverlay.Show(
+			transform,
+			GetPrefilledEmail(),
+			SubmitEmailSignIn,
+			SubmitEmailCreateAccount,
+			SubmitPasswordReset);
+	}
+
+	private void SubmitEmailSignIn(string email, string password)
+	{
+		if (!CheckFirebaseReady()) return;
+		SetButtonsInteractable(false);
+		ToastManager.ShowToast("正在邮箱登录...");
+		FirebaseAuthManager.Instance.SignInWithEmail(email, password);
+	}
+
+	private void SubmitEmailCreateAccount(string email, string password, string displayName)
+	{
+		if (!CheckFirebaseReady()) return;
+		SetButtonsInteractable(false);
+		ToastManager.ShowToast("正在创建邮箱账号...");
+		FirebaseAuthManager.Instance.CreateAccountWithEmail(email, password, displayName);
+	}
+
+	private void SubmitPasswordReset(string email)
+	{
+		if (!CheckFirebaseReady()) return;
+		ToastManager.ShowToast("正在发送重置邮件...");
+		FirebaseAuthManager.Instance.SendPasswordResetEmail(email, (success, message) =>
+		{
+			ToastManager.ShowToast(message);
+		});
+	}
+
+	private static Button FindButtonByName(Transform root, params string[] names)
+	{
+		if (root == null || names == null) return null;
+
+		Button[] buttons = root.GetComponentsInChildren<Button>(true);
+		foreach (Button button in buttons)
+		{
+			foreach (string name in names)
+			{
+				if (button.transform.name == name)
+					return button;
+			}
+		}
+
+		return null;
+	}
+
+	private static InputField FindInputFieldByName(Transform root, params string[] names)
+	{
+		if (root == null || names == null) return null;
+
+		InputField[] fields = root.GetComponentsInChildren<InputField>(true);
+		foreach (InputField field in fields)
+		{
+			foreach (string name in names)
+			{
+				if (field.transform.name == name)
+					return field;
+			}
+		}
+
+		return null;
 	}
 
 	#endregion
@@ -165,17 +288,17 @@ public class LoginUI : WindowBase
 	}
 	public void OnGameCenterSignInButtonClick()
 	{
-		ToastManager.ShowDebug();
+		if (!CheckFirebaseReady()) return;
+		SetButtonsInteractable(false);
+		FirebaseAuthManager.Instance.SignInWithGameCenter();
 	}
 	public void OnEmailSignInButtonClick()
 	{
-		// TODO: 邮箱登录功能待实现
-		ToastManager.ShowDebug();
+		ShowEmailAuthDialog();
 	}
 	public void OnCreateAccountButtonClick()
 	{
-		// TODO: 创建账号功能待实现
-		ToastManager.ShowDebug();
+		ShowEmailAuthDialog();
 	}
 	public void OnAnonymousSignInButtonClick()
 	{
@@ -190,4 +313,214 @@ public class LoginUI : WindowBase
 		UIModule.Instance.PopUpWindow<NavigationUI>();
 	}
 	#endregion
+}
+
+public static class LoginEmailAuthOverlay
+{
+	public static void Show(Transform anchor, string initialEmail, Action<string, string> onSignIn, Action<string, string, string> onCreate, Action<string> onResetPassword)
+	{
+		Transform parent = ResolveOverlayParent(anchor);
+		GameObject overlay = CreateOverlay(parent);
+		RectTransform root = overlay.GetComponent<RectTransform>();
+
+		GameObject panel = CreatePanel(root);
+		VerticalLayoutGroup layout = panel.AddComponent<VerticalLayoutGroup>();
+		layout.padding = new RectOffset(28, 28, 24, 24);
+		layout.spacing = 12f;
+		layout.childControlWidth = true;
+		layout.childControlHeight = true;
+		layout.childForceExpandWidth = true;
+		layout.childForceExpandHeight = false;
+
+		Text title = CreateText(panel.transform, "邮箱登录", 28, FontStyle.Bold, new Color(1f, 0.78f, 0.45f, 1f));
+		title.alignment = TextAnchor.MiddleCenter;
+
+		InputField emailField = CreateInput(panel.transform, "邮箱", false);
+		emailField.text = initialEmail ?? string.Empty;
+		InputField passwordField = CreateInput(panel.transform, "密码（至少 6 位）", true);
+		InputField nameField = CreateInput(panel.transform, "昵称（创建账号时使用，可选）", false);
+
+		GameObject row = new GameObject("EmailAuthButtons", typeof(RectTransform), typeof(HorizontalLayoutGroup));
+		row.transform.SetParent(panel.transform, false);
+		HorizontalLayoutGroup rowLayout = row.GetComponent<HorizontalLayoutGroup>();
+		rowLayout.spacing = 12f;
+		rowLayout.childControlWidth = true;
+		rowLayout.childControlHeight = true;
+		rowLayout.childForceExpandWidth = true;
+		rowLayout.childForceExpandHeight = false;
+		row.GetComponent<RectTransform>().sizeDelta = new Vector2(0f, 52f);
+
+		Button signInButton = CreateButton(row.transform, "登录", false);
+		Button createButton = CreateButton(row.transform, "创建账号", false);
+		Button resetButton = CreateButton(panel.transform, "忘记密码？发送重置邮件", true);
+		Button cancelButton = CreateButton(panel.transform, "取消", true);
+
+		signInButton.onClick.AddListener(() =>
+		{
+			if (!Validate(emailField.text, passwordField.text)) return;
+			UnityEngine.Object.Destroy(overlay);
+			onSignIn?.Invoke(emailField.text.Trim(), passwordField.text);
+		});
+
+		createButton.onClick.AddListener(() =>
+		{
+			if (!Validate(emailField.text, passwordField.text)) return;
+			UnityEngine.Object.Destroy(overlay);
+			onCreate?.Invoke(emailField.text.Trim(), passwordField.text, nameField.text?.Trim());
+		});
+
+		resetButton.onClick.AddListener(() =>
+		{
+			if (!ValidateEmail(emailField.text)) return;
+			UnityEngine.Object.Destroy(overlay);
+			onResetPassword?.Invoke(emailField.text.Trim());
+		});
+
+		cancelButton.onClick.AddListener(() => UnityEngine.Object.Destroy(overlay));
+		passwordField.ActivateInputField();
+	}
+
+	private static bool Validate(string email, string password)
+	{
+		if (!ValidateEmail(email)) return false;
+
+		if (string.IsNullOrEmpty(password) || password.Length < 6)
+		{
+			ToastManager.ShowToast("密码至少需要 6 位");
+			return false;
+		}
+
+		return true;
+	}
+
+	private static bool ValidateEmail(string email)
+	{
+		email = (email ?? string.Empty).Trim();
+		if (string.IsNullOrEmpty(email) || !email.Contains("@") || !email.Contains("."))
+		{
+			ToastManager.ShowToast("请输入有效邮箱");
+			return false;
+		}
+
+		return true;
+	}
+
+	private static Transform ResolveOverlayParent(Transform anchor)
+	{
+		Canvas canvas = anchor != null ? anchor.GetComponentInParent<Canvas>() : null;
+		return canvas != null ? canvas.transform : anchor;
+	}
+
+	private static GameObject CreateOverlay(Transform parent)
+	{
+		GameObject overlay = new GameObject("LoginEmailAuthOverlay", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+		overlay.transform.SetParent(parent, false);
+		RectTransform rect = overlay.GetComponent<RectTransform>();
+		rect.anchorMin = Vector2.zero;
+		rect.anchorMax = Vector2.one;
+		rect.offsetMin = Vector2.zero;
+		rect.offsetMax = Vector2.zero;
+
+		Image dim = overlay.GetComponent<Image>();
+		dim.color = new Color(0f, 0f, 0f, 0.64f);
+		dim.raycastTarget = true;
+
+		Button blocker = overlay.AddComponent<Button>();
+		blocker.transition = Selectable.Transition.None;
+		blocker.targetGraphic = dim;
+		blocker.onClick.AddListener(() => UnityEngine.Object.Destroy(overlay));
+		return overlay;
+	}
+
+	private static GameObject CreatePanel(RectTransform root)
+	{
+		GameObject panel = new GameObject("Panel", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+		panel.transform.SetParent(root, false);
+		RectTransform rect = panel.GetComponent<RectTransform>();
+		rect.anchorMin = new Vector2(0.5f, 0.5f);
+		rect.anchorMax = new Vector2(0.5f, 0.5f);
+		rect.pivot = new Vector2(0.5f, 0.5f);
+		rect.sizeDelta = new Vector2(560f, 500f);
+		rect.anchoredPosition = Vector2.zero;
+
+		Image image = panel.GetComponent<Image>();
+		image.color = new Color(0.12f, 0.08f, 0.16f, 0.98f);
+		image.raycastTarget = true;
+		return panel;
+	}
+
+	private static Text CreateText(Transform parent, string value, int size, FontStyle style, Color color)
+	{
+		GameObject go = new GameObject("Text", typeof(RectTransform), typeof(Text));
+		go.transform.SetParent(parent, false);
+		Text text = go.GetComponent<Text>();
+		text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+		text.fontSize = size;
+		text.fontStyle = style;
+		text.color = color;
+		text.text = value ?? string.Empty;
+		text.horizontalOverflow = HorizontalWrapMode.Wrap;
+		text.verticalOverflow = VerticalWrapMode.Overflow;
+		text.GetComponent<RectTransform>().sizeDelta = new Vector2(0f, Mathf.Max(size * 2.1f, 42f));
+		return text;
+	}
+
+	private static InputField CreateInput(Transform parent, string placeholder, bool password)
+	{
+		GameObject go = new GameObject(placeholder, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(InputField));
+		go.transform.SetParent(parent, false);
+		RectTransform rect = go.GetComponent<RectTransform>();
+		rect.sizeDelta = new Vector2(0f, 54f);
+
+		Image image = go.GetComponent<Image>();
+		image.color = new Color(0.06f, 0.04f, 0.10f, 1f);
+
+		InputField input = go.GetComponent<InputField>();
+		input.targetGraphic = image;
+		input.contentType = password ? InputField.ContentType.Password : InputField.ContentType.Standard;
+
+		Text text = CreateText(go.transform, string.Empty, 20, FontStyle.Normal, Color.white);
+		text.alignment = TextAnchor.MiddleLeft;
+		RectTransform textRect = text.GetComponent<RectTransform>();
+		textRect.anchorMin = Vector2.zero;
+		textRect.anchorMax = Vector2.one;
+		textRect.offsetMin = new Vector2(18f, 0f);
+		textRect.offsetMax = new Vector2(-18f, 0f);
+		input.textComponent = text;
+
+		Text placeholderText = CreateText(go.transform, placeholder, 18, FontStyle.Italic, new Color(0.55f, 0.50f, 0.62f, 1f));
+		placeholderText.alignment = TextAnchor.MiddleLeft;
+		RectTransform placeholderRect = placeholderText.GetComponent<RectTransform>();
+		placeholderRect.anchorMin = Vector2.zero;
+		placeholderRect.anchorMax = Vector2.one;
+		placeholderRect.offsetMin = new Vector2(18f, 0f);
+		placeholderRect.offsetMax = new Vector2(-18f, 0f);
+		input.placeholder = placeholderText;
+
+		return input;
+	}
+
+	private static Button CreateButton(Transform parent, string label, bool secondary)
+	{
+		GameObject go = new GameObject(label, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Button), typeof(LayoutElement));
+		go.transform.SetParent(parent, false);
+		RectTransform rect = go.GetComponent<RectTransform>();
+		rect.sizeDelta = new Vector2(0f, 50f);
+		go.GetComponent<LayoutElement>().preferredHeight = 50f;
+
+		Image image = go.GetComponent<Image>();
+		image.color = secondary ? new Color(0.22f, 0.16f, 0.28f, 1f) : new Color(0.35f, 0.08f, 0.58f, 1f);
+
+		Button button = go.GetComponent<Button>();
+		button.targetGraphic = image;
+
+		Text text = CreateText(go.transform, label, 20, FontStyle.Bold, Color.white);
+		text.alignment = TextAnchor.MiddleCenter;
+		RectTransform textRect = text.GetComponent<RectTransform>();
+		textRect.anchorMin = Vector2.zero;
+		textRect.anchorMax = Vector2.one;
+		textRect.offsetMin = Vector2.zero;
+		textRect.offsetMax = Vector2.zero;
+		return button;
+	}
 }

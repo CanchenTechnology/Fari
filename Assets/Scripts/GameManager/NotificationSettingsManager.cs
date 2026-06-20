@@ -141,6 +141,8 @@ public class NotificationSettingsManager : MonoSingleton<NotificationSettingsMan
 
         if (save)
             SaveSettings();
+        else
+            RescheduleNotifications();
     }
 
     #endregion
@@ -161,6 +163,7 @@ public class NotificationSettingsManager : MonoSingleton<NotificationSettingsMan
         PlayerPrefs.Save();
 
         Debug.Log($"[NotificationSettingsManager] 通知设置已保存，提醒时间：{ReminderTime}");
+        RescheduleNotifications();
     }
 
     /// <summary>
@@ -176,6 +179,7 @@ public class NotificationSettingsManager : MonoSingleton<NotificationSettingsMan
         ReminderTime = NormalizeReminderTime(PlayerPrefs.GetString(KEY_REMINDER_TIME, TIME_MORNING));
 
         Debug.Log($"[NotificationSettingsManager] 通知设置已加载，提醒时间：{ReminderTime}");
+        RescheduleNotifications();
     }
 
     /// <summary>
@@ -197,7 +201,21 @@ public class NotificationSettingsManager : MonoSingleton<NotificationSettingsMan
     private string NormalizeReminderTime(string time)
     {
         if (string.IsNullOrWhiteSpace(time)) return TIME_MORNING;
-        return time;
+        string[] parts = time.Trim().Split(':');
+        if (parts.Length < 2) return TIME_MORNING;
+        if (!int.TryParse(parts[0], out int hour)) return TIME_MORNING;
+        if (!int.TryParse(parts[1], out int minute)) return TIME_MORNING;
+
+        hour = Mathf.Clamp(hour, 0, 23);
+        minute = Mathf.Clamp(minute, 0, 59);
+        return $"{hour:00}:{minute:00}";
+    }
+
+    private void RescheduleNotifications()
+    {
+        AppNotificationScheduler scheduler = AppNotificationScheduler.Instance;
+        if (scheduler != null)
+            scheduler.SyncFromSettings(this);
     }
 
     #endregion

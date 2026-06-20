@@ -11,7 +11,8 @@ using XFGameFrameWork;
 /// </summary>
 public class BackendMembershipClient : MonoSingleton<BackendMembershipClient>
 {
-    private const string MEMBERSHIP_STATUS_URL = "https://us-central1-fari-app-b2fd2.cloudfunctions.net/membershipStatus";
+    public const string MembershipStatusFunctionUrl = "https://us-central1-fari-app-b2fd2.cloudfunctions.net/membershipStatus";
+    public const string ReadinessStatusFunctionUrl = "https://us-central1-fari-app-b2fd2.cloudfunctions.net/readinessStatus";
     private const float CACHE_SECONDS = 30f;
     private const string CACHE_KEY_PREFIX = "MembershipStatusCache_";
     private MembershipStatusResponse _cachedStatus;
@@ -21,6 +22,15 @@ public class BackendMembershipClient : MonoSingleton<BackendMembershipClient>
     public void GetMembershipStatus(Action<MembershipStatusResponse> onSuccess, Action<string> onError = null, bool forceRefresh = false)
     {
         string currentUid = FirebaseAuth.DefaultInstance?.CurrentUser?.UserId ?? string.Empty;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            _cachedStatus = CreateFreeStatus(string.Empty);
+            _cachedUid = string.Empty;
+            _cachedAt = Time.realtimeSinceStartup;
+            onSuccess?.Invoke(_cachedStatus);
+            return;
+        }
+
         if (_cachedStatus == null)
             LoadPersistedCache(currentUid);
 
@@ -31,6 +41,18 @@ public class BackendMembershipClient : MonoSingleton<BackendMembershipClient>
         }
 
         StartCoroutine(GetMembershipStatusRoutine(onSuccess, onError));
+    }
+
+    public MembershipStatusResponse GetCachedOrFreeStatus()
+    {
+        string currentUid = FirebaseAuth.DefaultInstance?.CurrentUser?.UserId ?? string.Empty;
+        if (_cachedStatus == null)
+            LoadPersistedCache(currentUid);
+
+        if (_cachedStatus != null && _cachedUid == currentUid)
+            return _cachedStatus;
+
+        return CreateFreeStatus(currentUid);
     }
 
     private IEnumerator GetMembershipStatusRoutine(Action<MembershipStatusResponse> onSuccess, Action<string> onError)
@@ -44,7 +66,7 @@ public class BackendMembershipClient : MonoSingleton<BackendMembershipClient>
         if (string.IsNullOrEmpty(idToken))
             yield break;
 
-        using (UnityWebRequest request = UnityWebRequest.Get(MEMBERSHIP_STATUS_URL))
+        using (UnityWebRequest request = UnityWebRequest.Get(MembershipStatusFunctionUrl))
         {
             request.SetRequestHeader("Authorization", "Bearer " + idToken);
             yield return request.SendWebRequest();
@@ -135,6 +157,17 @@ public class BackendMembershipClient : MonoSingleton<BackendMembershipClient>
 
         PlayerPrefs.SetString(CACHE_KEY_PREFIX + _cachedUid, JsonUtility.ToJson(cache));
         PlayerPrefs.Save();
+    }
+
+    private static MembershipStatusResponse CreateFreeStatus(string uid)
+    {
+        return new MembershipStatusResponse
+        {
+            uid = uid ?? string.Empty,
+            membershipStatus = "free",
+            isPro = false,
+            proExpiresAt = string.Empty,
+        };
     }
 
     private float TimeSinceCached(long cachedAtUnix)

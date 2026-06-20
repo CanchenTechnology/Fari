@@ -16,6 +16,7 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         public List<FriendRecord> realFriends = new List<FriendRecord>();
         public List<FriendRecord> virtualFriends = new List<FriendRecord>();
         public List<InviteRecord> invites = new List<InviteRecord>();
+        public List<string> blockedUserIds = new List<string>();
     }
 
     [Serializable]
@@ -33,7 +34,9 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         public string city;
         public string notes;
         public string source;
+        public string photoUrl;
         public string avatarImagePath;
+        public string avatarStoragePath;
         public bool isVirtual;
     }
 
@@ -66,7 +69,9 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         public string city;
         public string notes;
         public string source;
+        public string photoUrl;
         public string avatarImagePath;
+        public string avatarStoragePath;
         public Sprite headSprite;
         public bool isVirtual; // true=虚拟好友, false=真实好友
 
@@ -110,6 +115,7 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
     private List<FriendData> realFriendList = new List<FriendData>();
     private List<FriendData> virtualFriendList = new List<FriendData>();
     private List<InviteData> inviteList = new List<InviteData>();
+    private List<string> blockedUserIdList = new List<string>();
 
     // 自增ID
     private int nextId = 1;
@@ -134,6 +140,8 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
     /// 邀请数据列表
     /// </summary>
     public IReadOnlyList<InviteData> InviteList => inviteList;
+
+    public IReadOnlyList<string> BlockedUserIds => blockedUserIdList;
 
     /// <summary>
     /// 初始化对象池（由 FriendUI 在首次使用时调用）
@@ -276,6 +284,7 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
             notes = notes,
             source = "创建档案",
             avatarImagePath = avatarImagePath ?? string.Empty,
+            avatarStoragePath = string.Empty,
             headSprite = headSprite,
             isVirtual = true
         };
@@ -340,6 +349,16 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         return removed;
     }
 
+    public bool RemoveRealFriendByFirebaseUid(string firebaseUid)
+    {
+        string normalizedUid = NormalizeKey(firebaseUid);
+        if (string.IsNullOrEmpty(normalizedUid)) return false;
+
+        bool removed = realFriendList.RemoveAll(d => NormalizeKey(d.firebaseUid) == normalizedUid) > 0;
+        if (removed) SaveAndNotify();
+        return removed;
+    }
+
     /// <summary>
     /// 删除虚拟好友
     /// </summary>
@@ -350,6 +369,100 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         return removed;
     }
 
+    public bool RemoveVirtualFriendById(string virtualFriendId)
+    {
+        string normalizedId = NormalizeKey(virtualFriendId);
+        if (string.IsNullOrEmpty(normalizedId)) return false;
+
+        bool removed = virtualFriendList.RemoveAll(d => NormalizeKey(d.virtualFriendId) == normalizedId) > 0;
+        if (removed) SaveAndNotify();
+        return removed;
+    }
+
+    public bool UpdateVirtualFriend(
+        FriendData virtualFriend,
+        string name,
+        string relationship,
+        string birthday,
+        string birthTime,
+        string city,
+        string notes,
+        Sprite headSprite = null,
+        string avatarImagePath = null,
+        string photoUrl = null,
+        string avatarStoragePath = null)
+    {
+        if (virtualFriend == null || !virtualFriend.isVirtual) return false;
+
+        FriendData existing = FindVirtualFriendById(virtualFriend.virtualFriendId);
+        if (existing == null)
+        {
+            existing = virtualFriendList.Find(d => d.id == virtualFriend.id);
+        }
+        if (existing == null) return false;
+
+        existing.name = string.IsNullOrWhiteSpace(name) ? "未命名好友" : name.Trim();
+        existing.relationship = string.IsNullOrWhiteSpace(relationship) ? "好友" : relationship.Trim();
+        existing.birthday = birthday?.Trim() ?? string.Empty;
+        existing.birthTime = birthTime?.Trim() ?? string.Empty;
+        existing.city = city?.Trim() ?? string.Empty;
+        existing.notes = notes?.Trim() ?? string.Empty;
+        existing.info = BuildVirtualFriendInfo(existing.relationship, existing.birthday, existing.city);
+        existing.source = string.IsNullOrWhiteSpace(existing.source) ? "创建档案" : existing.source;
+
+        if (avatarImagePath != null)
+            existing.avatarImagePath = avatarImagePath;
+        if (photoUrl != null)
+            existing.photoUrl = photoUrl;
+        if (avatarStoragePath != null)
+            existing.avatarStoragePath = avatarStoragePath;
+        if (headSprite != null)
+            existing.headSprite = headSprite;
+
+        virtualFriend.name = existing.name;
+        virtualFriend.relationship = existing.relationship;
+        virtualFriend.birthday = existing.birthday;
+        virtualFriend.birthTime = existing.birthTime;
+        virtualFriend.city = existing.city;
+        virtualFriend.notes = existing.notes;
+        virtualFriend.info = existing.info;
+        virtualFriend.source = existing.source;
+        virtualFriend.avatarImagePath = existing.avatarImagePath;
+        virtualFriend.photoUrl = existing.photoUrl;
+        virtualFriend.avatarStoragePath = existing.avatarStoragePath;
+        virtualFriend.headSprite = existing.headSprite;
+
+        SaveAndNotify();
+        return true;
+    }
+
+    public bool SetVirtualFriendCloudAvatar(
+        FriendData virtualFriend,
+        string photoUrl,
+        string avatarStoragePath,
+        Sprite previewSprite = null)
+    {
+        if (virtualFriend == null || !virtualFriend.isVirtual) return false;
+
+        FriendData existing = FindVirtualFriendById(virtualFriend.virtualFriendId);
+        if (existing == null)
+        {
+            existing = virtualFriendList.Find(d => d.id == virtualFriend.id);
+        }
+        if (existing == null) return false;
+
+        existing.photoUrl = photoUrl ?? string.Empty;
+        existing.avatarStoragePath = avatarStoragePath ?? string.Empty;
+        if (previewSprite != null) existing.headSprite = previewSprite;
+
+        virtualFriend.photoUrl = existing.photoUrl;
+        virtualFriend.avatarStoragePath = existing.avatarStoragePath;
+        if (previewSprite != null) virtualFriend.headSprite = previewSprite;
+
+        SaveAndNotify();
+        return true;
+    }
+
     public FriendData UpsertVirtualFriendFromFirebase(
         string virtualFriendId,
         string name,
@@ -358,7 +471,9 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         string birthTime,
         string city,
         string notes,
-        Sprite headSprite = null)
+        Sprite headSprite = null,
+        string photoUrl = "",
+        string avatarStoragePath = "")
     {
         FriendData existing = FindVirtualFriendById(virtualFriendId);
         if (existing == null)
@@ -377,6 +492,8 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
                 city = city,
                 notes = notes,
                 source = "Firebase 档案",
+                photoUrl = photoUrl ?? string.Empty,
+                avatarStoragePath = avatarStoragePath ?? string.Empty,
                 headSprite = headSprite,
                 isVirtual = true
             };
@@ -392,6 +509,8 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
             existing.notes = notes;
             existing.info = BuildVirtualFriendInfo(relationship, birthday, city);
             existing.source = "Firebase 档案";
+            existing.photoUrl = photoUrl ?? string.Empty;
+            existing.avatarStoragePath = avatarStoragePath ?? string.Empty;
             if (headSprite != null) existing.headSprite = headSprite;
             existing.isVirtual = true;
         }
@@ -418,13 +537,45 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         return removed;
     }
 
+    public bool AddBlockedUser(string firebaseUid)
+    {
+        string normalizedUid = NormalizeKey(firebaseUid);
+        if (string.IsNullOrEmpty(normalizedUid)) return false;
+
+        if (!blockedUserIdList.Exists(uid => NormalizeKey(uid) == normalizedUid))
+            blockedUserIdList.Add(firebaseUid);
+
+        RemoveRealFriendByFirebaseUid(firebaseUid);
+        RemoveInviteByFirebaseUid(firebaseUid);
+        SaveAndNotify();
+        return true;
+    }
+
+    public bool RemoveBlockedUser(string firebaseUid)
+    {
+        string normalizedUid = NormalizeKey(firebaseUid);
+        if (string.IsNullOrEmpty(normalizedUid)) return false;
+
+        bool removed = blockedUserIdList.RemoveAll(uid => NormalizeKey(uid) == normalizedUid) > 0;
+        if (removed) SaveAndNotify();
+        return removed;
+    }
+
+    public bool IsUserBlocked(string firebaseUid)
+    {
+        string normalizedUid = NormalizeKey(firebaseUid);
+        if (string.IsNullOrEmpty(normalizedUid)) return false;
+        return blockedUserIdList.Exists(uid => NormalizeKey(uid) == normalizedUid);
+    }
+
     public FriendData UpsertRealFriendFromFirebase(
         string firebaseUid,
         string name,
         string handle,
         string info,
         Sprite headSprite = null,
-        string source = "Firebase")
+        string source = "Firebase",
+        string photoUrl = "")
     {
         FriendData existing = FindRealFriendByFirebaseUid(firebaseUid);
         if (existing == null)
@@ -443,6 +594,7 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
                 info = info,
                 relationship = "好友",
                 source = source,
+                photoUrl = photoUrl ?? string.Empty,
                 headSprite = headSprite,
                 isVirtual = false
             };
@@ -455,6 +607,7 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
             existing.handle = handle;
             existing.info = info;
             existing.source = source;
+            if (!string.IsNullOrWhiteSpace(photoUrl)) existing.photoUrl = photoUrl;
             if (headSprite != null) existing.headSprite = headSprite;
             existing.isVirtual = false;
         }
@@ -471,6 +624,7 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         realFriendList.Clear();
         virtualFriendList.Clear();
         inviteList.Clear();
+        blockedUserIdList.Clear();
         nextId = 1;
         SaveAndNotify();
     }
@@ -486,7 +640,8 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
             nextId = nextId,
             realFriends = BuildFriendRecords(realFriendList),
             virtualFriends = BuildFriendRecords(virtualFriendList),
-            invites = BuildInviteRecords(inviteList)
+            invites = BuildInviteRecords(inviteList),
+            blockedUserIds = new List<string>(blockedUserIdList)
         };
 
         PlayerPrefs.SetString(FRIENDS_STORAGE_KEY, JsonUtility.ToJson(saveData));
@@ -512,6 +667,7 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
             realFriendList = BuildFriendData(saveData.realFriends);
             virtualFriendList = BuildFriendData(saveData.virtualFriends);
             inviteList = BuildInviteData(saveData.invites);
+            blockedUserIdList = saveData.blockedUserIds ?? new List<string>();
             nextId = Mathf.Max(FindMaxId() + 1, saveData.nextId);
         }
         catch (Exception ex)
@@ -520,6 +676,7 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
             realFriendList.Clear();
             virtualFriendList.Clear();
             inviteList.Clear();
+            blockedUserIdList.Clear();
             nextId = 1;
         }
     }
@@ -631,7 +788,9 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
                 city = friend.city,
                 notes = friend.notes,
                 source = friend.source,
+                photoUrl = friend.photoUrl,
                 avatarImagePath = friend.avatarImagePath,
+                avatarStoragePath = friend.avatarStoragePath,
                 isVirtual = friend.isVirtual
             });
         }
@@ -680,7 +839,9 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
                 city = record.city,
                 notes = record.notes,
                 source = record.source,
+                photoUrl = record.photoUrl,
                 avatarImagePath = record.avatarImagePath,
+                avatarStoragePath = record.avatarStoragePath,
                 headSprite = FriendAvatarImageUtility.LoadSpriteFromPath(record.avatarImagePath),
                 isVirtual = record.isVirtual
             });

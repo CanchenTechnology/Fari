@@ -1,9 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Net;
+using System.Text;
+using System.Threading.Tasks;
 using UnityEngine;
 using Firebase;
 using Firebase.Firestore;
 using Firebase.Extensions;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using XFGameFrameWork;
 using GamerFrameWork.OracleRuntime;
 
@@ -44,6 +50,9 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
 
     /// <summary>Firestore 是否已初始化</summary>
     public bool IsInitialized => _isInitialized;
+
+    /// <summary>最近一次用户搜索失败原因，给 UI 做更明确的提示。</summary>
+    public string LastUserSearchError { get; private set; } = string.Empty;
 
     #endregion
 
@@ -99,6 +108,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         if (!CheckReady(onComplete)) return;
 
         var ud = UserDataManager.Instance;
+        string facebookProviderId = GetFacebookProviderIdForCurrentUser(ud);
         // 定位到当前用户的专属文档路径：集合 "users" -> 文档 "当前用户的 UID"
         DocumentReference docRef = _db.Collection("users").Document(ud.FirebaseUid);
 
@@ -107,10 +117,12 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         {
             { "displayName",     ud.UserName },
             { "displayNameLower", NormalizeSearchText(ud.UserName) },
+            { "searchKeywords", BuildSearchKeywords(ud.UserName, ud.Email) },
             { "email",           ud.Email },
             { "emailLower",       NormalizeSearchText(ud.Email) },
             { "photoUrl",        ud.PhotoUrl },
             { "avatarStoragePath", ud.AvatarStoragePath },
+            { "facebookProviderId", facebookProviderId },
             { "birthday",        ud.Birthday },
             { "birthTime",       ud.BirthTime },
             { "city",            ud.City },
@@ -149,16 +161,19 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         if (!CheckReady(onComplete)) return;
 
         var ud = UserDataManager.Instance;
+        string facebookProviderId = GetFacebookProviderIdForCurrentUser(ud);
         DocumentReference docRef = _db.Collection("users").Document(ud.FirebaseUid);
 
         var data = new Dictionary<string, object>
         {
             { "displayName",     ud.UserName },
             { "displayNameLower", NormalizeSearchText(ud.UserName) },
+            { "searchKeywords", BuildSearchKeywords(ud.UserName, ud.Email) },
             { "email",           ud.Email },
             { "emailLower",       NormalizeSearchText(ud.Email) },
             { "photoUrl",        ud.PhotoUrl },
             { "avatarStoragePath", ud.AvatarStoragePath },
+            { "facebookProviderId", facebookProviderId },
             { "birthday",        ud.Birthday },
             { "birthTime",       ud.BirthTime },
             { "city",            ud.City },
@@ -295,11 +310,16 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     /// <summary>
     /// 按用户名前缀搜索已注册用户。
     /// 注意：Firestore 不支持任意 contains 模糊搜索。
-    /// 这里先用 displayName 精确匹配兼容老用户，再用 displayNameLower 做前缀查询。
+    /// 输入“土豆”会匹配所有 displayNameLower 以“土豆”开头的用户。
     /// </summary>
     public void SearchUsersByName(string keyword, Action<List<UserSearchResult>> onComplete, int limit = 3)
     {
-        if (!CheckReady(_ => onComplete?.Invoke(new List<UserSearchResult>()))) return;
+        LastUserSearchError = string.Empty;
+        if (!CheckReady(_ =>
+        {
+            LastUserSearchError = "Firestore 尚未初始化";
+            onComplete?.Invoke(new List<UserSearchResult>());
+        })) return;
 
         string normalizedKeyword = NormalizeSearchText(keyword);
         if (string.IsNullOrEmpty(normalizedKeyword))
@@ -309,52 +329,111 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         }
 
         string currentUid = UserDataManager.Instance.FirebaseUid;
+        int resultLimit = Math.Max(1, limit);
+        int fetchLimit = GetUserSearchFetchLimit(resultLimit);
         CollectionReference profilesRef = _db.Collection("public_profiles");
         profilesRef
-            .WhereEqualTo("displayName", keyword.Trim())
-            .Limit(limit)
+            .OrderBy("displayNameLower")
+            .StartAt(normalizedKeyword)
+            .EndAt(normalizedKeyword + "\uf8ff")
+            .Limit(fetchLimit)
             .GetSnapshotAsync()
             .ContinueWithOnMainThread(task =>
             {
                 List<UserSearchResult> results = new List<UserSearchResult>();
                 if (task.IsFaulted || task.IsCanceled)
                 {
-                    Debug.LogError($"[FirestoreManager] 搜索用户失败: {task.Exception?.InnerException?.Message}");
+                    LastUserSearchError = $"前缀搜索用户失败: {GetTaskError(task.Exception)}";
+                    Debug.LogError($"[FirestoreManager] {LastUserSearchError}");
+#if UNITY_EDITOR
+                    SearchUsersByNameViaRestInEditor(keyword, normalizedKeyword, currentUid, resultLimit, fetchLimit, onComplete);
+#else
                     onComplete?.Invoke(results);
+#endif
                     return;
                 }
 
                 AddUserSearchResults(results, task.Result.Documents, currentUid);
-
-                if (results.Count > 0)
+                if (CountNonSelfResults(results, currentUid) < resultLimit)
                 {
-                    onComplete?.Invoke(results);
+                    SearchUsersByKeywordArray(normalizedKeyword, currentUid, resultLimit, fetchLimit, results, onComplete);
                     return;
                 }
 
-                profilesRef
-                    .OrderBy("displayNameLower")
-                    .StartAt(normalizedKeyword)
-                    .EndAt(normalizedKeyword + "\uf8ff")
-                    .Limit(limit)
-                    .GetSnapshotAsync()
-                    .ContinueWithOnMainThread(fallbackTask =>
-                    {
-                        if (fallbackTask.IsFaulted || fallbackTask.IsCanceled)
-                        {
-                            Debug.LogError($"[FirestoreManager] 前缀搜索用户失败: {fallbackTask.Exception?.InnerException?.Message}");
-                            onComplete?.Invoke(results);
-                            return;
-                        }
+                results = LimitUserSearchResults(results, currentUid, resultLimit);
+#if UNITY_EDITOR
+                if (results.Count == 0)
+                {
+                    SearchUsersByNameViaRestInEditor(keyword, normalizedKeyword, currentUid, resultLimit, fetchLimit, onComplete);
+                    return;
+                }
+#endif
+                onComplete?.Invoke(results);
+            });
+    }
 
-                        AddUserSearchResults(results, fallbackTask.Result.Documents, currentUid);
-                        onComplete?.Invoke(results);
-                    });
+    private void SearchUsersByKeywordArray(
+        string normalizedKeyword,
+        string currentUid,
+        int resultLimit,
+        int fetchLimit,
+        List<UserSearchResult> seedResults,
+        Action<List<UserSearchResult>> onComplete)
+    {
+        _db.Collection("public_profiles")
+            .WhereArrayContains("searchKeywords", normalizedKeyword)
+            .Limit(fetchLimit)
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                List<UserSearchResult> results = seedResults ?? new List<UserSearchResult>();
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogWarning($"[FirestoreManager] 关键词搜索用户失败: {GetTaskError(task.Exception)}");
+                    SearchUsersByLocalProfileScan(normalizedKeyword, currentUid, resultLimit, results, onComplete);
+                    return;
+                }
+
+                AddUserSearchResults(results, task.Result.Documents, currentUid);
+                if (CountNonSelfResults(results, currentUid) < resultLimit)
+                {
+                    SearchUsersByLocalProfileScan(normalizedKeyword, currentUid, resultLimit, results, onComplete);
+                    return;
+                }
+
+                onComplete?.Invoke(LimitUserSearchResults(results, currentUid, resultLimit));
+            });
+    }
+
+    private void SearchUsersByLocalProfileScan(
+        string normalizedKeyword,
+        string currentUid,
+        int resultLimit,
+        List<UserSearchResult> seedResults,
+        Action<List<UserSearchResult>> onComplete)
+    {
+        int scanLimit = GetUserSearchScanLimit(resultLimit);
+        _db.Collection("public_profiles")
+            .OrderBy("displayNameLower")
+            .Limit(scanLimit)
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                List<UserSearchResult> results = seedResults ?? new List<UserSearchResult>();
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogWarning($"[FirestoreManager] 公开资料扫描搜索失败: {GetTaskError(task.Exception)}");
+                    onComplete?.Invoke(LimitUserSearchResults(results, currentUid, resultLimit));
+                    return;
+                }
+
+                AddMatchingUserSearchResults(results, task.Result.Documents, currentUid, normalizedKeyword);
+                onComplete?.Invoke(LimitUserSearchResults(results, currentUid, resultLimit));
             });
     }
 
     /// <summary>
-    /// 发送好友请求并在当前用户的 friends 子集合中留下待确认记录。
+    /// 发送好友请求并在当前用户的 friends 子集合中留下待确认记录，但不展示为已有好友。
     /// </summary>
     public void SendFriendRequest(UserSearchResult targetUser, Action<bool> onComplete = null)
     {
@@ -373,6 +452,42 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             return;
         }
 
+        if (FriendDataManager.Instance != null && FriendDataManager.Instance.IsUserBlocked(targetUser.uid))
+        {
+            Debug.LogWarning($"[FirestoreManager] 已屏蔽用户，不能发送好友请求: {targetUser.uid}");
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        DocumentReference outgoingRef = _db.Collection("users")
+            .Document(currentUid)
+            .Collection("friends")
+            .Document(targetUser.uid);
+        outgoingRef.GetSnapshotAsync().ContinueWithOnMainThread(task =>
+        {
+            if (!task.IsFaulted && !task.IsCanceled && task.Result.Exists)
+            {
+                Dictionary<string, object> data = task.Result.ToDictionary();
+                string status = GetString(data, "status", string.Empty);
+                if (status == "friend" || status == "pendingSent")
+                {
+                    Debug.Log($"[FirestoreManager] 好友请求跳过，已有状态: {status}, uid={targetUser.uid}");
+                    onComplete?.Invoke(true);
+                    return;
+                }
+            }
+
+            CommitFriendRequest(targetUser, ud, currentUid, outgoingRef, onComplete);
+        });
+    }
+
+    private void CommitFriendRequest(
+        UserSearchResult targetUser,
+        UserDataManager ud,
+        string currentUid,
+        DocumentReference outgoingRef,
+        Action<bool> onComplete)
+    {
         Dictionary<string, object> outgoingData = new Dictionary<string, object>
         {
             { "uid", targetUser.uid },
@@ -398,10 +513,6 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         };
 
         WriteBatch batch = _db.StartBatch();
-        DocumentReference outgoingRef = _db.Collection("users")
-            .Document(currentUid)
-            .Collection("friends")
-            .Document(targetUser.uid);
         DocumentReference incomingRef = _db.Collection("users")
             .Document(targetUser.uid)
             .Collection("friend_requests")
@@ -418,13 +529,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 return;
             }
 
-            FriendDataManager.Instance.UpsertRealFriendFromFirebase(
-                targetUser.uid,
-                targetUser.displayName,
-                targetUser.Handle,
-                "好友请求已发送",
-                null,
-                "Firebase 搜索");
+            FriendDataManager.Instance.RemoveRealFriendByFirebaseUid(targetUser.uid);
 
             Debug.Log($"[FirestoreManager] 好友请求已发送: {targetUser.uid}");
             onComplete?.Invoke(true);
@@ -432,7 +537,261 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     }
 
     /// <summary>
-    /// 从当前用户的 friends 子集合拉取真实好友/待确认好友，并合并到本地缓存。
+    /// 拉取当前用户已经发出的待确认好友请求，用于搜索结果显示“取消”状态。
+    /// </summary>
+    public void LoadPendingSentFriendUids(Action<HashSet<string>> onComplete)
+    {
+        HashSet<string> sentUids = new HashSet<string>();
+        if (!_isInitialized || _db == null)
+        {
+            Debug.LogWarning("[FirestoreManager] Firestore 尚未初始化，无法拉取已发送好友请求");
+            onComplete?.Invoke(sentUids);
+            return;
+        }
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(sentUids);
+            return;
+        }
+
+        _db.Collection("users")
+            .Document(currentUid)
+            .Collection("friends")
+            .WhereEqualTo("status", "pendingSent")
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogError($"[FirestoreManager] 拉取已发送好友请求失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(sentUids);
+                    return;
+                }
+
+                foreach (DocumentSnapshot doc in task.Result.Documents)
+                {
+                    if (doc.Exists && !string.IsNullOrEmpty(doc.Id))
+                        sentUids.Add(doc.Id);
+                }
+
+                onComplete?.Invoke(sentUids);
+            });
+    }
+
+    /// <summary>
+    /// 取消已经发出的好友请求：删除自己的 pendingSent 和对方收到的 friend_requests。
+    /// </summary>
+    public void CancelSentFriendRequest(string targetUid, Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid) || string.IsNullOrEmpty(targetUid) || currentUid == targetUid)
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        WriteBatch batch = _db.StartBatch();
+        DocumentReference outgoingRef = _db.Collection("users")
+            .Document(currentUid)
+            .Collection("friends")
+            .Document(targetUid);
+        DocumentReference incomingRef = _db.Collection("users")
+            .Document(targetUid)
+            .Collection("friend_requests")
+            .Document(currentUid);
+
+        batch.Delete(outgoingRef);
+        batch.Delete(incomingRef);
+        batch.CommitAsync().ContinueWithOnMainThread(task =>
+        {
+            if (task.IsFaulted || task.IsCanceled)
+            {
+                Debug.LogError($"[FirestoreManager] 取消好友请求失败: {task.Exception?.InnerException?.Message}");
+                onComplete?.Invoke(false);
+                return;
+            }
+
+            FriendDataManager.Instance.RemoveRealFriendByFirebaseUid(targetUid);
+            Debug.Log($"[FirestoreManager] 已取消好友请求: {targetUid}");
+            onComplete?.Invoke(true);
+        });
+    }
+
+    /// <summary>
+    /// 删除真实好友：双方 friends 记录都删除，本地真实好友缓存同步移除。
+    /// </summary>
+    public void RemoveRealFriend(FriendDataManager.FriendData friend, Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+        if (friend == null || friend.isVirtual || string.IsNullOrEmpty(friend.firebaseUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        string friendUid = friend.firebaseUid;
+        if (string.IsNullOrEmpty(currentUid) || currentUid == friendUid)
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        WriteBatch batch = _db.StartBatch();
+        DocumentReference myFriendRef = _db.Collection("users")
+            .Document(currentUid)
+            .Collection("friends")
+            .Document(friendUid);
+        DocumentReference theirFriendRef = _db.Collection("users")
+            .Document(friendUid)
+            .Collection("friends")
+            .Document(currentUid);
+
+        batch.Delete(myFriendRef);
+        batch.Delete(theirFriendRef);
+        batch.CommitAsync().ContinueWithOnMainThread(task =>
+        {
+            if (task.IsFaulted || task.IsCanceled)
+            {
+                Debug.LogError($"[FirestoreManager] 删除真实好友失败: {task.Exception?.InnerException?.Message}");
+                onComplete?.Invoke(false);
+                return;
+            }
+
+            FriendDataManager.Instance.RemoveRealFriendByFirebaseUid(friendUid);
+            Debug.Log($"[FirestoreManager] 已删除真实好友: {friendUid}");
+            onComplete?.Invoke(true);
+        });
+    }
+
+    public void LoadBlockedUsers(Action<HashSet<string>> onComplete)
+    {
+        HashSet<string> blocked = new HashSet<string>();
+        if (!_isInitialized || _db == null)
+        {
+            onComplete?.Invoke(blocked);
+            return;
+        }
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(blocked);
+            return;
+        }
+
+        _db.Collection("users")
+            .Document(currentUid)
+            .Collection("blocked_users")
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogError($"[FirestoreManager] 拉取屏蔽用户失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(blocked);
+                    return;
+                }
+
+                foreach (DocumentSnapshot doc in task.Result.Documents)
+                {
+                    if (!doc.Exists || string.IsNullOrEmpty(doc.Id)) continue;
+                    blocked.Add(doc.Id);
+                    FriendDataManager.Instance.AddBlockedUser(doc.Id);
+                }
+
+                onComplete?.Invoke(blocked);
+            });
+    }
+
+    public void BlockRealFriend(FriendDataManager.FriendData friend, Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+        if (friend == null || friend.isVirtual || string.IsNullOrEmpty(friend.firebaseUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        string friendUid = friend.firebaseUid;
+        if (string.IsNullOrEmpty(currentUid) || currentUid == friendUid)
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        Dictionary<string, object> blockedData = new Dictionary<string, object>
+        {
+            { "uid", friendUid },
+            { "displayName", friend.name ?? string.Empty },
+            { "email", string.IsNullOrWhiteSpace(friend.handle) ? string.Empty : friend.handle.TrimStart('@') },
+            { "photoUrl", friend.photoUrl ?? string.Empty },
+            { "createdAt", FieldValue.ServerTimestamp },
+            { "updatedAt", FieldValue.ServerTimestamp },
+        };
+
+        WriteBatch batch = _db.StartBatch();
+        DocumentReference blockedRef = _db.Collection("users")
+            .Document(currentUid)
+            .Collection("blocked_users")
+            .Document(friendUid);
+        batch.Set(blockedRef, blockedData, SetOptions.MergeAll);
+        batch.Delete(_db.Collection("users").Document(currentUid).Collection("friends").Document(friendUid));
+        batch.Delete(_db.Collection("users").Document(friendUid).Collection("friends").Document(currentUid));
+        batch.Delete(_db.Collection("users").Document(currentUid).Collection("friend_requests").Document(friendUid));
+        batch.Delete(_db.Collection("users").Document(friendUid).Collection("friend_requests").Document(currentUid));
+
+        batch.CommitAsync().ContinueWithOnMainThread(task =>
+        {
+            if (task.IsFaulted || task.IsCanceled)
+            {
+                Debug.LogError($"[FirestoreManager] 屏蔽好友失败: {task.Exception?.InnerException?.Message}");
+                onComplete?.Invoke(false);
+                return;
+            }
+
+            FriendDataManager.Instance.AddBlockedUser(friendUid);
+            Debug.Log($"[FirestoreManager] 已屏蔽用户: {friendUid}");
+            onComplete?.Invoke(true);
+        });
+    }
+
+    public void UnblockUser(string targetUid, Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid) || string.IsNullOrEmpty(targetUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        _db.Collection("users")
+            .Document(currentUid)
+            .Collection("blocked_users")
+            .Document(targetUid)
+            .DeleteAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogError($"[FirestoreManager] 解除屏蔽失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                FriendDataManager.Instance.RemoveBlockedUser(targetUid);
+                Debug.Log($"[FirestoreManager] 已解除屏蔽: {targetUid}");
+                onComplete?.Invoke(true);
+            });
+    }
+
+    /// <summary>
+    /// 从当前用户的 friends 子集合拉取已接受的真实好友，并合并到本地缓存。
     /// </summary>
     public void LoadFriends(Action<bool> onComplete = null)
     {
@@ -464,8 +823,15 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
 
                     Dictionary<string, object> data = doc.ToDictionary();
                     string status = GetString(data, "status", "friend");
+                    if (status != "friend")
+                    {
+                        FriendDataManager.Instance.RemoveRealFriendByFirebaseUid(doc.Id);
+                        continue;
+                    }
+
                     string displayName = GetString(data, "displayName", "未命名用户");
                     string email = GetString(data, "email", string.Empty);
+                    string photoUrl = GetString(data, "photoUrl", string.Empty);
                     string handle = string.IsNullOrEmpty(email) ? $"@{doc.Id}" : $"@{email.Split('@')[0]}";
 
                     FriendDataManager.Instance.UpsertRealFriendFromFirebase(
@@ -474,7 +840,8 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                         handle,
                         GetFriendStatusText(status),
                         null,
-                        "Firebase");
+                        "Firebase",
+                        photoUrl);
                 }
 
                 onComplete?.Invoke(true);
@@ -608,12 +975,101 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 handle,
                 "真实好友",
                 invite.headSprite,
-                "Firebase 请求");
+                "Firebase 请求",
+                invite.photoUrl);
             FriendDataManager.Instance.RemoveInviteByFirebaseUid(requesterUid);
 
             Debug.Log($"[FirestoreManager] 已接受好友请求: {requesterUid}");
             onComplete?.Invoke(true);
         });
+    }
+
+    public void LoadPublicProfile(string uid, Action<UserSearchResult> onComplete)
+    {
+        if (!CheckReady(_ => onComplete?.Invoke(null))) return;
+        if (string.IsNullOrEmpty(uid))
+        {
+            onComplete?.Invoke(null);
+            return;
+        }
+
+        _db.Collection("public_profiles")
+            .Document(uid)
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled || !task.Result.Exists)
+                {
+                    onComplete?.Invoke(null);
+                    return;
+                }
+
+                Dictionary<string, object> data = task.Result.ToDictionary();
+                onComplete?.Invoke(new UserSearchResult
+                {
+                    uid = uid,
+                    displayName = GetString(data, "displayName", "未命名用户"),
+                    email = GetString(data, "email", string.Empty),
+                    photoUrl = GetString(data, "photoUrl", string.Empty),
+                    isSelf = uid == UserDataManager.Instance.FirebaseUid
+                });
+            });
+    }
+
+    public void FindPublicProfilesByFacebookIds(
+        IReadOnlyList<string> facebookIds,
+        int limit,
+        Action<List<UserSearchResult>> onComplete)
+    {
+        if (!CheckReady(_ => onComplete?.Invoke(new List<UserSearchResult>()))) return;
+
+        List<string> ids = new List<string>();
+        if (facebookIds != null)
+        {
+            foreach (string id in facebookIds)
+            {
+                string normalizedId = string.IsNullOrWhiteSpace(id) ? string.Empty : id.Trim();
+                if (string.IsNullOrEmpty(normalizedId) || ids.Contains(normalizedId)) continue;
+                ids.Add(normalizedId);
+            }
+        }
+
+        int resultLimit = Math.Max(1, limit);
+        List<UserSearchResult> results = new List<UserSearchResult>();
+        QueryFacebookProfileById(ids, 0, resultLimit, results, onComplete);
+    }
+
+    private void QueryFacebookProfileById(
+        List<string> facebookIds,
+        int index,
+        int resultLimit,
+        List<UserSearchResult> results,
+        Action<List<UserSearchResult>> onComplete)
+    {
+        if (facebookIds == null || index >= facebookIds.Count || results.Count >= resultLimit)
+        {
+            onComplete?.Invoke(results ?? new List<UserSearchResult>());
+            return;
+        }
+
+        string facebookId = facebookIds[index];
+        _db.Collection("public_profiles")
+            .WhereEqualTo("facebookProviderId", facebookId)
+            .Limit(1)
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                if (!task.IsFaulted && !task.IsCanceled)
+                {
+                    AddUserSearchResults(results, task.Result.Documents, UserDataManager.Instance.FirebaseUid);
+                }
+                else
+                {
+                    Debug.LogWarning($"[FirestoreManager] Facebook 好友映射查询失败: {GetTaskError(task.Exception)}");
+                }
+
+                QueryFacebookProfileById(facebookIds, index + 1, resultLimit, results, onComplete);
+            });
     }
 
     /// <summary>
@@ -684,6 +1140,8 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             { "city", virtualFriend.city },
             { "notes", virtualFriend.notes },
             { "avatarKey", string.Empty },
+            { "avatarUrl", virtualFriend.photoUrl ?? string.Empty },
+            { "avatarStoragePath", virtualFriend.avatarStoragePath ?? string.Empty },
             { "isDeleted", false },
             { "updatedAt", FieldValue.ServerTimestamp },
         };
@@ -756,11 +1214,59 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                         GetString(data, "birthday", string.Empty),
                         GetString(data, "birthTime", string.Empty),
                         GetString(data, "city", string.Empty),
-                        GetString(data, "notes", string.Empty));
+                        GetString(data, "notes", string.Empty),
+                        null,
+                        GetString(data, "avatarUrl", string.Empty),
+                        GetString(data, "avatarStoragePath", string.Empty));
                 }
 
                 onComplete?.Invoke(true);
             });
+    }
+
+    /// <summary>
+    /// 删除用户创建的虚拟好友：云端软删除，本地缓存立即移除。
+    /// </summary>
+    public void DeleteVirtualFriend(FriendDataManager.FriendData virtualFriend, Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+        if (virtualFriend == null || !virtualFriend.isVirtual || string.IsNullOrWhiteSpace(virtualFriend.virtualFriendId))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        DocumentReference docRef = _db.Collection("users")
+            .Document(currentUid)
+            .Collection("virtual_friends")
+            .Document(virtualFriend.virtualFriendId);
+
+        Dictionary<string, object> data = new Dictionary<string, object>
+        {
+            { "isDeleted", true },
+            { "updatedAt", FieldValue.ServerTimestamp },
+        };
+
+        docRef.SetAsync(data, SetOptions.MergeAll).ContinueWithOnMainThread(task =>
+        {
+            if (task.IsFaulted || task.IsCanceled)
+            {
+                Debug.LogError($"[FirestoreManager] 删除虚拟好友失败: {task.Exception?.InnerException?.Message}");
+                onComplete?.Invoke(false);
+                return;
+            }
+
+            FriendDataManager.Instance.RemoveVirtualFriendById(virtualFriend.virtualFriendId);
+            Debug.Log($"[FirestoreManager] 已删除虚拟好友: {virtualFriend.virtualFriendId}");
+            onComplete?.Invoke(true);
+        });
     }
 
     /// <summary>
@@ -861,6 +1367,179 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
 
                 onComplete?.Invoke(true);
             });
+    }
+
+    /// <summary>
+    /// 保存明日钩子。
+    /// 路径：users/{uid}/tomorrow_hooks/{hookId}
+    /// 同时镜像到 memories/runtime.tomorrowHooks，供 Oracle Runtime 组装上下文。
+    /// </summary>
+    public void SaveTomorrowHook(TomorrowHook hook, Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+        if (hook == null)
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(hook.hookId))
+            hook.hookId = Guid.NewGuid().ToString("N").Substring(0, 10);
+        if (string.IsNullOrWhiteSpace(hook.userId))
+            hook.userId = currentUid;
+        if (string.IsNullOrWhiteSpace(hook.scheduledForLocalDate))
+            hook.scheduledForLocalDate = DateTime.Now.AddDays(1).ToString("yyyy-MM-dd");
+        if (string.IsNullOrWhiteSpace(hook.status))
+            hook.status = "pending";
+
+        Dictionary<string, object> data = SerializeTomorrowHook(hook);
+        data["createdAt"] = FieldValue.ServerTimestamp;
+        data["updatedAt"] = FieldValue.ServerTimestamp;
+
+        _db.Collection("users")
+            .Document(currentUid)
+            .Collection("tomorrow_hooks")
+            .Document(hook.hookId)
+            .SetAsync(data, SetOptions.MergeAll)
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogError($"[FirestoreManager] 保存明日钩子失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                UpsertTomorrowHookInRuntimeMemory(hook);
+                Debug.Log($"[FirestoreManager] 明日钩子已保存: {hook.hookId}");
+                onComplete?.Invoke(true);
+            });
+    }
+
+    /// <summary>
+    /// 读取今天及更早到期的明日钩子。
+    /// </summary>
+    public void LoadDueTomorrowHooks(Action<List<TomorrowHook>> onComplete)
+    {
+        if (!CheckReady(_ => onComplete?.Invoke(new List<TomorrowHook>()))) return;
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(new List<TomorrowHook>());
+            return;
+        }
+
+        string today = DateTime.Now.ToString("yyyy-MM-dd");
+        _db.Collection("users")
+            .Document(currentUid)
+            .Collection("tomorrow_hooks")
+            .WhereEqualTo("status", "pending")
+            .Limit(30)
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                List<TomorrowHook> hooks = new List<TomorrowHook>();
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogWarning($"[FirestoreManager] 读取明日钩子失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(hooks);
+                    return;
+                }
+
+                foreach (DocumentSnapshot doc in task.Result.Documents)
+                {
+                    if (!doc.Exists) continue;
+                    TomorrowHook hook = DeserializeTomorrowHook(doc.ToDictionary());
+                    if (hook == null) continue;
+                    if (string.IsNullOrWhiteSpace(hook.hookId))
+                        hook.hookId = doc.Id;
+                    if (string.CompareOrdinal(hook.scheduledForLocalDate, today) <= 0)
+                        hooks.Add(hook);
+                }
+
+                hooks.Sort((a, b) => string.CompareOrdinal(a.scheduledForLocalDate, b.scheduledForLocalDate));
+                onComplete?.Invoke(hooks);
+            });
+    }
+
+    public void MarkTomorrowHookOpened(string hookId, Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid) || string.IsNullOrWhiteSpace(hookId))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        _db.Collection("users")
+            .Document(currentUid)
+            .Collection("tomorrow_hooks")
+            .Document(hookId)
+            .SetAsync(new Dictionary<string, object>
+            {
+                { "status", "opened" },
+                { "openedAt", FieldValue.ServerTimestamp },
+                { "updatedAt", FieldValue.ServerTimestamp }
+            }, SetOptions.MergeAll)
+            .ContinueWithOnMainThread(task =>
+            {
+                bool success = !(task.IsFaulted || task.IsCanceled);
+                if (!success)
+                    Debug.LogWarning($"[FirestoreManager] 标记明日钩子失败: {task.Exception?.InnerException?.Message}");
+                else
+                    UpdateTomorrowHookStatusInRuntimeMemory(hookId, "opened");
+
+                onComplete?.Invoke(success);
+            });
+    }
+
+    private void UpsertTomorrowHookInRuntimeMemory(TomorrowHook hook)
+    {
+        if (hook == null || string.IsNullOrWhiteSpace(hook.hookId)) return;
+
+        LoadMemorySource(source =>
+        {
+            source ??= new MemorySource();
+            source.tomorrowHooks ??= new List<TomorrowHook>();
+            int index = source.tomorrowHooks.FindIndex(item => item != null && item.hookId == hook.hookId);
+            if (index >= 0)
+                source.tomorrowHooks[index] = hook;
+            else
+                source.tomorrowHooks.Add(hook);
+
+            DialogSystem.Instance?.SetMemorySource(source);
+            SaveMemorySource(source);
+        });
+    }
+
+    private void UpdateTomorrowHookStatusInRuntimeMemory(string hookId, string status)
+    {
+        if (string.IsNullOrWhiteSpace(hookId)) return;
+
+        LoadMemorySource(source =>
+        {
+            if (source?.tomorrowHooks == null) return;
+            bool changed = false;
+            foreach (TomorrowHook hook in source.tomorrowHooks)
+            {
+                if (hook == null || hook.hookId != hookId) continue;
+                hook.status = status;
+                changed = true;
+            }
+
+            if (!changed) return;
+            DialogSystem.Instance?.SetMemorySource(source);
+            SaveMemorySource(source);
+        });
     }
 
     /// <summary>
@@ -1060,6 +1739,85 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                     friendInteractionEnabled = GetBool(data, "friendInteractionEnabled", false),
                     activitySystemEnabled = GetBool(data, "activitySystemEnabled", true),
                     reminderTime = GetString(data, "reminderTime", "08:30"),
+                });
+            });
+    }
+
+    /// <summary>
+    /// 保存每日占卜同步设置。
+    /// 路径：users/{uid}/settings/daily_divination_sync
+    /// </summary>
+    public void SaveDailyDivinationSyncSettings(DailyDivinationSyncSettings settings, Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+        settings ??= DailyDivinationSyncSettingsManager.Instance.GetSettings();
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        var data = new Dictionary<string, object>
+        {
+            { "enabled", settings.enabled },
+            { "visibility", settings.VisibilityKey },
+            { "summaryOnly", true },
+            { "updatedAt", FieldValue.ServerTimestamp },
+        };
+
+        _db.Collection("users")
+            .Document(currentUid)
+            .Collection("settings")
+            .Document("daily_divination_sync")
+            .SetAsync(data, SetOptions.MergeAll)
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogError($"[FirestoreManager] 保存每日占卜同步设置失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                onComplete?.Invoke(true);
+            });
+    }
+
+    /// <summary>
+    /// 加载每日占卜同步设置。
+    /// </summary>
+    public void LoadDailyDivinationSyncSettings(Action<CloudDailyDivinationSyncSettings> onComplete)
+    {
+        if (!CheckReady(_ => onComplete?.Invoke(null))) return;
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(null);
+            return;
+        }
+
+        _db.Collection("users")
+            .Document(currentUid)
+            .Collection("settings")
+            .Document("daily_divination_sync")
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled || !task.Result.Exists)
+                {
+                    onComplete?.Invoke(null);
+                    return;
+                }
+
+                Dictionary<string, object> data = task.Result.ToDictionary();
+                onComplete?.Invoke(new CloudDailyDivinationSyncSettings
+                {
+                    enabled = GetBool(data, "enabled", true),
+                    visibility = GetString(data, "visibility", "only_me"),
+                    summaryOnly = GetBool(data, "summaryOnly", true),
                 });
             });
     }
@@ -1298,16 +2056,19 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
 
         var ud = UserDataManager.Instance;
         if (string.IsNullOrEmpty(ud.FirebaseUid)) return;
+        string facebookProviderId = GetFacebookProviderIdForCurrentUser(ud);
 
         Dictionary<string, object> data = new Dictionary<string, object>
         {
             { "uid", ud.FirebaseUid },
             { "displayName", ud.UserName },
             { "displayNameLower", NormalizeSearchText(ud.UserName) },
+            { "searchKeywords", BuildSearchKeywords(ud.UserName, ud.Email) },
             { "email", ud.Email },
             { "emailLower", NormalizeSearchText(ud.Email) },
             { "photoUrl", ud.PhotoUrl },
             { "avatarStoragePath", ud.AvatarStoragePath },
+            { "facebookProviderId", facebookProviderId },
             { "updatedAt", FieldValue.ServerTimestamp },
         };
 
@@ -1321,6 +2082,22 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                     Debug.LogError($"[FirestoreManager] 公开资料保存失败: {task.Exception?.InnerException?.Message}");
                 }
             });
+    }
+
+    private static string GetFacebookProviderIdForCurrentUser(UserDataManager userData)
+    {
+        if (userData == null) return string.Empty;
+        if (!string.IsNullOrWhiteSpace(userData.FacebookProviderUserId))
+            return userData.FacebookProviderUserId;
+
+        string providerId = FacebookUserInfoHelper.GetFacebookProviderUserId();
+        if (!string.IsNullOrWhiteSpace(providerId))
+        {
+            userData.SetFacebookProviderUserId(providerId);
+            userData.SaveData();
+        }
+
+        return providerId ?? string.Empty;
     }
 
     private static string GetLocalTimezoneId()
@@ -1339,6 +2116,478 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     {
         return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToLowerInvariant();
     }
+
+    private static string GetTaskError(Exception exception)
+    {
+        if (exception == null) return "未知错误";
+        return exception.InnerException?.Message ?? exception.Message;
+    }
+
+    private static int GetUserSearchFetchLimit(int resultLimit)
+    {
+        resultLimit = Math.Max(1, resultLimit);
+        return Math.Min(Math.Max(resultLimit * 3, resultLimit + 3), 20);
+    }
+
+    private static int GetUserSearchScanLimit(int resultLimit)
+    {
+        resultLimit = Math.Max(1, resultLimit);
+        return Math.Min(Math.Max(resultLimit * 20, 80), 240);
+    }
+
+    private static int CountNonSelfResults(List<UserSearchResult> results, string currentUid)
+    {
+        if (results == null) return 0;
+
+        int count = 0;
+        foreach (UserSearchResult result in results)
+        {
+            if (result == null) continue;
+            if (!string.IsNullOrEmpty(currentUid) && result.uid == currentUid) continue;
+            count++;
+        }
+
+        return count;
+    }
+
+    private static List<string> BuildSearchKeywords(string displayName, string email)
+    {
+        HashSet<string> keywords = new HashSet<string>();
+        AddSearchKeywordsForValue(keywords, displayName);
+        AddSearchKeywordsForValue(keywords, email);
+
+        string emailLower = NormalizeSearchText(email);
+        int atIndex = emailLower.IndexOf('@');
+        if (atIndex > 0)
+            AddSearchKeywordsForValue(keywords, emailLower.Substring(0, atIndex));
+
+        return new List<string>(keywords);
+    }
+
+    private static void AddSearchKeywordsForValue(HashSet<string> keywords, string rawValue)
+    {
+        string value = NormalizeSearchText(rawValue);
+        if (string.IsNullOrEmpty(value) || keywords == null) return;
+
+        AddKeyword(keywords, value);
+        for (int len = 1; len <= value.Length && keywords.Count < 80; len++)
+        {
+            AddKeyword(keywords, value.Substring(0, len));
+        }
+
+        for (int start = 0; start < value.Length && keywords.Count < 80; start++)
+        {
+            for (int len = 2; start + len <= value.Length && keywords.Count < 80; len++)
+            {
+                AddKeyword(keywords, value.Substring(start, len));
+            }
+        }
+
+        string[] tokens = value.Split(new[] { ' ', '.', '_', '-', '@' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (string token in tokens)
+            AddKeyword(keywords, token);
+    }
+
+    private static void AddKeyword(HashSet<string> keywords, string keyword)
+    {
+        if (keywords == null || string.IsNullOrWhiteSpace(keyword)) return;
+        keyword = NormalizeSearchText(keyword);
+        if (keyword.Length > 32)
+            keyword = keyword.Substring(0, 32);
+        keywords.Add(keyword);
+    }
+
+    private static List<UserSearchResult> LimitUserSearchResults(
+        List<UserSearchResult> results,
+        string currentUid,
+        int resultLimit)
+    {
+        List<UserSearchResult> limited = new List<UserSearchResult>();
+        UserSearchResult selfResult = null;
+        int nonSelfCount = 0;
+
+        foreach (UserSearchResult result in results)
+        {
+            if (result == null) continue;
+
+            if (!string.IsNullOrEmpty(currentUid) && result.uid == currentUid)
+            {
+                selfResult ??= result;
+                continue;
+            }
+
+            if (nonSelfCount >= resultLimit) continue;
+            limited.Add(result);
+            nonSelfCount++;
+        }
+
+        if (selfResult != null)
+        {
+            limited.Insert(0, selfResult);
+        }
+
+        return limited;
+    }
+
+#if UNITY_EDITOR
+    private class EditorRestSearchResult
+    {
+        public List<UserSearchResult> users = new List<UserSearchResult>();
+        public string proxyLabel = string.Empty;
+        public string error = string.Empty;
+    }
+
+    private void SearchUsersByNameViaRestInEditor(
+        string keyword,
+        string normalizedKeyword,
+        string currentUid,
+        int resultLimit,
+        int fetchLimit,
+        Action<List<UserSearchResult>> onComplete)
+    {
+        string projectId = GetFirebaseProjectIdForRest();
+        string trimmedKeyword = keyword.Trim();
+
+        Task.Run(() => SearchUsersByNameViaRest(projectId, trimmedKeyword, normalizedKeyword, currentUid, resultLimit, fetchLimit))
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    LastUserSearchError = $"Editor REST 搜索失败: {GetTaskError(task.Exception)}";
+                    Debug.LogWarning($"[FirestoreManager] {LastUserSearchError}");
+                    onComplete?.Invoke(new List<UserSearchResult>());
+                    return;
+                }
+
+                EditorRestSearchResult result = task.Result;
+                if (!string.IsNullOrEmpty(result.error))
+                {
+                    LastUserSearchError = result.error;
+                    Debug.LogWarning($"[FirestoreManager] {LastUserSearchError}");
+                }
+                else
+                {
+                    LastUserSearchError = string.Empty;
+                    Debug.Log($"[FirestoreManager] Editor REST 搜索成功，来源={result.proxyLabel}，数量={result.users.Count}");
+                }
+
+                onComplete?.Invoke(result.users);
+            });
+    }
+
+    private static EditorRestSearchResult SearchUsersByNameViaRest(
+        string projectId,
+        string keyword,
+        string normalizedKeyword,
+        string currentUid,
+        int resultLimit,
+        int fetchLimit)
+    {
+        EditorRestSearchResult finalResult = new EditorRestSearchResult();
+        if (string.IsNullOrEmpty(projectId))
+        {
+            finalResult.error = "Editor REST 搜索失败：Firebase ProjectId 为空";
+            return finalResult;
+        }
+
+        string endpoint = $"https://firestore.googleapis.com/v1/projects/{projectId}/databases/(default)/documents:runQuery";
+        string prefixBody = BuildPrefixUserSearchBody(normalizedKeyword, fetchLimit);
+        string keywordBody = BuildKeywordUserSearchBody(normalizedKeyword, fetchLimit);
+        string scanBody = BuildScanUserSearchBody(GetUserSearchScanLimit(resultLimit));
+        string lastError = string.Empty;
+
+        foreach (string proxyUrl in GetEditorFirestoreProxyCandidates())
+        {
+            try
+            {
+                List<UserSearchResult> users = new List<UserSearchResult>();
+                string prefixJson = PostFirestoreRestJson(endpoint, prefixBody, proxyUrl);
+                AddUserSearchResultsFromRestJson(users, prefixJson, currentUid);
+
+                if (CountNonSelfResults(users, currentUid) < resultLimit)
+                {
+                    try
+                    {
+                        string keywordJson = PostFirestoreRestJson(endpoint, keywordBody, proxyUrl);
+                        AddUserSearchResultsFromRestJson(users, keywordJson, currentUid);
+                    }
+                    catch (Exception keywordException)
+                    {
+                        Debug.LogWarning($"[FirestoreManager] Editor REST 关键词搜索失败: {keywordException.Message}");
+                    }
+                }
+
+                if (CountNonSelfResults(users, currentUid) < resultLimit)
+                {
+                    try
+                    {
+                        string scanJson = PostFirestoreRestJson(endpoint, scanBody, proxyUrl);
+                        AddUserSearchResultsFromRestJson(users, scanJson, currentUid, normalizedKeyword);
+                    }
+                    catch (Exception scanException)
+                    {
+                        Debug.LogWarning($"[FirestoreManager] Editor REST 扫描搜索失败: {scanException.Message}");
+                    }
+                }
+
+                finalResult.users = LimitUserSearchResults(users, currentUid, resultLimit);
+                finalResult.proxyLabel = DescribeProxy(proxyUrl);
+                return finalResult;
+            }
+            catch (Exception e)
+            {
+                lastError = $"{DescribeProxy(proxyUrl)}: {e.Message}";
+            }
+        }
+
+        finalResult.error = string.IsNullOrEmpty(lastError)
+            ? "Editor REST 搜索失败：没有可用网络通道"
+            : $"Editor REST 搜索失败，最后错误：{lastError}";
+        return finalResult;
+    }
+
+    private static string GetFirebaseProjectIdForRest()
+    {
+        try
+        {
+            object options = FirebaseApp.DefaultInstance?.Options;
+            object value = options?.GetType().GetProperty("ProjectId")?.GetValue(options, null);
+            string projectId = value?.ToString();
+            if (!string.IsNullOrEmpty(projectId)) return projectId;
+        }
+        catch
+        {
+            // Editor fallback will use the known project id below.
+        }
+
+        return "fari-app-b2fd2";
+    }
+
+    private static List<string> GetEditorFirestoreProxyCandidates()
+    {
+        List<string> candidates = new List<string>();
+        AddProxyCandidate(candidates, Environment.GetEnvironmentVariable("HTTPS_PROXY"));
+        AddProxyCandidate(candidates, Environment.GetEnvironmentVariable("HTTP_PROXY"));
+        AddProxyCandidate(candidates, "http://127.0.0.1:7897");
+        AddProxyCandidate(candidates, "http://127.0.0.1:7890");
+        AddProxyCandidate(candidates, "http://127.0.0.1:1087");
+        AddProxyCandidate(candidates, "http://127.0.0.1:1080");
+        AddProxyCandidate(candidates, string.Empty);
+        return candidates;
+    }
+
+    private static void AddProxyCandidate(List<string> candidates, string value)
+    {
+        string normalized = NormalizeProxyUrl(value);
+        if (candidates.Contains(normalized)) return;
+        candidates.Add(normalized);
+    }
+
+    private static string NormalizeProxyUrl(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        string trimmed = value.Trim();
+        if (!trimmed.Contains("://")) trimmed = "http://" + trimmed;
+        return trimmed;
+    }
+
+    private static string DescribeProxy(string proxyUrl)
+    {
+        return string.IsNullOrEmpty(proxyUrl) ? "direct" : proxyUrl;
+    }
+
+    private static string BuildPrefixUserSearchBody(string normalizedKeyword, int limit)
+    {
+        JObject body = new JObject
+        {
+            ["structuredQuery"] = new JObject
+            {
+                ["from"] = new JArray(new JObject { ["collectionId"] = "public_profiles" }),
+                ["where"] = new JObject
+                {
+                    ["compositeFilter"] = new JObject
+                    {
+                        ["op"] = "AND",
+                        ["filters"] = new JArray
+                        {
+                            new JObject
+                            {
+                                ["fieldFilter"] = new JObject
+                                {
+                                    ["field"] = new JObject { ["fieldPath"] = "displayNameLower" },
+                                    ["op"] = "GREATER_THAN_OR_EQUAL",
+                                    ["value"] = new JObject { ["stringValue"] = normalizedKeyword }
+                                }
+                            },
+                            new JObject
+                            {
+                                ["fieldFilter"] = new JObject
+                                {
+                                    ["field"] = new JObject { ["fieldPath"] = "displayNameLower" },
+                                    ["op"] = "LESS_THAN_OR_EQUAL",
+                                    ["value"] = new JObject { ["stringValue"] = normalizedKeyword + "\uf8ff" }
+                                }
+                            }
+                        }
+                    }
+                },
+                ["orderBy"] = new JArray(new JObject
+                {
+                    ["field"] = new JObject { ["fieldPath"] = "displayNameLower" },
+                    ["direction"] = "ASCENDING"
+                }),
+                ["limit"] = limit
+            }
+        };
+
+        return body.ToString(Formatting.None);
+    }
+
+    private static string BuildKeywordUserSearchBody(string normalizedKeyword, int limit)
+    {
+        JObject body = new JObject
+        {
+            ["structuredQuery"] = new JObject
+            {
+                ["from"] = new JArray(new JObject { ["collectionId"] = "public_profiles" }),
+                ["where"] = new JObject
+                {
+                    ["fieldFilter"] = new JObject
+                    {
+                        ["field"] = new JObject { ["fieldPath"] = "searchKeywords" },
+                        ["op"] = "ARRAY_CONTAINS",
+                        ["value"] = new JObject { ["stringValue"] = normalizedKeyword }
+                    }
+                },
+                ["limit"] = limit
+            }
+        };
+
+        return body.ToString(Formatting.None);
+    }
+
+    private static string BuildScanUserSearchBody(int limit)
+    {
+        JObject body = new JObject
+        {
+            ["structuredQuery"] = new JObject
+            {
+                ["from"] = new JArray(new JObject { ["collectionId"] = "public_profiles" }),
+                ["orderBy"] = new JArray(new JObject
+                {
+                    ["field"] = new JObject { ["fieldPath"] = "displayNameLower" },
+                    ["direction"] = "ASCENDING"
+                }),
+                ["limit"] = limit
+            }
+        };
+
+        return body.ToString(Formatting.None);
+    }
+
+    private static string PostFirestoreRestJson(string endpoint, string body, string proxyUrl)
+    {
+        byte[] payload = Encoding.UTF8.GetBytes(body);
+        HttpWebRequest request = (HttpWebRequest)WebRequest.Create(endpoint);
+        request.Method = "POST";
+        request.Accept = "application/json";
+        request.ContentType = "application/json; charset=utf-8";
+        request.Timeout = 5000;
+        request.ReadWriteTimeout = 5000;
+        request.Proxy = string.IsNullOrEmpty(proxyUrl) ? null : new WebProxy(proxyUrl);
+        request.ContentLength = payload.Length;
+
+        using (Stream stream = request.GetRequestStream())
+        {
+            stream.Write(payload, 0, payload.Length);
+        }
+
+        try
+        {
+            using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+            using (Stream responseStream = response.GetResponseStream())
+            using (StreamReader reader = new StreamReader(responseStream ?? Stream.Null))
+            {
+                return reader.ReadToEnd();
+            }
+        }
+        catch (WebException e)
+        {
+            string responseText = string.Empty;
+            if (e.Response != null)
+            {
+                using (Stream responseStream = e.Response.GetResponseStream())
+                using (StreamReader reader = new StreamReader(responseStream ?? Stream.Null))
+                {
+                    responseText = reader.ReadToEnd();
+                }
+            }
+
+            throw new Exception(string.IsNullOrEmpty(responseText) ? e.Message : responseText);
+        }
+    }
+
+    private static void AddUserSearchResultsFromRestJson(
+        List<UserSearchResult> results,
+        string json,
+        string currentUid,
+        string normalizedKeywordFilter = "")
+    {
+        if (string.IsNullOrEmpty(json)) return;
+
+        JArray rows = JArray.Parse(json);
+        foreach (JToken row in rows)
+        {
+            JToken document = row["document"];
+            if (document == null) continue;
+
+            string documentName = document.Value<string>("name");
+            string documentId = ExtractDocumentId(documentName);
+            JObject fields = document["fields"] as JObject;
+            string uid = GetRestString(fields, "uid", documentId);
+            if (string.IsNullOrEmpty(uid)) uid = documentId;
+            if (string.IsNullOrEmpty(uid)) continue;
+            if (results.Exists(result => result.uid == uid)) continue;
+
+            string displayName = GetRestString(fields, "displayName", "未命名用户");
+            string email = GetRestString(fields, "email", string.Empty);
+            string displayNameLower = GetRestString(fields, "displayNameLower", displayName);
+            string emailLower = GetRestString(fields, "emailLower", email);
+            if (!string.IsNullOrEmpty(normalizedKeywordFilter)
+                && !MatchesUserSearchKeyword(displayName, displayNameLower, email, emailLower, normalizedKeywordFilter))
+            {
+                continue;
+            }
+
+            results.Add(new UserSearchResult
+            {
+                uid = uid,
+                displayName = displayName,
+                email = email,
+                photoUrl = GetRestString(fields, "photoUrl", string.Empty),
+                isSelf = uid == currentUid,
+            });
+        }
+    }
+
+    private static string ExtractDocumentId(string documentName)
+    {
+        if (string.IsNullOrEmpty(documentName)) return string.Empty;
+        int index = documentName.LastIndexOf("/", StringComparison.Ordinal);
+        return index >= 0 && index + 1 < documentName.Length ? documentName.Substring(index + 1) : documentName;
+    }
+
+    private static string GetRestString(JObject fields, string key, string fallback)
+    {
+        JToken field = fields?[key];
+        if (field == null) return fallback;
+        return field["stringValue"]?.ToString()
+            ?? field["integerValue"]?.ToString()
+            ?? field["doubleValue"]?.ToString()
+            ?? field["booleanValue"]?.ToString()
+            ?? fallback;
+    }
+#endif
 
     private static string GetString(Dictionary<string, object> data, string key, string fallback)
     {
@@ -1370,6 +2619,56 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 isSelf = doc.Id == currentUid,
             });
         }
+    }
+
+    private static void AddMatchingUserSearchResults(
+        List<UserSearchResult> results,
+        IEnumerable<DocumentSnapshot> documents,
+        string currentUid,
+        string normalizedKeyword)
+    {
+        if (results == null || documents == null || string.IsNullOrEmpty(normalizedKeyword)) return;
+
+        foreach (DocumentSnapshot doc in documents)
+        {
+            if (!doc.Exists) continue;
+            if (results.Exists(result => result.uid == doc.Id)) continue;
+
+            Dictionary<string, object> data = doc.ToDictionary();
+            string displayName = GetString(data, "displayName", "未命名用户");
+            string displayNameLower = GetString(data, "displayNameLower", displayName);
+            string email = GetString(data, "email", string.Empty);
+            string emailLower = GetString(data, "emailLower", email);
+            if (!MatchesUserSearchKeyword(displayName, displayNameLower, email, emailLower, normalizedKeyword))
+                continue;
+
+            results.Add(new UserSearchResult
+            {
+                uid = doc.Id,
+                displayName = displayName,
+                email = email,
+                photoUrl = GetString(data, "photoUrl", string.Empty),
+                isSelf = doc.Id == currentUid,
+            });
+        }
+    }
+
+    private static bool MatchesUserSearchKeyword(
+        string displayName,
+        string displayNameLower,
+        string email,
+        string emailLower,
+        string normalizedKeyword)
+    {
+        if (string.IsNullOrEmpty(normalizedKeyword)) return false;
+        if (NormalizeSearchText(displayName).Contains(normalizedKeyword)) return true;
+        if (NormalizeSearchText(displayNameLower).Contains(normalizedKeyword)) return true;
+        if (NormalizeSearchText(email).Contains(normalizedKeyword)) return true;
+        string normalizedEmailLower = NormalizeSearchText(emailLower);
+        if (normalizedEmailLower.Contains(normalizedKeyword)) return true;
+
+        int atIndex = normalizedEmailLower.IndexOf('@');
+        return atIndex > 0 && normalizedEmailLower.Substring(0, atIndex).Contains(normalizedKeyword);
     }
 
     private static bool GetBool(Dictionary<string, object> data, string key, bool fallback)
@@ -1772,6 +3071,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             "tomorrow_hooks",
             "friends",
             "friend_requests",
+            "blocked_users",
             "virtual_friends",
             "feedback",
             "settings",
@@ -1855,6 +3155,13 @@ public class CloudNotificationSettings
     public bool friendInteractionEnabled;
     public bool activitySystemEnabled;
     public string reminderTime;
+}
+
+public class CloudDailyDivinationSyncSettings
+{
+    public bool enabled;
+    public string visibility;
+    public bool summaryOnly;
 }
 
 public class CloudFeedbackEntry

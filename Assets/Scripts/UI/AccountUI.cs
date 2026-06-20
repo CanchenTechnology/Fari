@@ -12,8 +12,6 @@ using GamerFrameWork.UIFrameWork;
 public class AccountUI : WindowBase
 {
 	public AccountUIComponent uiComponent;
-	private bool _deleteConfirmArmed;
-	private float _deleteConfirmArmedAt;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -28,7 +26,6 @@ public class AccountUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
-		_deleteConfirmArmed = false;
 		RefreshUI();
 	}
 	// 物体隐藏时执行
@@ -102,12 +99,20 @@ public class AccountUI : WindowBase
 	/// </summary>
 	public void OnexitButtonClick()
 	{
-		// 弹出确认对话框（如果有确认窗口的话，这里使用简单的确认逻辑）
-		// TODO: 可以替换为 UIManager 打开确认弹窗
+		FriendRuntimeDialog.ShowConfirm(
+			transform,
+			"退出登录",
+			"确定要退出当前账号吗？本地资料会保留，云端账号不会删除。",
+			"退出",
+			ConfirmLogout);
+	}
+
+	private void ConfirmLogout()
+	{
+		FirebaseAuthManager.Instance?.SignOut();
 		UserDataManager.Instance.Logout();
 		Debug.Log("[AccountUI] 用户已退出登录");
 
-		// 退出后返回登录界面或主界面
 		HideWindow();
 	}
 
@@ -116,15 +121,16 @@ public class AccountUI : WindowBase
 	/// </summary>
 	public void OndeleteButtonClick()
 	{
-		if (!_deleteConfirmArmed || Time.time - _deleteConfirmArmedAt > 8f)
-		{
-			_deleteConfirmArmed = true;
-			_deleteConfirmArmedAt = Time.time;
-			ToastManager.ShowToast("再次点击删除账户，将清除云端数据且不可恢复");
-			return;
-		}
+		FriendRuntimeDialog.ShowConfirm(
+			transform,
+			"删除账户",
+			"确定永久删除当前账户吗？云端资料、公开资料和本地账户数据会被清除，此操作不可恢复。",
+			"永久删除",
+			ConfirmDeleteAccount);
+	}
 
-		_deleteConfirmArmed = false;
+	private void ConfirmDeleteAccount()
+	{
 		var authManager = FirebaseAuthManager.Instance;
 		if (authManager == null || !authManager.IsLoggedIn)
 		{

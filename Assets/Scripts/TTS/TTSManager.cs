@@ -248,6 +248,29 @@ public class TTSManager : MonoBehaviour
         Debug.Log("[TTSManager] 缓存已清除");
     }
 
+    /// <summary>
+    /// 清除某一段文本在当前音色/语速/音量配置下的语音缓存。
+    /// </summary>
+    public void ClearCacheForText(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return;
+
+        string hash = GetTextHash(text);
+        if (_currentTextHash == hash)
+            CancelSynthesis();
+
+        _clipCache.Remove(hash);
+        _diskCacheSet.Remove(hash);
+
+        DeleteCacheFile(GetDiskCachePath(hash));
+
+        string tempPath = System.IO.Path.Combine(Application.temporaryCachePath, $"tts_{hash}.{GetAudioExtension()}");
+        DeleteCacheFile(tempPath);
+
+        Debug.Log($"[TTSManager] 已清除文本语音缓存: {text.Substring(0, Math.Min(text.Length, 20))}...");
+    }
+
     // ---- 核心 API 请求 ----
 
     private IEnumerator RequestTTSSynthesis(string text, string textHash, string diskPath,
@@ -668,12 +691,7 @@ public class TTSManager : MonoBehaviour
     /// </summary>
     private IEnumerator LoadAudioClipFromBytes(byte[] audioData, string textHash, Action<AudioClip> callback)
     {
-        string extension = encoding.ToLower() switch
-        {
-            "wav" => "wav",
-            "ogg" => "ogg",
-            _ => "mp3"
-        };
+        string extension = GetAudioExtension();
 
         string tempPath = System.IO.Path.Combine(Application.temporaryCachePath, $"tts_{textHash}.{extension}");
 
@@ -728,7 +746,7 @@ public class TTSManager : MonoBehaviour
 
     private string GetDiskCachePath(string textHash)
     {
-        return System.IO.Path.Combine(Application.persistentDataPath, CACHE_DIR, $"{textHash}.{encoding}");
+        return System.IO.Path.Combine(Application.persistentDataPath, CACHE_DIR, $"{textHash}.{GetAudioExtension()}");
     }
 
     private void LoadDiskCacheIndex()
@@ -772,12 +790,7 @@ public class TTSManager : MonoBehaviour
     private IEnumerator LoadFromDisk(string filePath, string text,
         Action<AudioClip> onComplete, Action<string> onError)
     {
-        string extension = encoding.ToLower() switch
-        {
-            "wav" => "wav",
-            "ogg" => "ogg",
-            _ => "mp3"
-        };
+        string extension = GetAudioExtension();
 
         AudioType audioType = extension == "wav" ? AudioType.WAV
             : (extension == "ogg" ? AudioType.OGGVORBIS : AudioType.MPEG);
@@ -841,6 +854,32 @@ public class TTSManager : MonoBehaviour
             for (int i = 0; i < hashBytes.Length; i++)
                 sb.Append(hashBytes[i].ToString("x2"));
             return sb.ToString();
+        }
+    }
+
+    private string GetAudioExtension()
+    {
+        return encoding.ToLower() switch
+        {
+            "wav" => "wav",
+            "ogg" => "ogg",
+            _ => "mp3"
+        };
+    }
+
+    private static void DeleteCacheFile(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return;
+
+        try
+        {
+            if (System.IO.File.Exists(path))
+                System.IO.File.Delete(path);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[TTSManager] 删除缓存文件失败: {e.Message}");
         }
     }
 

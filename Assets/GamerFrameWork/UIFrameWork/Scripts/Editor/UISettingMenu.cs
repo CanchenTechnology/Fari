@@ -1,5 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 #if ODIN_INSPECTOR
@@ -42,4 +40,3 @@ namespace GamerFrameWork.UIFrameWork
 
 }
 #endif
-

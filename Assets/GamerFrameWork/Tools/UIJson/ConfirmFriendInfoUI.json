@@ -1,0 +1,789 @@
+{
+  "screenName": "ConfirmFriendInfoUI",
+  "resolution": { "x": 1080, "y": 1920 },
+  "matchWidthOrHeight": 0,
+  "includeMask": false,
+  "defaultFont": "Assets/GamerFrameWork/I2/Localization/Examples/Resources/ARIAL.TTF",
+  "elements": [
+    {
+      "name": "Background",
+      "type": "Image",
+      "sprite": "flow-1-flip",
+      "imageType": "Simple",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 0 },
+      "color": { "r": 0.72, "g": 0.66, "b": 0.86, "a": 1 }
+    },
+    {
+      "name": "DarkVeil",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 0 },
+      "color": { "r": 0.006, "g": 0.005, "b": 0.018, "a": 0.56 }
+    },
+    {
+      "name": "StatusBar",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 78 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        {
+          "name": "TimeText",
+          "type": "Text",
+          "text": "9:41",
+          "fontSize": 34,
+          "fontStyle": "Bold",
+          "textAlignment": "Left",
+          "textColor": { "r": 0.92, "g": 0.92, "b": 0.94, "a": 1 },
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "pivot": { "x": 0, "y": 1 },
+          "position": { "x": 72, "y": -30 },
+          "size": { "x": 170, "y": 50 }
+        },
+        {
+          "name": "StatusIcons",
+          "type": "Text",
+          "text": "▮▮▮ ≋ ▭",
+          "fontSize": 30,
+          "fontStyle": "Bold",
+          "textAlignment": "Right",
+          "textColor": { "r": 0.92, "g": 0.92, "b": 0.94, "a": 1 },
+          "anchorMin": { "x": 1, "y": 1 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "pivot": { "x": 1, "y": 1 },
+          "position": { "x": -62, "y": -30 },
+          "size": { "x": 260, "y": 50 }
+        }
+      ]
+    },
+    {
+      "name": "TopBar",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -86 },
+      "size": { "x": 0, "y": 170 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        {
+          "name": "BackCircle",
+          "type": "Panel",
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "position": { "x": 86, "y": -72 },
+          "size": { "x": 76, "y": 76 },
+          "color": { "r": 0.045, "g": 0.040, "b": 0.070, "a": 0.74 },
+          "children": [
+            {
+              "name": "BackIcon",
+              "type": "Text",
+              "text": "‹",
+              "fontSize": 66,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.94, "g": 0.72, "b": 0.43, "a": 1 },
+              "position": { "x": -2, "y": 2 },
+              "size": { "x": 72, "y": 72 }
+            },
+            {
+              "name": "[Button]Back",
+              "type": "Button",
+              "text": "",
+              "anchorMin": { "x": 0, "y": 0 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": 0, "y": 0 },
+              "size": { "x": 0, "y": 0 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+            }
+          ]
+        },
+        {
+          "name": "HelpCircle",
+          "type": "Panel",
+          "anchorMin": { "x": 1, "y": 1 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "position": { "x": -86, "y": -72 },
+          "size": { "x": 76, "y": 76 },
+          "color": { "r": 0.045, "g": 0.040, "b": 0.070, "a": 0.74 },
+          "children": [
+            {
+              "name": "HelpIcon",
+              "type": "Text",
+              "text": "♧",
+              "fontSize": 46,
+              "fontStyle": "Bold",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.94, "g": 0.72, "b": 0.43, "a": 1 },
+              "position": { "x": 0, "y": 0 },
+              "size": { "x": 72, "y": 72 }
+            },
+            {
+              "name": "[Button]Help",
+              "type": "Button",
+              "text": "",
+              "anchorMin": { "x": 0, "y": 0 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": 0, "y": 0 },
+              "size": { "x": 0, "y": 0 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+            }
+          ]
+        },
+        {
+          "name": "TitleLineLeft",
+          "type": "Panel",
+          "raycastTarget": false,
+          "position": { "x": -265, "y": -72 },
+          "size": { "x": 110, "y": 1.5 },
+          "color": { "r": 0.86, "g": 0.66, "b": 0.37, "a": 0.45 }
+        },
+        {
+          "name": "TitleLineRight",
+          "type": "Panel",
+          "raycastTarget": false,
+          "position": { "x": 265, "y": -72 },
+          "size": { "x": 110, "y": 1.5 },
+          "color": { "r": 0.86, "g": 0.66, "b": 0.37, "a": 0.45 }
+        },
+        {
+          "name": "TitleStarLeft",
+          "type": "Text",
+          "text": "✦",
+          "fontSize": 38,
+          "fontStyle": "Bold",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.94, "g": 0.74, "b": 0.43, "a": 1 },
+          "position": { "x": -195, "y": -72 },
+          "size": { "x": 60, "y": 54 }
+        },
+        {
+          "name": "TitleStarRight",
+          "type": "Text",
+          "text": "✦",
+          "fontSize": 38,
+          "fontStyle": "Bold",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.94, "g": 0.74, "b": 0.43, "a": 1 },
+          "position": { "x": 195, "y": -72 },
+          "size": { "x": 60, "y": 54 }
+        },
+        {
+          "name": "TitleText",
+          "type": "Text",
+          "text": "确认好友信息",
+          "fontSize": 52,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.93, "g": 0.76, "b": 0.48, "a": 1 },
+          "position": { "x": 0, "y": -72 },
+          "size": { "x": 440, "y": 76 }
+        }
+      ]
+    },
+    {
+      "name": "AstrolabeDecor",
+      "type": "Text",
+      "raycastTarget": false,
+      "text": "◎\n\n       ╱╲\n   ◜──────────────◝\n      ✧     ✦     ✧\n   ◟──────────────◞",
+      "fontSize": 50,
+      "fontStyle": "Normal",
+      "textAlignment": "Center",
+      "textColor": { "r": 0.34, "g": 0.16, "b": 0.42, "a": 0.20 },
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -390 },
+      "size": { "x": 800, "y": 390 }
+    },
+    {
+      "name": "ConfirmCardBorder",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -330 },
+      "size": { "x": 820, "y": 940 },
+      "color": { "r": 0.86, "g": 0.63, "b": 0.36, "a": 0.55 },
+      "children": [
+        {
+          "name": "ConfirmCard",
+          "type": "Panel",
+          "anchorMin": { "x": 0.5, "y": 0.5 },
+          "anchorMax": { "x": 0.5, "y": 0.5 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 814, "y": 934 },
+          "color": { "r": 0.085, "g": 0.075, "b": 0.135, "a": 0.93 },
+          "children": [
+            {
+              "name": "AvatarOuterRing",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -142 },
+              "size": { "x": 168, "y": 168 },
+              "color": { "r": 0.94, "g": 0.73, "b": 0.43, "a": 1 }
+            },
+            {
+              "name": "Avatar",
+              "type": "Image",
+              "sprite": "witch-full",
+              "imageType": "Simple",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -142 },
+              "size": { "x": 158, "y": 158 },
+              "color": { "r": 1, "g": 0.92, "b": 0.82, "a": 1 }
+            },
+            {
+              "name": "[Text]FriendName",
+              "type": "Text",
+              "text": "林晚星",
+              "fontSize": 48,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.94, "g": 0.78, "b": 0.52, "a": 1 },
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": -10, "y": -265 },
+              "size": { "x": 250, "y": 72 }
+            },
+            {
+              "name": "EditNameCircle",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 78, "y": -263 },
+              "size": { "x": 42, "y": 42 },
+              "color": { "r": 0.28, "g": 0.15, "b": 0.42, "a": 0.95 },
+              "children": [
+                {
+                  "name": "EditNameIcon",
+                  "type": "Text",
+                  "text": "✎",
+                  "fontSize": 24,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.94, "g": 0.74, "b": 0.43, "a": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 40, "y": 38 }
+                },
+                {
+                  "name": "[Button]EditName",
+                  "type": "Button",
+                  "text": "",
+                  "anchorMin": { "x": 0, "y": 0 },
+                  "anchorMax": { "x": 1, "y": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 0, "y": 0 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                }
+              ]
+            },
+            {
+              "name": "InfoPanelBorder",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -502 },
+              "size": { "x": 720, "y": 400 },
+              "color": { "r": 0.82, "g": 0.64, "b": 0.42, "a": 0.26 },
+              "children": [
+                {
+                  "name": "InfoPanel",
+                  "type": "Panel",
+                  "anchorMin": { "x": 0.5, "y": 0.5 },
+                  "anchorMax": { "x": 0.5, "y": 0.5 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 714, "y": 394 },
+                  "color": { "r": 0.09, "g": 0.075, "b": 0.13, "a": 0.78 },
+                  "children": [
+                    {
+                      "name": "BirthdayIcon",
+                      "type": "Text",
+                      "text": "▣",
+                      "fontSize": 48,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.94, "g": 0.70, "b": 0.43, "a": 1 },
+                      "anchorMin": { "x": 0, "y": 1 },
+                      "anchorMax": { "x": 0, "y": 1 },
+                      "position": { "x": 62, "y": -62 },
+                      "size": { "x": 64, "y": 64 },
+                      "outlineColor": { "r": 0.53, "g": 0.21, "b": 0.86, "a": 0.55 },
+                      "outlineDistance": { "x": 1, "y": -1 }
+                    },
+                    {
+                      "name": "BirthdayLabel",
+                      "type": "Text",
+                      "text": "生日",
+                      "fontSize": 31,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.74, "g": 0.63, "b": 0.57, "a": 1 },
+                      "anchorMin": { "x": 0, "y": 1 },
+                      "anchorMax": { "x": 0, "y": 1 },
+                      "pivot": { "x": 0, "y": 0.5 },
+                      "position": { "x": 125, "y": -64 },
+                      "size": { "x": 120, "y": 52 }
+                    },
+                    {
+                      "name": "[Text]BirthdayValue",
+                      "type": "Text",
+                      "text": "1996年07月18日",
+                      "fontSize": 31,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.88, "g": 0.87, "b": 0.91, "a": 1 },
+                      "anchorMin": { "x": 0, "y": 1 },
+                      "anchorMax": { "x": 0, "y": 1 },
+                      "pivot": { "x": 0, "y": 0.5 },
+                      "position": { "x": 305, "y": -64 },
+                      "size": { "x": 280, "y": 52 }
+                    },
+                    {
+                      "name": "EditBirthdayVisual",
+                      "type": "Panel",
+                      "anchorMin": { "x": 1, "y": 1 },
+                      "anchorMax": { "x": 1, "y": 1 },
+                      "position": { "x": -58, "y": -64 },
+                      "size": { "x": 52, "y": 52 },
+                      "color": { "r": 0.11, "g": 0.085, "b": 0.15, "a": 0.90 },
+                      "children": [
+                        {
+                          "name": "EditBirthdayIcon",
+                          "type": "Text",
+                          "text": "□",
+                          "fontSize": 32,
+                          "textAlignment": "Center",
+                          "textColor": { "r": 0.92, "g": 0.70, "b": 0.42, "a": 1 },
+                          "position": { "x": 0, "y": 0 },
+                          "size": { "x": 48, "y": 48 }
+                        },
+                        {
+                          "name": "[Button]EditBirthday",
+                          "type": "Button",
+                          "text": "",
+                          "anchorMin": { "x": 0, "y": 0 },
+                          "anchorMax": { "x": 1, "y": 1 },
+                          "position": { "x": 0, "y": 0 },
+                          "size": { "x": 0, "y": 0 },
+                          "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                        }
+                      ]
+                    },
+                    {
+                      "name": "RowLine1",
+                      "type": "Panel",
+                      "raycastTarget": false,
+                      "anchorMin": { "x": 0.5, "y": 1 },
+                      "anchorMax": { "x": 0.5, "y": 1 },
+                      "position": { "x": 0, "y": -134 },
+                      "size": { "x": 650, "y": 1.4 },
+                      "color": { "r": 0.76, "g": 0.55, "b": 0.35, "a": 0.42 }
+                    },
+                    {
+                      "name": "BirthTimeIcon",
+                      "type": "Text",
+                      "text": "◷",
+                      "fontSize": 58,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.94, "g": 0.70, "b": 0.43, "a": 1 },
+                      "anchorMin": { "x": 0, "y": 1 },
+                      "anchorMax": { "x": 0, "y": 1 },
+                      "position": { "x": 62, "y": -200 },
+                      "size": { "x": 64, "y": 64 },
+                      "outlineColor": { "r": 0.53, "g": 0.21, "b": 0.86, "a": 0.55 },
+                      "outlineDistance": { "x": 1, "y": -1 }
+                    },
+                    {
+                      "name": "BirthTimeLabel",
+                      "type": "Text",
+                      "text": "出生时间",
+                      "fontSize": 31,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.74, "g": 0.63, "b": 0.57, "a": 1 },
+                      "anchorMin": { "x": 0, "y": 1 },
+                      "anchorMax": { "x": 0, "y": 1 },
+                      "pivot": { "x": 0, "y": 0.5 },
+                      "position": { "x": 125, "y": -200 },
+                      "size": { "x": 150, "y": 52 }
+                    },
+                    {
+                      "name": "[Text]BirthTimeValue",
+                      "type": "Text",
+                      "text": "14:35",
+                      "fontSize": 31,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.88, "g": 0.87, "b": 0.91, "a": 1 },
+                      "anchorMin": { "x": 0, "y": 1 },
+                      "anchorMax": { "x": 0, "y": 1 },
+                      "pivot": { "x": 0, "y": 0.5 },
+                      "position": { "x": 305, "y": -200 },
+                      "size": { "x": 220, "y": 52 }
+                    },
+                    {
+                      "name": "EditBirthTimeVisual",
+                      "type": "Panel",
+                      "anchorMin": { "x": 1, "y": 1 },
+                      "anchorMax": { "x": 1, "y": 1 },
+                      "position": { "x": -58, "y": -200 },
+                      "size": { "x": 52, "y": 52 },
+                      "color": { "r": 0.11, "g": 0.085, "b": 0.15, "a": 0.90 },
+                      "children": [
+                        {
+                          "name": "EditBirthTimeIcon",
+                          "type": "Text",
+                          "text": "□",
+                          "fontSize": 32,
+                          "textAlignment": "Center",
+                          "textColor": { "r": 0.92, "g": 0.70, "b": 0.42, "a": 1 },
+                          "position": { "x": 0, "y": 0 },
+                          "size": { "x": 48, "y": 48 }
+                        },
+                        {
+                          "name": "[Button]EditBirthTime",
+                          "type": "Button",
+                          "text": "",
+                          "anchorMin": { "x": 0, "y": 0 },
+                          "anchorMax": { "x": 1, "y": 1 },
+                          "position": { "x": 0, "y": 0 },
+                          "size": { "x": 0, "y": 0 },
+                          "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                        }
+                      ]
+                    },
+                    {
+                      "name": "RowLine2",
+                      "type": "Panel",
+                      "raycastTarget": false,
+                      "anchorMin": { "x": 0.5, "y": 1 },
+                      "anchorMax": { "x": 0.5, "y": 1 },
+                      "position": { "x": 0, "y": -268 },
+                      "size": { "x": 650, "y": 1.4 },
+                      "color": { "r": 0.76, "g": 0.55, "b": 0.35, "a": 0.42 }
+                    },
+                    {
+                      "name": "BirthCityIcon",
+                      "type": "Text",
+                      "text": "⌖",
+                      "fontSize": 58,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.94, "g": 0.70, "b": 0.43, "a": 1 },
+                      "anchorMin": { "x": 0, "y": 1 },
+                      "anchorMax": { "x": 0, "y": 1 },
+                      "position": { "x": 62, "y": -332 },
+                      "size": { "x": 64, "y": 64 },
+                      "outlineColor": { "r": 0.53, "g": 0.21, "b": 0.86, "a": 0.55 },
+                      "outlineDistance": { "x": 1, "y": -1 }
+                    },
+                    {
+                      "name": "BirthCityLabel",
+                      "type": "Text",
+                      "text": "出生城市",
+                      "fontSize": 31,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.74, "g": 0.63, "b": 0.57, "a": 1 },
+                      "anchorMin": { "x": 0, "y": 1 },
+                      "anchorMax": { "x": 0, "y": 1 },
+                      "pivot": { "x": 0, "y": 0.5 },
+                      "position": { "x": 125, "y": -332 },
+                      "size": { "x": 150, "y": 52 }
+                    },
+                    {
+                      "name": "[Text]BirthCityValue",
+                      "type": "Text",
+                      "text": "上海市",
+                      "fontSize": 31,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.88, "g": 0.87, "b": 0.91, "a": 1 },
+                      "anchorMin": { "x": 0, "y": 1 },
+                      "anchorMax": { "x": 0, "y": 1 },
+                      "pivot": { "x": 0, "y": 0.5 },
+                      "position": { "x": 305, "y": -332 },
+                      "size": { "x": 220, "y": 52 }
+                    },
+                    {
+                      "name": "EditBirthCityVisual",
+                      "type": "Panel",
+                      "anchorMin": { "x": 1, "y": 1 },
+                      "anchorMax": { "x": 1, "y": 1 },
+                      "position": { "x": -58, "y": -332 },
+                      "size": { "x": 52, "y": 52 },
+                      "color": { "r": 0.11, "g": 0.085, "b": 0.15, "a": 0.90 },
+                      "children": [
+                        {
+                          "name": "EditBirthCityIcon",
+                          "type": "Text",
+                          "text": "□",
+                          "fontSize": 32,
+                          "textAlignment": "Center",
+                          "textColor": { "r": 0.92, "g": 0.70, "b": 0.42, "a": 1 },
+                          "position": { "x": 0, "y": 0 },
+                          "size": { "x": 48, "y": 48 }
+                        },
+                        {
+                          "name": "[Button]EditBirthCity",
+                          "type": "Button",
+                          "text": "",
+                          "anchorMin": { "x": 0, "y": 0 },
+                          "anchorMax": { "x": 1, "y": 1 },
+                          "position": { "x": 0, "y": 0 },
+                          "size": { "x": 0, "y": 0 },
+                          "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "CardDividerLeft",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 0 },
+              "anchorMax": { "x": 0.5, "y": 0 },
+              "position": { "x": -180, "y": 105 },
+              "size": { "x": 300, "y": 1.5 },
+              "color": { "r": 0.80, "g": 0.62, "b": 0.36, "a": 0.45 }
+            },
+            {
+              "name": "CardDividerRight",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 0 },
+              "anchorMax": { "x": 0.5, "y": 0 },
+              "position": { "x": 180, "y": 105 },
+              "size": { "x": 300, "y": 1.5 },
+              "color": { "r": 0.80, "g": 0.62, "b": 0.36, "a": 0.45 }
+            },
+            {
+              "name": "CardDividerStar",
+              "type": "Text",
+              "text": "✦",
+              "fontSize": 38,
+              "fontStyle": "Bold",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.82, "g": 0.58, "b": 0.36, "a": 0.70 },
+              "anchorMin": { "x": 0.5, "y": 0 },
+              "anchorMax": { "x": 0.5, "y": 0 },
+              "position": { "x": 0, "y": 105 },
+              "size": { "x": 80, "y": 50 }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CreateFriendButtonVisual",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 0 },
+      "anchorMax": { "x": 0.5, "y": 0 },
+      "position": { "x": 0, "y": 520 },
+      "size": { "x": 820, "y": 104 },
+      "color": { "r": 0.32, "g": 0.13, "b": 0.47, "a": 0.96 },
+      "children": [
+        {
+          "name": "CreateFriendText",
+          "type": "Text",
+          "text": "✦       创建好友       ✦",
+          "fontSize": 44,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.94, "g": 0.75, "b": 0.46, "a": 1 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 760, "y": 78 }
+        },
+        {
+          "name": "[Button]CreateFriend",
+          "type": "Button",
+          "text": "",
+          "anchorMin": { "x": 0, "y": 0 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 0, "y": 0 },
+          "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+        }
+      ]
+    },
+    {
+      "name": "BackEditButtonVisual",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 0 },
+      "anchorMax": { "x": 0.5, "y": 0 },
+      "position": { "x": 0, "y": 392 },
+      "size": { "x": 820, "y": 88 },
+      "color": { "r": 0.035, "g": 0.038, "b": 0.060, "a": 0.82 },
+      "children": [
+        {
+          "name": "BackEditText",
+          "type": "Text",
+          "text": "返回修改",
+          "fontSize": 38,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.93, "g": 0.76, "b": 0.48, "a": 1 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 440, "y": 70 }
+        },
+        {
+          "name": "[Button]BackEdit",
+          "type": "Button",
+          "text": "",
+          "anchorMin": { "x": 0, "y": 0 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 0, "y": 0 },
+          "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+        }
+      ]
+    },
+    {
+      "name": "FooterHint",
+      "type": "Text",
+      "text": "✦  这些信息将用于更准确的关系占卜与匹配。  ✦",
+      "fontSize": 26,
+      "fontStyle": "Normal",
+      "textAlignment": "Center",
+      "textColor": { "r": 0.65, "g": 0.61, "b": 0.68, "a": 1 },
+      "anchorMin": { "x": 0.5, "y": 0 },
+      "anchorMax": { "x": 0.5, "y": 0 },
+      "position": { "x": 0, "y": 270 },
+      "size": { "x": 760, "y": 56 }
+    },
+    {
+      "name": "BottomNavigation",
+      "type": "Panel",
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 0 },
+      "pivot": { "x": 0.5, "y": 0 },
+      "position": { "x": 0, "y": 52 },
+      "size": { "x": -110, "y": 178 },
+      "color": { "r": 0.040, "g": 0.044, "b": 0.065, "a": 0.95 },
+      "children": [
+        {
+          "name": "NavOracleIcon",
+          "type": "Text",
+          "text": "☾",
+          "fontSize": 48,
+          "fontStyle": "Bold",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.62, "g": 0.57, "b": 0.55, "a": 1 },
+          "position": { "x": -330, "y": 42 },
+          "size": { "x": 110, "y": 58 }
+        },
+        {
+          "name": "NavOracleLabel",
+          "type": "Text",
+          "text": "神谕",
+          "fontSize": 26,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.60, "g": 0.52, "b": 0.47, "a": 1 },
+          "position": { "x": -330, "y": -30 },
+          "size": { "x": 120, "y": 40 }
+        },
+        {
+          "name": "NavFriendIcon",
+          "type": "Text",
+          "text": "♋",
+          "fontSize": 58,
+          "fontStyle": "Bold",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.78, "g": 0.43, "b": 1.00, "a": 1 },
+          "outlineColor": { "r": 0.66, "g": 0.18, "b": 0.96, "a": 0.60 },
+          "outlineDistance": { "x": 1.5, "y": -1.5 },
+          "position": { "x": -110, "y": 44 },
+          "size": { "x": 120, "y": 64 }
+        },
+        {
+          "name": "NavFriendLabel",
+          "type": "Text",
+          "text": "朋友",
+          "fontSize": 28,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.86, "g": 0.67, "b": 1.00, "a": 1 },
+          "position": { "x": -110, "y": -30 },
+          "size": { "x": 120, "y": 42 }
+        },
+        {
+          "name": "NavFriendDot",
+          "type": "Text",
+          "text": "•",
+          "fontSize": 38,
+          "fontStyle": "Bold",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.86, "g": 0.67, "b": 1.00, "a": 1 },
+          "position": { "x": -110, "y": -75 },
+          "size": { "x": 50, "y": 34 }
+        },
+        {
+          "name": "NavExploreIcon",
+          "type": "Text",
+          "text": "✧",
+          "fontSize": 52,
+          "fontStyle": "Bold",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.62, "g": 0.57, "b": 0.55, "a": 1 },
+          "position": { "x": 110, "y": 42 },
+          "size": { "x": 110, "y": 58 }
+        },
+        {
+          "name": "NavExploreLabel",
+          "type": "Text",
+          "text": "探索",
+          "fontSize": 26,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.60, "g": 0.52, "b": 0.47, "a": 1 },
+          "position": { "x": 110, "y": -30 },
+          "size": { "x": 120, "y": 40 }
+        },
+        {
+          "name": "NavMyIcon",
+          "type": "Text",
+          "text": "○",
+          "fontSize": 54,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.62, "g": 0.57, "b": 0.55, "a": 1 },
+          "position": { "x": 330, "y": 42 },
+          "size": { "x": 110, "y": 58 }
+        },
+        {
+          "name": "NavMyLabel",
+          "type": "Text",
+          "text": "我的",
+          "fontSize": 26,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.60, "g": 0.52, "b": 0.47, "a": 1 },
+          "position": { "x": 330, "y": -30 },
+          "size": { "x": 120, "y": 40 }
+        }
+      ]
+    }
+  ]
+}

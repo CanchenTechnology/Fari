@@ -18,6 +18,25 @@ service cloud.firestore {
           || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin");
     }
 
+    function isAcceptedFriend(ownerUid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(ownerUid)/friends/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(ownerUid)/friends/$(request.auth.uid)).data.status == "friend";
+    }
+
+    function canReadDailyOracleSummary(data) {
+      return signedIn()
+        && data.summaryOnly == true
+        && data.syncEnabled == true
+        && (data.visibility == "all_friends" || data.visibility == "real_friends")
+        && isAcceptedFriend(data.ownerUid);
+    }
+
+    function isRelationshipParticipant(data) {
+      return signedIn()
+        && (data.initiatorUid == request.auth.uid || data.receiverUid == request.auth.uid);
+    }
+
     match /users/{uid} {
       allow read, create, update, delete: if isOwner(uid);
 
@@ -42,7 +61,8 @@ service cloud.firestore {
       }
 
       match /friends/{friendId} {
-        allow read, delete: if isOwner(uid);
+        allow read, delete: if isOwner(uid)
+          || (signedIn() && request.auth.uid == friendId);
         allow create, update: if isOwner(uid)
           || (signedIn()
             && request.auth.uid == friendId
@@ -50,10 +70,15 @@ service cloud.firestore {
       }
 
       match /friend_requests/{requesterUid} {
-        allow read, delete: if isOwner(uid);
+        allow read, delete: if isOwner(uid)
+          || (signedIn() && request.auth.uid == requesterUid);
         allow create, update: if signedIn()
           && request.auth.uid == requesterUid
           && request.resource.data.uid == request.auth.uid;
+      }
+
+      match /blocked_users/{blockedUid} {
+        allow read, create, update, delete: if isOwner(uid);
       }
 
       match /virtual_friends/{virtualFriendId} {
@@ -70,8 +95,36 @@ service cloud.firestore {
     }
 
     match /public_profiles/{uid} {
-      allow read: if signedIn();
+      allow read: if true;
       allow create, update, delete: if isOwner(uid);
+    }
+
+    match /daily_oracle_summaries/{summaryId} {
+      allow read: if isOwner(resource.data.ownerUid) || canReadDailyOracleSummary(resource.data);
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.summaryOnly == true;
+      allow update: if isOwner(resource.data.ownerUid)
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.summaryOnly == true;
+      allow delete: if isOwner(resource.data.ownerUid);
+    }
+
+    match /relationship_divinations/{readingId} {
+      allow read: if isRelationshipParticipant(resource.data);
+      allow create: if signedIn()
+        && request.resource.data.initiatorUid == request.auth.uid
+        && request.resource.data.receiverUid is string
+        && request.resource.data.status == "invited"
+        && request.resource.data.initiatorRevealed == false
+        && request.resource.data.receiverRevealed == false
+        && isAcceptedFriend(request.resource.data.receiverUid);
+      allow update: if isRelationshipParticipant(resource.data)
+        && request.resource.data.readingId == resource.data.readingId
+        && request.resource.data.initiatorUid == resource.data.initiatorUid
+        && request.resource.data.receiverUid == resource.data.receiverUid
+        && request.resource.data.cards == resource.data.cards;
+      allow delete: if isRelationshipParticipant(resource.data);
     }
 
     match /app_config/{configId} {

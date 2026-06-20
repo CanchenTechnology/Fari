@@ -1,0 +1,670 @@
+{
+  "screenName": "FriendHomeUI",
+  "resolution": { "x": 1080, "y": 1920 },
+  "matchWidthOrHeight": 0,
+  "includeMask": false,
+  "defaultFont": "Assets/GamerFrameWork/I2/Localization/Examples/Resources/ARIAL.TTF",
+  "elements": [
+    {
+      "name": "Background",
+      "type": "Image",
+      "sprite": "flow-1-flip",
+      "imageType": "Simple",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 0 },
+      "color": { "r": 0.30, "g": 0.22, "b": 0.43, "a": 1 }
+    },
+    {
+      "name": "DarkVeil",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 0 },
+      "color": { "r": 0.006, "g": 0.005, "b": 0.016, "a": 0.74 }
+    },
+    {
+      "name": "TopBar",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -42 },
+      "size": { "x": 0, "y": 120 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        {
+          "name": "BackIcon",
+          "type": "Text",
+          "text": "‹",
+          "fontSize": 72,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.95, "g": 0.73, "b": 0.44, "a": 1 },
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "position": { "x": 70, "y": -38 },
+          "size": { "x": 74, "y": 74 }
+        },
+        {
+          "name": "[Button]Back",
+          "type": "Button",
+          "text": "",
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "position": { "x": 70, "y": -38 },
+          "size": { "x": 96, "y": 96 },
+          "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+        },
+        {
+          "name": "TitleText",
+          "type": "Text",
+          "text": "—✣  好友主页  ✣—",
+          "fontSize": 54,
+          "fontStyle": "Bold",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.95, "g": 0.76, "b": 0.47, "a": 1 },
+          "position": { "x": 0, "y": -46 },
+          "size": { "x": 560, "y": 76 }
+        }
+      ]
+    },
+    {
+      "name": "ProfileHeader",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -172 },
+      "size": { "x": 0, "y": 315 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        {
+          "name": "AvatarBorder",
+          "type": "Panel",
+          "raycastTarget": false,
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "position": { "x": 230, "y": -154 },
+          "size": { "x": 260, "y": 260 },
+          "color": { "r": 0.91, "g": 0.67, "b": 0.38, "a": 1 }
+        },
+        {
+          "name": "[Image]FriendAvatar",
+          "type": "Image",
+          "sprite": "witch-full",
+          "imageType": "Simple",
+          "raycastTarget": false,
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "position": { "x": 230, "y": -154 },
+          "size": { "x": 242, "y": 242 },
+          "color": { "r": 1, "g": 0.88, "b": 0.78, "a": 1 }
+        },
+        {
+          "name": "EditAvatarBadge",
+          "type": "Panel",
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "position": { "x": 321, "y": -235 },
+          "size": { "x": 66, "y": 66 },
+          "color": { "r": 0.18, "g": 0.10, "b": 0.28, "a": 1 },
+          "children": [
+            {
+              "name": "EditAvatarIcon",
+              "type": "Text",
+              "text": "✎",
+              "fontSize": 42,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.95, "g": 0.72, "b": 0.43, "a": 1 },
+              "position": { "x": 0, "y": 0 },
+              "size": { "x": 60, "y": 60 }
+            },
+            {
+              "name": "[Button]EditAvatar",
+              "type": "Button",
+              "text": "",
+              "anchorMin": { "x": 0, "y": 0 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": 0, "y": 0 },
+              "size": { "x": 0, "y": 0 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+            }
+          ]
+        },
+        {
+          "name": "[Text]FriendName",
+          "type": "Text",
+          "text": "Nocturne Oracle",
+          "fontSize": 46,
+          "fontStyle": "Normal",
+          "textAlignment": "Left",
+          "textColor": { "r": 0.94, "g": 0.78, "b": 0.52, "a": 1 },
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "pivot": { "x": 0, "y": 1 },
+          "position": { "x": 398, "y": -78 },
+          "size": { "x": 520, "y": 60 }
+        },
+        {
+          "name": "CreatedBadge",
+          "type": "Panel",
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "position": { "x": 475, "y": -132 },
+          "size": { "x": 160, "y": 48 },
+          "color": { "r": 0.25, "g": 0.11, "b": 0.38, "a": 0.92 },
+          "children": [
+            {
+              "name": "CreatedBadgeText",
+              "type": "Text",
+              "text": "你创建  ✦",
+              "fontSize": 25,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.88, "g": 0.68, "b": 0.48, "a": 1 },
+              "position": { "x": 0, "y": 0 },
+              "size": { "x": 145, "y": 40 }
+            }
+          ]
+        },
+        {
+          "name": "SignatureText",
+          "type": "Text",
+          "text": "夜色为引，真相自现  ✦\n以塔罗为镜，为你指引前路。",
+          "fontSize": 30,
+          "fontStyle": "Normal",
+          "textAlignment": "Left",
+          "textColor": { "r": 0.82, "g": 0.78, "b": 0.80, "a": 1 },
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "pivot": { "x": 0, "y": 1 },
+          "position": { "x": 398, "y": -170 },
+          "size": { "x": 570, "y": 90 }
+        }
+      ]
+    },
+    {
+      "name": "BasicInfoBorder",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -495 },
+      "size": { "x": 970, "y": 595 },
+      "color": { "r": 0.82, "g": 0.55, "b": 0.32, "a": 0.50 },
+      "children": [
+        {
+          "name": "BasicInfoPanel",
+          "type": "Panel",
+          "anchorMin": { "x": 0.5, "y": 0.5 },
+          "anchorMax": { "x": 0.5, "y": 0.5 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 960, "y": 585 },
+          "color": { "r": 0.080, "g": 0.073, "b": 0.125, "a": 0.94 },
+          "children": [
+            {
+              "name": "BasicInfoTitle",
+              "type": "Text",
+              "text": "♙  基本信息",
+              "fontSize": 40,
+              "fontStyle": "Bold",
+              "textAlignment": "Left",
+              "textColor": { "r": 0.94, "g": 0.75, "b": 0.47, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "pivot": { "x": 0, "y": 1 },
+              "position": { "x": 58, "y": -34 },
+              "size": { "x": 360, "y": 60 }
+            },
+            {
+              "name": "InfoRowsPanel",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 0 },
+              "anchorMax": { "x": 0.5, "y": 0 },
+              "position": { "x": 0, "y": 240 },
+              "size": { "x": 900, "y": 410 },
+              "color": { "r": 0.070, "g": 0.064, "b": 0.100, "a": 0.84 },
+              "children": [
+                {
+                  "name": "BirthdayRowText",
+                  "type": "Text",
+                  "text": "▣   生日                         1992-11-23                                    ✎",
+                  "fontSize": 29,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.80, "g": 0.72, "b": 0.64, "a": 1 },
+                  "anchorMin": { "x": 0.5, "y": 1 },
+                  "anchorMax": { "x": 0.5, "y": 1 },
+                  "position": { "x": 0, "y": -50 },
+                  "size": { "x": 820, "y": 56 }
+                },
+                {
+                  "name": "BirthTimeRowText",
+                  "type": "Text",
+                  "text": "◷   出生时间                   21:30                                          ✎",
+                  "fontSize": 29,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.80, "g": 0.72, "b": 0.64, "a": 1 },
+                  "anchorMin": { "x": 0.5, "y": 1 },
+                  "anchorMax": { "x": 0.5, "y": 1 },
+                  "position": { "x": 0, "y": -132 },
+                  "size": { "x": 820, "y": 56 }
+                },
+                {
+                  "name": "BirthCityRowText",
+                  "type": "Text",
+                  "text": "⌾   出生城市                   上海市                                      ✎",
+                  "fontSize": 29,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.80, "g": 0.72, "b": 0.64, "a": 1 },
+                  "anchorMin": { "x": 0.5, "y": 1 },
+                  "anchorMax": { "x": 0.5, "y": 1 },
+                  "position": { "x": 0, "y": -214 },
+                  "size": { "x": 820, "y": 56 }
+                },
+                {
+                  "name": "AvatarRowText",
+                  "type": "Text",
+                  "text": "▧   头像                                                                    ✎",
+                  "fontSize": 29,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.80, "g": 0.72, "b": 0.64, "a": 1 },
+                  "anchorMin": { "x": 0.5, "y": 1 },
+                  "anchorMax": { "x": 0.5, "y": 1 },
+                  "position": { "x": 0, "y": -296 },
+                  "size": { "x": 820, "y": 56 }
+                },
+                {
+                  "name": "UserNameRowText",
+                  "type": "Text",
+                  "text": "◎   用户名称                Nocturne Oracle                         ✎",
+                  "fontSize": 29,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.80, "g": 0.72, "b": 0.64, "a": 1 },
+                  "anchorMin": { "x": 0.5, "y": 1 },
+                  "anchorMax": { "x": 0.5, "y": 1 },
+                  "position": { "x": 0, "y": -378 },
+                  "size": { "x": 820, "y": 56 }
+                },
+                {
+                  "name": "[Button]EditBirthDate",
+                  "type": "Button",
+                  "text": "",
+                  "anchorMin": { "x": 0, "y": 0.80 },
+                  "anchorMax": { "x": 1, "y": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 0, "y": 0 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                },
+                {
+                  "name": "[Button]EditBirthTime",
+                  "type": "Button",
+                  "text": "",
+                  "anchorMin": { "x": 0, "y": 0.60 },
+                  "anchorMax": { "x": 1, "y": 0.80 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 0, "y": 0 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                },
+                {
+                  "name": "[Button]EditBirthCity",
+                  "type": "Button",
+                  "text": "",
+                  "anchorMin": { "x": 0, "y": 0.40 },
+                  "anchorMax": { "x": 1, "y": 0.60 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 0, "y": 0 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                },
+                {
+                  "name": "[Button]EditProfileAvatar",
+                  "type": "Button",
+                  "text": "",
+                  "anchorMin": { "x": 0, "y": 0.20 },
+                  "anchorMax": { "x": 1, "y": 0.40 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 0, "y": 0 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                },
+                {
+                  "name": "[Button]EditUserName",
+                  "type": "Button",
+                  "text": "",
+                  "anchorMin": { "x": 0, "y": 0 },
+                  "anchorMax": { "x": 1, "y": 0.20 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 0, "y": 0 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "HistoryBorder",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -1110 },
+      "size": { "x": 970, "y": 485 },
+      "color": { "r": 0.82, "g": 0.55, "b": 0.32, "a": 0.48 },
+      "children": [
+        {
+          "name": "HistoryPanel",
+          "type": "Panel",
+          "anchorMin": { "x": 0.5, "y": 0.5 },
+          "anchorMax": { "x": 0.5, "y": 0.5 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 960, "y": 475 },
+          "color": { "r": 0.080, "g": 0.073, "b": 0.125, "a": 0.94 },
+          "children": [
+            {
+              "name": "HistoryTitle",
+              "type": "Text",
+              "text": "✦  占卜历史记录",
+              "fontSize": 40,
+              "fontStyle": "Bold",
+              "textAlignment": "Left",
+              "textColor": { "r": 0.94, "g": 0.75, "b": 0.47, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "pivot": { "x": 0, "y": 1 },
+              "position": { "x": 58, "y": -34 },
+              "size": { "x": 440, "y": 60 }
+            },
+            {
+              "name": "ViewAllHistoryText",
+              "type": "Text",
+              "text": "查看全部  ›",
+              "fontSize": 28,
+              "fontStyle": "Normal",
+              "textAlignment": "Right",
+              "textColor": { "r": 0.70, "g": 0.54, "b": 0.36, "a": 1 },
+              "anchorMin": { "x": 1, "y": 1 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "pivot": { "x": 1, "y": 1 },
+              "position": { "x": -58, "y": -44 },
+              "size": { "x": 220, "y": 44 }
+            },
+            {
+              "name": "[Button]ViewAllHistory",
+              "type": "Button",
+              "text": "",
+              "anchorMin": { "x": 0.70, "y": 0.84 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": 0, "y": 0 },
+              "size": { "x": 0, "y": 0 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+            },
+            {
+              "name": "HistoryRowsPanel",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 0 },
+              "anchorMax": { "x": 0.5, "y": 0 },
+              "position": { "x": 0, "y": 178 },
+              "size": { "x": 900, "y": 318 },
+              "color": { "r": 0.070, "g": 0.064, "b": 0.100, "a": 0.84 },
+              "children": [
+                {
+                  "name": "HistoryOneIcon",
+                  "type": "Image",
+                  "sprite": "RWS_Tarot_17_Star",
+                  "imageType": "Simple",
+                  "raycastTarget": false,
+                  "anchorMin": { "x": 0, "y": 1 },
+                  "anchorMax": { "x": 0, "y": 1 },
+                  "position": { "x": 70, "y": -54 },
+                  "size": { "x": 74, "y": 84 },
+                  "color": { "r": 0.70, "g": 0.55, "b": 0.86, "a": 1 }
+                },
+                {
+                  "name": "HistoryOneText",
+                  "type": "Text",
+                  "text": "关于我与他的未来走向\n使用牌阵：爱情十字牌阵",
+                  "fontSize": 27,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.82, "g": 0.74, "b": 0.66, "a": 1 },
+                  "anchorMin": { "x": 0, "y": 1 },
+                  "anchorMax": { "x": 0, "y": 1 },
+                  "position": { "x": 330, "y": -56 },
+                  "size": { "x": 470, "y": 70 }
+                },
+                {
+                  "name": "HistoryOneDate",
+                  "type": "Text",
+                  "text": "2025-05-18  ›",
+                  "fontSize": 27,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Right",
+                  "textColor": { "r": 0.65, "g": 0.59, "b": 0.60, "a": 1 },
+                  "anchorMin": { "x": 1, "y": 1 },
+                  "anchorMax": { "x": 1, "y": 1 },
+                  "pivot": { "x": 1, "y": 1 },
+                  "position": { "x": -54, "y": -62 },
+                  "size": { "x": 230, "y": 44 }
+                },
+                {
+                  "name": "HistoryTwoIcon",
+                  "type": "Image",
+                  "sprite": "RWS_Tarot_18_Moon",
+                  "imageType": "Simple",
+                  "raycastTarget": false,
+                  "anchorMin": { "x": 0, "y": 1 },
+                  "anchorMax": { "x": 0, "y": 1 },
+                  "position": { "x": 70, "y": -156 },
+                  "size": { "x": 74, "y": 84 },
+                  "color": { "r": 0.70, "g": 0.55, "b": 0.86, "a": 1 }
+                },
+                {
+                  "name": "HistoryTwoText",
+                  "type": "Text",
+                  "text": "我该如何突破当前困境\n使用牌阵：凯尔特十字牌阵",
+                  "fontSize": 27,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.82, "g": 0.74, "b": 0.66, "a": 1 },
+                  "anchorMin": { "x": 0, "y": 1 },
+                  "anchorMax": { "x": 0, "y": 1 },
+                  "position": { "x": 330, "y": -158 },
+                  "size": { "x": 470, "y": 70 }
+                },
+                {
+                  "name": "HistoryTwoDate",
+                  "type": "Text",
+                  "text": "2025-05-12  ›",
+                  "fontSize": 27,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Right",
+                  "textColor": { "r": 0.65, "g": 0.59, "b": 0.60, "a": 1 },
+                  "anchorMin": { "x": 1, "y": 1 },
+                  "anchorMax": { "x": 1, "y": 1 },
+                  "pivot": { "x": 1, "y": 1 },
+                  "position": { "x": -54, "y": -164 },
+                  "size": { "x": 230, "y": 44 }
+                },
+                {
+                  "name": "HistoryThreeIcon",
+                  "type": "Image",
+                  "sprite": "RWS_Tarot_20_Judgement",
+                  "imageType": "Simple",
+                  "raycastTarget": false,
+                  "anchorMin": { "x": 0, "y": 1 },
+                  "anchorMax": { "x": 0, "y": 1 },
+                  "position": { "x": 70, "y": -258 },
+                  "size": { "x": 74, "y": 84 },
+                  "color": { "r": 0.70, "g": 0.55, "b": 0.86, "a": 1 }
+                },
+                {
+                  "name": "HistoryThreeText",
+                  "type": "Text",
+                  "text": "事业发展方向占卜\n使用牌阵：三张牌牌阵",
+                  "fontSize": 27,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.82, "g": 0.74, "b": 0.66, "a": 1 },
+                  "anchorMin": { "x": 0, "y": 1 },
+                  "anchorMax": { "x": 0, "y": 1 },
+                  "position": { "x": 330, "y": -260 },
+                  "size": { "x": 470, "y": 70 }
+                },
+                {
+                  "name": "HistoryThreeDate",
+                  "type": "Text",
+                  "text": "2025-05-06  ›",
+                  "fontSize": 27,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Right",
+                  "textColor": { "r": 0.65, "g": 0.59, "b": 0.60, "a": 1 },
+                  "anchorMin": { "x": 1, "y": 1 },
+                  "anchorMax": { "x": 1, "y": 1 },
+                  "pivot": { "x": 1, "y": 1 },
+                  "position": { "x": -54, "y": -266 },
+                  "size": { "x": 230, "y": 44 }
+                },
+                {
+                  "name": "[Button]HistoryOne",
+                  "type": "Button",
+                  "text": "",
+                  "anchorMin": { "x": 0, "y": 0.67 },
+                  "anchorMax": { "x": 1, "y": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 0, "y": 0 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                },
+                {
+                  "name": "[Button]HistoryTwo",
+                  "type": "Button",
+                  "text": "",
+                  "anchorMin": { "x": 0, "y": 0.34 },
+                  "anchorMax": { "x": 1, "y": 0.67 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 0, "y": 0 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                },
+                {
+                  "name": "[Button]HistoryThree",
+                  "type": "Button",
+                  "text": "",
+                  "anchorMin": { "x": 0, "y": 0 },
+                  "anchorMax": { "x": 1, "y": 0.34 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 0, "y": 0 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SyncPanel",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 0 },
+      "anchorMax": { "x": 0.5, "y": 0 },
+      "position": { "x": 0, "y": 320 },
+      "size": { "x": 970, "y": 128 },
+      "color": { "r": 0.080, "g": 0.073, "b": 0.125, "a": 0.94 },
+      "children": [
+        {
+          "name": "SyncText",
+          "type": "Text",
+          "text": "✦  自动将每日占卜同步到动态\n开启后，你的每日占卜结果将自动发布到动态中",
+          "fontSize": 29,
+          "fontStyle": "Normal",
+          "textAlignment": "Left",
+          "textColor": { "r": 0.86, "g": 0.78, "b": 0.70, "a": 1 },
+          "position": { "x": -110, "y": 0 },
+          "size": { "x": 650, "y": 82 }
+        },
+        {
+          "name": "SyncToggleTrack",
+          "type": "Panel",
+          "anchorMin": { "x": 1, "y": 0.5 },
+          "anchorMax": { "x": 1, "y": 0.5 },
+          "position": { "x": -82, "y": 0 },
+          "size": { "x": 110, "y": 60 },
+          "color": { "r": 0.38, "g": 0.11, "b": 0.60, "a": 1 }
+        },
+        {
+          "name": "SyncToggleKnob",
+          "type": "Panel",
+          "raycastTarget": false,
+          "anchorMin": { "x": 1, "y": 0.5 },
+          "anchorMax": { "x": 1, "y": 0.5 },
+          "position": { "x": -54, "y": 0 },
+          "size": { "x": 54, "y": 54 },
+          "color": { "r": 0.96, "g": 0.94, "b": 0.98, "a": 1 }
+        },
+        {
+          "name": "[Button]DailySyncToggle",
+          "type": "Button",
+          "text": "",
+          "anchorMin": { "x": 0, "y": 0 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 0, "y": 0 },
+          "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+        }
+      ]
+    },
+    {
+      "name": "EditProfileButtonGlow",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0.5, "y": 0 },
+      "anchorMax": { "x": 0.5, "y": 0 },
+      "position": { "x": 0, "y": 140 },
+      "size": { "x": 970, "y": 88 },
+      "color": { "r": 0.32, "g": 0.12, "b": 0.42, "a": 0.76 }
+    },
+    {
+      "name": "EditProfileButton",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 0 },
+      "anchorMax": { "x": 0.5, "y": 0 },
+      "position": { "x": 0, "y": 140 },
+      "size": { "x": 930, "y": 76 },
+      "color": { "r": 0.100, "g": 0.070, "b": 0.130, "a": 0.92 },
+      "children": [
+        {
+          "name": "EditProfileButtonText",
+          "type": "Text",
+          "text": "✎  编辑资料",
+          "fontSize": 42,
+          "fontStyle": "Bold",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.95, "g": 0.74, "b": 0.46, "a": 1 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 400, "y": 64 }
+        },
+        {
+          "name": "[Button]EditProfile",
+          "type": "Button",
+          "text": "",
+          "anchorMin": { "x": 0, "y": 0 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 0, "y": 0 },
+          "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+        }
+      ]
+    }
+  ]
+}

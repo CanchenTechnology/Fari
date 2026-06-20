@@ -1,0 +1,699 @@
+{
+  "screenName": "JumpToDialogUI",
+  "resolution": { "x": 1080, "y": 1920 },
+  "matchWidthOrHeight": 0,
+  "includeMask": false,
+  "defaultFont": "Assets/GamerFrameWork/I2/Localization/Examples/Resources/ARIAL.TTF",
+  "elements": [
+    {
+      "name": "Background",
+      "type": "Image",
+      "sprite": "flow-1-flip",
+      "imageType": "Simple",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 0 },
+      "color": { "r": 0.34, "g": 0.25, "b": 0.48, "a": 1 }
+    },
+    {
+      "name": "DarkVeil",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 0 },
+      "color": { "r": 0.005, "g": 0.004, "b": 0.012, "a": 0.76 }
+    },
+    {
+      "name": "TitleText",
+      "type": "Text",
+      "text": "跳转对话",
+      "fontSize": 72,
+      "fontStyle": "Bold",
+      "textAlignment": "Center",
+      "textColor": { "r": 0.93, "g": 0.75, "b": 0.50, "a": 1 },
+      "outlineColor": { "r": 0.12, "g": 0.07, "b": 0.14, "a": 0.72 },
+      "outlineDistance": { "x": 1.5, "y": -1.5 },
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -72 },
+      "size": { "x": 460, "y": 98 }
+    },
+    {
+      "name": "SubtitleText",
+      "type": "Text",
+      "text": "与好友开启专属对话，塔罗师将结合你们的缘分与能量给出指引",
+      "fontSize": 28,
+      "fontStyle": "Normal",
+      "textAlignment": "Center",
+      "textColor": { "r": 0.55, "g": 0.53, "b": 0.59, "a": 1 },
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -152 },
+      "size": { "x": 900, "y": 48 }
+    },
+    {
+      "name": "AstrolabeDecor",
+      "type": "Text",
+      "raycastTarget": false,
+      "text": "◎\n\n       ╱╲\n   ◜────────────────◝\n      ✦     ✧     ✦\n   ◟────────────────◞",
+      "fontSize": 45,
+      "fontStyle": "Normal",
+      "textAlignment": "Center",
+      "textColor": { "r": 0.35, "g": 0.16, "b": 0.44, "a": 0.18 },
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -305 },
+      "size": { "x": 840, "y": 360 }
+    },
+    {
+      "name": "DialogCardBorder",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -216 },
+      "size": { "x": 946, "y": 1306 },
+      "color": { "r": 0.82, "g": 0.57, "b": 0.34, "a": 0.55 },
+      "children": [
+        {
+          "name": "DialogCard",
+          "type": "Panel",
+          "anchorMin": { "x": 0.5, "y": 0.5 },
+          "anchorMax": { "x": 0.5, "y": 0.5 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 938, "y": 1298 },
+          "color": { "r": 0.080, "g": 0.071, "b": 0.124, "a": 0.95 },
+          "children": [
+            {
+              "name": "AvatarRingOuter",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -122 },
+              "size": { "x": 202, "y": 202 },
+              "color": { "r": 0.78, "g": 0.52, "b": 0.28, "a": 0.78 }
+            },
+            {
+              "name": "AvatarRingInner",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -122 },
+              "size": { "x": 178, "y": 178 },
+              "color": { "r": 0.12, "g": 0.08, "b": 0.18, "a": 1 }
+            },
+            {
+              "name": "[Image]FriendAvatar",
+              "type": "Image",
+              "sprite": "astrologer_oracle_portrait",
+              "imageType": "Simple",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -122 },
+              "size": { "x": 160, "y": 160 },
+              "color": { "r": 1, "g": 0.92, "b": 0.84, "a": 1 }
+            },
+            {
+              "name": "MentionBadge",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 84, "y": -174 },
+              "size": { "x": 72, "y": 72 },
+              "color": { "r": 0.09, "g": 0.08, "b": 0.14, "a": 1 },
+              "children": [
+                {
+                  "name": "MentionIcon",
+                  "type": "Text",
+                  "text": "@",
+                  "fontSize": 44,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.94, "g": 0.72, "b": 0.43, "a": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 68, "y": 68 }
+                }
+              ]
+            },
+            {
+              "name": "[Text]FriendName",
+              "type": "Text",
+              "text": "Luna",
+              "fontSize": 46,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.94, "g": 0.74, "b": 0.45, "a": 1 },
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -244 },
+              "size": { "x": 320, "y": 62 }
+            },
+            {
+              "name": "ZodiacPill",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -302 },
+              "size": { "x": 254, "y": 48 },
+              "color": { "r": 0.13, "g": 0.10, "b": 0.17, "a": 0.90 },
+              "children": [
+                {
+                  "name": "ZodiacIcon",
+                  "type": "Text",
+                  "text": "✥",
+                  "fontSize": 31,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.76, "g": 0.36, "b": 0.98, "a": 1 },
+                  "position": { "x": -92, "y": 0 },
+                  "size": { "x": 48, "y": 42 }
+                },
+                {
+                  "name": "ZodiacText",
+                  "type": "Text",
+                  "text": "双鱼座 · 月亮",
+                  "fontSize": 27,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.61, "g": 0.57, "b": 0.62, "a": 1 },
+                  "position": { "x": 24, "y": 0 },
+                  "size": { "x": 196, "y": 42 }
+                }
+              ]
+            },
+            {
+              "name": "SelectedFriendPanel",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -386 },
+              "size": { "x": 520, "y": 82 },
+              "color": { "r": 0.10, "g": 0.09, "b": 0.14, "a": 0.82 },
+              "children": [
+                {
+                  "name": "SelectedLabel",
+                  "type": "Text",
+                  "text": "已选择好友：",
+                  "fontSize": 31,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Right",
+                  "textColor": { "r": 0.58, "g": 0.55, "b": 0.60, "a": 1 },
+                  "position": { "x": -118, "y": 0 },
+                  "size": { "x": 230, "y": 54 }
+                },
+                {
+                  "name": "SelectedNamePill",
+                  "type": "Panel",
+                  "anchorMin": { "x": 0.5, "y": 0.5 },
+                  "anchorMax": { "x": 0.5, "y": 0.5 },
+                  "position": { "x": 134, "y": 0 },
+                  "size": { "x": 226, "y": 58 },
+                  "color": { "r": 0.28, "g": 0.11, "b": 0.48, "a": 0.95 },
+                  "children": [
+                    {
+                      "name": "[Text]SelectedFriendName",
+                      "type": "Text",
+                      "text": "@Luna",
+                      "fontSize": 29,
+                      "fontStyle": "Bold",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.82, "g": 0.71, "b": 0.91, "a": 1 },
+                      "position": { "x": -20, "y": 0 },
+                      "size": { "x": 140, "y": 46 }
+                    },
+                    {
+                      "name": "RemoveFriendIcon",
+                      "type": "Text",
+                      "text": "×",
+                      "fontSize": 37,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.72, "g": 0.62, "b": 0.78, "a": 1 },
+                      "position": { "x": 78, "y": 0 },
+                      "size": { "x": 46, "y": 46 }
+                    },
+                    {
+                      "name": "[Button]RemoveSelectedFriend",
+                      "type": "Button",
+                      "text": "",
+                      "anchorMin": { "x": 0, "y": 0 },
+                      "anchorMax": { "x": 1, "y": 1 },
+                      "position": { "x": 0, "y": 0 },
+                      "size": { "x": 0, "y": 0 },
+                      "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "QuestionInputPanel",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -550 },
+              "size": { "x": 856, "y": 190 },
+              "color": { "r": 0.055, "g": 0.052, "b": 0.084, "a": 0.92 },
+              "children": [
+                {
+                  "name": "CrystalBallIcon",
+                  "type": "Text",
+                  "text": "✺",
+                  "fontSize": 80,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.62, "g": 0.28, "b": 0.91, "a": 1 },
+                  "position": { "x": -344, "y": 0 },
+                  "size": { "x": 112, "y": 112 }
+                },
+                {
+                  "name": "[InputField]QuestionInput",
+                  "type": "InputField",
+                  "text": "",
+                  "placeholderText": "输入你想问的问题，或从下方选择灵感",
+                  "fontSize": 30,
+                  "textColor": { "r": 0.80, "g": 0.76, "b": 0.82, "a": 1 },
+                  "contentType": "Standard",
+                  "lineType": "SingleLine",
+                  "characterLimit": 120,
+                  "anchorMin": { "x": 0.5, "y": 0.5 },
+                  "anchorMax": { "x": 0.5, "y": 0.5 },
+                  "position": { "x": 42, "y": 0 },
+                  "size": { "x": 540, "y": 82 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                },
+                {
+                  "name": "SendCircle",
+                  "type": "Panel",
+                  "anchorMin": { "x": 1, "y": 0.5 },
+                  "anchorMax": { "x": 1, "y": 0.5 },
+                  "position": { "x": -84, "y": 0 },
+                  "size": { "x": 88, "y": 88 },
+                  "color": { "r": 0.32, "g": 0.16, "b": 0.50, "a": 1 },
+                  "children": [
+                    {
+                      "name": "SendIcon",
+                      "type": "Text",
+                      "text": "⬆",
+                      "fontSize": 48,
+                      "fontStyle": "Bold",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.88, "g": 0.71, "b": 0.49, "a": 1 },
+                      "position": { "x": 0, "y": 3 },
+                      "size": { "x": 80, "y": 80 }
+                    },
+                    {
+                      "name": "[Button]SendQuestion",
+                      "type": "Button",
+                      "text": "",
+                      "anchorMin": { "x": 0, "y": 0 },
+                      "anchorMax": { "x": 1, "y": 1 },
+                      "position": { "x": 0, "y": 0 },
+                      "size": { "x": 0, "y": 0 },
+                      "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "OracleHintText",
+              "type": "Text",
+              "text": "✦  塔罗师将自动结合 @Luna 的相关信息与你们的连接能量进行解读",
+              "fontSize": 27,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.57, "g": 0.53, "b": 0.61, "a": 1 },
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -708 },
+              "size": { "x": 780, "y": 52 }
+            },
+            {
+              "name": "PromptTitleLineLeft",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": -190, "y": -780 },
+              "size": { "x": 250, "y": 1.5 },
+              "color": { "r": 0.52, "g": 0.38, "b": 0.27, "a": 0.48 }
+            },
+            {
+              "name": "PromptTitle",
+              "type": "Text",
+              "text": "✦  灵感问题  ✦",
+              "fontSize": 34,
+              "fontStyle": "Bold",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.90, "g": 0.66, "b": 0.39, "a": 1 },
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -780 },
+              "size": { "x": 280, "y": 54 }
+            },
+            {
+              "name": "PromptTitleLineRight",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 190, "y": -780 },
+              "size": { "x": 250, "y": 1.5 },
+              "color": { "r": 0.52, "g": 0.38, "b": 0.27, "a": 0.48 }
+            },
+            {
+              "name": "PromptButtonRecent",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": -210, "y": -878 },
+              "size": { "x": 414, "y": 118 },
+              "color": { "r": 0.07, "g": 0.06, "b": 0.10, "a": 0.88 },
+              "children": [
+                {
+                  "name": "PromptRecentIcon",
+                  "type": "Text",
+                  "text": "▣",
+                  "fontSize": 56,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.79, "g": 0.51, "b": 0.31, "a": 0.82 },
+                  "position": { "x": -146, "y": 0 },
+                  "size": { "x": 82, "y": 82 }
+                },
+                {
+                  "name": "PromptRecentText",
+                  "type": "Text",
+                  "text": "帮我看看她最近的状态 ›",
+                  "fontSize": 27,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.78, "g": 0.63, "b": 0.49, "a": 1 },
+                  "position": { "x": 68, "y": 0 },
+                  "size": { "x": 290, "y": 70 }
+                },
+                {
+                  "name": "[Button]PromptRecentStatus",
+                  "type": "Button",
+                  "text": "",
+                  "anchorMin": { "x": 0, "y": 0 },
+                  "anchorMax": { "x": 1, "y": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 0, "y": 0 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                }
+              ]
+            },
+            {
+              "name": "PromptButtonRelationship",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 210, "y": -878 },
+              "size": { "x": 414, "y": 118 },
+              "color": { "r": 0.07, "g": 0.06, "b": 0.10, "a": 0.88 },
+              "children": [
+                {
+                  "name": "PromptRelationshipIcon",
+                  "type": "Text",
+                  "text": "♡",
+                  "fontSize": 62,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.78, "g": 0.52, "b": 0.34, "a": 0.86 },
+                  "position": { "x": -146, "y": 0 },
+                  "size": { "x": 82, "y": 82 }
+                },
+                {
+                  "name": "PromptRelationshipText",
+                  "type": "Text",
+                  "text": "我们关系会如何发展  ›",
+                  "fontSize": 27,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.78, "g": 0.63, "b": 0.49, "a": 1 },
+                  "position": { "x": 68, "y": 0 },
+                  "size": { "x": 290, "y": 70 }
+                },
+                {
+                  "name": "[Button]PromptRelationship",
+                  "type": "Button",
+                  "text": "",
+                  "anchorMin": { "x": 0, "y": 0 },
+                  "anchorMax": { "x": 1, "y": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 0, "y": 0 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                }
+              ]
+            },
+            {
+              "name": "PromptButtonContact",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": -210, "y": -1030 },
+              "size": { "x": 414, "y": 118 },
+              "color": { "r": 0.07, "g": 0.06, "b": 0.10, "a": 0.88 },
+              "children": [
+                {
+                  "name": "PromptContactIcon",
+                  "type": "Text",
+                  "text": "⌕",
+                  "fontSize": 62,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.78, "g": 0.52, "b": 0.34, "a": 0.86 },
+                  "position": { "x": -146, "y": 0 },
+                  "size": { "x": 82, "y": 82 }
+                },
+                {
+                  "name": "PromptContactText",
+                  "type": "Text",
+                  "text": "适合主动联系吗  ›",
+                  "fontSize": 27,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.78, "g": 0.63, "b": 0.49, "a": 1 },
+                  "position": { "x": 68, "y": 0 },
+                  "size": { "x": 290, "y": 70 }
+                },
+                {
+                  "name": "[Button]PromptContact",
+                  "type": "Button",
+                  "text": "",
+                  "anchorMin": { "x": 0, "y": 0 },
+                  "anchorMax": { "x": 1, "y": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 0, "y": 0 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                }
+              ]
+            },
+            {
+              "name": "PromptButtonViewMe",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 210, "y": -1030 },
+              "size": { "x": 414, "y": 118 },
+              "color": { "r": 0.07, "g": 0.06, "b": 0.10, "a": 0.88 },
+              "children": [
+                {
+                  "name": "PromptViewMeIcon",
+                  "type": "Text",
+                  "text": "●",
+                  "fontSize": 55,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.78, "g": 0.52, "b": 0.34, "a": 0.86 },
+                  "position": { "x": -146, "y": 0 },
+                  "size": { "x": 82, "y": 82 }
+                },
+                {
+                  "name": "PromptViewMeText",
+                  "type": "Text",
+                  "text": "她怎么看我  ›",
+                  "fontSize": 27,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.78, "g": 0.63, "b": 0.49, "a": 1 },
+                  "position": { "x": 68, "y": 0 },
+                  "size": { "x": 290, "y": 70 }
+                },
+                {
+                  "name": "[Button]PromptViewMe",
+                  "type": "Button",
+                  "text": "",
+                  "anchorMin": { "x": 0, "y": 0 },
+                  "anchorMax": { "x": 1, "y": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 0, "y": 0 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                }
+              ]
+            },
+            {
+              "name": "EnterButtonGlow",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -1188 },
+              "size": { "x": 840, "y": 112 },
+              "color": { "r": 0.40, "g": 0.13, "b": 0.66, "a": 0.80 }
+            },
+            {
+              "name": "EnterButtonPanel",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -1188 },
+              "size": { "x": 810, "y": 96 },
+              "color": { "r": 0.25, "g": 0.09, "b": 0.39, "a": 0.96 },
+              "children": [
+                {
+                  "name": "EnterButtonText",
+                  "type": "Text",
+                  "text": "进入对话",
+                  "fontSize": 46,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.94, "g": 0.76, "b": 0.50, "a": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 360, "y": 72 }
+                },
+                {
+                  "name": "[Button]EnterDialog",
+                  "type": "Button",
+                  "text": "",
+                  "anchorMin": { "x": 0, "y": 0 },
+                  "anchorMax": { "x": 1, "y": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 0, "y": 0 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "NavigationBar",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 0 },
+      "anchorMax": { "x": 0.5, "y": 0 },
+      "pivot": { "x": 0.5, "y": 0 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 1080, "y": 210 },
+      "color": { "r": 0.056, "g": 0.058, "b": 0.080, "a": 0.94 },
+      "children": [
+        {
+          "name": "TodayNavIcon",
+          "type": "Text",
+          "text": "☾",
+          "fontSize": 56,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.70, "g": 0.63, "b": 0.57, "a": 1 },
+          "position": { "x": -360, "y": 42 },
+          "size": { "x": 130, "y": 72 }
+        },
+        {
+          "name": "TodayNavText",
+          "type": "Text",
+          "text": "今日指引",
+          "fontSize": 30,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.64, "g": 0.53, "b": 0.46, "a": 1 },
+          "position": { "x": -360, "y": -44 },
+          "size": { "x": 160, "y": 48 }
+        },
+        {
+          "name": "DialogNavGlow",
+          "type": "Panel",
+          "raycastTarget": false,
+          "position": { "x": -120, "y": 42 },
+          "size": { "x": 100, "y": 100 },
+          "color": { "r": 0.34, "g": 0.13, "b": 0.58, "a": 0.62 }
+        },
+        {
+          "name": "DialogNavIcon",
+          "type": "Text",
+          "text": "▢",
+          "fontSize": 60,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.86, "g": 0.77, "b": 0.86, "a": 1 },
+          "position": { "x": -120, "y": 42 },
+          "size": { "x": 130, "y": 72 }
+        },
+        {
+          "name": "DialogNavText",
+          "type": "Text",
+          "text": "对话",
+          "fontSize": 31,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.83, "g": 0.75, "b": 0.88, "a": 1 },
+          "position": { "x": -120, "y": -44 },
+          "size": { "x": 140, "y": 48 }
+        },
+        {
+          "name": "FriendNavIcon",
+          "type": "Text",
+          "text": "♧",
+          "fontSize": 60,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.68, "g": 0.62, "b": 0.59, "a": 1 },
+          "position": { "x": 120, "y": 42 },
+          "size": { "x": 130, "y": 72 }
+        },
+        {
+          "name": "FriendNavText",
+          "type": "Text",
+          "text": "朋友",
+          "fontSize": 30,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.64, "g": 0.53, "b": 0.46, "a": 1 },
+          "position": { "x": 120, "y": -44 },
+          "size": { "x": 140, "y": 48 }
+        },
+        {
+          "name": "MyNavIcon",
+          "type": "Text",
+          "text": "○",
+          "fontSize": 62,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.68, "g": 0.62, "b": 0.59, "a": 1 },
+          "position": { "x": 360, "y": 42 },
+          "size": { "x": 130, "y": 72 }
+        },
+        {
+          "name": "MyNavText",
+          "type": "Text",
+          "text": "我的",
+          "fontSize": 30,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.64, "g": 0.53, "b": 0.46, "a": 1 },
+          "position": { "x": 360, "y": -44 },
+          "size": { "x": 140, "y": 48 }
+        }
+      ]
+    }
+  ]
+}

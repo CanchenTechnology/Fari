@@ -44,13 +44,23 @@ public class AddFriendUI : WindowBase
 	#endregion
 
 	#region UI组件事件
+	public void OnExitButtonClick()
+	{
+		HideWindow();
+	}
+
+	public void OnBtnFaceBookButtonClick()
+	{
+		UIModule.Instance.PopUpWindow<FacebookInviteUI>();
+	}
+
 	public void OnBackButtonClick()
 	{
 		HideWindow();
 	}
 	public void OnNotificationButtonClick()
 	{
-		ToastManager.ShowDebug();
+		UIModule.Instance.PopUpWindow<NotionUI>();
 	}
 	public void OnBtnSearchUserButtonClick()
 	{
@@ -58,11 +68,11 @@ public class AddFriendUI : WindowBase
 	}
 	public void OnBtnContactsButtonClick()
 	{
-		UIModule.Instance.PopUpWindow<ContactsInviteUI>();
+		NativeContactInviteManager.OpenContactInvite(transform);
 	}
 	public void OnBtnFacebookButtonClick()
 	{
-		UIModule.Instance.PopUpWindow<FacebookInviteUI>();
+		OnBtnFaceBookButtonClick();
 	}
 	public void OnCreateProfileButtonClick()
 	{

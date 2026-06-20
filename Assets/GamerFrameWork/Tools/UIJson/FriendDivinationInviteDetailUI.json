@@ -1,0 +1,837 @@
+{
+  "screenName": "FriendDivinationInviteDetailUI",
+  "resolution": { "x": 1080, "y": 1920 },
+  "matchWidthOrHeight": 0,
+  "includeMask": false,
+  "defaultFont": "Assets/GamerFrameWork/I2/Localization/Examples/Resources/ARIAL.TTF",
+  "elements": [
+    {
+      "name": "Background",
+      "type": "Image",
+      "sprite": "flow-1-flip",
+      "imageType": "Simple",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 0 },
+      "color": { "r": 0.35, "g": 0.25, "b": 0.50, "a": 1 }
+    },
+    {
+      "name": "DarkVeil",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 0 },
+      "color": { "r": 0.006, "g": 0.005, "b": 0.016, "a": 0.72 }
+    },
+    {
+      "name": "StatusBar",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 76 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        {
+          "name": "TimeText",
+          "type": "Text",
+          "text": "9:41",
+          "fontSize": 34,
+          "fontStyle": "Bold",
+          "textAlignment": "Left",
+          "textColor": { "r": 0.95, "g": 0.95, "b": 0.97, "a": 1 },
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "pivot": { "x": 0, "y": 1 },
+          "position": { "x": 80, "y": -34 },
+          "size": { "x": 160, "y": 44 }
+        },
+        {
+          "name": "StatusIcons",
+          "type": "Text",
+          "text": "▮▮▮  ≋  ▭",
+          "fontSize": 30,
+          "fontStyle": "Bold",
+          "textAlignment": "Right",
+          "textColor": { "r": 0.95, "g": 0.95, "b": 0.97, "a": 1 },
+          "anchorMin": { "x": 1, "y": 1 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "pivot": { "x": 1, "y": 1 },
+          "position": { "x": -76, "y": -34 },
+          "size": { "x": 260, "y": 44 }
+        }
+      ]
+    },
+    {
+      "name": "Header",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -92 },
+      "size": { "x": 0, "y": 126 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        {
+          "name": "GuideAvatarBorder",
+          "type": "Panel",
+          "raycastTarget": false,
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "position": { "x": 96, "y": -50 },
+          "size": { "x": 86, "y": 86 },
+          "color": { "r": 0.88, "g": 0.62, "b": 0.35, "a": 1 }
+        },
+        {
+          "name": "GuideAvatar",
+          "type": "Image",
+          "sprite": "witch-full",
+          "imageType": "Simple",
+          "raycastTarget": false,
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "position": { "x": 96, "y": -50 },
+          "size": { "x": 76, "y": 76 },
+          "color": { "r": 1, "g": 0.90, "b": 0.80, "a": 1 }
+        },
+        {
+          "name": "BrandTitle",
+          "type": "Text",
+          "text": "Nocturne Oracle",
+          "fontSize": 34,
+          "fontStyle": "Normal",
+          "textAlignment": "Left",
+          "textColor": { "r": 0.94, "g": 0.76, "b": 0.49, "a": 1 },
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "pivot": { "x": 0, "y": 1 },
+          "position": { "x": 174, "y": -18 },
+          "size": { "x": 380, "y": 44 }
+        },
+        {
+          "name": "BrandSubtitle",
+          "type": "Text",
+          "text": "夜幕之语，直觉即真相  ✧",
+          "fontSize": 24,
+          "fontStyle": "Normal",
+          "textAlignment": "Left",
+          "textColor": { "r": 0.93, "g": 0.72, "b": 0.42, "a": 1 },
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "pivot": { "x": 0, "y": 1 },
+          "position": { "x": 174, "y": -66 },
+          "size": { "x": 430, "y": 38 }
+        },
+        {
+          "name": "BellCircle",
+          "type": "Panel",
+          "anchorMin": { "x": 1, "y": 1 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "position": { "x": -188, "y": -50 },
+          "size": { "x": 78, "y": 78 },
+          "color": { "r": 0.036, "g": 0.031, "b": 0.052, "a": 0.88 },
+          "children": [
+            {
+              "name": "BellIcon",
+              "type": "Text",
+              "text": "♧",
+              "fontSize": 44,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.96, "g": 0.72, "b": 0.35, "a": 1 },
+              "position": { "x": 0, "y": 0 },
+              "size": { "x": 72, "y": 72 }
+            },
+            {
+              "name": "BellUnreadDot",
+              "type": "Panel",
+              "raycastTarget": false,
+              "position": { "x": 30, "y": 30 },
+              "size": { "x": 16, "y": 16 },
+              "color": { "r": 0.62, "g": 0.30, "b": 0.93, "a": 1 }
+            },
+            {
+              "name": "[Button]Bell",
+              "type": "Button",
+              "text": "",
+              "anchorMin": { "x": 0, "y": 0 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": 0, "y": 0 },
+              "size": { "x": 0, "y": 0 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+            }
+          ]
+        },
+        {
+          "name": "AddCircle",
+          "type": "Panel",
+          "anchorMin": { "x": 1, "y": 1 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "position": { "x": -82, "y": -50 },
+          "size": { "x": 78, "y": 78 },
+          "color": { "r": 0.11, "g": 0.08, "b": 0.16, "a": 0.93 },
+          "children": [
+            {
+              "name": "AddIcon",
+              "type": "Text",
+              "text": "+",
+              "fontSize": 60,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.95, "g": 0.75, "b": 0.45, "a": 1 },
+              "position": { "x": 0, "y": 4 },
+              "size": { "x": 72, "y": 72 }
+            },
+            {
+              "name": "[Button]Add",
+              "type": "Button",
+              "text": "",
+              "anchorMin": { "x": 0, "y": 0 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": 0, "y": 0 },
+              "size": { "x": 0, "y": 0 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PageTitle",
+      "type": "Text",
+      "text": "朋友 Friends  ✦",
+      "fontSize": 56,
+      "fontStyle": "Bold",
+      "textAlignment": "Left",
+      "textColor": { "r": 0.94, "g": 0.75, "b": 0.47, "a": 1 },
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 0, "y": 1 },
+      "pivot": { "x": 0, "y": 1 },
+      "position": { "x": 70, "y": -248 },
+      "size": { "x": 560, "y": 76 }
+    },
+    {
+      "name": "InviteTab",
+      "type": "Panel",
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 0, "y": 1 },
+      "position": { "x": 244, "y": -380 },
+      "size": { "x": 360, "y": 132 },
+      "color": { "r": 0.13, "g": 0.10, "b": 0.18, "a": 0.94 },
+      "children": [
+        {
+          "name": "InviteTabIcon",
+          "type": "Text",
+          "text": "♧",
+          "fontSize": 48,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.93, "g": 0.70, "b": 0.42, "a": 1 },
+          "position": { "x": -125, "y": 0 },
+          "size": { "x": 80, "y": 80 }
+        },
+        {
+          "name": "InviteTabText",
+          "type": "Text",
+          "text": "占卜邀请\n收到的新邀请",
+          "fontSize": 29,
+          "fontStyle": "Normal",
+          "textAlignment": "Left",
+          "textColor": { "r": 0.85, "g": 0.70, "b": 0.53, "a": 1 },
+          "position": { "x": 40, "y": 0 },
+          "size": { "x": 220, "y": 86 }
+        },
+        {
+          "name": "InviteBadge",
+          "type": "Text",
+          "text": "1",
+          "fontSize": 29,
+          "fontStyle": "Bold",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.90, "g": 0.72, "b": 1.0, "a": 1 },
+          "position": { "x": 142, "y": 37 },
+          "size": { "x": 48, "y": 48 }
+        },
+        {
+          "name": "[Button]InviteTab",
+          "type": "Button",
+          "text": "",
+          "anchorMin": { "x": 0, "y": 0 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 0, "y": 0 },
+          "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+        }
+      ]
+    },
+    {
+      "name": "FriendListTab",
+      "type": "Panel",
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 0, "y": 1 },
+      "position": { "x": 596, "y": -380 },
+      "size": { "x": 330, "y": 132 },
+      "color": { "r": 0.09, "g": 0.085, "b": 0.13, "a": 0.88 },
+      "children": [
+        {
+          "name": "FriendListIcon",
+          "type": "Text",
+          "text": "♙",
+          "fontSize": 48,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.88, "g": 0.62, "b": 0.36, "a": 1 },
+          "position": { "x": -108, "y": 0 },
+          "size": { "x": 80, "y": 80 }
+        },
+        {
+          "name": "FriendListText",
+          "type": "Text",
+          "text": "朋友列表\n查看全部好友",
+          "fontSize": 29,
+          "fontStyle": "Normal",
+          "textAlignment": "Left",
+          "textColor": { "r": 0.74, "g": 0.64, "b": 0.56, "a": 1 },
+          "position": { "x": 46, "y": 0 },
+          "size": { "x": 210, "y": 86 }
+        },
+        {
+          "name": "[Button]FriendListTab",
+          "type": "Button",
+          "text": "",
+          "anchorMin": { "x": 0, "y": 0 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 0, "y": 0 },
+          "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+        }
+      ]
+    },
+    {
+      "name": "InviteCardBorder",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -510 },
+      "size": { "x": 968, "y": 1138 },
+      "color": { "r": 0.84, "g": 0.55, "b": 0.32, "a": 0.58 },
+      "children": [
+        {
+          "name": "InviteCard",
+          "type": "Panel",
+          "anchorMin": { "x": 0.5, "y": 0.5 },
+          "anchorMax": { "x": 0.5, "y": 0.5 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 958, "y": 1128 },
+          "color": { "r": 0.080, "g": 0.073, "b": 0.125, "a": 0.95 },
+          "children": [
+            {
+              "name": "Ribbon",
+              "type": "Text",
+              "raycastTarget": false,
+              "text": "新邀请",
+              "fontSize": 33,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.94, "g": 0.72, "b": 0.45, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "position": { "x": 74, "y": -48 },
+              "size": { "x": 180, "y": 56 }
+            },
+            {
+              "name": "CardTitle",
+              "type": "Text",
+              "text": "—✧  占卜邀请  ✧—",
+              "fontSize": 53,
+              "fontStyle": "Bold",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.94, "g": 0.75, "b": 0.47, "a": 1 },
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -76 },
+              "size": { "x": 560, "y": 72 }
+            },
+            {
+              "name": "AvatarBorder",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "position": { "x": 170, "y": -190 },
+              "size": { "x": 150, "y": 150 },
+              "color": { "r": 0.86, "g": 0.62, "b": 0.36, "a": 1 }
+            },
+            {
+              "name": "[Image]FriendAvatar",
+              "type": "Image",
+              "sprite": "astrologer_oracle_portrait",
+              "imageType": "Simple",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "position": { "x": 170, "y": -190 },
+              "size": { "x": 138, "y": 138 },
+              "color": { "r": 1, "g": 0.90, "b": 0.82, "a": 1 }
+            },
+            {
+              "name": "AvatarStarBadge",
+              "type": "Text",
+              "text": "✦",
+              "fontSize": 48,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.94, "g": 0.72, "b": 0.43, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "position": { "x": 242, "y": -250 },
+              "size": { "x": 64, "y": 64 }
+            },
+            {
+              "name": "[Text]FriendName",
+              "type": "Text",
+              "text": "Luna",
+              "fontSize": 47,
+              "fontStyle": "Bold",
+              "textAlignment": "Left",
+              "textColor": { "r": 0.94, "g": 0.73, "b": 0.45, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "pivot": { "x": 0, "y": 1 },
+              "position": { "x": 328, "y": -154 },
+              "size": { "x": 360, "y": 62 }
+            },
+            {
+              "name": "FriendMeta",
+              "type": "Text",
+              "text": "@luna_mystic · 好友\n5 分钟前",
+              "fontSize": 28,
+              "fontStyle": "Normal",
+              "textAlignment": "Left",
+              "textColor": { "r": 0.56, "g": 0.53, "b": 0.58, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "pivot": { "x": 0, "y": 1 },
+              "position": { "x": 328, "y": -220 },
+              "size": { "x": 420, "y": 90 }
+            },
+            {
+              "name": "InviteMessage",
+              "type": "Text",
+              "text": "Luna 邀请你一起完成关于关系走向的三牌占卜\n✦  双方将会揭示各自允许展现的牌",
+              "fontSize": 30,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.77, "g": 0.72, "b": 0.74, "a": 1 },
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -372 },
+              "size": { "x": 760, "y": 100 }
+            },
+            {
+              "name": "DividerOne",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -456 },
+              "size": { "x": 820, "y": 1.5 },
+              "color": { "r": 0.65, "g": 0.47, "b": 0.34, "a": 0.35 }
+            },
+            {
+              "name": "TopicIcon",
+              "type": "Text",
+              "text": "✺",
+              "fontSize": 45,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.60, "g": 0.34, "b": 0.88, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "position": { "x": 110, "y": -518 },
+              "size": { "x": 70, "y": 70 }
+            },
+            {
+              "name": "TopicLabel",
+              "type": "Text",
+              "text": "占卜主题",
+              "fontSize": 31,
+              "fontStyle": "Normal",
+              "textAlignment": "Left",
+              "textColor": { "r": 0.60, "g": 0.56, "b": 0.60, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "position": { "x": 235, "y": -518 },
+              "size": { "x": 230, "y": 54 }
+            },
+            {
+              "name": "[Text]TopicValue",
+              "type": "Text",
+              "text": "关系走向  ›",
+              "fontSize": 31,
+              "fontStyle": "Bold",
+              "textAlignment": "Right",
+              "textColor": { "r": 0.77, "g": 0.68, "b": 0.58, "a": 1 },
+              "anchorMin": { "x": 1, "y": 1 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "pivot": { "x": 1, "y": 1 },
+              "position": { "x": -84, "y": -500 },
+              "size": { "x": 320, "y": 56 }
+            },
+            {
+              "name": "DividerTwo",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -598 },
+              "size": { "x": 820, "y": 1.5 },
+              "color": { "r": 0.65, "g": 0.47, "b": 0.34, "a": 0.35 }
+            },
+            {
+              "name": "StatusIcon",
+              "type": "Text",
+              "text": "◷",
+              "fontSize": 48,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.76, "g": 0.39, "b": 1.0, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "position": { "x": 110, "y": -642 },
+              "size": { "x": 70, "y": 70 }
+            },
+            {
+              "name": "StatusLabel",
+              "type": "Text",
+              "text": "当前状态",
+              "fontSize": 31,
+              "fontStyle": "Normal",
+              "textAlignment": "Left",
+              "textColor": { "r": 0.60, "g": 0.56, "b": 0.60, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "position": { "x": 235, "y": -642 },
+              "size": { "x": 230, "y": 54 }
+            },
+            {
+              "name": "[Text]InviteStatus",
+              "type": "Text",
+              "text": "等待你的回应",
+              "fontSize": 31,
+              "fontStyle": "Bold",
+              "textAlignment": "Right",
+              "textColor": { "r": 0.82, "g": 0.54, "b": 1.0, "a": 1 },
+              "anchorMin": { "x": 1, "y": 1 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "pivot": { "x": 1, "y": 1 },
+              "position": { "x": -84, "y": -624 },
+              "size": { "x": 360, "y": 56 }
+            },
+            {
+              "name": "RevealInfoPanel",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -792 },
+              "size": { "x": 820, "y": 250 },
+              "color": { "r": 0.075, "g": 0.064, "b": 0.100, "a": 0.92 },
+              "children": [
+                {
+                  "name": "RevealTitle",
+                  "type": "Text",
+                  "text": "··✦  牌面揭示信息  ✦··",
+                  "fontSize": 31,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.84, "g": 0.63, "b": 0.39, "a": 1 },
+                  "anchorMin": { "x": 0.5, "y": 1 },
+                  "anchorMax": { "x": 0.5, "y": 1 },
+                  "position": { "x": 0, "y": -42 },
+                  "size": { "x": 520, "y": 48 }
+                },
+                {
+                  "name": "MyCardIcon",
+                  "type": "Text",
+                  "text": "▧",
+                  "fontSize": 42,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.78, "g": 0.60, "b": 0.38, "a": 1 },
+                  "anchorMin": { "x": 0, "y": 1 },
+                  "anchorMax": { "x": 0, "y": 1 },
+                  "position": { "x": 70, "y": -112 },
+                  "size": { "x": 64, "y": 64 }
+                },
+                {
+                  "name": "MyCardLabel",
+                  "type": "Text",
+                  "text": "你需要翻开的牌",
+                  "fontSize": 30,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.62, "g": 0.58, "b": 0.62, "a": 1 },
+                  "anchorMin": { "x": 0, "y": 1 },
+                  "anchorMax": { "x": 0, "y": 1 },
+                  "position": { "x": 142, "y": -112 },
+                  "size": { "x": 310, "y": 50 }
+                },
+                {
+                  "name": "[Text]MyCardIndex",
+                  "type": "Text",
+                  "text": "第 2 张",
+                  "fontSize": 32,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Right",
+                  "textColor": { "r": 0.94, "g": 0.73, "b": 0.44, "a": 1 },
+                  "anchorMin": { "x": 1, "y": 1 },
+                  "anchorMax": { "x": 1, "y": 1 },
+                  "pivot": { "x": 1, "y": 1 },
+                  "position": { "x": -70, "y": -112 },
+                  "size": { "x": 240, "y": 50 }
+                },
+                {
+                  "name": "OtherCardIcon",
+                  "type": "Text",
+                  "text": "▧",
+                  "fontSize": 42,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.78, "g": 0.60, "b": 0.38, "a": 1 },
+                  "anchorMin": { "x": 0, "y": 1 },
+                  "anchorMax": { "x": 0, "y": 1 },
+                  "position": { "x": 70, "y": -190 },
+                  "size": { "x": 64, "y": 64 }
+                },
+                {
+                  "name": "OtherCardLabel",
+                  "type": "Text",
+                  "text": "对方翻开的牌",
+                  "fontSize": 30,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.62, "g": 0.58, "b": 0.62, "a": 1 },
+                  "anchorMin": { "x": 0, "y": 1 },
+                  "anchorMax": { "x": 0, "y": 1 },
+                  "position": { "x": 142, "y": -190 },
+                  "size": { "x": 310, "y": 50 }
+                },
+                {
+                  "name": "[Text]OtherCardIndex",
+                  "type": "Text",
+                  "text": "第 1 张、第 3 张",
+                  "fontSize": 32,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Right",
+                  "textColor": { "r": 0.94, "g": 0.73, "b": 0.44, "a": 1 },
+                  "anchorMin": { "x": 1, "y": 1 },
+                  "anchorMax": { "x": 1, "y": 1 },
+                  "pivot": { "x": 1, "y": 1 },
+                  "position": { "x": -70, "y": -190 },
+                  "size": { "x": 320, "y": 50 }
+                }
+              ]
+            },
+            {
+              "name": "SnoozeButtonPanel",
+              "type": "Panel",
+              "anchorMin": { "x": 0, "y": 0 },
+              "anchorMax": { "x": 0, "y": 0 },
+              "position": { "x": 203, "y": 72 },
+              "size": { "x": 250, "y": 104 },
+              "color": { "r": 0.082, "g": 0.078, "b": 0.115, "a": 0.86 },
+              "children": [
+                {
+                  "name": "SnoozeButtonText",
+                  "type": "Text",
+                  "text": "▣  稍后处理",
+                  "fontSize": 31,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.50, "g": 0.49, "b": 0.53, "a": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 230, "y": 62 }
+                },
+                {
+                  "name": "[Button]SnoozeInvite",
+                  "type": "Button",
+                  "text": "",
+                  "anchorMin": { "x": 0, "y": 0 },
+                  "anchorMax": { "x": 1, "y": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 0, "y": 0 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                }
+              ]
+            },
+            {
+              "name": "RejectButtonPanel",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 0 },
+              "anchorMax": { "x": 0.5, "y": 0 },
+              "position": { "x": 0, "y": 72 },
+              "size": { "x": 250, "y": 104 },
+              "color": { "r": 0.065, "g": 0.056, "b": 0.084, "a": 0.88 },
+              "children": [
+                {
+                  "name": "RejectButtonText",
+                  "type": "Text",
+                  "text": "⊗  拒绝",
+                  "fontSize": 31,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.62, "g": 0.56, "b": 0.60, "a": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 230, "y": 62 }
+                },
+                {
+                  "name": "[Button]RejectInvite",
+                  "type": "Button",
+                  "text": "",
+                  "anchorMin": { "x": 0, "y": 0 },
+                  "anchorMax": { "x": 1, "y": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 0, "y": 0 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                }
+              ]
+            },
+            {
+              "name": "StartButtonGlow",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 1, "y": 0 },
+              "anchorMax": { "x": 1, "y": 0 },
+              "position": { "x": -170, "y": 72 },
+              "size": { "x": 312, "y": 112 },
+              "color": { "r": 0.50, "g": 0.15, "b": 0.72, "a": 0.80 }
+            },
+            {
+              "name": "StartButtonPanel",
+              "type": "Panel",
+              "anchorMin": { "x": 1, "y": 0 },
+              "anchorMax": { "x": 1, "y": 0 },
+              "position": { "x": -170, "y": 72 },
+              "size": { "x": 292, "y": 104 },
+              "color": { "r": 0.30, "g": 0.11, "b": 0.45, "a": 0.96 },
+              "children": [
+                {
+                  "name": "StartButtonText",
+                  "type": "Text",
+                  "text": "✺  开始回应",
+                  "fontSize": 34,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.95, "g": 0.77, "b": 0.50, "a": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 270, "y": 66 }
+                },
+                {
+                  "name": "[Button]StartReply",
+                  "type": "Button",
+                  "text": "",
+                  "anchorMin": { "x": 0, "y": 0 },
+                  "anchorMax": { "x": 1, "y": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 0, "y": 0 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "NavigationBar",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 0 },
+      "anchorMax": { "x": 0.5, "y": 0 },
+      "pivot": { "x": 0.5, "y": 0 },
+      "position": { "x": 0, "y": 54 },
+      "size": { "x": 980, "y": 170 },
+      "color": { "r": 0.060, "g": 0.063, "b": 0.084, "a": 0.95 },
+      "children": [
+        {
+          "name": "TodayNavText",
+          "type": "Text",
+          "text": "☾\n今日指引",
+          "fontSize": 28,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.66, "g": 0.60, "b": 0.56, "a": 1 },
+          "position": { "x": -380, "y": 0 },
+          "size": { "x": 150, "y": 116 }
+        },
+        {
+          "name": "DialogNavText",
+          "type": "Text",
+          "text": "▢\n解读",
+          "fontSize": 28,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.66, "g": 0.60, "b": 0.56, "a": 1 },
+          "position": { "x": -190, "y": 0 },
+          "size": { "x": 150, "y": 116 }
+        },
+        {
+          "name": "RitualNavText",
+          "type": "Text",
+          "text": "✧\n仪式",
+          "fontSize": 28,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.66, "g": 0.60, "b": 0.56, "a": 1 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 150, "y": 116 }
+        },
+        {
+          "name": "FriendNavGlow",
+          "type": "Panel",
+          "raycastTarget": false,
+          "position": { "x": 190, "y": 40 },
+          "size": { "x": 82, "y": 82 },
+          "color": { "r": 0.42, "g": 0.13, "b": 0.70, "a": 0.72 }
+        },
+        {
+          "name": "FriendNavText",
+          "type": "Text",
+          "text": "♙\n朋友",
+          "fontSize": 29,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.90, "g": 0.72, "b": 1.0, "a": 1 },
+          "position": { "x": 190, "y": 0 },
+          "size": { "x": 150, "y": 116 }
+        },
+        {
+          "name": "FriendNavDot",
+          "type": "Panel",
+          "raycastTarget": false,
+          "position": { "x": 190, "y": -72 },
+          "size": { "x": 10, "y": 10 },
+          "color": { "r": 0.88, "g": 0.62, "b": 1.0, "a": 1 }
+        },
+        {
+          "name": "MyNavText",
+          "type": "Text",
+          "text": "○\n我的",
+          "fontSize": 28,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.66, "g": 0.60, "b": 0.56, "a": 1 },
+          "position": { "x": 380, "y": 0 },
+          "size": { "x": 150, "y": 116 }
+        }
+      ]
+    }
+  ]
+}

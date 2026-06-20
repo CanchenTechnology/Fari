@@ -16,9 +16,12 @@ public class ContactsInviteUI : WindowBase
 
 	private readonly MockContact[] mockContacts =
 	{
-		new MockContact("Sora", "+1 415 010 0248"),
-		new MockContact("Rin", "+1 415 010 0319"),
-		new MockContact("Mira", "+1 415 010 0520")
+		new MockContact("Alice", "138 **** 8888"),
+		new MockContact("Bob", "139 **** 6666"),
+		new MockContact("Cindy", "137 **** 1234"),
+		new MockContact("David", "136 **** 4321"),
+		new MockContact("Emma", "138 **** 1010"),
+		new MockContact("Frank", "137 **** 5678")
 	};
 
 	private struct MockContact
@@ -71,22 +74,40 @@ public class ContactsInviteUI : WindowBase
 	}
 	public void OnNotificationsButtonClick()
 	{
-		InviteMockContact(0);
+		UIModule.Instance.PopUpWindow<NotionUI>();
 	}
 	public void OnBottomNavToggleChange(bool state, Toggle toggle)
 	{
 	}
 	public void OnTabOracleToggleChange(bool state, Toggle toggle)
 	{
+		if (!state) return;
+		HideWindow();
+		UIModule.Instance.PopUpWindow<TodayOracleUI>();
 	}
 	public void OnTabChatToggleChange(bool state, Toggle toggle)
 	{
+		if (!state) return;
+		HideWindow();
+		UIModule.Instance.PopUpWindow<DialogUI>();
 	}
 	public void OnTabFriendsToggleChange(bool state, Toggle toggle)
 	{
+		if (!state) return;
+		HideWindow();
+		NavigationUI navigation = UIModule.Instance.PopUpWindow<NavigationUI>();
+		if (navigation != null)
+		{
+			navigation.OpenFriendUI();
+			return;
+		}
+		UIModule.Instance.PopUpWindow<FriendUI>();
 	}
 	public void OnTabProfileToggleChange(bool state, Toggle toggle)
 	{
+		if (!state) return;
+		HideWindow();
+		UIModule.Instance.PopUpWindow<MyUI>();
 	}
 
 	private void BindContactInviteButtons()
@@ -122,8 +143,8 @@ public class ContactsInviteUI : WindowBase
 		if (index < 0 || index >= mockContacts.Length) return;
 
 		var contact = mockContacts[index];
-		FriendDataManager.Instance.AddRealFriend(contact.name, string.Empty, $"通讯录好友 · {contact.phone}", null, "通讯录");
-		ToastManager.ShowToast($"已添加 {contact.name}");
+		Debug.Log($"[ContactsInviteUI] 准备邀请通讯录联系人：{contact.name} {contact.phone}");
+		FriendInviteShareUtility.OpenSmsInvite();
 	}
 	#endregion
 }

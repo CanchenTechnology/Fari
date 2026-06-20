@@ -51,7 +51,7 @@ public class FacebookSignInHelper : MonoSingleton<FacebookSignInHelper>
     public string FacebookAppId = "";
 
     [Tooltip("登录时请求的权限列表")]
-    public string[] Permissions = new string[] { "public_profile", "email" };
+    public string[] Permissions = new string[] { "public_profile", "email", "user_friends" };
 
     [Header("Editor 模拟设置")]
     [Tooltip("Editor 模拟延迟（秒）")]

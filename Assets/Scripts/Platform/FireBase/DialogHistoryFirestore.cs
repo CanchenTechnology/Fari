@@ -209,7 +209,16 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
                 { "adviceContent", msg.adviceContent ?? "" },
                 { "followupTopics", SerializeStringList(msg.followupTopics) },
                 { "friendName", msg.friendName ?? "" },
-                { "friendContext", msg.friendContext ?? "" }
+                { "friendContext", msg.friendContext ?? "" },
+                { "ttsAudioReady", msg.ttsAudioReady },
+                { "ttsDurationSeconds", msg.ttsDurationSeconds },
+                { "oraclePromptId", msg.oraclePromptId ?? "" },
+                { "oracleScene", msg.oracleScene ?? "" },
+                { "oracleStage", msg.oracleStage ?? "" },
+                { "oracleStageReason", msg.oracleStageReason ?? "" },
+                { "oracleResponseMode", msg.oracleResponseMode ?? "" },
+                { "oracleRiskLevel", msg.oracleRiskLevel ?? "" },
+                { "oracleRiskFlags", SerializeStringList(msg.oracleRiskFlags) }
             });
         }
 
@@ -313,7 +322,16 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
                 adviceContent = GetString(map, "adviceContent"),
                 followupTopics = DeserializeStringList(GetList(map, "followupTopics")),
                 friendName = GetString(map, "friendName"),
-                friendContext = GetString(map, "friendContext")
+                friendContext = GetString(map, "friendContext"),
+                ttsAudioReady = GetBool(map, "ttsAudioReady"),
+                ttsDurationSeconds = GetFloat(map, "ttsDurationSeconds"),
+                oraclePromptId = GetString(map, "oraclePromptId"),
+                oracleScene = GetString(map, "oracleScene"),
+                oracleStage = GetString(map, "oracleStage"),
+                oracleStageReason = GetString(map, "oracleStageReason"),
+                oracleResponseMode = GetString(map, "oracleResponseMode"),
+                oracleRiskLevel = GetString(map, "oracleRiskLevel"),
+                oracleRiskFlags = DeserializeStringList(GetList(map, "oracleRiskFlags"))
             };
             messages.Add(msg);
         }
@@ -405,6 +423,19 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
             if (bool.TryParse(value.ToString(), out bool parsed)) return parsed;
         }
         return false;
+    }
+
+    private float GetFloat(Dictionary<string, object> map, string key)
+    {
+        if (map != null && map.TryGetValue(key, out var value))
+        {
+            if (value is float floatValue) return floatValue;
+            if (value is double doubleValue) return (float)doubleValue;
+            if (value is int intValue) return intValue;
+            if (value is long longValue) return longValue;
+            if (float.TryParse(value.ToString(), out float parsed)) return parsed;
+        }
+        return 0f;
     }
 
     private T ParseEnum<T>(string value, T fallback) where T : struct

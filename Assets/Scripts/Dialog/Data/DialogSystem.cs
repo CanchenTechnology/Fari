@@ -63,6 +63,15 @@ public class ChatMessageData
     public List<string> followupTopics;
     public string friendName;
     public string friendContext;
+    public bool ttsAudioReady;       // 是否已经为这条 AI 文本准备过语音
+    public float ttsDurationSeconds; // 语音总时长，用于聊天气泡显示
+    public string oraclePromptId;
+    public string oracleScene;
+    public string oracleStage;
+    public string oracleStageReason;
+    public string oracleResponseMode;
+    public string oracleRiskLevel;
+    public List<string> oracleRiskFlags;
 }
 
 /// <summary>
@@ -149,6 +158,10 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     private List<string> recentAssistantReplies = new List<string>();
 
     private const int MAX_RECENT_MESSAGES = 6;
+    private const int MAX_ACTIVE_FRIEND_CONTEXT_CHARS = 5000;
+    private const int MAX_FRIEND_RELATED_HISTORY = 8;
+    private const int MAX_FRIEND_MEMORY_LINES = 8;
+    private const int MAX_FRIEND_READING_LINES = 4;
 
     // 消息列表
     private List<ChatMessageData> mChatMessageList = new List<ChatMessageData>();
@@ -263,6 +276,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             options = options,
             divinerType = CurrentDivinerType
         };
+        ApplyOracleRuntimeMetadata(data, lastAssemblyResult?.promptRecord);
         mChatMessageList.Add(data);
 
         // 同时添加到 API 历史
@@ -305,6 +319,10 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     public ChatMessageData AddAtFriendMessage(string content, FriendDataManager.FriendData friend)
     {
         string friendContext = friend != null ? friend.BuildOracleContext() : "";
+        string relationshipId = BuildFriendRelationshipId(friend);
+        string enrichedFriendContext = friend != null
+            ? BuildEnrichedFriendContext(friend, friendContext, relationshipId)
+            : "";
         string messageContent = string.IsNullOrWhiteSpace(content) && friend != null
             ? $"@{friend.name}\n{friendContext}"
             : content;
@@ -325,8 +343,8 @@ public class DialogSystem : MonoSingleton<DialogSystem>
 
         if (friend != null)
         {
-            activeRelationshipId = friend.id.ToString();
-            activeFriendContext = friendContext;
+            activeRelationshipId = relationshipId;
+            activeFriendContext = enrichedFriendContext;
         }
 
         // 同时添加到 API 历史，让塔罗师知道当前 @ 的好友档案。
@@ -337,6 +355,366 @@ public class DialogSystem : MonoSingleton<DialogSystem>
 
         SaveCloudDialogHistory();
         return data;
+    }
+
+    public void ActivateFriendContext(FriendDataManager.FriendData friend)
+    {
+        ActivateFriendContext(friend, "");
+    }
+
+    public void ActivateFriendContext(FriendDataManager.FriendData friend, string extraContext)
+    {
+        if (friend == null)
+        {
+            ClearActiveFriendContext();
+            return;
+        }
+
+        string friendContext = friend.BuildOracleContext();
+        string relationshipId = BuildFriendRelationshipId(friend);
+        activeRelationshipId = relationshipId;
+        activeFriendContext = BuildEnrichedFriendContext(friend, friendContext, relationshipId, extraContext);
+        SaveCloudDialogHistory();
+    }
+
+    public void ClearActiveFriendContext()
+    {
+        activeRelationshipId = "";
+        activeFriendContext = "";
+        SaveCloudDialogHistory();
+    }
+
+    private string BuildFriendRelationshipId(FriendDataManager.FriendData friend)
+    {
+        if (friend == null) return "";
+        if (!string.IsNullOrWhiteSpace(friend.virtualFriendId))
+            return $"virtual:{friend.virtualFriendId.Trim()}";
+        if (!string.IsNullOrWhiteSpace(friend.firebaseUid))
+            return $"firebase:{friend.firebaseUid.Trim()}";
+        if (!string.IsNullOrWhiteSpace(friend.handle))
+            return $"handle:{friend.handle.Trim().ToLowerInvariant()}";
+        if (!string.IsNullOrWhiteSpace(friend.name))
+            return $"name:{friend.name.Trim()}";
+        return $"local:{friend.id}";
+    }
+
+    private string BuildEnrichedFriendContext(
+        FriendDataManager.FriendData friend,
+        string baseFriendContext,
+        string relationshipId,
+        string extraContext = "")
+    {
+        var lines = new List<string>
+        {
+            "【当前@好友上下文】",
+            "使用方式：以下信息只作为推理依据，不要逐字复述；结合用户问题、关系状态、出生信息、历史对话和长期记忆，给出具体、温和、可执行的回复。",
+            "",
+            "【好友基础资料】",
+            string.IsNullOrWhiteSpace(baseFriendContext) ? "暂无好友资料。" : baseFriendContext.Trim()
+        };
+
+        if (!string.IsNullOrWhiteSpace(extraContext))
+        {
+            AppendFriendContextSection(lines, "当前好友动态/每日牌摘要",
+                new List<string> { extraContext.Trim() });
+        }
+
+        AppendFriendContextSection(lines, "相关长期关系记忆",
+            BuildRelationshipMemoryLines(friend, relationshipId, MAX_FRIEND_MEMORY_LINES));
+        AppendFriendContextSection(lines, "相关候选记忆",
+            BuildMemoryCandidateLines(friend, relationshipId, MAX_FRIEND_MEMORY_LINES));
+        AppendFriendContextSection(lines, "相关历史对话",
+            BuildRelatedDialogHistoryLines(friend, relationshipId, MAX_FRIEND_RELATED_HISTORY));
+        AppendFriendContextSection(lines, "相关占卜连续性",
+            BuildReadingContinuityLines(friend, relationshipId, MAX_FRIEND_READING_LINES));
+
+        return ClipForContext(string.Join("\n", lines), MAX_ACTIVE_FRIEND_CONTEXT_CHARS);
+    }
+
+    private List<string> BuildRelationshipMemoryLines(
+        FriendDataManager.FriendData friend,
+        string relationshipId,
+        int limit)
+    {
+        var result = new List<string>();
+        if (memorySource?.relationships == null) return result;
+
+        foreach (var memory in memorySource.relationships)
+        {
+            if (memory == null || !RelationshipMemoryMatchesFriend(memory, friend, relationshipId))
+                continue;
+
+            if (!string.IsNullOrWhiteSpace(memory.displayName))
+                result.Add($"关系对象：{memory.displayName}");
+            if (!string.IsNullOrWhiteSpace(memory.entityType))
+                result.Add($"对象类型：{memory.entityType}");
+            if (!string.IsNullOrWhiteSpace(memory.consentMode))
+                result.Add($"同意模式：{memory.consentMode}");
+            if (memory.knownFacts != null)
+            {
+                foreach (var fact in memory.knownFacts)
+                    if (!string.IsNullOrWhiteSpace(fact)) result.Add($"已知事实：{fact}");
+            }
+            if (memory.openLoops != null)
+            {
+                foreach (var loop in memory.openLoops)
+                    if (!string.IsNullOrWhiteSpace(loop)) result.Add($"待继续观察：{loop}");
+            }
+            if (!string.IsNullOrWhiteSpace(memory.lastActionAdvice))
+                result.Add($"上次行动建议：{memory.lastActionAdvice}");
+
+            if (result.Count >= limit) break;
+        }
+
+        return result.Take(limit).ToList();
+    }
+
+    private List<string> BuildMemoryCandidateLines(
+        FriendDataManager.FriendData friend,
+        string relationshipId,
+        int limit)
+    {
+        if (memorySource?.candidates == null) return new List<string>();
+
+        return memorySource.candidates
+            .Where(candidate => candidate != null
+                && !string.IsNullOrWhiteSpace(candidate.text)
+                && !string.Equals(candidate.status, "dismissed", StringComparison.OrdinalIgnoreCase)
+                && MemoryCandidateMatchesFriend(candidate, friend, relationshipId))
+            .OrderByDescending(candidate => candidate.confidence)
+            .Take(limit)
+            .Select(candidate =>
+            {
+                string status = string.IsNullOrWhiteSpace(candidate.status) ? "pending" : candidate.status;
+                string type = string.IsNullOrWhiteSpace(candidate.type) ? "memory" : candidate.type;
+                return $"[{status}/{type}] {candidate.text}";
+            })
+            .ToList();
+    }
+
+    private List<string> BuildRelatedDialogHistoryLines(
+        FriendDataManager.FriendData friend,
+        string relationshipId,
+        int limit)
+    {
+        var result = new List<string>();
+        if (friend == null || mChatMessageList == null || mChatMessageList.Count == 0)
+            return result;
+
+        int lastAtIndex = -1;
+        for (int i = mChatMessageList.Count - 1; i >= 0; i--)
+        {
+            var message = mChatMessageList[i];
+            if (message?.messageType == MsgType.AtFriend && AtFriendMessageMatches(message, friend, relationshipId))
+            {
+                lastAtIndex = i;
+                break;
+            }
+        }
+
+        if (lastAtIndex >= 0)
+        {
+            for (int i = lastAtIndex + 1; i < mChatMessageList.Count && result.Count < limit; i++)
+            {
+                var line = FormatDialogHistoryLine(mChatMessageList[i]);
+                if (!string.IsNullOrWhiteSpace(line))
+                    result.Add(line);
+            }
+        }
+
+        for (int i = mChatMessageList.Count - 1; i >= 0 && result.Count < limit; i--)
+        {
+            if (i > lastAtIndex && lastAtIndex >= 0) continue;
+            var message = mChatMessageList[i];
+            string text = message?.content ?? "";
+            if (!ContainsFriendSignal(text, friend) && !AtFriendMessageMatches(message, friend, relationshipId))
+                continue;
+
+            var line = FormatDialogHistoryLine(message);
+            if (!string.IsNullOrWhiteSpace(line) && !result.Contains(line))
+                result.Add(line);
+        }
+
+        return result.Take(limit).ToList();
+    }
+
+    private List<string> BuildReadingContinuityLines(
+        FriendDataManager.FriendData friend,
+        string relationshipId,
+        int limit)
+    {
+        if (memorySource?.readingContinuity == null) return new List<string>();
+
+        return memorySource.readingContinuity
+            .Where(reading => reading != null && ReadingContinuityMatchesFriend(reading, friend, relationshipId))
+            .OrderByDescending(reading => reading.createdAt)
+            .Take(limit)
+            .Select(reading =>
+            {
+                string title = !string.IsNullOrWhiteSpace(reading.shortVerdict)
+                    ? reading.shortVerdict
+                    : reading.question;
+                var cards = reading.cards != null
+                    ? string.Join("，", reading.cards
+                        .Where(card => card != null)
+                        .Select(card => $"{card.positionName ?? card.position}:{card.cardName ?? card.cardId}{(string.IsNullOrEmpty(card.orientation) ? "" : $"({card.orientation})")}"))
+                    : "";
+
+                return $"{reading.createdAt} {title}{(string.IsNullOrWhiteSpace(cards) ? "" : $" [{cards}]")}";
+            })
+            .ToList();
+    }
+
+    private bool RelationshipMemoryMatchesFriend(
+        RelationshipMemory memory,
+        FriendDataManager.FriendData friend,
+        string relationshipId)
+    {
+        if (memory == null) return false;
+        if (IsSameRelationshipKey(memory.relationshipId, friend, relationshipId)) return true;
+        if (ContainsFriendSignal(memory.displayName, friend)) return true;
+        if (memory.knownFacts != null && memory.knownFacts.Any(fact => ContainsFriendSignal(fact, friend))) return true;
+        if (memory.openLoops != null && memory.openLoops.Any(loop => ContainsFriendSignal(loop, friend))) return true;
+        return ContainsFriendSignal(memory.lastActionAdvice, friend);
+    }
+
+    private bool MemoryCandidateMatchesFriend(
+        MemoryCandidate candidate,
+        FriendDataManager.FriendData friend,
+        string relationshipId)
+    {
+        if (candidate == null) return false;
+        if (IsSameRelationshipKey(candidate.relationshipId, friend, relationshipId)) return true;
+        return ContainsFriendSignal(candidate.text, friend);
+    }
+
+    private bool ReadingContinuityMatchesFriend(
+        ReadingContinuityEntry reading,
+        FriendDataManager.FriendData friend,
+        string relationshipId)
+    {
+        if (reading == null) return false;
+        if (IsSameRelationshipKey(reading.relationshipId, friend, relationshipId)) return true;
+        return ContainsFriendSignal(reading.question, friend)
+            || ContainsFriendSignal(reading.shortVerdict, friend);
+    }
+
+    private bool AtFriendMessageMatches(
+        ChatMessageData message,
+        FriendDataManager.FriendData friend,
+        string relationshipId)
+    {
+        if (message == null || friend == null) return false;
+        if (ContainsFriendSignal(message.friendName, friend)) return true;
+        if (ContainsFriendSignal(message.friendContext, friend)) return true;
+        return ContainsFriendSignal(message.content, friend);
+    }
+
+    private bool IsSameRelationshipKey(
+        string value,
+        FriendDataManager.FriendData friend,
+        string relationshipId)
+    {
+        if (string.IsNullOrWhiteSpace(value) || friend == null) return false;
+
+        string normalized = NormalizeContextKey(value);
+        foreach (var key in BuildFriendRelationshipKeys(friend, relationshipId))
+        {
+            if (NormalizeContextKey(key) == normalized)
+                return true;
+        }
+
+        return false;
+    }
+
+    private IEnumerable<string> BuildFriendRelationshipKeys(
+        FriendDataManager.FriendData friend,
+        string relationshipId)
+    {
+        if (!string.IsNullOrWhiteSpace(relationshipId)) yield return relationshipId;
+        if (friend == null) yield break;
+
+        yield return friend.id.ToString();
+        yield return $"local:{friend.id}";
+
+        if (!string.IsNullOrWhiteSpace(friend.virtualFriendId))
+        {
+            yield return friend.virtualFriendId;
+            yield return $"virtual:{friend.virtualFriendId}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(friend.firebaseUid))
+        {
+            yield return friend.firebaseUid;
+            yield return $"firebase:{friend.firebaseUid}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(friend.handle))
+        {
+            yield return friend.handle;
+            yield return $"handle:{friend.handle.ToLowerInvariant()}";
+        }
+    }
+
+    private bool ContainsFriendSignal(string text, FriendDataManager.FriendData friend)
+    {
+        if (string.IsNullOrWhiteSpace(text) || friend == null) return false;
+
+        return ContainsText(text, friend.name)
+            || ContainsText(text, friend.handle)
+            || ContainsText(text, friend.firebaseUid)
+            || ContainsText(text, friend.virtualFriendId);
+    }
+
+    private static bool ContainsText(string text, string value)
+    {
+        if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(value))
+            return false;
+        return text.IndexOf(value.Trim(), StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static string NormalizeContextKey(string value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "" : value.Trim().ToLowerInvariant();
+    }
+
+    private static string FormatDialogHistoryLine(ChatMessageData message)
+    {
+        if (message == null || string.IsNullOrWhiteSpace(message.content))
+            return "";
+
+        string role = message.roleType == DialogRoleType.User ? "用户" : "AI";
+        string content = message.messageType == MsgType.AtFriend && !string.IsNullOrWhiteSpace(message.friendName)
+            ? $"@{message.friendName}"
+            : message.content;
+
+        content = content.Replace("\r", " ").Replace("\n", " ").Trim();
+        return $"{role}：{ClipForContext(content, 220)}";
+    }
+
+    private static void AppendFriendContextSection(
+        List<string> lines,
+        string title,
+        List<string> items)
+    {
+        if (lines == null || items == null || items.Count == 0)
+            return;
+
+        lines.Add("");
+        lines.Add($"【{title}】");
+        foreach (var item in items)
+        {
+            if (!string.IsNullOrWhiteSpace(item))
+                lines.Add($"- {ClipForContext(item.Trim(), 260)}");
+        }
+    }
+
+    private static string ClipForContext(string value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "";
+        string trimmed = value.Trim();
+        if (maxLength <= 0 || trimmed.Length <= maxLength) return trimmed;
+        return trimmed.Substring(0, Mathf.Max(0, maxLength - 1)).TrimEnd() + "…";
     }
 
     /// <summary>
@@ -1042,6 +1420,12 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     {
         List<DeepSeekAPI.Message> messages = new List<DeepSeekAPI.Message>();
         messages.Add(new DeepSeekAPI.Message("system", GetCurrentSystemPrompt()));
+        if (!string.IsNullOrWhiteSpace(activeFriendContext))
+        {
+            messages.Add(new DeepSeekAPI.Message("system",
+                "当前对话已 @ 好友。下面是仅供推理使用的好友上下文，请结合用户的问题自然回复，不要逐字复述这些资料。\n"
+                + activeFriendContext));
+        }
         messages.AddRange(mApiMessageHistory);
         return messages;
     }
@@ -1230,6 +1614,23 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         record.recordedAt = System.DateTime.UtcNow.ToString("o");
 
         AddPromptRecord(record);
+    }
+
+    private void ApplyOracleRuntimeMetadata(ChatMessageData message, PromptRecord record)
+    {
+        if (message == null || record == null) return;
+
+        message.oraclePromptId = record.promptId ?? "";
+        message.oracleScene = record.scene ?? "";
+        message.oracleStage = record.stage ?? "";
+        message.oracleStageReason = record.stageReason ?? "";
+        message.oracleResponseMode = record.responseMode ?? "";
+        message.oracleRiskLevel = record.riskLevel ?? "";
+        message.oracleRiskFlags = record.riskFlags != null
+            ? new List<string>(record.riskFlags)
+            : new List<string>();
+
+        record.oracleMessageId = message.id.ToString();
     }
 
     private void AddPromptRecord(PromptRecord record)
@@ -1650,6 +2051,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             options = null,
             divinerType = CurrentDivinerType
         };
+        ApplyOracleRuntimeMetadata(data, lastAssemblyResult?.promptRecord);
         mChatMessageList.Add(data);
         mStreamingMessageIndex = mChatMessageList.Count - 1;
         return mStreamingMessageIndex;
@@ -1683,6 +2085,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
 
         // 确保内容完整（防止 chunk 累加不精确）
         mChatMessageList[messageIndex].content = fullContent;
+        ApplyOracleRuntimeMetadata(mChatMessageList[messageIndex], lastAssemblyResult?.promptRecord);
 
         // 加入 API 历史
         mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", fullContent));
@@ -1694,6 +2097,18 @@ public class DialogSystem : MonoSingleton<DialogSystem>
 
         if (mStreamingMessageIndex == messageIndex)
             mStreamingMessageIndex = -1;
+    }
+
+    public void SetAIMessageTTSInfo(int messageIndex, float durationSeconds, bool audioReady)
+    {
+        if (messageIndex < 0 || messageIndex >= mChatMessageList.Count) return;
+
+        var message = mChatMessageList[messageIndex];
+        if (message == null) return;
+
+        message.ttsDurationSeconds = Mathf.Max(0f, durationSeconds);
+        message.ttsAudioReady = audioReady && durationSeconds > 0f;
+        SaveCloudDialogHistory();
     }
 
     /// <summary>

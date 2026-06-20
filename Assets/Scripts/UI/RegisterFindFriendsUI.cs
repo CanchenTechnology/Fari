@@ -50,17 +50,26 @@ public class RegisterFindFriendsUI : WindowBase
 	}
 	public void OnFindUsersButtonClick()
 	{
+		UIModule.Instance.PopUpWindow<UserSearchUI>();
 	}
 	public void OnInviteContactsButtonClick()
 	{
+		NativeContactInviteManager.OpenContactInvite(transform);
 	}
 	public void OnShareLinkButtonClick()
 	{
+		FriendInviteShareUtility.ShareInviteText("邀请好友");
 	}
 	public void OnSkipButtonClick()
 	{
+		FinishFindFriends();
 	}
 	public void OnFinishButtonClick()
+	{
+		FinishFindFriends();
+	}
+
+	private void FinishFindFriends()
 	{
 		UIModule.Instance.HideWindow<LoginUI>();
 		UIModule.Instance.PopUpWindow<NavigationUI>();

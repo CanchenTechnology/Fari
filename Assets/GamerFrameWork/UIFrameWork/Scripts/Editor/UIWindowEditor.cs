@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -13,19 +12,21 @@ namespace GamerFrameWork.UIFrameWork
         private string filePath; //代码路径
         private Vector2 scroll = new Vector2();
         private string mFileName;
+        private string generatorPathPrefsKey;
         /// <summary>
         /// 显示代码窗口
         /// </summary>
         /// <param name="content">代码内容</param>
         /// <param name="filePath">代码路径</param>
         /// <param name="insterDic">新增的代码</param>
-        public static void ShowWindow(string content, string filePath, Dictionary<string, string> insterDic = null, List<EditorObjectData> fieldList = null)
+        public static void ShowWindow(string content, string filePath, Dictionary<string, string> insterDic = null, List<EditorObjectData> fieldList = null, string generatorPathPrefsKey = null)
         {
             //创建代码展示窗口
             UIWindowEditor window = (UIWindowEditor)GetWindowWithRect(typeof(UIWindowEditor), new Rect(100, 50, 800, 700), true, "Window生成界面");
             window.scriptContent = content;
             window.filePath = filePath;
             window.mFileName = Path.GetFileName(filePath);
+            window.generatorPathPrefsKey = generatorPathPrefsKey;
             //处理新增的代码
             string originScript = string.Empty;
             bool isInsterSuccess = false;
@@ -40,13 +41,14 @@ namespace GamerFrameWork.UIFrameWork
                         //插入字段(生成item脚本时使用)
                         foreach (var item in fieldList)
                         {
-                            if (!originScript.Contains($"{item.fieldName}{item.fieldType}"))
+                            int insertIndex = window.GetInsertFieldIndex(originScript);
+                            if (!originScript.Contains($"{item.fieldName}{item.fieldType}") && insertIndex >= 0)
                             {
                                 string insterArrayType = item.dataList != null ? "[]" : "";
                                 string insterArray = item.dataList != null ? "Array" : "";
                                 //插入新增的数据
-                                originScript = window.scriptContent = originScript.Insert(window.GetInsertFieldIndex(originScript)
-                                    , $"public {item.fieldType}{insterArrayType} {item.fieldName}{item.fieldType}{insterArray};\n\t\t");
+                                originScript = window.scriptContent = originScript.Insert(insertIndex
+                                    , $"\tpublic {item.fieldType}{insterArrayType} {item.fieldName}{item.fieldType}{insterArray};\n");
                                 isInsterSuccess = true;
 
                             }
@@ -61,7 +63,10 @@ namespace GamerFrameWork.UIFrameWork
                             if (!originScript.Contains(item.Key))
                             {
                                 int index = window.GetInsertMethodIndex(originScript);
-                                originScript = window.scriptContent = originScript.Insert(index, item.Value + "\t\t");
+                                if (index >= 0)
+                                {
+                                    originScript = window.scriptContent = originScript.Insert(index, item.Value);
+                                }
                             }
                         }
                     }
@@ -99,9 +104,11 @@ namespace GamerFrameWork.UIFrameWork
                             }
                             if (!originScript.Contains($"AddListener({methodName}{suffix})"))
                             {
-                                sb.Insert(0, "//按钮事件自动注册绑定\n");
-                                originScript = window.scriptContent = originScript.Replace("//按钮事件自动注册绑定", $"{sb.ToString()}");
-                                isInsterSuccess = true;
+                                if (originScript.Contains("//按钮事件自动注册绑定"))
+                                {
+                                    originScript = window.scriptContent = originScript.Replace("//按钮事件自动注册绑定", $"//按钮事件自动注册绑定\n{sb}");
+                                    isInsterSuccess = true;
+                                }
                             }
                         }
                     }
@@ -137,7 +144,10 @@ namespace GamerFrameWork.UIFrameWork
                     filePath = Path.Combine(folder, mFileName);
                 }
             }
-            EditorPrefs.SetString("GeneratorClassPath", filePath);
+            if (!string.IsNullOrEmpty(generatorPathPrefsKey))
+            {
+                EditorPrefs.SetString(generatorPathPrefsKey, filePath);
+            }
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.Space();
 
@@ -153,13 +163,30 @@ namespace GamerFrameWork.UIFrameWork
         }
         public void ButtonClick()
         {
-            if (File.Exists(filePath))
+            if (string.IsNullOrEmpty(filePath))
             {
-                File.Delete(filePath);
+                EditorUtility.DisplayDialog("自动化生成工具", "脚本生成路径不能为空。", "确定");
+                return;
             }
-            StreamWriter writer = File.CreateText(filePath);
-            writer.Write(scriptContent);
-            writer.Close();
+
+            string directory = Path.GetDirectoryName(filePath);
+            if (string.IsNullOrEmpty(directory))
+            {
+                EditorUtility.DisplayDialog("自动化生成工具", "脚本生成路径无效。", "确定");
+                return;
+            }
+
+            if (!Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            if (!string.IsNullOrEmpty(generatorPathPrefsKey))
+            {
+                EditorPrefs.SetString(generatorPathPrefsKey, filePath);
+            }
+
+            File.WriteAllText(filePath, scriptContent, Encoding.UTF8);
             AssetDatabase.Refresh();
             if (EditorUtility.DisplayDialog("自动化生成工具", "生成脚本成功!", "确定"))
             {
@@ -199,13 +226,23 @@ namespace GamerFrameWork.UIFrameWork
             //找到UI事件组件下面的第一个public 所在的位置 进行插入
             Regex regex = new Regex("UI组件事件");
             Match match = regex.Match(content);
-            return match.Index + 6;
+            if (!match.Success)
+            {
+                int lastBraceIndex = content.LastIndexOf('}');
+                return lastBraceIndex >= 0 ? lastBraceIndex : -1;
+            }
+            return match.Index + match.Length;
         }
         public int GetInsertFieldIndex(string content)
         {
             //找到UI事件组件下面的第一个public 所在的位置 进行插入
             Regex regex = new Regex("自定义字段");
             Match match = regex.Match(content);
+            if (!match.Success)
+            {
+                return -1;
+            }
+
             Regex regex1 = new Regex("public");
             MatchCollection matchColltion = regex1.Matches(content);
 
@@ -220,4 +257,3 @@ namespace GamerFrameWork.UIFrameWork
         }
     }
 }
-

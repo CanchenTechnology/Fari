@@ -61,30 +61,8 @@ public class AvatarUploadManager : MonoSingleton<AvatarUploadManager>
 
     public void UploadAvatarFromFile(string filePath, Action<AvatarUploadResult> onSuccess, Action<string> onError)
     {
-        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
-        {
-            onError?.Invoke("头像文件不存在");
-            return;
-        }
-
-        byte[] bytes;
-        try
-        {
-            bytes = File.ReadAllBytes(filePath);
-        }
-        catch (Exception e)
-        {
-            onError?.Invoke("读取头像文件失败: " + e.Message);
-            return;
-        }
-
-        Texture2D source = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-        if (!source.LoadImage(bytes))
-        {
-            Destroy(source);
-            onError?.Invoke("头像图片格式不支持");
-            return;
-        }
+        Texture2D source = LoadTextureFromFile(filePath, onError);
+        if (source == null) return;
 
         UploadAvatarTexture(source, onSuccess, onError);
     }
@@ -103,10 +81,50 @@ public class AvatarUploadManager : MonoSingleton<AvatarUploadManager>
             return;
         }
 
-        StartCoroutine(UploadAvatarCoroutine(source, onSuccess, onError));
+        StartCoroutine(UploadAvatarCoroutine(source, null, true, onSuccess, onError));
     }
 
-    private IEnumerator UploadAvatarCoroutine(Texture2D source, Action<AvatarUploadResult> onSuccess, Action<string> onError)
+    public void UploadVirtualFriendAvatarFromFile(string virtualFriendId, string filePath, Action<AvatarUploadResult> onSuccess, Action<string> onError)
+    {
+        Texture2D source = LoadTextureFromFile(filePath, onError);
+        if (source == null) return;
+
+        UploadVirtualFriendAvatarTexture(virtualFriendId, source, onSuccess, onError);
+    }
+
+    public void UploadVirtualFriendAvatarTexture(string virtualFriendId, Texture2D source, Action<AvatarUploadResult> onSuccess, Action<string> onError)
+    {
+        if (string.IsNullOrWhiteSpace(virtualFriendId))
+        {
+            onError?.Invoke("虚拟好友 ID 为空，无法上传头像");
+            return;
+        }
+
+        if (source == null)
+        {
+            onError?.Invoke("头像图片为空");
+            return;
+        }
+
+        if (IsUploading)
+        {
+            onError?.Invoke("头像正在上传中");
+            return;
+        }
+
+        FirebaseUser user = FirebaseAuth.DefaultInstance?.CurrentUser;
+        string uid = !string.IsNullOrWhiteSpace(user?.UserId) ? user.UserId : UserDataManager.Instance?.FirebaseUid;
+        if (string.IsNullOrWhiteSpace(uid))
+        {
+            onError?.Invoke("用户未登录，无法上传好友头像");
+            return;
+        }
+
+        string storagePath = $"avatars/{uid}/virtual_{SanitizeStorageName(virtualFriendId)}_{AvatarSize}.jpg";
+        StartCoroutine(UploadAvatarCoroutine(source, storagePath, false, onSuccess, onError));
+    }
+
+    private IEnumerator UploadAvatarCoroutine(Texture2D source, string storagePathOverride, bool saveAsUserAvatar, Action<AvatarUploadResult> onSuccess, Action<string> onError)
     {
         IsUploading = true;
 
@@ -139,7 +157,9 @@ public class AvatarUploadManager : MonoSingleton<AvatarUploadManager>
         }
 
         string uid = user.UserId;
-        string storagePath = $"avatars/{uid}/avatar_{AvatarSize}.jpg";
+        string storagePath = string.IsNullOrWhiteSpace(storagePathOverride)
+            ? $"avatars/{uid}/avatar_{AvatarSize}.jpg"
+            : storagePathOverride;
         string downloadToken = Guid.NewGuid().ToString("N");
 
         string idToken = null;
@@ -180,20 +200,23 @@ public class AvatarUploadManager : MonoSingleton<AvatarUploadManager>
         }
 
         string photoUrl = BuildDownloadUrl(storagePath, downloadToken);
-        UserDataManager.Instance.SetPhotoUrl(photoUrl);
-        UserDataManager.Instance.SetAvatarStoragePath(storagePath);
-        UserDataManager.Instance.SaveData();
-        GoogleUserInfoHelper.ClearLocalAvatarCache();
-        SaveAvatarCache(jpgBytes);
-
-        if (FirebaseAuthManager.Instance != null)
+        if (saveAsUserAvatar)
         {
-            FirebaseAuthManager.Instance.UpdateUserProfile(UserDataManager.Instance.UserName, photoUrl);
+            UserDataManager.Instance.SetPhotoUrl(photoUrl);
+            UserDataManager.Instance.SetAvatarStoragePath(storagePath);
+            UserDataManager.Instance.SaveData();
+            GoogleUserInfoHelper.ClearLocalAvatarCache();
+            SaveAvatarCache(jpgBytes);
+
+            if (FirebaseAuthManager.Instance != null)
+            {
+                FirebaseAuthManager.Instance.UpdateUserProfile(UserDataManager.Instance.UserName, photoUrl);
+            }
         }
 
         bool firestoreDone = false;
-        bool firestoreSuccess = false;
-        if (FirestoreManager.Instance != null && FirestoreManager.Instance.IsInitialized)
+        bool firestoreSuccess = !saveAsUserAvatar;
+        if (saveAsUserAvatar && FirestoreManager.Instance != null && FirestoreManager.Instance.IsInitialized)
         {
             FirestoreManager.Instance.SaveUserData(success =>
             {
@@ -221,6 +244,36 @@ public class AvatarUploadManager : MonoSingleton<AvatarUploadManager>
             storagePath = storagePath,
             previewSprite = TextureToSprite(avatarTexture),
         });
+    }
+
+    private static Texture2D LoadTextureFromFile(string filePath, Action<string> onError)
+    {
+        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+        {
+            onError?.Invoke("头像文件不存在");
+            return null;
+        }
+
+        byte[] bytes;
+        try
+        {
+            bytes = File.ReadAllBytes(filePath);
+        }
+        catch (Exception e)
+        {
+            onError?.Invoke("读取头像文件失败: " + e.Message);
+            return null;
+        }
+
+        Texture2D source = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+        if (!source.LoadImage(bytes))
+        {
+            Destroy(source);
+            onError?.Invoke("头像图片格式不支持");
+            return null;
+        }
+
+        return source;
     }
 
     private static byte[] BuildMultipartBody(string boundary, string storagePath, string downloadToken, byte[] imageBytes)
@@ -312,5 +365,24 @@ public class AvatarUploadManager : MonoSingleton<AvatarUploadManager>
     {
         if (string.IsNullOrEmpty(value)) return "";
         return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+    }
+
+    private static string SanitizeStorageName(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "friend";
+        StringBuilder builder = new StringBuilder(value.Length);
+        foreach (char c in value)
+        {
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-')
+            {
+                builder.Append(c);
+            }
+            else
+            {
+                builder.Append('_');
+            }
+        }
+
+        return builder.Length == 0 ? "friend" : builder.ToString();
     }
 }

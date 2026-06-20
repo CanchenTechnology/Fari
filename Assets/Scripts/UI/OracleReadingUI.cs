@@ -27,11 +27,13 @@ public class OracleReadingUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		OracleForegroundEffects.Attach(this.Canvas, OracleForegroundEffectStyle.DailyOracle);
 		PopulateTodayCard();
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
 	{
+		OracleForegroundEffects.Detach(this.Canvas);
 		base.OnHide();
 	}
 	// 物体销毁时执行

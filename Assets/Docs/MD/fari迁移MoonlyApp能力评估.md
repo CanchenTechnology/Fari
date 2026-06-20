@@ -10,25 +10,25 @@
 
 | 功能模块 | fari-code（源） | MoonlyApp（目标） | 迁移难度 |
 |----------|----------------|-------------------|:---:|
-| **用户认证** | 自定义 Token + JSON 存储 | Firebase Auth（Google/Apple/Facebook/匿名） | 🟢 已超越 |
+| **用户认证** | 自定义 Token + JSON 存储 | Firebase Auth（Email/Google/Apple/Facebook/Game Center/匿名），Editor 匿名登录走真实 Firebase | 🟢 已超越 |
 | **后端数据库** | 本地 JSON 文件 | Firestore NoSQL | 🟢 已超越 |
-| **AI 对话** | DeepSeek/Ark + SSE 流式 | DeepSeek（硬编码 key，非流式） | 🟡 部分完成 |
+| **AI 对话** | DeepSeek/Ark + SSE 流式 | DeepSeek + Firebase Functions，已接流式输出和 Editor 降级模拟 | 🟢 已对齐 |
 | **聊天 UI** | innerHTML 渲染 | LoopListView2 虚拟滚动 | 🟢 已超越 |
 | **三神谕师** | 塔罗/占星/冥想 | 塔罗/占星/冥想（含 ScriptableObject 配置） | 🟢 已对齐 |
-| **每日神谕** | 每日单卡翻牌+动画 | DailyCardBox + TodayOracleUI | 🟡 需增强 |
+| **每日神谕** | 每日单卡翻牌+动画 | 已接 DailyCardBox + TodayOracleUI + 预生成缓存 + Firestore 每日牌保存/好友摘要同步 + 到期 Tomorrow Hook 读取提醒 | 🟢 已对齐 |
 | **快速占卜** | 话题Tab+问题列表 | QuickDivinationPanel + QuickDivinationData | 🟢 已对齐 |
-| **三牌占卜** | 完整流程（prepare→start→reveal→result） | 未实现 | 🔴 需新建 |
-| **好友关系** | 搜索/邀请/创建/合盘占卜 | 部分 UI 已有，逻辑未实现 | 🔴 需新建 |
-| **会员系统** | 3套餐+付费墙+功能限制 | 未实现 | 🔴 需新建 |
-| **TTS 语音** | 火山引擎 TTS，流式合成+缓存 | 框架就绪，stub | 🟡 需接入 |
+| **三牌占卜** | 完整流程（prepare→start→reveal→result） | 已接入洗牌、抽牌、结果与对话卡片 | 🟢 已对齐 |
+| **好友关系** | 搜索/邀请/创建/合盘占卜 | 已接入 Firebase 搜索、好友请求、虚拟好友、资料页、关系占卜邀请 | 🟢 已对齐 |
+| **会员系统** | 3套餐+付费墙+功能限制 | 已接入会员状态、免费额度门禁、Pro 页、Unity IAP 购买/恢复桥、receipt 提交和 Apple / Google 校验路径；`UNITY_PURCHASING` 已写入 ProjectSettings，IAP 桥接编译验证通过；Firestore Rules/Indexes、基础 Functions 与 `submitIapReceipt` 已部署，`readinessStatus` 已在线，AI/TTS/webhook Secrets 已绑定，authenticated Functions strict smoke 与 receipt smoke 均已通过，待 `APPLE_SHARED_SECRET` / `GOOGLE_PACKAGE_NAME` / `GOOGLE_SERVICE_ACCOUNT_JSON` 写入后开启真实 IAP 校验并做沙盒验证 | 🟡 部分完成 |
+| **TTS 语音** | 火山引擎 TTS，流式合成+缓存 | 火山 TTS + Firebase Functions + Editor 直连调试 + 本地缓存 + 聊天气泡播放 | 🟢 已对齐 |
 | **注册引导** | 多步引导流程 | 已有多步 UI（SetBirthDate/SetName/ChooseGuide 等） | 🟢 已对齐 |
-| **Oracle Runtime 引擎** | 37模块（场景规划/风险分类/记忆/疗法等） | 仅简单系统提示词 | 🔴 需新建 |
-| **塔罗牌数据** | 78张 JSON 定义（名称/关键词/正逆位） | 仅78张图片，无结构化数据 | 🔴 需新建 |
-| **牌阵模板** | 5种预设牌阵 JSON | 无 | 🔴 需新建 |
-| **历史记录** | 对话历史+占卜历史 | DivinationRecordUI 存在 | 🟡 需增强 |
+| **Oracle Runtime 引擎** | 37模块（场景规划/风险分类/记忆/疗法等） | 已接 ContextAssembler / SceneRouter / RiskClassifier / OutputGuard / MemorySource / TomorrowHook，并将 scene/stage/risk/promptId 写入云端对话历史 | 🟢 基本对齐 |
+| **塔罗牌数据** | 78张 JSON 定义（名称/关键词/正逆位） | `TarotDeck` 已内置 78 张结构化数据、关键词、元素与正逆位抽取 | 🟢 已对齐 |
+| **牌阵模板** | 5种预设牌阵 JSON | `DivinationEngine` 已内置 5 种牌阵和位置语义 | 🟢 已对齐 |
+| **历史记录** | 对话历史+占卜历史 | 对话历史、占卜记录和好友资料页历史均已接 Firestore / 本地恢复 | 🟢 已对齐 |
 | **"我的"页面** | 个人中心+设置+记忆管理 | MyUI + MemoryManagementUI 存在 | 🟢 基本对齐 |
-| **推送/提醒** | Tomorrow Hook 系统 | NotificationSettingsManager 存在 | 🟡 需增强 |
-| **前景特效** | CSS 蜡烛火焰/粒子/烟尘 | 无 | 🔴 需新建 |
+| **推送/提醒** | Tomorrow Hook 系统 | 已接 `NotificationSettingsManager` + `AppNotificationScheduler`，支持每日神谕、占卜回访、活动系统、好友请求、关系占卜邀请、好友每日牌动态提醒；`Packages/packages-lock.json` 已解析 Mobile Notifications 包；已加测试通知、排程快照、`AppReadinessDiagnostics`、Editor 菜单、Android `POST_NOTIFICATIONS` 检查、`scripts/check-local-readiness.sh` 和 Firebase 网络检查辅助定位权限/联网状态，待真机通知权限与系统通知展示验证 | 🟡 部分完成 |
+| **前景特效** | CSS 蜡烛火焰/粒子/烟尘 | 已接运行时 `OracleForegroundEffects`，覆盖对话、今日神谕、今日牌结果、完整解读、牌阵洗牌界面，生成火焰、光点、烟雾、底部烛光层且不阻挡点击 | 🟢 已对齐 |
 
 ---
 
@@ -114,11 +114,11 @@
 
 ```
 P0 - 必须完成：
-├── 1. 塔罗牌 ScriptableObject 数据（78张含义/关键词/正逆位）
-├── 2. 三牌占卜完整流程（Prepare → Start → Reveal → Result → Detail）
-├── 3. DeepSeek API 流式输出（当前非流式，体验差）
-├── 4. 会员系统（付费墙 + 功能限制逻辑）
-└── 5. Firestore 数据结构迁移（用户/对话/占卜/会员数据）
+├── 1. 塔罗牌结构化数据（78张含义/关键词/正逆位）【已接入 TarotDeck】
+├── 2. 三牌占卜完整流程（Prepare → Start → Reveal → Result → Detail）【已接入】
+├── 3. DeepSeek API 流式输出【已接入】
+├── 4. 会员系统（付费墙 + 功能限制逻辑）【已接入门禁、receipt 提交和 Apple / Google 校验路径】
+└── 5. Firestore 数据结构迁移（用户/对话/占卜/会员数据）【已接入主要集合，Firestore Rules/Indexes、基础 Functions 和支付提交函数已部署，真实支付校验待商店密钥】
 ```
 
 ### 第二阶段：体验增强（2-3周）
@@ -126,7 +126,7 @@ P0 - 必须完成：
 ```
 P1 - 提升品质：
 ├── 6. TTS 语音接入（火山引擎，消息级+每日神谕）
-├── 7. Oracle Runtime 引擎迁移（场景识别/风险分类/记忆系统）
+├── 7. Oracle Runtime 引擎迁移（场景识别/风险分类/记忆系统/运行时元数据追踪）
 ├── 8. 每日神谕翻牌动画（牌背→翻开→过渡→结果）
 ├── 9. 好友关系 + 合盘占卜
 └── 10. 注册引导完整流程
@@ -136,8 +136,8 @@ P1 - 提升品质：
 
 ```
 P2 - 锦上添花：
-├── 11. 前景特效（火焰/粒子/烛光）
-├── 12. Tomorrow Hook 推送提醒
+├── 11. 前景特效（已接对话/今日神谕运行时光点、烟雾、烛光）
+├── 12. Tomorrow Hook 推送提醒（已接本地调度入口，待真机权限和包解析验证）
 ├── 13. 对话历史搜索/管理
 ├── 14. 多语言本地化（I2 已集成）
 └── 15. 数据统计/埋点

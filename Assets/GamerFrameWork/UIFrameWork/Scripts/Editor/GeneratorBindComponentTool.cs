@@ -1,14 +1,11 @@
 using Newtonsoft.Json;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Text;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.EventSystems;
 
 namespace GamerFrameWork.UIFrameWork
 {
@@ -21,6 +18,9 @@ namespace GamerFrameWork.UIFrameWork
     }
     public class GeneratorBindComponentTool : Editor
     {
+        private const string GeneratorClassPathKey = "GeneratorClassPath";
+        private const string GeneratorTargetObjectKey = "GeneratorTargetObject";
+
         public static List<EditorObjectData> objDataList;//查找对象的数据
         public static WindowLayer selectedLayer = WindowLayer.MainUI; // 默认选择MainUI
 
@@ -28,7 +28,7 @@ namespace GamerFrameWork.UIFrameWork
         [MenuItem("GameObject/GamerFrameWork/UIFrame/生成组件拖动赋值脚本(Shift+B) #B", false, 0)]
         static void ShowSelectLayerWindow()
         {
-            GameObject obj = Selection.objects.First() as GameObject;//获取到当前选择的物体
+            GameObject obj = Selection.activeGameObject;//获取到当前选择的物体
             if (obj == null)
             {
                 // 弹出警告对话框
@@ -70,7 +70,7 @@ namespace GamerFrameWork.UIFrameWork
                 {
                     sb.AppendLine("\tpublic " + item.fieldType + " " + item.fieldName + item.fieldType + ";"); //添加一行
                 }
-                }
+            }
 
             //声明初始化组件接口
             sb.AppendLine("\tpublic void InitComponent(WindowBase target)");
@@ -117,28 +117,31 @@ namespace GamerFrameWork.UIFrameWork
         public static void AddComponent2Window()
         {
             // 如果当前不是生成数据脚本的回调,就不处理
-            string scriptPath = EditorPrefs.GetString("GeneratorClassPath");
+            string scriptPath = EditorPrefs.GetString(GeneratorClassPathKey);
             if (string.IsNullOrEmpty(scriptPath))
             {
                 return;
             }
-            scriptPath = scriptPath.Replace(Application.dataPath, "Assets");
+            scriptPath = ToAssetPath(scriptPath);
 
             //通过反射的方式,从程序集中找到这个脚本，把它挂载到当前的物体上
             System.Type targetScript = AssetDatabase.LoadAssetAtPath<MonoScript>(scriptPath)?.GetClass();//MonoScript文件就是.cs
             if (targetScript == null)
             {
-                Debug.LogError($"Failed to load script!crc:{scriptPath}");
+                Debug.LogError($"Failed to load generated component script: {scriptPath}");
                 return;
             }
             //获取要挂载的那个物体
-            GameObject selectedObject = Selection.activeGameObject;
+            GameObject selectedObject = EditorUtility.InstanceIDToObject(EditorPrefs.GetInt(GeneratorTargetObjectKey, 0)) as GameObject;
+            if (selectedObject == null)
+            {
+                selectedObject = Selection.activeGameObject;
+            }
             if (selectedObject == null)
             {
                 // 弹出警告对话框
                 EditorUtility.DisplayDialog("警告", "请选择一个对象!", "确定");
-                EditorPrefs.DeleteKey("GeneratorClassPath");
-                EditorPrefs.DeleteKey("WindowLayer");
+                ClearGeneratorPrefs();
                 return;
             }
             //先获取现窗口上有没有挂载该数据组件，如果没挂载在进行挂载
@@ -153,10 +156,17 @@ namespace GamerFrameWork.UIFrameWork
             if (string.IsNullOrEmpty(datalistJson))
             {
                 Debug.LogError("没有找到对象数据列表 PlayerPrefs！");
+                ClearGeneratorPrefs();
                 return;
             }
             List<EditorObjectData> editorObjDataList =
                 JsonConvert.DeserializeObject<List<EditorObjectData>>(datalistJson);
+            if (editorObjDataList == null)
+            {
+                Debug.LogError("对象数据列表反序列化失败！");
+                ClearGeneratorPrefs();
+                return;
+            }
 
             //获取脚本所有字段
             FieldInfo[] fieldInfoList = targetScript.GetFields();
@@ -169,6 +179,11 @@ namespace GamerFrameWork.UIFrameWork
                     { 
                         //根据insid找到对应的对象
                         GameObject uiObject = EditorUtility.InstanceIDToObject(objData.insID) as GameObject;
+                        if (uiObject == null)
+                        {
+                            Debug.LogWarning($"字段 {item.Name} 对应的对象不存在，已跳过。");
+                            break;
+                        }
                         if (objData.dataList == null) //说明不是数组类型
                         {
                             //设置该字段所对应的对象
@@ -178,7 +193,12 @@ namespace GamerFrameWork.UIFrameWork
                             }
                             else
                             {
-                                item.SetValue(compt, uiObject.GetComponent(objData.fieldType));
+                                Component component = uiObject.GetComponent(objData.fieldType);
+                                if (component == null)
+                                {
+                                    Debug.LogWarning($"对象 {uiObject.name} 上没有找到组件 {objData.fieldType}，字段 {item.Name} 未赋值。");
+                                }
+                                item.SetValue(compt, component);
                             }
                         }
                         else
@@ -199,7 +219,7 @@ namespace GamerFrameWork.UIFrameWork
                                 // 获取数组元素类型
                                 Type elementType = arrayType.GetElementType();
                                 //获取该节点下的所有的物体
-                                Component[] components = uiObject.GetComponentsInChildren(elementType);
+                                Component[] components = uiObject.GetComponentsInChildren(elementType, true);
                                 // 创建目标数组
                                 Array targetArray = Array.CreateInstance(elementType, components.Length);
 
@@ -226,10 +246,12 @@ namespace GamerFrameWork.UIFrameWork
             }
 
             // 清理标记
-            EditorPrefs.DeleteKey("GeneratorClassPath");
-            EditorPrefs.DeleteKey("WindowLayer");
+            ClearGeneratorPrefs();
+            PlayerPrefs.DeleteKey(UISetting.OBJDATALIST_KEY);
 
             // 自动保存 prefab（仅当对象是 Prefab 实例时）
+            EditorUtility.SetDirty(compt);
+            PrefabUtility.RecordPrefabInstancePropertyModifications(compt);
             var prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(selectedObject);
             if (prefabRoot != null && PrefabUtility.IsPartOfPrefabInstance(selectedObject))
             {
@@ -264,10 +286,35 @@ namespace GamerFrameWork.UIFrameWork
             string csContent = CreateCS(obj.name);
             Debug.Log("CsConent:\n" + csContent);
             string cspath = UISetting.Instance.BindComponentGeneratorPath + "/" + obj.name + $"{UISetting.Instance.GenerateCSharpSuffix}.cs";
-            UIWindowEditor.ShowWindow(csContent, cspath);
-            //EditorPrefs.SetString("GeneratorClassPath", cspath);
+            UIWindowEditor.ShowWindow(csContent, cspath, generatorPathPrefsKey: GeneratorClassPathKey);
+            EditorPrefs.SetString(GeneratorClassPathKey, cspath);
+            EditorPrefs.SetInt(GeneratorTargetObjectKey, obj.GetInstanceID());
 
             Debug.Log($"已为 {obj.name} 在层级 {layer} 生成脚本");
+        }
+
+        private static string ToAssetPath(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                return path;
+            }
+
+            path = path.Replace("\\", "/");
+            string dataPath = Application.dataPath.Replace("\\", "/");
+            if (path.StartsWith(dataPath, StringComparison.Ordinal))
+            {
+                return "Assets" + path.Substring(dataPath.Length);
+            }
+
+            return path;
+        }
+
+        private static void ClearGeneratorPrefs()
+        {
+            EditorPrefs.DeleteKey(GeneratorClassPathKey);
+            EditorPrefs.DeleteKey(GeneratorTargetObjectKey);
+            EditorPrefs.DeleteKey("WindowLayer");
         }
     }
 

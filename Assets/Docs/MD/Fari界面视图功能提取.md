@@ -88,6 +88,17 @@ XMind 中包含 5 个一级模块：
 
 - 对话模块包含会员页入口或触发点。
 - 当功能受限时，需要能引导用户查看或购买 Pro。
+- 当前实现：
+  - `BackendMembershipClient` 会读取后端会员状态，并缓存当前 Pro / Free 状态。
+  - `UsageStatsManager` 记录本地每日使用次数：每日牌、对话消息、牌阵占卜。
+  - `MembershipGate` 已接入每日牌、对话消息、单张/三张/五张牌阵抽牌入口；免费额度用完会弹出 `UnlockProUI`。
+  - `UnlockProUI` 会显示当前会员状态，并运行时生成月度 Pro / 年度 Pro 购买按钮。
+  - 购买按钮读取 `PublicAppConfig.iapProducts` 的商品名和价格，配置缺失时使用默认商品 ID。
+  - `Packages/manifest.json` 与 `Packages/packages-lock.json` 已加入 `com.unity.purchasing@4.12.2`；`ProjectSettings` 已为 Android / iPhone / Standalone 写入 `UNITY_PURCHASING`，`IapPurchaseManager` 会通过 `UnityIapPurchaseBridge` 发起真实订阅购买。
+  - 当前 `IapPurchaseManager` 已提供统一购买入口、恢复购买入口和订阅管理入口。
+  - `UnityIapPurchaseBridge` 已升级为 Unity IAP v4 `IDetailedStoreListener`，购买失败时能回传更详细的商店错误。
+  - `IapPurchaseManager.SubmitPurchaseReceipt` 可把商店购买凭证提交到 Cloud Functions。
+  - Cloud Function `submitIapReceipt` 已接 Apple / Google receipt 校验路径；校验成功才升级 Pro，密钥未配置时会记录 `pending_configuration`。
 
 ## 朋友
 
@@ -166,6 +177,15 @@ XMind 中包含 5 个一级模块：
 - 需要隐私保护提示：双方只看到自己可见的结果，共同牌双方可见。
 - 双方都完成后展示双方占卜结果页。
 - 需要同步双方状态：已邀请、发起者已翻牌、等待对方、接收者已加入、双方完成。
+- 当前实现：
+  - 好友列表 `oracleBtn` 可对真实好友发起双人关系占卜邀请，对创建好友档案则生成本地即时关系占卜。
+  - 真实好友资料页右上“更多”中可发起关系占卜。
+  - 创建好友主页会动态生成“关系占卜”按钮。
+  - 真实好友邀请写入 `relationship_divinations/{readingId}`，状态包含 `invited`、`initiator_revealed`、`receiver_joined`、`completed`、`cancelled`。
+  - 好友页会读取当前用户收到的未完成关系占卜邀请，并显示运行时邀请卡。
+  - 运行时关系占卜面板展示三张牌、当前状态和隐私说明，支持翻开自己的牌、取消邀请、完成后进入对话解读。
+  - 完成后会把本次关系占卜保存到当前用户 `users/{uid}/divination_records/{readingId}`，方便后续历史记录复用。
+  - 隐私策略：自己的私牌只在自己翻开后可见；共同牌在双方完成后可见；对方私牌不会直接展示给当前用户。
 
 ### 好友主页
 
@@ -178,10 +198,32 @@ XMind 中包含 5 个一级模块：
 
 - 好友模块包含每日占卜同步设置页。
 - 需要支持配置是否与好友同步或分享每日占卜相关内容。
+- 已接入 `DailyDivinationSyncSettingsUI`：
+  - 返回按钮关闭页面。
+  - 信息按钮提示只同步摘要，不同步完整解读。
+  - 主开关控制是否自动同步每日牌摘要到动态。
+  - 可见范围支持“所有好友 / 仅真实好友 / 仅自己”。
+  - 关闭主开关时，可见范围选项不可操作。
+  - 点击保存会写入本地 `PlayerPrefs` 和 Firestore。
+- 已接入每日牌保存流程：
+  - `users/{uid}/daily_oracles/{date}` 保存完整每日牌与完整解读，仅本人可读。
+  - `daily_oracle_summaries/{uid}_{date}` 只保存摘要字段，供好友动态读取。
+  - 保存设置后会立即更新今天的摘要状态；如果今天还没有每日牌，则只保存设置。
+- 已接入好友页动态展示：
+  - 好友页顶部入口打开 `DailyDivinationSyncSettingsUI`。
+  - 好友页会运行时生成“今日好友每日牌”动态区块。
+  - 已接受的真实 Firebase 好友如果开启同步，会在区块中展示 TA 的每日牌摘要。
+  - 摘要卡片只展示牌名、正逆位、标题、摘要和微行动，不展示完整解读。
+  - 点击摘要卡片会进入 `DialogUI`，自动 `@` 该好友，并把 TA 今天同步的每日牌摘要注入 AI 好友上下文。
+- Firestore 权限：
+  - 完整每日牌记录 `users/{uid}/daily_oracles/{date}` 仅本人可读写。
+  - 摘要记录 `daily_oracle_summaries/{uid}_{date}` 仅本人或已接受好友可读。
+  - 摘要必须满足 `summaryOnly == true`、`syncEnabled == true`，并且 `visibility` 为 `all_friends` 或 `real_friends`。
+  - 好友读取通过 `users/{ownerUid}/friends/{viewerUid}.status == "friend"` 校验。
 
 ### 当前已实现的好友系统
 
-实现时间：2026-06-18
+实现时间：2026-06-19
 
 #### Firestore 数据结构
 
@@ -209,6 +251,19 @@ users/{uid}/friend_requests/{requesterUid}
   updatedAt
 ```
 
+屏蔽列表：
+
+```text
+users/{uid}/blocked_users/{blockedUid}
+  uid
+  displayName
+  email
+  photoUrl
+  source
+  createdAt
+  updatedAt
+```
+
 虚拟好友档案：
 
 ```text
@@ -221,6 +276,8 @@ users/{uid}/virtual_friends/{virtualFriendId}
   city
   notes
   avatarKey
+  avatarUrl
+  avatarStoragePath
   isDeleted
   createdAt
   updatedAt
@@ -229,25 +286,86 @@ users/{uid}/virtual_friends/{virtualFriendId}
 用户搜索依赖字段：
 
 ```text
-users/{uid}
+public_profiles/{uid}
+  uid
   displayName
   displayNameLower
   email
   emailLower
   photoUrl
+  facebookProviderId
+  searchKeywords: []
+```
+
+每日占卜同步设置：
+
+```text
+users/{uid}/settings/daily_divination_sync
+  enabled
+  visibility: all_friends | real_friends | only_me
+  summaryOnly: true
+  updatedAt
+```
+
+每日占卜私有完整记录：
+
+```text
+users/{uid}/daily_oracles/{yyyy-MM-dd}
+  date
+  cardId
+  cardName
+  orientation
+  title
+  oracle
+  detail
+  dos
+  donts
+  microAction
+  syncEnabled
+  visibility
+  summaryOnly: false
+```
+
+好友动态可读摘要：
+
+```text
+daily_oracle_summaries/{uid}_{yyyy-MM-dd}
+  ownerUid
+  date
+  cardId
+  cardName
+  orientation
+  title
+  oracle
+  microAction
+  syncEnabled
+  visibility
+  summaryOnly: true
 ```
 
 #### 真实好友搜索与请求
 
-- 已支持通过 Firebase `users` 集合搜索已注册用户。
-- 搜索方式：按 `displayNameLower` 做前缀匹配。
+- 已支持通过 Firebase `public_profiles` 集合搜索已注册用户。
+- `public_profiles` 是公开搜索索引：允许读取，只有本人可以创建或更新自己的公开资料。
+- 搜索方式：按 `displayNameLower` 做前缀匹配，例如输入“土豆”会返回用户名以“土豆”开头的用户。
+- 同时会写入 `searchKeywords` 数组，搜索时会再用 `array-contains` 兜底匹配昵称、邮箱、本地段、前缀和部分连续字符；例如新写入过公开资料的用户，可以支持更宽松的关键词匹配。
+- 如果前缀搜索和 `searchKeywords` 都不足，会再读取一批公开资料做本地包含匹配，用于兼容旧 `public_profiles` 文档没有关键词数组的情况。
+- 搜索会多拉取一批候选，再过滤/压缩成当前 UI 需要展示的结果，避免前几条包含自己时挤掉可添加用户。
+- Unity Editor 下如果 Firebase Firestore SDK 直连超时，会通过 Firestore REST API 和本地代理端口做搜索兜底；REST 路径同样包含前缀、关键词数组和公开资料扫描三段查询。
 - 搜索入口：`UserSearchUI`。
-- 搜索结果显示在当前搜索页的 3 个结果位。
+- 搜索结果优先使用 `SuperScrollView.LoopListView2` 渲染，旧的 3 个结果位作为 prefab 兜底。
 - 点击邀请后会发送好友请求。
 - 发送请求会同时写入：
   - `users/{我的uid}/friends/{对方uid}`，状态为 `pendingSent`。
   - `users/{对方uid}/friend_requests/{我的uid}`，状态为 `pendingReceived`。
-- 当前用户好友页会显示已发送请求，文案为“好友请求已发送”。
+- 当前用户好友页不会把 `pendingSent` 显示到“已有好友”；只有对方接受后变成 `friend` 才进入真实好友列表。
+- 打开搜索页会拉取当前用户已发送的 `pendingSent` 请求。
+- 已发送请求的搜索结果按钮会显示“取消”，点击会删除：
+  - `users/{我的uid}/friends/{对方uid}`。
+  - `users/{对方uid}/friend_requests/{我的uid}`。
+- 已经成为真实好友的搜索结果按钮会显示“已添加”，不能重复发送请求。
+- 搜索页会读取 `users/{uid}/blocked_users`。
+- 已屏蔽用户如果出现在搜索结果中，按钮显示“解除”，点击会删除屏蔽记录，之后可重新添加好友。
 
 #### 收到好友请求与接受
 
@@ -256,22 +374,31 @@ users/{uid}
   - `users/{uid}/friend_requests`
   - `users/{uid}/virtual_friends`
 - 收到的好友请求会进入现有邀请区域。
-- 当前 `InviteItem` 的按钮已接为“接受好友请求”。
+- 当前 `InviteItem` 会运行时生成“接受 / 拒绝”两个按钮。
 - 接受请求后会：
   - 写入 `users/{我}/friends/{对方}`，状态为 `friend`。
   - 写入 `users/{对方}/friends/{我}`，状态为 `friend`。
   - 删除 `users/{我}/friend_requests/{对方}`。
   - 将对方合并进本地真实好友缓存。
   - 从本地邀请缓存移除该请求。
-- 已实现 `RejectFriendRequest(...)`，但当前 prefab 没有单独拒绝按钮，所以还未接 UI。
+- 拒绝请求会删除 `users/{我}/friend_requests/{对方}`，并从本地邀请缓存移除该请求。
 
 #### 虚拟好友云端同步
 
 - 创建虚拟好友时会生成 `virtualFriendId`。
-- 创建后先写本地缓存，再调用 Firestore 同步。
+- 在 `CreateFriendUI` 填写资料后，会先进入 `ConfirmFriendInfoUI` 确认页。
+- 确认页展示头像、姓名、生日、出生时间、出生城市。
+- 点击确认页的“创建好友”后，才会写入本地缓存并调用 Firestore 同步。
+- 确认页支持返回编辑，也支持从姓名、生日、出生时间、出生城市入口回到对应编辑项。
+- 创建完成后会显示 `CreateFriendSuccessUI` 成功页，展示好友头像和姓名。
+- 成功页支持进入对话并自动关联该好友，也支持返回好友列表。
 - Firebase 路径为 `users/{uid}/virtual_friends/{virtualFriendId}`。
 - 打开好友页时会从 Firebase 拉取虚拟好友并合并到本地缓存。
-- 当前头像只保留 `avatarKey` 字段，真实头像上传还未接入。
+- 虚拟好友头像会上传到 Firebase Storage：
+  - 路径：`avatars/{uid}/virtual_{virtualFriendId}_512.jpg`。
+  - Firestore 保存 `avatarUrl` 与 `avatarStoragePath`。
+  - 好友列表、创建好友主页、编辑好友页会在本地无 Sprite 时通过 `avatarUrl` 下载头像兜底。
+- 删除虚拟好友会对 `users/{uid}/virtual_friends/{virtualFriendId}` 写入 `isDeleted: true`，本地缓存立即移除。
 
 #### 本地缓存
 
@@ -279,12 +406,40 @@ users/{uid}
 - 缓存 Key：`Fari_FriendData_v1`。
 - 好友页会先显示本地缓存，再拉取 Firebase 数据刷新。
 - 本地缓存用于离线兜底和快速展示，不作为真实好友关系的最终来源。
+- “已有好友”只展示 Firestore 中 `status == friend` 的真实好友。
+- `pendingSent`（已发送好友请求）不会进入“已有好友”列表；发送请求后只保留云端待确认记录。
+- 删除真实好友会删除双方 `friends` 记录，本地缓存同步移除。
+- 屏蔽列表也会缓存到本地，用于搜索页和好友页快速过滤/展示。
+
+#### 删除与屏蔽
+
+- 好友列表删除按钮会弹出运行时二次确认框。
+- 删除真实好友会删除双方 `friends` 记录，本地缓存同步移除。
+- 删除虚拟好友会写入 `isDeleted: true` 并从本地缓存移除。
+- 真实好友资料页右上“更多”会打开运行时操作菜单：
+  - 删除好友：二次确认后删除双方好友关系。
+  - 屏蔽好友：二次确认后写入 `users/{uid}/blocked_users/{friendUid}`，同时清理双方好友关系与待处理请求。
+- 被屏蔽用户不会作为已有好友展示；在搜索页重新出现时可点击“解除”恢复可添加状态。
 
 #### 对话联动
 
-- 好友列表中的 `@` 按钮可进入对话页。
-- 点击后会调用 `DialogUI.SendAtFriendsMessage(...)`。
-- 好友上下文包含：
+- 好友列表中的 `@` 按钮会先进入 `JumpToDialogUI`。
+- `JumpToDialogUI` 会展示当前好友头像、姓名、`@好友` 标签和关系提示。
+- 支持输入自定义问题，也支持选择灵感问题。
+- 点击“进入对话”会调用 `DialogUI.SendAtFriendsMessage(...)`，将好友上下文带入对话。
+- 如果填写了问题，会继续调用 `DialogUI.SendMessageFromExternal(...)` 发送该问题并触发 AI 对话。
+- 移除已选好友会返回好友列表。
+- 从 `@` 好友入口进入 `DialogUI` 时，会显示输入区的 `@好友` 标签框。
+- 普通入口进入 `DialogUI` 时会隐藏 `@好友` 标签框，并清空好友上下文，避免沿用上一次 `@` 的好友。
+- 点击 `@好友` 标签框里的 `x` 会取消当前 `@` 好友，并清空 `activeRelationshipId` 与 `activeFriendContext`，后续消息不再带入该好友上下文。
+- `@好友` 标签框会按好友名动态扩展宽度，并同步调整输入框文字区域的左侧留白，避免长名字与输入文字或取消按钮重叠。
+- 从好友每日牌动态卡进入对话时，`@好友` 上下文会额外包含该好友公开同步的今日每日牌摘要。
+- `DialogSystem` 会为当前 `@` 好友生成稳定关系 ID：
+  - 虚拟好友优先使用 `virtual:{virtualFriendId}`。
+  - 真实好友优先使用 `firebase:{firebaseUid}`。
+  - 没有云端 ID 时才使用 handle/name/local id 兜底。
+- UI 卡片继续展示简洁好友资料；AI 请求会额外携带一份更完整的好友上下文包。
+- AI 好友上下文包包含：
   - 姓名。
   - Firebase UID 或虚拟好友 ID。
   - 关系。
@@ -292,38 +447,193 @@ users/{uid}
   - 出生时间。
   - 城市。
   - notes 背景信息。
+  - 与该好友匹配的长期关系记忆。
+  - 与该好友匹配的候选记忆。
+  - 当前对话中与该好友相关的历史聊天片段。
+  - 与该好友关系 ID 匹配的占卜连续性记录。
+- OracleRuntime 请求会通过 `ChatPayload.friendContext` 接收这份上下文包。
+- 非 OracleRuntime 的旧 DeepSeek 请求路径也会追加 system 级好友上下文，保证关闭 OracleRuntime 时仍能围绕 `@` 好友推理。
+
+#### 真实好友资料页
+
+- 好友列表中的 `view` 按钮会根据好友类型分流。
+- 真实 Firebase 好友会打开 `FriendProfileUI`。
+- 创建的虚拟好友不会打开 `FriendProfileUI`，会打开专用的 `CreateFriendInfoUI`。
+- 待确认好友请求不会进入已有好友列表，也不会打开好友资料页。
+- `FriendItem` 会自动兜底查找 prefab 内的 `viewBtn`，不依赖手动拖引用。
+- 点击真实好友 `view` 会打开 `FriendProfileUI`：
+  - 使用本地好友缓存先填充头像、名称、真实好友关系状态和基础信息。
+  - 再读取 `public_profiles/{friendUid}` 覆盖公开昵称、邮箱 handle 和头像 URL。
+  - 会下载公开头像并赋值到资料页头像区域。
+  - 读取好友今天公开同步的每日牌摘要。
+  - 如果好友未开启同步或今天没有公开摘要，则显示暂无公开同步记录。
+  - 点击公开摘要记录会进入 `DialogUI`，自动 `@` 该好友，并把该摘要作为好友上下文传给 AI。
+  - 点击“全部记录 / 查看更多”会读取最近 30 天可见的好友每日牌摘要，并打开运行时历史记录弹窗。
+  - 页面底部动态同步开关复用当前用户的每日占卜同步设置，可直接开关并同步到 Firestore。
+  - 右上“更多”按钮支持删除真实好友、屏蔽真实好友。
+
+#### 创建好友主页与编辑页
+
+- 创建的虚拟好友在好友列表中也会显示 `view` 按钮。
+- 点击虚拟好友 `view` 会打开 `CreateFriendInfoUI`：
+  - 填充头像、好友名称、签名/备注、生日、出生时间、出生城市、用户名称。
+  - 占卜历史记录使用 `SuperScrollView.LoopListView2` 渲染。
+  - 历史记录优先读取 `users/{uid}/daily_oracles` 的近期每日牌记录。
+  - 如果云端未就绪，会用当前 `DailyOracleService` 缓存的今日牌作为兜底。
+  - “查看更多”入口会打开运行时占卜历史弹窗，展示最近 30 条每日牌记录。
+  - 底部“自动将每日占卜同步到动态”开关复用当前用户每日占卜同步设置，并会保存到 Firestore。
+- 点击 `CreateFriendInfoUI` 的编辑资料会打开 `EditFriendUI`：
+  - 带入当前虚拟好友头像、姓名、签名、生日、出生时间、出生城市。
+  - 头像编辑复用 `SelectFriendAvatarUI`。
+  - 生日、出生时间、出生城市编辑复用 `SpinPickerUI`。
+  - 保存后更新本地 `FriendDataManager` 缓存，并调用 `FirestoreManager.SaveVirtualFriend` 同步到 `users/{uid}/virtual_friends/{virtualFriendId}`。
+  - 如果头像是本地选择的图片，会先上传 Firebase Storage，再把 `avatarUrl` 和 `avatarStoragePath` 写入虚拟好友文档。
+  - 保存成功后会回调刷新 `CreateFriendInfoUI` 当前显示内容。
+  - “查看更多”入口同样会打开运行时占卜历史弹窗。
+
+#### 通讯录、短信与 Facebook 邀请
+
+- 添加好友页和注册后找朋友页中的通讯录入口已接 `NativeContactInviteManager`：
+  - Android 真机会申请 `READ_CONTACTS` 权限，读取系统通讯录手机号，并显示运行时联系人邀请列表。
+  - iOS 真机会弹出系统 `CNContactPickerViewController` 联系人选择器，选择联系人后打开短信邀请。
+  - Editor、无权限、未读取到联系人时，会自动降级为短信邀请/复制邀请文案。
+- 通讯录邀请不会把联系人写成本地真实好友；真实好友关系仍必须通过 Firebase 用户搜索、发送请求、对方接受后产生。
+- 点击通讯录联系人或邀请按钮会打开短信应用，并带入邀请文案，引导对方进入 App 后通过 Firebase 用户搜索添加。
+- Facebook 邀请页会先尝试真实好友发现：
+  - Facebook 登录权限包含 `user_friends`。
+  - 已登录且有 token 时，通过 Graph API `/me/friends` 获取同样授权本应用的 Facebook 好友。
+  - 使用 `public_profiles.facebookProviderId` 映射到 Firebase 注册用户。
+  - 找到应用内用户后显示运行时列表，可直接发送 Firebase 好友请求。
+  - 没有 SDK、没有 token、没有权限、没有可映射用户时，会降级为系统分享/复制邀请文案。
+- 注册后的找朋友页已经接通：
+  - 查找用户：打开 `UserSearchUI`。
+  - 通讯录邀请：Android/iOS 走原生通讯录选择，失败时打开短信邀请/复制邀请文案。
+  - 分享链接：复制/系统分享邀请文案。
+  - 跳过/完成：进入主导航。
+- 真实好友关系仍只通过 Firebase 搜索、发送请求、对方接受后产生。
+
+#### 好友相关通知入口
+
+- 好友流程中的顶部通知按钮已统一打开 `NotionUI`。
+- 已接入口包括：
+  - 添加好友入口 `AddFriendUI`。
+  - 用户搜索页 `UserSearchUI`。
+  - 创建好友页 `CreateFriendUI`。
+  - 创建好友成功页 `CreateFriendSuccessUI`。
+  - 通讯录邀请页 `ContactsInviteUI`。
+  - Facebook 邀请页 `FacebookInviteUI`。
+- 通知页本身继续负责每日提醒、好友邀请、关系占卜状态、系统消息等设置展示与同步。
+- `NotificationSettingsManager` 保存或加载设置后会调用 `AppNotificationScheduler` 重新排程：
+  - 每日神谕提醒：按用户配置时间每日重复。
+  - 占卜回访提醒：如果每日提醒在白天，则晚上回访；如果每日提醒在晚上，则次日早晨回访。
+  - 活动与系统提醒：每周五晚间重复。
+  - 好友互动提醒：好友请求、双人关系占卜邀请、好友每日牌动态读取到未处理内容时触发一次提醒。
+- `Packages/manifest.json` 与 `Packages/packages-lock.json` 已加入 `com.unity.mobile.notifications@2.3.2`；包未解析时调度器会安全降级为 PlayerPrefs 记录和 Editor Toast，解析后会尝试调用 Unity Mobile Notifications 统一通知 API。每日提醒会使用 `NotificationDateTimeSchedule + RepeatInterval.Daily`，Android/iOS 都按每天同一时间重复；通知中心初始化会写入 `PresentationOptions`，确保 Android channel 具备弹窗/声音/角标/震动展示能力。
+- `AppNotificationScheduler` 已补测试通知与排程快照：`Tools/Moonly/Schedule Test Notification (10s)` 可在 Editor/设备包中安排一条测试通知，`Tools/Moonly/Log Scheduled Notifications` 可输出最近排程的通知 ID、时间、重复模式和 native/fallback 状态。
 
 #### 已实现代码位置
 
 - `Assets/Scripts/Platform/FireBase/FirestoreManager.cs`
   - `SearchUsersByName`
+  - `SearchUsersByKeywordArray`
   - `SendFriendRequest`
+  - `LoadPendingSentFriendUids`
+  - `CancelSentFriendRequest`
   - `LoadFriends`
   - `LoadFriendRequests`
   - `AcceptFriendRequest`
   - `RejectFriendRequest`
+  - `RemoveRealFriend`
+  - `BlockRealFriend`
+  - `UnblockUser`
+  - `LoadBlockedUsers`
   - `SaveVirtualFriend`
   - `LoadVirtualFriends`
+  - `DeleteVirtualFriend`
+- `Assets/Scripts/Platform/FireBase/DailyOracleFirestore.cs`
+  - `LoadRecentFriendSummaries` 读取真实好友最近可见每日牌摘要。
+- `Assets/Scripts/Platform/FireBase/RelationshipDivinationFirestore.cs`
+  - `relationship_divinations` 双人关系占卜邀请、翻牌状态、取消状态和完成状态同步。
+  - 支持真实好友云端邀请与创建好友档案的本地即时关系占卜。
+  - 完成后写入个人占卜历史 `users/{uid}/divination_records`。
 - `Assets/Scripts/Friend/FriendDataManager.cs`
   - 真实好友、虚拟好友、好友请求的本地缓存与合并。
+  - 屏蔽用户列表的本地缓存。
+  - `UpdateVirtualFriend` 支持编辑虚拟好友后刷新本地缓存。
+  - `SetVirtualFriendCloudAvatar` 支持头像上传后回写本地缓存。
+- `Assets/Scripts/Friend/FriendRuntimeUI.cs`
+  - 运行时确认弹窗、操作菜单、占卜历史弹窗。
+  - 双人关系占卜运行时面板：三张牌展示、隐私可见性、翻牌、取消邀请、进入对话解读。
+- `Assets/Scripts/Friend/FriendInviteShareUtility.cs`
+  - 构建邀请文案、复制、系统分享、短信邀请、Facebook 邀请兜底。
+- `Assets/Scripts/Platform/Facebook/FacebookFriendDiscoveryManager.cs`
+  - Facebook Graph `/me/friends` 好友发现。
+  - 将 Facebook 好友 ID 映射到 `public_profiles.facebookProviderId`。
+  - 运行时展示可添加的 Facebook 应用内好友，并发送 Firebase 好友请求。
+- `Assets/Scripts/Platform/Facebook/FacebookUserInfoHelper.cs`
+  - 提取 Facebook provider user id。
+- `Assets/Scripts/Friend/NativeContactInviteManager.cs`
+  - Android 通讯录权限申请、联系人读取、运行时联系人列表、短信邀请。
+  - iOS 联系人选择回调接收、短信邀请。
+- `Assets/Plugins/iOS/FariNativeContacts.mm`
+  - iOS 原生联系人选择器。
+- `Assets/Editor/FariIOSContactsPostprocessor.cs`
+  - iOS 构建时写入 `NSContactsUsageDescription`。
+- `Assets/Plugins/Android/AndroidManifest.xml`
+  - 声明 `android.permission.READ_CONTACTS`。
+- `Assets/Scripts/Platform/FireBase/AvatarUploadManager.cs`
+  - 上传账号头像。
+  - 上传虚拟好友头像到 Firebase Storage。
+- `Assets/Scripts/Friend/FriendAvatarImageUtility.cs`
+  - 选择、持久化、读取本地好友头像。
+  - 通过 `avatarUrl` 下载远程好友头像。
 - `Assets/Scripts/UI/UserSearchUI.cs`
-  - Firebase 用户搜索与邀请。
+  - Firebase 用户搜索、邀请、取消已发送请求、已添加状态展示、解除屏蔽。
 - `Assets/Scripts/UI/FriendUI.cs`
   - 打开好友页时同步真实好友、好友请求、虚拟好友。
+  - 读取并展示收到的双人关系占卜邀请。
+- `Assets/Scripts/Friend/FriendItem.cs`
+  - `view` 按钮按真实好友/虚拟好友分流到不同资料页。
+  - `@` 按钮进入 `JumpToDialogUI`。
+  - `oracleBtn` 发起真实好友双人关系占卜，或为创建好友生成本地关系占卜。
+  - 运行时生成删除按钮，支持二次确认后删除真实好友或创建的虚拟好友。
 - `Assets/Scripts/UI/CreateFriendUI.cs`
   - 创建虚拟好友并同步 Firebase。
+- `Assets/Scripts/UI/CreateFriendInfoUI.cs`
+  - 创建好友主页、资料赋值、近期占卜历史、同步开关、进入编辑页。
+  - 动态生成“关系占卜”按钮，支持创建好友档案的本地关系占卜。
+- `Assets/Scripts/UI/EditFriendUI.cs`
+  - 创建好友资料编辑、头像选择、日期/时间/城市选择、保存本地和云端。
+- `Assets/Scripts/UI/JumpToDialogUI.cs`
+  - `@` 好友前的跳转确认页、问题输入与灵感问题选择。
+- `Assets/Scripts/UI/DialogUI.cs`
+  - 接收 `JumpToDialogUI` 传入的好友和问题，进入对话并发送消息。
+- `Assets/Scripts/Dialog/Data/DialogSystem.cs`
+  - 生成 `@` 好友上下文包，接入 OracleRuntime 和旧 DeepSeek 请求路径。
 - `Assets/Scripts/Friend/InviteItem.cs`
   - 接受好友请求。
+  - 运行时生成拒绝按钮并接入 `RejectFriendRequest`。
+  - 好友请求卡会运行时区分同意/拒绝按钮颜色，补充“好友请求”文案，并防止重复点击造成重复写入。
+- `Assets/Scripts/UI/RegisterFindFriendsUI.cs`
+  - 注册后找朋友入口的查找、通讯录邀请、分享、跳过/完成。
+- `Assets/Scripts/UI/AddFriendUI.cs`
+  - 通讯录入口接入 `NativeContactInviteManager`，无权限或无联系人时自动降级到短信邀请。
+  - 顶部通知按钮打开 `NotionUI`。
+- `Assets/Scripts/UI/ContactsInviteUI.cs`
+  - 完整通讯录邀请页的行为改为短信/分享邀请，不再伪造本地真实好友。
+  - 顶部通知按钮打开 `NotionUI`。
+- `Assets/Scripts/UI/FacebookInviteUI.cs`
+  - Facebook 邀请入口先尝试好友发现，再降级分享邀请。
+  - 顶部通知按钮打开 `NotionUI`。
+- `Assets/Scripts/UI/CreateFriendSuccessUI.cs`
+  - 创建好友成功页顶部通知按钮打开 `NotionUI`。
 
 #### 仍待补齐
 
-- 收到好友请求的 UI 目前复用邀请区域，按钮文案/视觉还没有单独适配。
-- 拒绝好友请求方法已实现，但缺少 UI 按钮入口。
-- 好友主页、好友详情、虚拟好友编辑页还未完整接入。
-- 删除好友、拉黑、取消已发送请求还未实现。
-- 通讯录邀请、短信邀请、Facebook 好友发现还未接真实服务。
-- Firestore Rules 需要允许用户读写自己的 `friends`、`friend_requests`、`virtual_friends` 子集合。
-- 如需更强搜索，Firestore 前缀查询后续可升级为关键词数组或 Algolia。
+- 收到好友请求的 UI 已完成运行时交互精修；如果后续有正式高保真设计稿，可再替换 prefab 视觉资源。
+- 通讯录完整页面 prefab 当前可通过 `Tools/UI/Rebuild ContactsInviteUI` 生成；Android/iOS 原生通讯录邀请已接入，短信发送结果回调仍受系统短信 App 限制。Facebook 好友发现代码链路已接入，但真实返回数据取决于 Facebook App Review、`user_friends` 权限是否获批，以及好友是否也授权过本应用。
+- 已存在的旧 `public_profiles` 文档如果没有 `searchKeywords`，客户端会用公开资料扫描兜底；该用户重新登录或保存资料后，会自动重写自己的 `public_profiles` 并补齐关键词数组。
+- `firestore.rules` 已补充取消请求、双向删除、屏蔽列表、每日占卜同步权限，以及 `relationship_divinations` 参与者读写权限；Rules 和 Indexes 已于 2026-06-20 部署到 `fari-app-b2fd2`。Functions 仍待写入真实 `APPLE_SHARED_SECRET` / Google Play 等 Secrets 后部署。
 
 ## 我的
 
@@ -373,11 +683,53 @@ users/{uid}
 - 展示账户绑定信息。
 - 支持删除账户入口。
 - 删除账户需要二次确认页。
+- 当前实现：
+  - `AccountUI` 会展示邮箱、登录类型、用户 ID、注册时间和账号状态。
+  - 退出登录会弹出运行时二次确认框，确认后调用 Firebase 登出并清理本地账号字段。
+  - 删除账户会弹出运行时二次确认框，确认后删除 Firestore 用户数据、公开资料和 Firebase Auth 账号；未登录 Firebase 时会清理本地账户数据。
+
+### 登录 / 注册
+
+- 当前实现：
+  - Google、Apple、Facebook、游客登录继续走 `FirebaseAuthManager`。
+  - Email 登录按钮会运行时打开邮箱登录弹窗，输入邮箱和密码后调用 Firebase `SignInWithEmailAndPasswordAsync`。
+  - 同一个弹窗内支持创建邮箱账号，调用 Firebase `CreateUserWithEmailAndPasswordAsync`，可选昵称会写入 Firebase Auth 用户资料。
+  - 邮箱登录弹窗内支持发送密码重置邮件，调用 Firebase `SendPasswordResetEmailAsync`。
+  - 邮箱登录/注册成功后会同步 `UserDataManager`，并执行 `FirestoreManager.SyncAfterLogin()` 创建或合并 `users/{uid}` 与 `public_profiles/{uid}`。
+  - Game Center 登录按钮已接 `FirebaseAuthManager.SignInWithGameCenter()`，iOS/tvOS 真机或模拟器会先走 Apple Game Center 授权，再通过 `GameCenterAuthProvider.GetCredentialAsync()` 登录 Firebase；Unity Editor 和非 Apple 平台会提示当前平台不支持。
+  - Game Center 登录成功后会同步 `UserDataManager.LoginType.GameCenter`、Firebase providerId 和 `users/{uid}` / `public_profiles/{uid}` 基础资料。
+  - iOS 导出后处理器会自动给 Xcode 工程添加 Game Center、Sign in with Apple、In-App Purchase 能力，并写入通讯录权限说明；仍需在 Apple Developer / App Store Connect / Firebase Console 中启用对应后台配置。
 
 ### 通知设置
 
 - 支持通知设置页。
-- 应覆盖每日占卜提醒、好友邀请、关系占卜状态、系统消息等通知类型。
+- 已覆盖每日占卜提醒、占卜回访提醒、好友邀请、关系占卜状态、好友每日牌动态、活动/系统消息等通知类型。
+- Android 清单已补 `POST_NOTIFICATIONS` 权限，Android 13+ 真机需要用户授权后才能显示系统通知。
+
+### 明日线索 / Tomorrow Hook
+
+- 对话牌阵里的“明天再看”会调用 `DivinationEngine.CreateTomorrowHook(...)`。
+- `DialogUI` 会把 Hook 写入当前 `MemorySource.tomorrowHooks`，安排一次次日提醒，并通过 `FirestoreManager.SaveTomorrowHook` 保存到：
+
+```text
+users/{uid}/tomorrow_hooks/{hookId}
+```
+
+- `TodayOracleUI` 显示时会读取 `LoadDueTomorrowHooks`，把今天及更早到期的 pending Hook 合并进 `DialogSystem` 记忆上下文。
+- 到期 Hook 会通过 `AppNotificationScheduler.NotifyTomorrowHookCount` 提醒用户回看。
+
+### Oracle Runtime 追踪
+
+- `ContextAssembler` 生成的 `PromptRecord` 已包含 scene、stage、stageReason、responseMode、riskLevel、riskFlags 和 memoryUsed。
+- 每条 AI 回复会把以下字段写进 `ChatMessageData`，并随 `DialogHistoryFirestore` 保存到云端对话历史：
+  - `oraclePromptId`
+  - `oracleScene`
+  - `oracleStage`
+  - `oracleStageReason`
+  - `oracleResponseMode`
+  - `oracleRiskLevel`
+  - `oracleRiskFlags`
+- 这些字段用于后续调试、风险回溯、复盘 AI 回复依据，不影响现有聊天 UI 展示。
 
 ### 反馈意见
 
@@ -388,6 +740,10 @@ users/{uid}
 ### 关注我们
 
 - 支持关注我们页。
+- 当前实现：
+  - `FollowusUI` 支持 Instagram、Facebook、X、TikTok、Pinterest 入口。
+  - 链接优先读取公开 App 配置 `PublicAppConfig.socialLinks`。
+  - 云端某个链接为空时会自动回退到 `SocialLinksConfig.Default`，避免按钮点击后没有反馈。
 - 可能展示社媒链接、社区入口、外部跳转。
 
 ### Pro / 解锁所有功能
@@ -396,6 +752,34 @@ users/{uid}
 - 支持未开通 Pro 的购买页。
 - Pro 与额度系统关联，例如每日占卜次数、对话次数、会员功能解锁。
 - 需要在受限功能处能跳转购买页。
+- 当前免费限制：
+  - 每日牌：Free 用户每天 1 次。
+  - 对话消息：Free 用户每天 100 条。
+  - 牌阵占卜：Free 用户每天 15 次。
+- Pro 状态来自后端会员接口，未登录或接口失败时会安全降级为 Free。
+- 商店支付仍依赖 App Store / Google Play 商品配置，以及 Firebase Functions 的 `APPLE_SHARED_SECRET` / `GOOGLE_PACKAGE_NAME` / `GOOGLE_SERVICE_ACCOUNT_JSON`。
+- 已新增 `AppReadinessDiagnostics` 运行时诊断，启动、Firebase 初始化和登录成功后会在 Console 输出 Firebase uid、Functions URL、Game Center Auth provider 是否可解析、Unity IAP 包解析、`UNITY_PURCHASING` 编译符号、Mobile Notifications API、Android `POST_NOTIFICATIONS` 权限、通知设置与最近排程快照，方便区分代码问题与外部部署/商店/包解析问题。
+- Unity Editor 菜单已补 `Tools/Moonly/Log Readiness Report`、`Resolve Required Packages`、`Copy Firebase Deploy Command`、`Copy Full Readiness Command`、`Copy iOS Xcode Export Command`、`Copy Android APK Build Command`、`Open Functions Readiness URL`、`Schedule Test Notification (10s)` 和 `Log Scheduled Notifications`。
+- Functions 已补 `readinessStatus` 健康检查端点；当前 Firestore Rules/Indexes 和基础 Functions 已部署，`readinessStatus` 在线返回 HTTP 200，可确认 Firestore 可读性，并通过 `secretDiagnostics` 说明健康检查函数是否绑定了可检查的 secrets。`DEEPSEEK_API_KEY`、`VOLC_TTS_API_KEY`、`PAYMENT_WEBHOOK_SECRET` 已存在并已绑定部署；`APPLE_SHARED_SECRET`、`GOOGLE_PACKAGE_NAME`、`GOOGLE_SERVICE_ACCOUNT_JSON` 仍缺失。线上函数列表显示 `submitIapReceipt` 已部署；缺 IAP secrets 时会记录 `pending_configuration`，不会误开 Pro。
+- `scripts/deploy-firebase.sh` 会默认部署基础 Functions，并跳过缺少 Secret 的 AI/TTS/IAP/Webhook Functions；部署成功后会自动调用 `readinessStatus`，并打印缺失 secrets、secret diagnostics 与 requiredActions。
+- 根目录已新增 `scripts/check-local-readiness.sh`，用于检查 manifest / packages-lock / Game Center Firebase Auth 接线 / iOS 导出能力后处理器与导出检查脚本 / `UNITY_PURCHASING` 宏 / Android 通知权限 / 通知设置云端同步 / 通知触发点 / Unity registry 版本可用性 / Unity 项目锁 / Functions export / 部署脚本 / 可选 Firebase CLI 登录/项目绑定 / Firebase 网络连通性 / 远端 Secrets / 线上 Functions 列表 / authenticated smoke tests / C# 编译和 Unity IAP 桥接编译。
+- 根目录已新增 `scripts/build-ios-xcode.sh` 和 `scripts/check-ios-export.sh`：
+  - `build-ios-xcode.sh` 会在 Unity 关闭时通过 batchmode 导出 iOS Xcode 工程，并立刻调用导出检查。
+  - `check-ios-export.sh` 会验证导出的 `Info.plist`、`.entitlements` 和 `project.pbxproj` 中包含通讯录权限说明、Game Center、Sign in with Apple 和 In-App Purchase 能力。
+  - `CHECK_IOS_EXPORT=1 ./scripts/check-local-readiness.sh` 可检查已有导出工程；`CHECK_IOS_BUILD=1 ./scripts/check-local-readiness.sh` 可执行 batchmode 导出和验证。
+- 根目录已新增 `scripts/build-android-apk.sh` 和 `scripts/check-android-config.sh`：
+  - `check-android-config.sh` 默认检查 Android 源配置：通知权限、通讯录权限、Firebase `google-services.xml`、Google Sign-In bridge、Facebook metadata、包名、SDK 版本、`UNITY_PURCHASING`、Gradle 依赖和仓库。
+  - `build-android-apk.sh` 会在 Unity 关闭时通过 batchmode 打 Android APK，并立刻调用 APK 检查。
+  - `configure-google-play-games.sh` 可在拿到 Google Play Games App ID 后自动写入 `GooglePlayGamesManifest.androidlib/AndroidManifest.xml`，格式为插件要求的 `\u003<APP_ID>`。
+  - `CHECK_ANDROID_APK=1 ./scripts/check-local-readiness.sh` 可检查已有 APK；`CHECK_ANDROID_BUILD=1 ./scripts/check-local-readiness.sh` 可执行 batchmode 构建和验证。
+  - 旧的 `Builds/Android/MoonlyApp.apk` 是之前产物，缺少新增通知/通讯录权限且 manifest 为 debuggable；重新运行 `CLEAN_ANDROID_BUILD=1 ./scripts/build-android-apk.sh` 后会按当前源配置重新生成并验证。
+- 根目录已新增 `scripts/check-firebase-network.sh`，可单独检查 Firestore REST、Firebase Auth、Secure Token、Firebase Management 和 `readinessStatus` 是否可达，辅助排查 Editor 搜索好友或 Firestore 写入失败。
+- 根目录已新增 `scripts/smoke-functions-auth.sh`，可用临时 Firebase 测试用户验证 `publicConfig`、`membershipStatus`、`aiChat`、`ttsSynthesize` 的 authenticated 调用面；当前 AI/TTS smoke 返回 HTTP 200。
+- 根目录已新增 `scripts/smoke-submit-iap-receipt.sh`，可用临时 Firebase 测试用户提交 fake receipt，验证 `submitIapReceipt` authenticated path 返回 `pending_configuration`。
+- 根目录已新增 `scripts/setup-firebase-secrets.sh`，从环境变量读取 DeepSeek、TTS、Apple / Google IAP 和可选 webhook secret，并通过 Firebase CLI 写入 Functions Secrets，不把密钥写进仓库；Google 服务账号支持 `GOOGLE_SERVICE_ACCOUNT_JSON_FILE` 文件输入，并会校验 `type == service_account`、`client_email` 和 `private_key`。
+- 根目录已新增 `scripts/check-firebase-secrets.sh`，可验证远端 Functions Secrets 是否存在且非空，不输出密钥值；Google 服务账号会额外校验 JSON 格式。
+- 根目录已新增 `scripts/deploy-iap-functions.sh`，用于 IAP secrets 全部就绪后一键部署 `readinessStatus` 与 `submitIapReceipt`；`scripts/smoke-submit-iap-receipt.sh` 支持 fake 安全模式和真实 receipt 严格验证模式。
+- 根目录已新增 `scripts/resolve-unity-packages.sh`，用于在 Unity 未打开时通过 batchmode 执行 `AppPackageResolverMenu.ResolveRequiredPackagesBatchMode` 自动解析 IAP 和通知包。
 
 ## 底部导航与全局入口
 
@@ -415,11 +799,23 @@ XMind 图片中主要出现的底部导航包括：
 - 添加好友。
 - 好友/关系相关入口。
 
+### 前景特效
+
+- 已新增 `OracleForegroundEffects` 运行时覆盖层。
+- 当前接入界面：
+  - `DialogUI`：对话界面显示轻量光点、烟雾和底部烛光氛围。
+  - `TodayOracleUI`：每日神谕界面显示更明显的星点和柔光氛围。
+  - `OracleReadingUI`：今日牌结果页显示火焰、光点和烟雾。
+  - `CompleteInterpretationUI`：完整解读页延续同一套神谕氛围。
+  - `TarorSingleSpreadShuffleUI`：洗牌页显示更克制的火焰和粒子层。
+- 特效层使用 `CanvasGroup.blocksRaycasts = false`，不会阻挡按钮、输入框和滚动列表交互。
+- 目前为程序化 UI 特效，包含运行时生成的火焰、光晕、星点和烟雾贴图；如果后续有正式蜡烛火焰、烟尘、粒子素材，可以在同一入口替换为美术资源版。
+
 ## 待确认点
 
-- 注册模块目前为空，需确认注册/登录流程是否另有设计稿。
+- 邮箱登录、创建账号、密码重置邮件和 Game Center 登录代码链路已接入；仍需确认是否还要独立的完整注册页设计稿，以及在 iOS/tvOS 真机或模拟器上完成 Game Center 后台配置与登录验证。
 - 底部导航命名存在不一致：`今日神谕/对话/一起玩/我的` 与 `首页/对话/日记/仪式/我的` 需要统一。
 - 好友关系占卜中是否需要实时 WebSocket，还是轮询即可。
 - 每日占卜的每日重置时间：按本地时区、服务器时区，还是用户配置时区。
-- Pro 权益明细：每日占卜额度、对话额度、好友占卜、记忆、历史等限制需要明确。
+- Pro 权益明细仍需产品侧最终确认：好友占卜、记忆、历史等是否也纳入限制。
 - 真实好友添加是否必须接入 Facebook 和通讯录，还是可分阶段实现。

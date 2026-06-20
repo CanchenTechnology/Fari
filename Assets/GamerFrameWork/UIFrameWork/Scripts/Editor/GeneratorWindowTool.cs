@@ -1,10 +1,7 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
-using System.Linq;
 using System.IO;
-using Newtonsoft.Json;
 using System.Text;
 namespace GamerFrameWork.UIFrameWork
 {
@@ -76,6 +73,11 @@ namespace GamerFrameWork.UIFrameWork
             sb.AppendLine("\t{");
 
             sb.AppendLine($"\t\tuiComponent = gameObject.GetComponent<{name}{UISetting.Instance.GenerateCSharpSuffix}>();");
+            sb.AppendLine("\t\tif (uiComponent == null)");
+            sb.AppendLine("\t\t{");
+            sb.AppendLine($"\t\t\tDebug.LogError(\"{name} 缺少 UI 组件绑定脚本：{name}{UISetting.Instance.GenerateCSharpSuffix}\");");
+            sb.AppendLine("\t\t\treturn;");
+            sb.AppendLine("\t\t}");
             sb.AppendLine("\t\tuiComponent.InitComponent(this);");
 
             sb.AppendLine("\t\tthis.Canvas.sortingOrder = (int)uiComponent.windowLayer;");
@@ -163,14 +165,13 @@ namespace GamerFrameWork.UIFrameWork
 
             //存储UI组件事件 提供给后续新增代码使用
             StringBuilder builder = new StringBuilder();
-            builder.AppendLine($"\t\t public void {methodName}({param})");
-            builder.AppendLine("\t\t {");
-            builder.AppendLine("\t\t");
-            builder.AppendLine("\t\t }");
+            builder.AppendLine($"\tpublic void {methodName}({param})");
+            builder.AppendLine("\t{");
+            builder.AppendLine();
+            builder.AppendLine("\t}");
             methodDic.Add(methodName, builder.ToString());
         }
 
     }
 #endif
 }
-

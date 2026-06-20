@@ -14,7 +14,9 @@ public enum AuthProvider
     Google,      // Google 登录
     Apple,       // Apple 登录
     Facebook,    // Facebook 登录
+    Email,       // 邮箱密码登录
     Anonymous,   // 匿名登录
+    GameCenter,  // Apple Game Center 登录
 }
 
 /// <summary>
@@ -116,6 +118,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
 
                 IsFirebaseInitialized = true;
                 Debug.Log("[FirebaseAuthManager] Firebase 初始化成功");
+                AppReadinessDiagnostics.LogCurrentState("Firebase initialized");
 
                 // 检查是否有已登录的用户
                 if (CurrentUser != null)
@@ -246,6 +249,51 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
     }
 
     /// <summary>
+    /// Apple Game Center 登录。仅在 iOS/tvOS 设备上可用。
+    /// </summary>
+    public void SignInWithGameCenter()
+    {
+        if (!CheckFirebaseReady()) return;
+        if (CheckAlreadyLoggingIn()) return;
+
+        CurrentAuthProvider = AuthProvider.GameCenter;
+        IsLoggingIn = true;
+
+#if (UNITY_IOS || UNITY_TVOS) && !UNITY_EDITOR
+        Social.localUser.Authenticate(success =>
+        {
+            if (!success)
+            {
+                IsLoggingIn = false;
+                const string error = "Game Center 授权失败或用户取消登录";
+                Debug.LogWarning("[FirebaseAuthManager] " + error);
+                OnLoginFailed?.Invoke(AuthProvider.GameCenter, error);
+                return;
+            }
+
+            GameCenterAuthProvider.GetCredentialAsync().ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled || task.Result == null)
+                {
+                    IsLoggingIn = false;
+                    string error = task.Exception?.InnerException?.Message ?? "获取 Game Center 凭证失败";
+                    Debug.LogWarning("[FirebaseAuthManager] Game Center 凭证获取失败: " + error);
+                    OnLoginFailed?.Invoke(AuthProvider.GameCenter, error);
+                    return;
+                }
+
+                SignInWithCredential(task.Result, AuthProvider.GameCenter);
+            });
+        });
+#else
+        IsLoggingIn = false;
+        string unsupported = "Game Center 登录仅支持 iOS/tvOS 真机或模拟器";
+        Debug.LogWarning("[FirebaseAuthManager] " + unsupported);
+        OnLoginFailed?.Invoke(AuthProvider.GameCenter, unsupported);
+#endif
+    }
+
+    /// <summary>
     /// 匿名登录
     /// </summary>
     public void SignInAnonymously()
@@ -257,6 +305,132 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
         IsLoggingIn = true;
 
         SignInAnonymouslyWithFirebase();
+    }
+
+    /// <summary>
+    /// 邮箱密码登录。
+    /// </summary>
+    public void SignInWithEmail(string email, string password)
+    {
+        if (!CheckFirebaseReady()) return;
+        if (CheckAlreadyLoggingIn()) return;
+
+        email = (email ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
+        {
+            OnLoginFailed?.Invoke(AuthProvider.Email, "请输入邮箱和密码");
+            return;
+        }
+
+        CurrentAuthProvider = AuthProvider.Email;
+        IsLoggingIn = true;
+
+        _auth.SignInWithEmailAndPasswordAsync(email, password).ContinueWithOnMainThread(task =>
+        {
+            IsLoggingIn = false;
+
+            if (task.IsFaulted || task.IsCanceled)
+            {
+                string error = task.Exception?.InnerException?.Message ?? "邮箱登录失败";
+                Debug.LogError($"[FirebaseAuthManager] 邮箱登录失败: {error}");
+                OnLoginFailed?.Invoke(AuthProvider.Email, error);
+                return;
+            }
+
+            FirebaseUser newUser = task.Result.User;
+            CompleteEmailAuth(newUser, "邮箱登录");
+        });
+    }
+
+    /// <summary>
+    /// 创建邮箱密码账号，并走完整 Firestore 同步。
+    /// </summary>
+    public void CreateAccountWithEmail(string email, string password, string displayName = null)
+    {
+        if (!CheckFirebaseReady()) return;
+        if (CheckAlreadyLoggingIn()) return;
+
+        email = (email ?? string.Empty).Trim();
+        displayName = (displayName ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
+        {
+            OnLoginFailed?.Invoke(AuthProvider.Email, "请输入邮箱和密码");
+            return;
+        }
+
+        CurrentAuthProvider = AuthProvider.Email;
+        IsLoggingIn = true;
+
+        _auth.CreateUserWithEmailAndPasswordAsync(email, password).ContinueWithOnMainThread(task =>
+        {
+            if (task.IsFaulted || task.IsCanceled)
+            {
+                IsLoggingIn = false;
+                string error = task.Exception?.InnerException?.Message ?? "创建账号失败";
+                Debug.LogError($"[FirebaseAuthManager] 创建邮箱账号失败: {error}");
+                OnLoginFailed?.Invoke(AuthProvider.Email, error);
+                return;
+            }
+
+            FirebaseUser newUser = task.Result.User;
+            if (newUser != null && !string.IsNullOrEmpty(displayName))
+            {
+                UserProfile profile = new UserProfile { DisplayName = displayName };
+                newUser.UpdateUserProfileAsync(profile).ContinueWithOnMainThread(profileTask =>
+                {
+                    IsLoggingIn = false;
+                    if (profileTask.IsFaulted || profileTask.IsCanceled)
+                    {
+                        Debug.LogWarning($"[FirebaseAuthManager] 邮箱账号显示名更新失败: {profileTask.Exception?.InnerException?.Message}");
+                    }
+
+                    CompleteEmailAuth(newUser, "邮箱账号创建");
+                });
+                return;
+            }
+
+            IsLoggingIn = false;
+            CompleteEmailAuth(newUser, "邮箱账号创建");
+        });
+    }
+
+    /// <summary>
+    /// 发送邮箱密码重置邮件。
+    /// </summary>
+    public void SendPasswordResetEmail(string email, Action<bool, string> onComplete = null)
+    {
+        if (!CheckFirebaseReady())
+        {
+            onComplete?.Invoke(false, "Firebase 尚未初始化完成");
+            return;
+        }
+
+        if (CheckAlreadyLoggingIn())
+        {
+            onComplete?.Invoke(false, "正在登录中，请稍后再试");
+            return;
+        }
+
+        email = (email ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(email))
+        {
+            onComplete?.Invoke(false, "请输入邮箱");
+            return;
+        }
+
+        _auth.SendPasswordResetEmailAsync(email).ContinueWithOnMainThread(task =>
+        {
+            if (task.IsFaulted || task.IsCanceled)
+            {
+                string error = task.Exception?.InnerException?.Message ?? "发送重置邮件失败";
+                Debug.LogWarning($"[FirebaseAuthManager] 发送密码重置邮件失败: {error}");
+                onComplete?.Invoke(false, error);
+                return;
+            }
+
+            Debug.Log($"[FirebaseAuthManager] 密码重置邮件已发送: {email}");
+            onComplete?.Invoke(true, "重置邮件已发送，请检查邮箱");
+        });
     }
 
     private void SignInAnonymouslyWithFirebase()
@@ -289,7 +463,28 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
             });
 
             OnLoginSuccess?.Invoke(AuthProvider.Anonymous, newUser);
+            AppReadinessDiagnostics.LogCurrentState("Anonymous login success");
         });
+    }
+
+    private void CompleteEmailAuth(FirebaseUser newUser, string actionName)
+    {
+        if (newUser == null)
+        {
+            OnLoginFailed?.Invoke(AuthProvider.Email, $"{actionName}失败：用户信息为空");
+            return;
+        }
+
+        Debug.Log($"[FirebaseAuthManager] {actionName}成功, UserId: {newUser.UserId}");
+        SyncUserToDataManager(newUser, AuthProvider.Email);
+
+        FirestoreManager.Instance.SyncAfterLogin(success =>
+        {
+            Debug.Log($"[FirebaseAuthManager] {actionName} Firestore 同步{(success ? "成功" : "失败")}");
+        });
+
+        OnLoginSuccess?.Invoke(AuthProvider.Email, newUser);
+        AppReadinessDiagnostics.LogCurrentState(actionName + " success");
     }
 
     #endregion
@@ -341,6 +536,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
             });
 
             OnLoginSuccess?.Invoke(provider, newUser);
+            AppReadinessDiagnostics.LogCurrentState(provider + " login success");
         });
 #endif
     }
@@ -374,6 +570,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
 
         // Editor 下没有真实 FirebaseUser 对象，传 null
         OnLoginSuccess?.Invoke(provider, null);
+        AppReadinessDiagnostics.LogCurrentState("Editor simulated " + provider + " login");
     }
 
     private static string GetMockDisplayName(AuthProvider provider) => provider switch
@@ -381,6 +578,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
         AuthProvider.Google => "Google 测试用户",
         AuthProvider.Apple => "Apple 测试用户",
         AuthProvider.Facebook => "Facebook 测试用户",
+        AuthProvider.GameCenter => "Game Center 测试用户",
         AuthProvider.Anonymous => "游客用户",
         _ => "测试用户"
     };
@@ -390,6 +588,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
         AuthProvider.Google => "test@google.com",
         AuthProvider.Apple => "test@icloud.com",
         AuthProvider.Facebook => "test@facebook.com",
+        AuthProvider.GameCenter => "",
         _ => ""
     };
 
@@ -398,6 +597,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
         AuthProvider.Google => "google.com",
         AuthProvider.Apple => "apple.com",
         AuthProvider.Facebook => "facebook.com",
+        AuthProvider.GameCenter => "gc.apple.com",
         AuthProvider.Anonymous => "firebase",
         _ => "unknown"
     };
@@ -628,6 +828,32 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
                     }
                 );
                 break;
+
+            case AuthProvider.GameCenter:
+#if (UNITY_IOS || UNITY_TVOS) && !UNITY_EDITOR
+                Social.localUser.Authenticate(success =>
+                {
+                    if (!success)
+                    {
+                        Debug.LogWarning("[FirebaseAuthManager] 关联 Game Center 账号失败: 授权失败或用户取消");
+                        return;
+                    }
+
+                    GameCenterAuthProvider.GetCredentialAsync().ContinueWithOnMainThread(task =>
+                    {
+                        if (task.IsFaulted || task.IsCanceled || task.Result == null)
+                        {
+                            Debug.LogWarning("[FirebaseAuthManager] 关联 Game Center 账号失败: " + (task.Exception?.InnerException?.Message ?? "获取凭证失败"));
+                            return;
+                        }
+
+                        LinkWithCredential(task.Result, provider);
+                    });
+                });
+#else
+                Debug.LogWarning("[FirebaseAuthManager] Game Center 账号关联仅支持 iOS/tvOS 真机或模拟器");
+#endif
+                break;
         }
     }
 
@@ -673,6 +899,36 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
             case AuthProvider.Facebook:
                 // Facebook 登录：直接走 Helper，包含时间戳 / 邮箱验证 / ProviderData 全量字段
                 FacebookUserInfoHelper.SyncToUserDataManager(user);
+                break;
+            case AuthProvider.Email:
+                UserDataManager.Instance.SyncFromFirebaseUser(new UserInfo
+                {
+                    uid = user.UserId,
+                    displayName = user.DisplayName ?? string.Empty,
+                    email = user.Email ?? string.Empty,
+                    photoUrl = user.PhotoUrl?.ToString() ?? string.Empty,
+                    providerId = "password",
+                    isAnonymous = false,
+                }, AuthProvider.Email);
+                UserDataManager.Instance.SetEmailVerified(user.IsEmailVerified);
+                UserDataManager.Instance.SetCreationTimestamp((long)(user.Metadata?.CreationTimestamp ?? 0));
+                UserDataManager.Instance.SetLastSignInTimestamp((long)(user.Metadata?.LastSignInTimestamp ?? 0));
+                UserDataManager.Instance.SaveData();
+                break;
+            case AuthProvider.GameCenter:
+                UserDataManager.Instance.SyncFromFirebaseUser(new UserInfo
+                {
+                    uid = user.UserId,
+                    displayName = user.DisplayName ?? Social.localUser?.userName ?? string.Empty,
+                    email = user.Email ?? string.Empty,
+                    photoUrl = user.PhotoUrl?.ToString() ?? string.Empty,
+                    providerId = GameCenterAuthProvider.ProviderId,
+                    isAnonymous = false,
+                }, AuthProvider.GameCenter);
+                UserDataManager.Instance.SetEmailVerified(user.IsEmailVerified);
+                UserDataManager.Instance.SetCreationTimestamp((long)(user.Metadata?.CreationTimestamp ?? 0));
+                UserDataManager.Instance.SetLastSignInTimestamp((long)(user.Metadata?.LastSignInTimestamp ?? 0));
+                UserDataManager.Instance.SaveData();
                 break;
             default:
                 // Anonymous 等其他登录方式走通用结构
@@ -782,6 +1038,8 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
             AuthProvider.Google => "Google",
             AuthProvider.Apple => "Apple",
             AuthProvider.Facebook => "Facebook",
+            AuthProvider.GameCenter => "Game Center",
+            AuthProvider.Email => "邮箱",
             AuthProvider.Anonymous => "游客",
             _ => "未知"
         };

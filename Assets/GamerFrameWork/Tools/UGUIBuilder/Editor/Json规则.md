@@ -59,6 +59,59 @@ UGUI Builder JSON Schema 参考本文档描述 UGUI Builder 工具接受的 JSON
 
 // 错误（RGB超出范围，或未按贴图取色）
 "textColor": { "r": 255, "g": 255, "b": 255, "a": 255 }
+
+## 布局拆分与层级规则（必须遵守）
+
+### 1. 禁止用空格模拟布局
+
+Text / Button / InputField 的 `text` 字段只能写真实显示内容，不能通过大量空格、制表符或换行把多个视觉区域塞进一个文本节点。
+
+错误示例：
+```json
+{
+  "name": "BirthTimeText",
+  "type": "Text",
+  "text": "◷   出生时间                          23:11                              ⌄"
+}
+```
+
+正确示例：每个视觉/逻辑区域拆成独立节点。
+```json
+{
+  "name": "BirthTimeRow",
+  "type": "Panel",
+  "children": [
+    { "name": "BirthTimeIcon", "type": "Text", "text": "◷" },
+    { "name": "BirthTimeLabel", "type": "Text", "text": "出生时间" },
+    { "name": "[Text]BirthTimeValue", "type": "Text", "text": "23:11" },
+    { "name": "BirthTimeArrow", "type": "Text", "text": "⌄" },
+    { "name": "[Button]BirthTime", "type": "Button", "text": "" }
+  ]
+}
+```
+
+### 2. 表单行 / 列表行推荐层级
+
+表单行、设置行、列表项必须优先使用 `Panel` 作为 Row 容器，再拆成独立子节点：
+
+- 图标：`Icon`，可用 `Text` 或 `Image`
+- 左侧标签：`Label`
+- 右侧动态值：必须使用 `[Text]xxxValue`
+- 箭头 / 状态 / 标签徽章：独立 `Text` 或 `Panel`
+- 点击区域：独立 `[Button]xxx`，放在 Row 最后，铺满 Row
+
+需要代码读写的值不要和静态标题混在同一个 Text 中。比如生日、出生时间、城市、状态、日期、标签、计数等都要单独命名。
+
+### 3. Image 透明度规则
+
+所有用于显示真实图片资源的 `Image`，例如背景图、头像、塔罗牌图、插画、图标，不能改变透明度。`Image.color.a` 必须保持 `1`；如果不需要染色，优先省略 `color`，或写：
+
+```json
+"color": { "r": 1, "g": 1, "b": 1, "a": 1 }
+```
+
+半透明遮罩、边框、发光、色块请使用 `Panel`，不要通过降低 `Image.color.a` 实现。透明点击区域请使用 `Button` 或 `Panel`，不要把真实图片 Image 的 alpha 改低。
+
 完整示例：一个经典登录页（包含代码绑定节点）JSON{
   "screenName": "LoginScreen",
   "resolution": { "x": 750, "y": 1334 },

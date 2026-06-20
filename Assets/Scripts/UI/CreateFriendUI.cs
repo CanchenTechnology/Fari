@@ -5,6 +5,7 @@
  * Description: UI 表现层，该层只负责界面的交互、表现相关的更新，不允许编写任何业务逻辑代码
  * 注意: 以下文件是自动生成的，再次生成不会覆盖原有的代码，会在原有的代码上进行新增，可放心使用
 ---------------------------------*/
+using System.IO;
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
@@ -139,30 +140,121 @@ public class CreateFriendUI : WindowBase
 			return;
 		}
 
-		string notes = BuildFriendNotes();
-		var createdFriend = FriendDataManager.Instance.AddVirtualFriend(
-			username.Trim(),
-			"好友",
-			birthday.Trim(),
-			birthTime.Trim(),
-			city.Trim(),
-			notes,
-			selectedAvatarSprite,
-			selectedAvatarImagePath);
+		ConfirmFriendInfoUI.Show(BuildFriendDraft(), ConfirmCreateFriend, HandleConfirmEditRequested);
+	}
 
-		ToastManager.ShowToast($"已创建 {username.Trim()}");
-		if (FirestoreManager.Instance != null)
+	private ConfirmFriendInfoUI.FriendDraft BuildFriendDraft()
+	{
+		return new ConfirmFriendInfoUI.FriendDraft
 		{
-			FirestoreManager.Instance.SaveVirtualFriend(createdFriend, success =>
-			{
-				if (!success)
-				{
-					ToastManager.ShowToast("已保存到本地，稍后会同步云端");
-				}
-			});
+			name = username.Trim(),
+			birthday = birthday.Trim(),
+			birthTime = birthTime.Trim(),
+			city = city.Trim(),
+			notes = BuildFriendNotes(),
+			avatarSprite = selectedAvatarSprite,
+			avatarImagePath = selectedAvatarImagePath
+		};
+	}
+
+	private void ConfirmCreateFriend(ConfirmFriendInfoUI.FriendDraft draft)
+	{
+		if (draft == null || string.IsNullOrWhiteSpace(draft.name))
+		{
+			ToastManager.ShowToast("好友信息缺失，请返回重试");
+			return;
 		}
+
+		var createdFriend = FriendDataManager.Instance.AddVirtualFriend(
+			draft.name.Trim(),
+			"好友",
+			draft.birthday.Trim(),
+			draft.birthTime.Trim(),
+			draft.city.Trim(),
+			draft.notes,
+			draft.avatarSprite,
+			draft.avatarImagePath);
+
+		SaveCreatedFriendToCloud(createdFriend);
+
+		CreateFriendSuccessUI.Show(createdFriend);
 		formInitialized = false;
 		HideWindow();
+	}
+
+	private void SaveCreatedFriendToCloud(FriendDataManager.FriendData createdFriend)
+	{
+		if (createdFriend == null || FirestoreManager.Instance == null)
+		{
+			return;
+		}
+
+		if (ShouldUploadVirtualFriendAvatar(createdFriend))
+		{
+			AvatarUploadManager.Instance.UploadVirtualFriendAvatarFromFile(
+				createdFriend.virtualFriendId,
+				createdFriend.avatarImagePath,
+				result =>
+				{
+					FriendDataManager.Instance.SetVirtualFriendCloudAvatar(
+						createdFriend,
+						result.photoUrl,
+						result.storagePath,
+						result.previewSprite);
+					SaveVirtualFriendDocument(createdFriend);
+				},
+				error =>
+				{
+					Debug.LogWarning("[CreateFriendUI] 创建好友头像上传失败: " + error);
+					SaveVirtualFriendDocument(createdFriend);
+				});
+			return;
+		}
+
+		SaveVirtualFriendDocument(createdFriend);
+	}
+
+	private bool ShouldUploadVirtualFriendAvatar(FriendDataManager.FriendData friend)
+	{
+		return friend != null
+			&& !string.IsNullOrWhiteSpace(friend.avatarImagePath)
+			&& File.Exists(friend.avatarImagePath)
+			&& AvatarUploadManager.Instance != null;
+	}
+
+	private void SaveVirtualFriendDocument(FriendDataManager.FriendData friend)
+	{
+		if (friend == null || FirestoreManager.Instance == null)
+		{
+			return;
+		}
+
+		FirestoreManager.Instance.SaveVirtualFriend(friend, success =>
+		{
+			if (!success)
+			{
+				ToastManager.ShowToast("已保存到本地，稍后会同步云端");
+			}
+		});
+	}
+
+	private void HandleConfirmEditRequested(ConfirmFriendInfoUI.EditTarget target)
+	{
+		switch (target)
+		{
+			case ConfirmFriendInfoUI.EditTarget.Name:
+				FocusInput(uiComponent.InputInputField);
+				break;
+			case ConfirmFriendInfoUI.EditTarget.Birthday:
+				OnField_birthdayDateButtonClick();
+				break;
+			case ConfirmFriendInfoUI.EditTarget.BirthTime:
+				OnField_birthdayTimeButtonClick();
+				break;
+			case ConfirmFriendInfoUI.EditTarget.City:
+				OnField_birthdayCountryButtonClick();
+				break;
+		}
 	}
 
 	public void OnAvatar1ButtonClick()
@@ -187,7 +279,7 @@ public class CreateFriendUI : WindowBase
 
 	public void OnNotificationsButtonClick()
 	{
-		ToastManager.ShowDebug();
+		UIModule.Instance.PopUpWindow<NotionUI>();
 	}
 
 	public void OnAvatarSelectionToggleChange(bool state, Toggle toggle)
@@ -216,18 +308,36 @@ public class CreateFriendUI : WindowBase
 
 	public void OnTabOracleToggleChange(bool state, Toggle toggle)
 	{
+		if (!state) return;
+		HideWindow();
+		UIModule.Instance.PopUpWindow<TodayOracleUI>();
 	}
 
 	public void OnTabChatToggleChange(bool state, Toggle toggle)
 	{
+		if (!state) return;
+		HideWindow();
+		UIModule.Instance.PopUpWindow<DialogUI>();
 	}
 
 	public void OnTabFriendsToggleChange(bool state, Toggle toggle)
 	{
+		if (!state) return;
+		HideWindow();
+		NavigationUI navigation = UIModule.Instance.PopUpWindow<NavigationUI>();
+		if (navigation != null)
+		{
+			navigation.OpenFriendUI();
+			return;
+		}
+		UIModule.Instance.PopUpWindow<FriendUI>();
 	}
 
 	public void OnTabProfileToggleChange(bool state, Toggle toggle)
 	{
+		if (!state) return;
+		HideWindow();
+		UIModule.Instance.PopUpWindow<MyUI>();
 	}
 
 	private void ReadFormValues()

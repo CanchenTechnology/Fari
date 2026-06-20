@@ -39,15 +39,44 @@ public class DialogUI : WindowBase
     public string astrologyVoiceType = "zh_female_shuangkuaidv2";
     [Tooltip("单次 TTS 请求分段长度，需小于服务端 1200 字限制")]
     public int ttsSegmentMaxLength = 1100;
+    [Tooltip("普通 AI 文本回复完成后，先合成语音，再显示并按音频时长追字播放")]
+    public bool autoPlayAITextWithVoice = true;
+    [Tooltip("开启后，普通 AI 文本在语音合成完成前不会出现在聊天列表")]
+    public bool delayAITextUntilVoiceReady = true;
 
     private TTSManager ttsManager;
     private ChatItem _currentTTSItem; // 当前正在播放语音的 ChatItem
+    private int _currentTTSMessageId = -1;
     private Coroutine _ttsPlaybackCoroutine;
     private Coroutine _cloudDialogLoadCoroutine;
+    private readonly Dictionary<int, PreparedTTSAudio> _preparedTTSByMessageId = new Dictionary<int, PreparedTTSAudio>();
     private readonly Queue<System.Action> _pendingAIRequests = new Queue<System.Action>();
     private bool _forceNextAIMessageAsThreeCardSpread;
+    private FriendDataManager.FriendData _activeAtFriend;
+    private RectTransform _inputTextRect;
+    private RectTransform _inputPlaceholderRect;
+    private RectTransform _cancelAtRect;
+    private Vector2 _inputTextOriginalOffsetMin;
+    private Vector2 _inputTextOriginalOffsetMax;
+    private Vector2 _inputPlaceholderOriginalOffsetMin;
+    private Vector2 _inputPlaceholderOriginalOffsetMax;
+    private float _atFriendOriginalLeftEdge;
+    private bool _atFriendLayoutCached;
     private const float CLOUD_DIALOG_LOAD_RETRY_SECONDS = 8f;
     private const float CLOUD_DIALOG_LOAD_RETRY_INTERVAL = 0.5f;
+    private const float AT_FRIEND_MIN_WIDTH = 160f;
+    private const float AT_FRIEND_MAX_WIDTH = 360f;
+    private const float AT_FRIEND_LEFT_PADDING = 18f;
+    private const float AT_FRIEND_RIGHT_PADDING = 12f;
+    private const float AT_FRIEND_TEXT_CANCEL_GAP = 8f;
+    private const float AT_FRIEND_INPUT_GAP = 12f;
+
+    private class PreparedTTSAudio
+    {
+        public readonly List<string> segments = new List<string>();
+        public readonly List<AudioClip> clips = new List<AudioClip>();
+        public float totalDuration;
+    }
 
     #region 生命周期函数
     // 调用机制与 Mono Awake 一致
@@ -81,16 +110,21 @@ public class DialogUI : WindowBase
         EventSystem.AddEventListener<string>(GameDataStr.CardTopicSelected, OnCardTopicSelected);
 
         UpdateDivinerInfo();
+        CacheAtFriendLayout();
+        RefreshAtFriendBox();
     }
     // 物体显示时执行
     public override void OnShow()
     {
         base.OnShow();
+        OracleForegroundEffects.Attach(this.Canvas, OracleForegroundEffectStyle.Dialog);
+        ClearAtFriendSelection(false);
         LoadCloudDialogState();
     }
     // 物体隐藏时执行
     public override void OnHide()
     {
+        OracleForegroundEffects.Detach(this.Canvas);
         base.OnHide();
     }
     // 物体销毁时执行
@@ -145,10 +179,12 @@ public class DialogUI : WindowBase
                     {
                         historyCompleted = true;
                         UpdateChatScrollView();
+                        SyncActiveFriendContextToDialogSystem();
                     }
                     else if (attemptedCloud)
                     {
                         historyCompleted = true;
+                        SyncActiveFriendContextToDialogSystem();
                     }
                 });
             }
@@ -166,6 +202,7 @@ public class DialogUI : WindowBase
         }
 
         _cloudDialogLoadCoroutine = null;
+        SyncActiveFriendContextToDialogSystem();
     }
 
     /// <summary>
@@ -272,16 +309,18 @@ public class DialogUI : WindowBase
     /// <summary>
     /// 发送用户消息
     /// </summary>
-    private void SendUserMessage(string content)
-    {
-        if (mIsLoading)
-        {
-            EnqueueAIRequest(() => SendUserMessage(content));
-            return;
-        }
+	private void SendUserMessage(string content)
+	{
+		if (mIsLoading)
+		{
+			EnqueueAIRequest(() => SendUserMessage(content));
+			return;
+		}
 
-        // 添加用户消息到数据层
-        dialogSystem.AddUserMessage(content);
+		if (!MembershipGate.CanUse(MembershipFeature.DialogMessage)) return;
+
+		// 添加用户消息到数据层
+		dialogSystem.AddUserMessage(content);
 
         UpdateChatScrollView();
 
@@ -304,12 +343,16 @@ public class DialogUI : WindowBase
         mLastChunkRefreshTime = 0f;
 
         int streamingMessageIndex = -1;
+        bool delayTextUntilVoiceReady = ShouldDelayAITextUntilVoiceReady();
 
         // 调用流式 API
         streamingMessageIndex = dialogSystem.SendMessageToAIStream(
             // ---- onChunk: 每收到一个 token ----
             (chunk) =>
             {
+                if (delayTextUntilVoiceReady)
+                    return;
+
                 if (mIsFirstChunk)
                 {
                     if (_forceNextAIMessageAsThreeCardSpread && ShouldTriggerInteractionCard())
@@ -345,8 +388,6 @@ public class DialogUI : WindowBase
             // ---- onComplete: 流式完成 ----
             (fullContent) =>
             {
-                HideLoadingIndicator();
-
                 // ---- 占卜完成检测：如果处于 CardsLocked 阶段（AI 已完成解读），自动保存到 Firestore ----
                 if (divinationEngine != null
                     && divinationEngine.CurrentSession != null
@@ -359,22 +400,26 @@ public class DialogUI : WindowBase
                 // ---- 检查是否需要展示 InteractionCard ----
                 if (ShouldTriggerInteractionCard())
                 {
+                    HideLoadingIndicator();
                     ConvertMessageToInteractionCard(streamingMessageIndex, fullContent);
                     _forceNextAIMessageAsThreeCardSpread = false;
-                }
-                else
-                {
-                    // 普通 AI 回复：设置选项按钮
-                    List<string> options = dialogSystem.GetCurrentDivinerOptions();
-                    dialogSystem.SetAIMessageOptions(streamingMessageIndex, options);
+                    RefreshChatAfterAIMessage(streamingMessageIndex);
+                    ProcessNextQueuedAIRequest();
+                    return;
                 }
 
-                // 最终完整刷新
-                int msgCount = dialogSystem.GetMessageCount();
-                Debug.Log($"[DialogUI] 流式完成，最终消息数: {msgCount}");
-                chatListView.SetListItemCount(msgCount, false);
-                chatListView.MovePanelToItemIndex(msgCount - 1, 0);
-                chatListView.RefreshAllShownItem();
+                // 普通 AI 回复：设置选项按钮
+                List<string> options = dialogSystem.GetCurrentDivinerOptions();
+                dialogSystem.SetAIMessageOptions(streamingMessageIndex, options);
+
+                if (ShouldAutoPlayAITextWithVoice(fullContent))
+                {
+                    uiComponent.StartCoroutine(ShowAITextAfterVoiceReady(streamingMessageIndex, fullContent));
+                    return;
+                }
+
+                HideLoadingIndicator();
+                RefreshChatAfterAIMessage(streamingMessageIndex);
                 ProcessNextQueuedAIRequest();
             },
             // ---- onError: 流式出错 ----
@@ -393,6 +438,38 @@ public class DialogUI : WindowBase
                 ProcessNextQueuedAIRequest();
             }
         );
+    }
+
+    private bool ShouldDelayAITextUntilVoiceReady()
+    {
+        return enableTTS
+            && autoPlayAITextWithVoice
+            && delayAITextUntilVoiceReady
+            && ttsManager != null
+            && !ShouldTriggerInteractionCard();
+    }
+
+    private bool ShouldAutoPlayAITextWithVoice(string text)
+    {
+        return enableTTS
+            && autoPlayAITextWithVoice
+            && ttsManager != null
+            && !string.IsNullOrWhiteSpace(text);
+    }
+
+    private void RefreshChatAfterAIMessage(int messageIndex)
+    {
+        int msgCount = dialogSystem.GetMessageCount();
+        Debug.Log($"[DialogUI] 流式完成，最终消息数: {msgCount}");
+        chatListView.SetListItemCount(msgCount, false);
+        chatListView.MovePanelToItemIndex(messageIndex >= 0 ? messageIndex : msgCount - 1, 0);
+        chatListView.RefreshAllShownItem();
+    }
+
+    private ChatItem GetShownChatItem(int messageIndex)
+    {
+        var shownItem = chatListView.GetShownItemByItemIndex(messageIndex);
+        return shownItem != null ? shownItem.GetComponent<ChatItem>() : null;
     }
 
     /// <summary>
@@ -457,9 +534,21 @@ public class DialogUI : WindowBase
 
     public void SendAtFriendsMessage(FriendDataManager.FriendData friend)
     {
-        dialogSystem.AddAtFriendMessage("", friend);
-        UpdateChatScrollView();
-        Debug.Log(friend != null ? $"关联好友：{friend.name}" : "关联好友");
+        SendAtFriendsMessage(friend, "");
+    }
+
+    public void SendAtFriendsMessage(FriendDataManager.FriendData friend, string extraContext)
+    {
+        if (friend == null)
+        {
+            ClearAtFriendSelection(false);
+            return;
+        }
+
+        _activeAtFriend = friend;
+        RefreshAtFriendBox();
+        dialogSystem.ActivateFriendContext(friend, extraContext);
+        Debug.Log($"关联好友：{GetAtFriendDisplayName(friend)}");
     }
 
     /// <summary>
@@ -470,13 +559,15 @@ public class DialogUI : WindowBase
         if (string.IsNullOrEmpty(message)) return;
         if (dialogSystem == null) return;
 
-        if (mIsLoading)
-        {
-            EnqueueAIRequest(() => SendMessageFromExternal(message));
-            return;
-        }
+		if (mIsLoading)
+		{
+			EnqueueAIRequest(() => SendMessageFromExternal(message));
+			return;
+		}
 
-        // 如果有今日卡牌数据，同步到 DialogSystem
+		if (!MembershipGate.CanUse(MembershipFeature.DialogMessage)) return;
+
+		// 如果有今日卡牌数据，同步到 DialogSystem
         var oracleService = DailyOracleService.Instance;
         if (oracleService?.CurrentCard != null)
         {
@@ -515,6 +606,208 @@ public class DialogUI : WindowBase
             msgCount - 1,
             0
         );
+    }
+
+    private void ClearAtFriendSelection(bool showToast)
+    {
+        _activeAtFriend = null;
+        RefreshAtFriendBox();
+        dialogSystem?.ClearActiveFriendContext();
+
+        if (showToast)
+        {
+            ToastManager.ShowToast("已取消 @ 好友");
+        }
+    }
+
+    private void SyncActiveFriendContextToDialogSystem()
+    {
+        if (dialogSystem == null) return;
+
+        if (_activeAtFriend != null)
+        {
+            dialogSystem.ActivateFriendContext(_activeAtFriend);
+        }
+        else
+        {
+            dialogSystem.ClearActiveFriendContext();
+        }
+
+        RefreshAtFriendBox();
+    }
+
+    private void RefreshAtFriendBox()
+    {
+        bool hasFriend = _activeAtFriend != null;
+        if (uiComponent?.artFriendRectTransfrom != null)
+        {
+            uiComponent.artFriendRectTransfrom.gameObject.SetActive(hasFriend);
+        }
+
+        string label = hasFriend ? $"@{GetAtFriendDisplayName(_activeAtFriend)}" : string.Empty;
+        if (uiComponent?.artFriendNameText != null)
+        {
+            uiComponent.artFriendNameText.text = label;
+        }
+
+        ApplyAtFriendDynamicLayout(hasFriend, label);
+    }
+
+    private string GetAtFriendDisplayName(FriendDataManager.FriendData friend)
+    {
+        if (friend == null || string.IsNullOrWhiteSpace(friend.name))
+        {
+            return "好友";
+        }
+
+        return friend.name.Trim();
+    }
+
+    private void CacheAtFriendLayout()
+    {
+        if (_atFriendLayoutCached) return;
+
+        if (uiComponent?.questionInputField != null)
+        {
+            if (uiComponent.questionInputField.textComponent != null)
+            {
+                _inputTextRect = uiComponent.questionInputField.textComponent.rectTransform;
+                _inputTextOriginalOffsetMin = _inputTextRect.offsetMin;
+                _inputTextOriginalOffsetMax = _inputTextRect.offsetMax;
+            }
+
+            if (uiComponent.questionInputField.placeholder is Graphic placeholderGraphic)
+            {
+                _inputPlaceholderRect = placeholderGraphic.rectTransform;
+                _inputPlaceholderOriginalOffsetMin = _inputPlaceholderRect.offsetMin;
+                _inputPlaceholderOriginalOffsetMax = _inputPlaceholderRect.offsetMax;
+            }
+        }
+
+        if (uiComponent?.cancelArtButton != null)
+        {
+            _cancelAtRect = uiComponent.cancelArtButton.GetComponent<RectTransform>();
+        }
+
+        if (uiComponent?.artFriendRectTransfrom != null)
+        {
+            var rect = uiComponent.artFriendRectTransfrom;
+            _atFriendOriginalLeftEdge = rect.anchoredPosition.x - rect.sizeDelta.x * rect.pivot.x;
+        }
+
+        _atFriendLayoutCached = true;
+    }
+
+    private void ApplyAtFriendDynamicLayout(bool hasFriend, string label)
+    {
+        CacheAtFriendLayout();
+
+        if (!hasFriend)
+        {
+            RestoreInputTextArea();
+            return;
+        }
+
+        if (uiComponent?.artFriendRectTransfrom == null || uiComponent.artFriendNameText == null)
+            return;
+
+        Canvas.ForceUpdateCanvases();
+
+        float cancelWidth = GetRectWidth(_cancelAtRect, 34f);
+        float preferredTextWidth = Mathf.Ceil(uiComponent.artFriendNameText.preferredWidth);
+        float desiredWidth = preferredTextWidth
+            + cancelWidth
+            + AT_FRIEND_LEFT_PADDING
+            + AT_FRIEND_RIGHT_PADDING
+            + AT_FRIEND_TEXT_CANCEL_GAP;
+        float maxWidth = GetMaxAtFriendWidth();
+        float tagWidth = Mathf.Clamp(desiredWidth, AT_FRIEND_MIN_WIDTH, maxWidth);
+
+        ResizeAtFriendTag(tagWidth, cancelWidth);
+        ApplyInputTextInset(_atFriendOriginalLeftEdge + tagWidth + AT_FRIEND_INPUT_GAP);
+    }
+
+    private float GetMaxAtFriendWidth()
+    {
+        float maxWidth = AT_FRIEND_MAX_WIDTH;
+        var inputRect = uiComponent?.questionInputField != null
+            ? uiComponent.questionInputField.GetComponent<RectTransform>()
+            : null;
+
+        if (inputRect != null && inputRect.rect.width > 0f)
+        {
+            maxWidth = Mathf.Min(maxWidth, Mathf.Max(AT_FRIEND_MIN_WIDTH, inputRect.rect.width - 170f));
+        }
+
+        return Mathf.Max(AT_FRIEND_MIN_WIDTH, maxWidth);
+    }
+
+    private void ResizeAtFriendTag(float tagWidth, float cancelWidth)
+    {
+        var tagRect = uiComponent.artFriendRectTransfrom;
+        tagRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, tagWidth);
+        tagRect.anchoredPosition = new Vector2(
+            _atFriendOriginalLeftEdge + tagWidth * tagRect.pivot.x,
+            tagRect.anchoredPosition.y);
+
+        var nameRect = uiComponent.artFriendNameText.rectTransform;
+        float textWidth = Mathf.Max(24f,
+            tagWidth - AT_FRIEND_LEFT_PADDING - AT_FRIEND_RIGHT_PADDING - AT_FRIEND_TEXT_CANCEL_GAP - cancelWidth);
+        nameRect.anchorMin = new Vector2(0f, 0f);
+        nameRect.anchorMax = new Vector2(0f, 1f);
+        nameRect.pivot = new Vector2(0f, 0.5f);
+        nameRect.anchoredPosition = new Vector2(AT_FRIEND_LEFT_PADDING, 0f);
+        nameRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, textWidth);
+
+        if (_cancelAtRect != null)
+        {
+            _cancelAtRect.anchorMin = new Vector2(1f, 0.5f);
+            _cancelAtRect.anchorMax = new Vector2(1f, 0.5f);
+            _cancelAtRect.pivot = new Vector2(1f, 0.5f);
+            _cancelAtRect.anchoredPosition = new Vector2(-AT_FRIEND_RIGHT_PADDING, 0f);
+            _cancelAtRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, cancelWidth);
+        }
+    }
+
+    private void ApplyInputTextInset(float leftInset)
+    {
+        if (_inputTextRect != null)
+        {
+            var offsetMin = _inputTextOriginalOffsetMin;
+            offsetMin.x = Mathf.Max(_inputTextOriginalOffsetMin.x, leftInset);
+            _inputTextRect.offsetMin = offsetMin;
+            _inputTextRect.offsetMax = _inputTextOriginalOffsetMax;
+        }
+
+        if (_inputPlaceholderRect != null)
+        {
+            var offsetMin = _inputPlaceholderOriginalOffsetMin;
+            offsetMin.x = Mathf.Max(_inputPlaceholderOriginalOffsetMin.x, leftInset);
+            _inputPlaceholderRect.offsetMin = offsetMin;
+            _inputPlaceholderRect.offsetMax = _inputPlaceholderOriginalOffsetMax;
+        }
+    }
+
+    private void RestoreInputTextArea()
+    {
+        if (_inputTextRect != null)
+        {
+            _inputTextRect.offsetMin = _inputTextOriginalOffsetMin;
+            _inputTextRect.offsetMax = _inputTextOriginalOffsetMax;
+        }
+
+        if (_inputPlaceholderRect != null)
+        {
+            _inputPlaceholderRect.offsetMin = _inputPlaceholderOriginalOffsetMin;
+            _inputPlaceholderRect.offsetMax = _inputPlaceholderOriginalOffsetMax;
+        }
+    }
+
+    private static float GetRectWidth(RectTransform rect, float fallback)
+    {
+        if (rect == null) return fallback;
+        if (rect.rect.width > 0f) return rect.rect.width;
+        return rect.sizeDelta.x > 0f ? rect.sizeDelta.x : fallback;
     }
 
 
@@ -635,6 +928,10 @@ public class DialogUI : WindowBase
 
         // 清空输入框
         uiComponent.questionInputField.text = "";
+    }
+    public void OncancelArtButtonClick()
+    {
+        ClearAtFriendSelection(true);
     }
 
     /// <summary>
@@ -850,7 +1147,7 @@ public class DialogUI : WindowBase
         if (hook != null)
         {
             Debug.Log($"[DialogUI] 保存明日钩子: hookId={hook.hookId}, text={triggerText}");
-            ToastManager.ShowToast("已保存线索，明天见！");
+            PersistTomorrowHook(hook);
         }
         else
         {
@@ -915,87 +1212,215 @@ public class DialogUI : WindowBase
         var msgData = dialogSystem.GetMessageByIndex(itemIndex);
         if (msgData == null || string.IsNullOrEmpty(msgData.content)) return;
 
-        string text = msgData.content;
-
         // 停止之前的播放
         StopTTSPlayback();
-        ConfigureTTSVoice(msgData.divinerType);
 
         // 标记当前播放项
         _currentTTSItem = item;
+        _currentTTSMessageId = msgData.id;
         item.ShowTTSLoading(true);
 
-        Debug.Log($"[DialogUI] TTS 请求播放: {text.Substring(0, Mathf.Min(text.Length, 30))}...");
+        Debug.Log($"[DialogUI] TTS 请求播放: {msgData.content.Substring(0, Mathf.Min(msgData.content.Length, 30))}...");
 
-        _ttsPlaybackCoroutine = uiComponent.StartCoroutine(SpeakAndPlayTextSegments(item, text));
+        _ttsPlaybackCoroutine = uiComponent.StartCoroutine(PrepareAndPlayTTSForItem(item, itemIndex, msgData));
     }
 
-    /// <summary>
-    /// 按服务端限制拆分长文本，逐段合成并播放。
-    /// </summary>
-    private System.Collections.IEnumerator SpeakAndPlayTextSegments(ChatItem item, string text)
+    private IEnumerator ShowAITextAfterVoiceReady(int messageIndex, string fullText)
     {
-        var segments = SplitTTSText(text, Mathf.Max(100, ttsSegmentMaxLength));
-        if (segments.Count == 0)
+        var msgData = dialogSystem.GetMessageByIndex(messageIndex);
+        if (msgData == null)
         {
-            item.ShowTTSLoading(false);
-            _currentTTSItem = null;
+            HideLoadingIndicator();
+            RefreshChatAfterAIMessage(messageIndex);
+            ProcessNextQueuedAIRequest();
             yield break;
         }
 
+        string displayText = string.IsNullOrEmpty(msgData.content) ? fullText : msgData.content;
+        PreparedTTSAudio prepared = null;
+        string error = null;
+        yield return uiComponent.StartCoroutine(PrepareTTSAudio(msgData.id, displayText, msgData.divinerType,
+            (result, synthError) =>
+            {
+                prepared = result;
+                error = synthError;
+            }));
+
+        if (prepared == null || prepared.totalDuration <= 0f)
+        {
+            Debug.LogWarning($"[DialogUI] TTS 准备失败，直接显示文本: {error}");
+            HideLoadingIndicator();
+            RefreshChatAfterAIMessage(messageIndex);
+            ProcessNextQueuedAIRequest();
+            yield break;
+        }
+
+        dialogSystem.SetAIMessageTTSInfo(messageIndex, prepared.totalDuration, true);
+
+        int msgCount = dialogSystem.GetMessageCount();
+        chatListView.SetListItemCount(msgCount, false);
+        chatListView.MovePanelToItemIndex(messageIndex, 0);
+        chatListView.RefreshAllShownItem();
+        yield return null;
+
+        ChatItem item = GetShownChatItem(messageIndex);
+        if (item == null)
+        {
+            HideLoadingIndicator();
+            ProcessNextQueuedAIRequest();
+            yield break;
+        }
+
+        item.onTTSPlayClicked = OnChatItemTTSPlay;
+        _currentTTSItem = item;
+        _currentTTSMessageId = msgData.id;
+        item.ShowTTSLoading(false);
+        item.PrepareSyncedSpeech(displayText, prepared.totalDuration);
+
+        HideLoadingIndicator();
+        _ttsPlaybackCoroutine = uiComponent.StartCoroutine(PlayPreparedTTSWithSyncedText(item, msgData.id, displayText, prepared,
+            onComplete: ProcessNextQueuedAIRequest));
+    }
+
+    private IEnumerator PrepareAndPlayTTSForItem(ChatItem item, int messageIndex, ChatMessageData msgData)
+    {
+        PreparedTTSAudio prepared = null;
+        string error = null;
+        yield return uiComponent.StartCoroutine(PrepareTTSAudio(msgData.id, msgData.content, msgData.divinerType,
+            (result, synthError) =>
+            {
+                prepared = result;
+                error = synthError;
+            }));
+
+        if (_currentTTSMessageId != msgData.id)
+            yield break;
+
+        item.ShowTTSLoading(false);
+
+        if (prepared == null || prepared.totalDuration <= 0f)
+        {
+            Debug.LogError($"[DialogUI] TTS 合成失败: {error ?? "AudioClip 为空"}");
+            ToastManager.ShowToast("语音生成失败");
+            _currentTTSItem = null;
+            _currentTTSMessageId = -1;
+            _ttsPlaybackCoroutine = null;
+            yield break;
+        }
+
+        dialogSystem.SetAIMessageTTSInfo(messageIndex, prepared.totalDuration, true);
+        item.PrepareSyncedSpeech(msgData.content, prepared.totalDuration);
+        yield return uiComponent.StartCoroutine(PlayPreparedTTSWithSyncedText(item, msgData.id, msgData.content, prepared));
+    }
+
+    private IEnumerator PrepareTTSAudio(int messageId, string text, DivinerType divinerType,
+        System.Action<PreparedTTSAudio, string> onComplete)
+    {
+        PreparedTTSAudio cached;
+        if (_preparedTTSByMessageId.TryGetValue(messageId, out cached) && cached != null && cached.totalDuration > 0f)
+        {
+            onComplete?.Invoke(cached, null);
+            yield break;
+        }
+
+        ConfigureTTSVoice(divinerType);
+
+        var segments = SplitTTSText(text, Mathf.Max(100, ttsSegmentMaxLength));
+        if (segments.Count == 0)
+        {
+            onComplete?.Invoke(null, "文本为空");
+            yield break;
+        }
+
+        var prepared = new PreparedTTSAudio();
+        prepared.segments.AddRange(segments);
+
         for (int i = 0; i < segments.Count; i++)
         {
-            if (_currentTTSItem != item)
-                yield break;
-
             AudioClip clip = null;
             string synthError = null;
             bool done = false;
 
-            item.ShowTTSLoading(true);
             ttsManager.Speak(segments[i],
                 (result) =>
                 {
                     clip = result;
                     done = true;
                 },
-                (error) =>
+                (err) =>
                 {
-                    synthError = error;
+                    synthError = err;
                     done = true;
                 });
 
-            yield return new WaitUntil(() => done || _currentTTSItem != item);
-            if (_currentTTSItem != item)
-                yield break;
-
-            item.ShowTTSLoading(false);
+            yield return new WaitUntil(() => done);
 
             if (!string.IsNullOrEmpty(synthError) || clip == null)
             {
-                Debug.LogError($"[DialogUI] TTS 合成失败: {synthError ?? "AudioClip 为空"}");
-                ToastManager.ShowToast("语音生成失败");
-                _currentTTSItem = null;
+                onComplete?.Invoke(null, synthError ?? "AudioClip 为空");
                 yield break;
             }
 
-            if (AudioManager.Instance == null)
-            {
-                Debug.LogWarning("[DialogUI] AudioManager.Instance 不存在");
-                ToastManager.ShowToast("音频管理器未就绪");
-                _currentTTSItem = null;
-                yield break;
-            }
-
-            AudioManager.Instance.PlayVoice(clip, interrupt: true);
-            Debug.Log($"[DialogUI] TTS 播放第 {i + 1}/{segments.Count} 段, 时长={clip.length:F1}s");
-
-            yield return new WaitForSeconds(clip.length + 0.08f);
+            prepared.clips.Add(clip);
+            prepared.totalDuration += clip.length;
         }
 
-        if (_currentTTSItem == item)
-            _currentTTSItem = null;
+        _preparedTTSByMessageId[messageId] = prepared;
+        onComplete?.Invoke(prepared, null);
+    }
+
+    private IEnumerator PlayPreparedTTSWithSyncedText(ChatItem item, int messageId, string fullText,
+        PreparedTTSAudio prepared, System.Action onComplete = null)
+    {
+        if (AudioManager.Instance == null)
+        {
+            item.CompleteSyncedSpeech(fullText);
+            ToastManager.ShowToast("音频管理器未就绪");
+            CleanupCurrentTTS(messageId);
+            onComplete?.Invoke();
+            yield break;
+        }
+
+        float totalDuration = Mathf.Max(0.01f, prepared.totalDuration);
+        float elapsedTotal = 0f;
+
+        for (int i = 0; i < prepared.clips.Count; i++)
+        {
+            if (_currentTTSMessageId != messageId)
+                yield break;
+
+            var clip = prepared.clips[i];
+            AudioManager.Instance.PlayVoice(clip, interrupt: true);
+            Debug.Log($"[DialogUI] TTS 播放第 {i + 1}/{prepared.clips.Count} 段, 总时长={prepared.totalDuration:F1}s");
+
+            float clipElapsed = 0f;
+            while (clipElapsed < clip.length)
+            {
+                if (_currentTTSMessageId != messageId)
+                    yield break;
+
+                clipElapsed += Time.deltaTime;
+                float progress = Mathf.Clamp01((elapsedTotal + clipElapsed) / totalDuration);
+                item.SetSyncedSpeechProgress(fullText, progress);
+                yield return null;
+            }
+
+            elapsedTotal += clip.length;
+        }
+
+        item.CompleteSyncedSpeech(fullText);
+        CleanupCurrentTTS(messageId);
         _ttsPlaybackCoroutine = null;
+        onComplete?.Invoke();
+    }
+
+    private void CleanupCurrentTTS(int messageId)
+    {
+        if (_currentTTSMessageId == messageId)
+        {
+            _currentTTSItem = null;
+            _currentTTSMessageId = -1;
+        }
     }
 
     /// <summary>
@@ -1022,6 +1447,7 @@ public class DialogUI : WindowBase
             _currentTTSItem.ShowTTSLoading(false);
             _currentTTSItem = null;
         }
+        _currentTTSMessageId = -1;
     }
 
     private void ConfigureTTSVoice(DivinerType divinerType)
@@ -1078,7 +1504,7 @@ public class DialogUI : WindowBase
     /// <summary>
     /// 重新生成声音按钮点击回调
     /// </summary>
-    private void OnRegenerateVoiceClick()
+    public void OnRegenerateVoiceClick()
     {
         Debug.Log("重新生成声音按钮点击");
         if (ttsManager == null)
@@ -1086,8 +1512,72 @@ public class DialogUI : WindowBase
             ToastManager.ShowToast("TTS 服务未就绪，请在 TTSManager 中配置 API 密钥");
             return;
         }
+
+        int messageIndex = FindLatestRegenerableVoiceMessageIndex();
+        if (messageIndex < 0)
+        {
+            ToastManager.ShowToast("暂无可重新生成的 AI 语音");
+            return;
+        }
+
+        ChatMessageData msgData = dialogSystem.GetMessageByIndex(messageIndex);
+        RegenerateVoiceForMessage(messageIndex, msgData);
+    }
+
+    private int FindLatestRegenerableVoiceMessageIndex()
+    {
+        if (dialogSystem == null) return -1;
+
+        for (int i = dialogSystem.GetMessageCount() - 1; i >= 0; i--)
+        {
+            ChatMessageData message = dialogSystem.GetMessageByIndex(i);
+            if (message == null) continue;
+            if (message.roleType != DialogRoleType.AI) continue;
+            if (string.IsNullOrWhiteSpace(message.content)) continue;
+            return i;
+        }
+
+        return -1;
+    }
+
+    private void RegenerateVoiceForMessage(int messageIndex, ChatMessageData msgData)
+    {
+        if (msgData == null || string.IsNullOrWhiteSpace(msgData.content))
+        {
+            ToastManager.ShowToast("这条消息没有可生成的语音内容");
+            return;
+        }
+
+        StopTTSPlayback();
+        ConfigureTTSVoice(msgData.divinerType);
+
+        List<string> segments = SplitTTSText(msgData.content, Mathf.Max(100, ttsSegmentMaxLength));
+        foreach (string segment in segments)
+            ttsManager.ClearCacheForText(segment);
+
+        _preparedTTSByMessageId.Remove(msgData.id);
+        dialogSystem.SetAIMessageTTSInfo(messageIndex, 0f, false);
+        chatListView.RefreshAllShownItem();
+
+        ChatItem item = GetShownChatItem(messageIndex);
+        if (item == null)
+        {
+            chatListView.MovePanelToItemIndex(messageIndex, 0);
+            chatListView.RefreshAllShownItem();
+            item = GetShownChatItem(messageIndex);
+        }
+
+        if (item == null)
+        {
+            ToastManager.ShowToast("已清除语音缓存，请点击该消息的语音按钮重新播放");
+            return;
+        }
+
         ToastManager.ShowToast("正在重新生成语音...");
-        // TODO: 如果需要重新生成（换音色），调用 ttsManager.ClearCache() 后重新播放
+        _currentTTSItem = item;
+        _currentTTSMessageId = msgData.id;
+        item.ShowTTSLoading(true);
+        _ttsPlaybackCoroutine = uiComponent.StartCoroutine(PrepareAndPlayTTSForItem(item, messageIndex, msgData));
     }
 
     #endregion
@@ -1270,12 +1760,48 @@ public class DialogUI : WindowBase
         if (hook != null)
         {
             Debug.Log($"[DialogUI] 从牌阵保存明日钩子: hookId={hook.hookId}");
-            ToastManager.ShowToast("已保存线索，明天见！");
+            PersistTomorrowHook(hook);
         }
         else
         {
             ToastManager.ShowToast("暂无活跃占卜，无法保存");
         }
+    }
+
+    private void PersistTomorrowHook(TomorrowHook hook)
+    {
+        if (hook == null)
+        {
+            ToastManager.ShowToast("暂无可保存线索");
+            return;
+        }
+
+        UpsertTomorrowHookInLocalMemory(hook);
+        AppNotificationScheduler.Instance.ScheduleTomorrowHookReminder(hook);
+
+        FirestoreManager firestore = FirestoreManager.Instance;
+        if (firestore == null || !firestore.IsInitialized)
+        {
+            ToastManager.ShowToast("已暂存线索，云端稍后同步");
+            return;
+        }
+
+        firestore.SaveTomorrowHook(hook, success =>
+        {
+            ToastManager.ShowToast(success ? "已保存线索，明天见！" : "线索已暂存，云端同步失败");
+        });
+    }
+
+    private void UpsertTomorrowHookInLocalMemory(TomorrowHook hook)
+    {
+        MemorySource source = dialogSystem?.GetMemorySource() ?? new MemorySource();
+        source.tomorrowHooks ??= new List<TomorrowHook>();
+        int index = source.tomorrowHooks.FindIndex(item => item != null && item.hookId == hook.hookId);
+        if (index >= 0)
+            source.tomorrowHooks[index] = hook;
+        else
+            source.tomorrowHooks.Add(hook);
+        dialogSystem?.SetMemorySource(source);
     }
 
     /// <summary>

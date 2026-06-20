@@ -12,6 +12,7 @@ using GamerFrameWork.UIFrameWork;
 public class FacebookInviteUI : WindowBase
 {
 	public FacebookInviteUIComponent uiComponent;
+	private Button[] facebookActionButtons;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -26,6 +27,7 @@ public class FacebookInviteUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		BindFacebookActionButtons();
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -50,6 +52,37 @@ public class FacebookInviteUI : WindowBase
 	}
 	public void OnNotificationsButtonClick()
 	{
+		UIModule.Instance.PopUpWindow<NotionUI>();
+	}
+
+	private void BindFacebookActionButtons()
+	{
+		var buttons = gameObject.GetComponentsInChildren<Button>(true);
+		var list = new System.Collections.Generic.List<Button>();
+
+		foreach (var button in buttons)
+		{
+			if (button == null || button == uiComponent.BackButton || button == uiComponent.NotificationsButton)
+			{
+				continue;
+			}
+
+			string buttonName = button.gameObject.name.ToLowerInvariant();
+			if (buttonName.Contains("facebook")
+				|| buttonName.Contains("invite")
+				|| buttonName.Contains("share")
+				|| buttonName.Contains("connect"))
+			{
+				list.Add(button);
+			}
+		}
+
+		facebookActionButtons = list.ToArray();
+		foreach (var button in facebookActionButtons)
+		{
+			button.onClick.RemoveAllListeners();
+			button.onClick.AddListener(() => FacebookFriendDiscoveryManager.DiscoverAndShow(transform));
+		}
 	}
 	#endregion
 }

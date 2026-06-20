@@ -12,7 +12,7 @@ using UnityEngine;
 
 public class SpinPickerUIComponent:MonoBehaviour
 {
-	public WindowLayer windowLayer = WindowLayer.MainUI;
+	public WindowLayer windowLayer = WindowLayer.Top;
 	public SpinDatePicker SpinDatePickerSpinDatePicker;
 	public SpinTimePicker SpinTimePickerSpinTimePicker;
 	public SpinRegionPicker SpinRegionPickerSpinRegionPicker;

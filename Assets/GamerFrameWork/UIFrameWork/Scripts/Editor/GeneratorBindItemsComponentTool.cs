@@ -1,9 +1,7 @@
 using Newtonsoft.Json;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Text;
 using UnityEditor;
@@ -12,13 +10,16 @@ namespace GamerFrameWork.UIFrameWork
 {
     public class GeneratorBindItemsComponentTool : Editor
     {
+        private const string ItemGeneratorClassPathKey = "itemGeneratorClassPath";
+        private const string ItemGeneratorTargetObjectKey = "itemGeneratorTargetObject";
+
         public static List<EditorObjectData> objDataList; //查找对象的数据
         static readonly Dictionary<string, string> _mMethodDic = new Dictionary<string, string>();
 
         [MenuItem("GameObject/GamerFrameWork/UIFrame/生成Item脚本(Shift+I) #I", false, 1)]
         static void CreateFindComponentScripts()
         {
-            GameObject obj = Selection.objects.First() as GameObject; // 获取当前选择的物体
+            GameObject obj = Selection.activeGameObject; // 获取当前选择的物体
             if (obj == null)
             {
                 // 弹出警告对话框
@@ -44,8 +45,9 @@ namespace GamerFrameWork.UIFrameWork
             string scriptFilePath = $"{UISetting.Instance.ItemScriptsGeneratorPath}/{scriptName}.cs";
 
             Debug.Log($"Script Content:\n" + scriptContent);
-            UIWindowEditor.ShowWindow(scriptContent,scriptFilePath,_mMethodDic,objDataList);
-            EditorPrefs.SetString("itemGeneratorClassPath", scriptFilePath);
+            UIWindowEditor.ShowWindow(scriptContent, scriptFilePath, _mMethodDic, objDataList, ItemGeneratorClassPathKey);
+            EditorPrefs.SetString(ItemGeneratorClassPathKey, scriptFilePath);
+            EditorPrefs.SetInt(ItemGeneratorTargetObjectKey, obj.GetInstanceID());
 
 
         }
@@ -195,25 +197,33 @@ namespace GamerFrameWork.UIFrameWork
         public static void AddComponentToItem()
         {
             //如果当前不是生成数据脚本的回调，就不处理
-            string scriptPath = EditorPrefs.GetString("itemGeneratorClassPath").Replace(Application.dataPath, "Assets/");
+            string scriptPath = EditorPrefs.GetString(ItemGeneratorClassPathKey);
             if (string.IsNullOrEmpty(scriptPath))
             {
                 return;
             }
+            scriptPath = ToAssetPath(scriptPath);
 
             //1.通过反射的方式，从程序集中找到这个脚本，把它挂在到当前的物体上
             //获取所有的程序集
             System.Type targetScript = AssetDatabase.LoadAssetAtPath<MonoScript>(scriptPath)?.GetClass();
             if (targetScript == null)
             {
-                Debug.Log($"Failed to load script! Path:{scriptPath}");
+                Debug.LogError($"Failed to load generated item script! Path:{scriptPath}");
                 return;
             }
 
             //获取要挂载的那个物体
-            GameObject selectedObject = Selection.activeGameObject;
+            GameObject selectedObject = EditorUtility.InstanceIDToObject(EditorPrefs.GetInt(ItemGeneratorTargetObjectKey, 0)) as GameObject;
             if (selectedObject == null)
+            {
+                selectedObject = Selection.activeGameObject;
+            }
+            if (selectedObject == null)
+            {
+                ClearItemGeneratorPrefs();
                 return;
+            }
 
             //先获取现窗口上有没有挂载该数据组件，如果没挂载在进行挂载
             Component compt = selectedObject.GetComponent(targetScript);
@@ -225,7 +235,19 @@ namespace GamerFrameWork.UIFrameWork
             //2.通过反射的方式，遍历数据列表 找到对应的字段，赋值
             //获取对象数据列表
             string datalistJson = PlayerPrefs.GetString(UISetting.OBJDATALIST_KEY);
+            if (string.IsNullOrEmpty(datalistJson))
+            {
+                Debug.LogError("没有找到对象数据列表 PlayerPrefs！");
+                ClearItemGeneratorPrefs();
+                return;
+            }
             List<EditorObjectData> objDataList = JsonConvert.DeserializeObject<List<EditorObjectData>>(datalistJson);
+            if (objDataList == null)
+            {
+                Debug.LogError("对象数据列表反序列化失败！");
+                ClearItemGeneratorPrefs();
+                return;
+            }
             //获取脚本所有字段
             FieldInfo[] fieldInfoList = targetScript.GetFields();
 
@@ -237,6 +259,11 @@ namespace GamerFrameWork.UIFrameWork
                     {
                         //根据Insid找到对应的对象
                         GameObject uiObject = EditorUtility.InstanceIDToObject(objData.insID) as GameObject;
+                        if (uiObject == null)
+                        {
+                            Debug.LogWarning($"字段 {item.Name} 对应的对象不存在，已跳过。");
+                            break;
+                        }
                         //设置该字段所对应的对象
                         if (objData.dataList == null)
                         {
@@ -247,8 +274,12 @@ namespace GamerFrameWork.UIFrameWork
                             }
                             else
                             {
-                                Debug.Log("targetComponent:" + uiObject.GetComponent(objData.fieldType) + " type:" + objData.fieldType);
-                                item.SetValue(compt, uiObject.GetComponent(objData.fieldType));
+                                Component component = uiObject.GetComponent(objData.fieldType);
+                                if (component == null)
+                                {
+                                    Debug.LogWarning($"对象 {uiObject.name} 上没有找到组件 {objData.fieldType}，字段 {item.Name} 未赋值。");
+                                }
+                                item.SetValue(compt, component);
                             }
                         }
                         else
@@ -270,7 +301,7 @@ namespace GamerFrameWork.UIFrameWork
                                 // 获取数组元素类型
                                 Type elementType = arrayType.GetElementType();
                                 //获取该节点下的所有的物体
-                                Component[] components = uiObject.GetComponentsInChildren(elementType);
+                                Component[] components = uiObject.GetComponentsInChildren(elementType, true);
                                 // 创建目标数组
                                 Array targetArray = Array.CreateInstance(elementType, components.Length);
 
@@ -299,12 +330,34 @@ namespace GamerFrameWork.UIFrameWork
 
             // PrefabUtility.ApplyPrefabInstance(selectedObject, InteractionMode.AutomatedAction);
             //自动保存预制体
-            EditorPrefs.DeleteKey("itemGeneratorClassPath");
+            ClearItemGeneratorPrefs();
             PlayerPrefs.DeleteKey(UISetting.OBJDATALIST_KEY);
             UnityEditor.EditorUtility.SetDirty(compt); // 标记对象为“脏”以刷新
             UnityEditor.PrefabUtility.RecordPrefabInstancePropertyModifications(compt);
         }
 
+        private static string ToAssetPath(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                return path;
+            }
+
+            path = path.Replace("\\", "/");
+            string dataPath = Application.dataPath.Replace("\\", "/");
+            if (path.StartsWith(dataPath, StringComparison.Ordinal))
+            {
+                return "Assets" + path.Substring(dataPath.Length);
+            }
+
+            return path;
+        }
+
+        private static void ClearItemGeneratorPrefs()
+        {
+            EditorPrefs.DeleteKey(ItemGeneratorClassPathKey);
+            EditorPrefs.DeleteKey(ItemGeneratorTargetObjectKey);
+        }
+
     }
 }
-

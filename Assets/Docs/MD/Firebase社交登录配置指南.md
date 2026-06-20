@@ -752,9 +752,9 @@ Facebook SDK 需要 `AndroidManifest.xml` 中的额外配置。导入 SDK 时通
 
 ### 6.8 iOS 额外配置
 
-1. 在 Xcode 中打开 Export 出的 iOS 项目
-2. **Signing & Capabilities** 中确保已添加 **Facebook** capability（或通过 `Info.plist` 手动添加）
-3. `Info.plist` 中添加：
+1. Unity 导出 iOS 项目时，`FariIOSContactsPostprocessor` 会自动添加 Game Center、Sign in with Apple、In-App Purchase capability。
+2. 导出后运行 `./scripts/check-ios-export.sh Builds/iOS`，确认 entitlements 和 Xcode capability 已写入。
+3. Facebook 仍主要依赖 `Info.plist` URL Scheme / Queries Schemes，而不是 Xcode capability；确认 `Info.plist` 中包含：
    - `CFBundleURLSchemes` → 添加 `fb{YOUR_APP_ID}`
    - `FacebookAppID` → 你的 App ID
    - `FacebookDisplayName` → 应用名称
@@ -810,7 +810,7 @@ Facebook SDK 需要 `AndroidManifest.xml` 中的额外配置。导入 SDK 时通
 #### iOS 构建前确认
 - [ ] `Assets/StreamingAssets/` 目录下存在 `GoogleService-Info.plist`
 - [ ] Player Settings → Signing 正确配置了 Developer Team
-- [ ] Capability 包含 **Sign In With Apple**
+- [ ] 运行 `./scripts/check-ios-export.sh Builds/iOS`，确认 Capability 包含 Game Center / Sign In With Apple / In-App Purchase
 - [ ] Info.plist 包含 Facebook 所需的 URL Scheme 和 Queries Schemes
 - [ ] Pod install 成功（Export Xcode Project 后执行 `cd iOS && pod install`）
 

@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 namespace GamerFrameWork.UIFrameWork
@@ -13,18 +12,24 @@ namespace GamerFrameWork.UIFrameWork
         /// <param name="winName"></param>
         public static void AnalysisWindowNodeData(ref List<EditorObjectData> objDataList, Transform trans, string winName)
         {
+            if (objDataList == null)
+            {
+                objDataList = new List<EditorObjectData>();
+            }
+
+            if (trans == null)
+            {
+                return;
+            }
+
             for (int i = 0; i < trans.childCount; i++)
             {
                 GameObject obj = trans.GetChild(i).gameObject;
                 string name = obj.name;
                 if (name.Contains("#")) continue;
                 // 判断是否是合法的标记节点（形如 [Type]FieldName）
-                if (name.Contains("[") && name.Contains("]"))
+                if (TryParseMarkedName(name, out string fieldType, out string fieldName))
                 {
-                    int index = name.IndexOf("]") + 1;
-                    string fieldName = name.Substring(index, name.Length - index); // 字段名
-                    string fieldType = name.Substring(1, index - 2);              // 字段类型
-
                     var objectData = new EditorObjectData { fieldName = fieldName, fieldType = fieldType, insID = obj.GetInstanceID() };
                     objDataList.Add(objectData);
                     //处理列表元素绑定
@@ -44,6 +49,34 @@ namespace GamerFrameWork.UIFrameWork
                 AnalysisWindowNodeData(ref objDataList,trans.GetChild(i), winName);
             }
         }
+
+        private static bool TryParseMarkedName(string name, out string fieldType, out string fieldName)
+        {
+            fieldType = null;
+            fieldName = null;
+
+            if (string.IsNullOrEmpty(name) || name[0] != '[')
+            {
+                return false;
+            }
+
+            int endIndex = name.IndexOf(']');
+            if (endIndex <= 1 || endIndex >= name.Length - 1)
+            {
+                Debug.LogWarning($"UI字段标记格式无效，已跳过：{name}。正确格式为 [Type]FieldName。");
+                return false;
+            }
+
+            fieldType = name.Substring(1, endIndex - 1).Trim();
+            fieldName = name.Substring(endIndex + 1).Trim();
+
+            if (string.IsNullOrEmpty(fieldType) || string.IsNullOrEmpty(fieldName))
+            {
+                Debug.LogWarning($"UI字段标记缺少类型或字段名，已跳过：{name}。");
+                return false;
+            }
+
+            return true;
+        }
     }
 }
-

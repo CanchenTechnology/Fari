@@ -17,6 +17,7 @@ public class FacebookUserInfo
     public string displayName;      // 显示名称（全名）
     public string photoUrl;         // 头像 URL（Facebook 通常提供方形头像）
     public string providerId;       // 登录提供方 "facebook.com"
+    public string providerUserId;   // Facebook 提供方用户 ID，用于好友发现映射
 
     [Header("时间信息")]
     public long creationTimestamp;   // 账号创建时间（毫秒时间戳）
@@ -39,7 +40,7 @@ public class FacebookUserInfo
     public override string ToString()
     {
         return $"[FacebookUserInfo] UID={firebaseUid}, Email={email}, Name={displayName}, " +
-               $"Photo={(string.IsNullOrEmpty(photoUrl) ? "无" : "有")}, Provider={providerId}, " +
+               $"Photo={(string.IsNullOrEmpty(photoUrl) ? "无" : "有")}, Provider={providerId}, ProviderUserId={providerUserId}, " +
                $"EmailVerified={isEmailVerified}, " +
                $"Created={CreationTime:yyyy-MM-dd}, LastSignIn={LastSignInTime:yyyy-MM-dd HH:mm}";
     }
@@ -83,6 +84,7 @@ public static class FacebookUserInfoHelper
             displayName      = user.DisplayName ?? string.Empty,
             photoUrl         = user.PhotoUrl?.ToString() ?? string.Empty,
             providerId       = user.ProviderId ?? string.Empty,
+            providerUserId   = GetFacebookProviderUserId(user),
             isEmailVerified  = user.IsEmailVerified,
             isAnonymous      = user.IsAnonymous,
         };
@@ -115,6 +117,7 @@ public static class FacebookUserInfoHelper
                     displayName      = userInfo.DisplayName ?? string.Empty,
                     photoUrl         = userInfo.PhotoUrl?.ToString() ?? string.Empty,
                     providerId       = userInfo.ProviderId,
+                    providerUserId   = userInfo.UserId ?? string.Empty,
                     creationTimestamp   = (long)(user.Metadata?.CreationTimestamp   ?? 0),
                     lastSignInTimestamp = (long)(user.Metadata?.LastSignInTimestamp ?? 0),
                     isEmailVerified  = user.IsEmailVerified,
@@ -126,6 +129,20 @@ public static class FacebookUserInfoHelper
         // 没找到 facebook.com 提供方，降级为主用户信息
         Debug.LogWarning("[FacebookUserInfoHelper] 未找到 Facebook 提供方数据，降级返回主用户信息");
         return ExtractFromFirebaseUser(user);
+    }
+
+    public static string GetFacebookProviderUserId(FirebaseUser user = null)
+    {
+        user ??= FirebaseAuth.DefaultInstance.CurrentUser;
+        if (user == null) return string.Empty;
+
+        foreach (var userInfo in user.ProviderData)
+        {
+            if (userInfo.ProviderId == "facebook.com")
+                return userInfo.UserId ?? string.Empty;
+        }
+
+        return string.Empty;
     }
 
     #endregion

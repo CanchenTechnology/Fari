@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.IO;
 using UnityEngine;
+using UnityEngine.Networking;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -93,6 +94,28 @@ public static class FriendAvatarImageUtility
         }
 
         return sprite;
+    }
+
+    public static IEnumerator LoadSpriteFromUrlCoroutine(string url, Action<Sprite> onComplete)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            onComplete?.Invoke(null);
+            yield break;
+        }
+
+        using UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
+        yield return request.SendWebRequest();
+
+        if (request.result != UnityWebRequest.Result.Success)
+        {
+            Debug.LogWarning("[FriendAvatarImageUtility] 下载好友头像失败: " + request.error);
+            onComplete?.Invoke(null);
+            yield break;
+        }
+
+        Texture2D texture = DownloadHandlerTexture.GetContent(request);
+        onComplete?.Invoke(TextureToSprite(texture));
     }
 
     public static bool TryLoadSpriteFromPath(string path, out Sprite sprite)

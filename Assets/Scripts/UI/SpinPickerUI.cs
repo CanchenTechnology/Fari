@@ -31,8 +31,6 @@ public class SpinPickerUI : WindowBase
 	{
 		uiComponent = gameObject.GetComponent<SpinPickerUIComponent>();
 		uiComponent.InitComponent(this);
-		Layer = WindowLayer.Popup;
-		this.Canvas.sortingOrder = (int)Layer;
 		base.OnAwake();
 	}
 	// 物体显示时执行

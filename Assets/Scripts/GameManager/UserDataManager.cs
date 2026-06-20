@@ -22,7 +22,8 @@ public enum LoginType
     ThirdParty, // 第三方登录
     Google,     // Google 登录
     Apple,      // Apple 登录
-    Facebook    // Facebook 登录
+    Facebook,   // Facebook 登录
+    GameCenter  // Game Center 登录
 }
 
 /// <summary>
@@ -39,7 +40,7 @@ public enum AccountStatus
 /// <summary>
 /// 用户数据管理器
 /// 负责用户个人资料数据的内存管理和本地持久化
-/// 支持 Email / Google / Apple / Facebook / Guest 多种登录类型
+/// 支持 Email / Google / Apple / Facebook / Game Center / Guest 多种登录类型
 /// </summary>
 public class UserDataManager : MonoSingleton<UserDataManager>
 {
@@ -91,6 +92,9 @@ public class UserDataManager : MonoSingleton<UserDataManager>
     /// <summary>认证提供商 ID（如 google.com, apple.com, facebook.com）</summary>
     public string AuthProviderId { get; private set; } = string.Empty;
 
+    /// <summary>Facebook 提供方用户 ID，用于好友发现映射</summary>
+    public string FacebookProviderUserId { get; private set; } = string.Empty;
+
     /// <summary>是否已通过 Firebase 认证</summary>
     public bool IsFirebaseAuthenticated { get; private set; } = false;
 
@@ -115,6 +119,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         CurrentLoginType == LoginType.Google ||
         CurrentLoginType == LoginType.Apple ||
         CurrentLoginType == LoginType.Facebook ||
+        CurrentLoginType == LoginType.GameCenter ||
         CurrentLoginType == LoginType.ThirdParty;
 
     /// <summary>是否有头像 URL</summary>
@@ -152,6 +157,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
     private const string KEY_AVATAR_STORAGE_PATH = "UserData_AvatarStoragePath";
     private const string KEY_FIREBASE_UID        = "UserData_FirebaseUid";
     private const string KEY_AUTH_PROVIDER_ID    = "UserData_AuthProviderId";
+    private const string KEY_FACEBOOK_PROVIDER_UID = "UserData_FacebookProviderUid";
     private const string KEY_IS_FIREBASE_AUTH    = "UserData_IsFirebaseAuth";
     private const string KEY_IS_EMAIL_VERIFIED   = "UserData_IsEmailVerified";
     private const string KEY_CREATION_TIMESTAMP  = "UserData_CreationTimestamp";
@@ -265,6 +271,12 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         AuthProviderId = providerId ?? string.Empty;
     }
 
+    /// <summary>设置 Facebook 提供方用户 ID</summary>
+    public void SetFacebookProviderUserId(string providerUserId)
+    {
+        FacebookProviderUserId = providerUserId ?? string.Empty;
+    }
+
     /// <summary>设置是否已通过 Firebase 认证</summary>
     public void SetFirebaseAuthenticated(bool authenticated)
     {
@@ -317,6 +329,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         PlayerPrefs.SetString(KEY_AVATAR_STORAGE_PATH, AvatarStoragePath);
         PlayerPrefs.SetString(KEY_FIREBASE_UID,       FirebaseUid);
         PlayerPrefs.SetString(KEY_AUTH_PROVIDER_ID,   AuthProviderId);
+        PlayerPrefs.SetString(KEY_FACEBOOK_PROVIDER_UID, FacebookProviderUserId);
         PlayerPrefs.SetInt(KEY_IS_FIREBASE_AUTH,      IsFirebaseAuthenticated ? 1 : 0);
         PlayerPrefs.SetInt(KEY_IS_EMAIL_VERIFIED,     IsEmailVerified ? 1 : 0);
         PlayerPrefs.SetString(KEY_CREATION_TIMESTAMP, CreationTimestamp.ToString());
@@ -351,6 +364,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         AvatarStoragePath    = PlayerPrefs.GetString(KEY_AVATAR_STORAGE_PATH, string.Empty);
         FirebaseUid          = PlayerPrefs.GetString(KEY_FIREBASE_UID,     string.Empty);
         AuthProviderId       = PlayerPrefs.GetString(KEY_AUTH_PROVIDER_ID, string.Empty);
+        FacebookProviderUserId = PlayerPrefs.GetString(KEY_FACEBOOK_PROVIDER_UID, string.Empty);
         IsFirebaseAuthenticated = PlayerPrefs.GetInt(KEY_IS_FIREBASE_AUTH, 0) == 1;
         IsEmailVerified      = PlayerPrefs.GetInt(KEY_IS_EMAIL_VERIFIED, 0) == 1;
 
@@ -385,6 +399,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         AvatarStoragePath    = string.Empty;
         FirebaseUid          = string.Empty;
         AuthProviderId       = string.Empty;
+        FacebookProviderUserId = string.Empty;
         IsFirebaseAuthenticated = false;
         IsEmailVerified      = false;
         CreationTimestamp    = 0;
@@ -404,6 +419,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         PlayerPrefs.DeleteKey(KEY_AVATAR_STORAGE_PATH);
         PlayerPrefs.DeleteKey(KEY_FIREBASE_UID);
         PlayerPrefs.DeleteKey(KEY_AUTH_PROVIDER_ID);
+        PlayerPrefs.DeleteKey(KEY_FACEBOOK_PROVIDER_UID);
         PlayerPrefs.DeleteKey(KEY_IS_FIREBASE_AUTH);
         PlayerPrefs.DeleteKey(KEY_IS_EMAIL_VERIFIED);
         PlayerPrefs.DeleteKey(KEY_CREATION_TIMESTAMP);
@@ -454,6 +470,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
             LoginType.Google     => "Google 登录",
             LoginType.Apple      => "Apple 登录",
             LoginType.Facebook   => "Facebook 登录",
+            LoginType.GameCenter => "Game Center 登录",
             _                    => "未知登录"
         };
     }
@@ -551,6 +568,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         AvatarStoragePath    = string.Empty;
         FirebaseUid          = string.Empty;
         AuthProviderId       = string.Empty;
+        FacebookProviderUserId = string.Empty;
         IsFirebaseAuthenticated = false;
         IsEmailVerified      = false;
         CreationTimestamp    = 0;
@@ -565,6 +583,7 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         PlayerPrefs.DeleteKey(KEY_AVATAR_STORAGE_PATH);
         PlayerPrefs.DeleteKey(KEY_FIREBASE_UID);
         PlayerPrefs.DeleteKey(KEY_AUTH_PROVIDER_ID);
+        PlayerPrefs.DeleteKey(KEY_FACEBOOK_PROVIDER_UID);
         PlayerPrefs.DeleteKey(KEY_IS_FIREBASE_AUTH);
         PlayerPrefs.DeleteKey(KEY_IS_EMAIL_VERIFIED);
         PlayerPrefs.DeleteKey(KEY_CREATION_TIMESTAMP);
@@ -613,6 +632,8 @@ public class UserDataManager : MonoSingleton<UserDataManager>
             AuthProvider.Google    => LoginType.Google,
             AuthProvider.Apple     => LoginType.Apple,
             AuthProvider.Facebook  => LoginType.Facebook,
+            AuthProvider.GameCenter => LoginType.GameCenter,
+            AuthProvider.Email     => LoginType.Email,
             AuthProvider.Anonymous => LoginType.Guest,
             _                      => LoginType.ThirdParty
         };
@@ -770,6 +791,9 @@ public class UserDataManager : MonoSingleton<UserDataManager>
             SetAuthProviderId(facebookInfo.providerId);
 
         // Facebook 特有字段
+        if (!string.IsNullOrEmpty(facebookInfo.providerUserId))
+            SetFacebookProviderUserId(facebookInfo.providerUserId);
+
         SetEmailVerified(facebookInfo.isEmailVerified);
         SetCreationTimestamp(facebookInfo.creationTimestamp);
         SetLastSignInTimestamp(facebookInfo.lastSignInTimestamp);

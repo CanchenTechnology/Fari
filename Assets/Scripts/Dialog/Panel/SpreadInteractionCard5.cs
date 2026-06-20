@@ -185,6 +185,9 @@ public class SpreadInteractionCard5 : MonoBehaviour
             return;
         }
 
+        if (!MembershipGate.CanUse(MembershipFeature.SpreadReading))
+            return;
+
         drawCardBtn.interactable = false;
         if (drawCardBtnText != null)
             drawCardBtnText.text = "正在打开...";

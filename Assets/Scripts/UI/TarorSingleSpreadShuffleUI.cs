@@ -49,6 +49,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     public override void OnShow()
     {
         base.OnShow();
+        OracleForegroundEffects.Attach(this.Canvas, OracleForegroundEffectStyle.Subtle);
         StopShuffleCoroutine();
         _shuffleDone = false;
         _cardsReadyToDraw = false;
@@ -82,6 +83,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
     public override void OnHide()
     {
+        OracleForegroundEffects.Detach(this.Canvas);
         base.OnHide();
         StopShuffleCoroutine();
         _cardInfoRequestVersion++;
@@ -277,11 +279,12 @@ public class TarorSingleSpreadShuffleUI : WindowBase
             return;
         }
 
-        if (!_cardsReadyToDraw)
-        {
-            _shuffleCoroutine = uiComponent.StartCoroutine(ShuffleAndPrepareDraws());
-            return;
-        }
+	        if (!_cardsReadyToDraw)
+	        {
+	            if (!MembershipGate.CanUse(MembershipFeature.SpreadReading)) return;
+	            _shuffleCoroutine = uiComponent.StartCoroutine(ShuffleAndPrepareDraws());
+	            return;
+	        }
 
         if (_nextDrawIndex < _cardCount)
         {

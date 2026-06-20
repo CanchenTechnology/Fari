@@ -32,9 +32,12 @@ namespace GamerFrameWork.OracleRuntime
         public string userMessageId;
         public string scene;
         public string stage;
+        public string stageReason;
         public string responseMode;
         public string oracleVoiceId;
         public List<string> memoryUsed;
+        public List<string> riskFlags;
+        public string riskLevel;
         public string readingId;
         public string friendContext;
         public string recordedAt;
@@ -848,8 +851,12 @@ reading_type, summary(title+text), cards(position, card_name, orientation, short
                     runtimeSections = sections,
                     scene = scene,
                     stage = stage,
+                    stageReason = stageReason,
                     responseMode = responseMode,
                     oracleVoiceId = oracleVoiceId,
+                    memoryUsed = memoryLines,
+                    riskFlags = riskFlags,
+                    riskLevel = riskLevel,
                     readingId = payload.activeReadingId,
                     friendContext = payload.friendContext,
                     recordedAt = oracleContext.assembledAt

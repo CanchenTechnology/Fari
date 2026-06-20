@@ -24,6 +24,9 @@ public class DialogUIComponent:MonoBehaviour
 	public InputField questionInputField;
 
 	public LoopListView2 ChatScrollViewLoopListView2;
+	public RectTransform artFriendRectTransfrom;
+	public Text artFriendNameText;
+	public Button cancelArtButton;
 
 	public Transform QuickDivinationPanelTransform;
 	public void InitComponent(WindowBase target)
@@ -35,6 +38,7 @@ public class DialogUIComponent:MonoBehaviour
 	    target.AddButtonClickListener(switchDivinerButton,mWindow.OnswitchDivinerButtonClick);
 	    target.AddButtonClickListener(questionButton,mWindow.OnquestionButtonClick);
 	    target.AddButtonClickListener(sendButton,mWindow.OnsendButtonClick);
+	    target.AddButtonClickListener(cancelArtButton,mWindow.OncancelArtButtonClick);
 	    target.AddInputFieldListener(questionInputField,mWindow.OnquestionInputChange,mWindow.OnquestionInputEnd);
 	}
 }

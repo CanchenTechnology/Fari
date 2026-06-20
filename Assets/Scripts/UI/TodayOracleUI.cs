@@ -27,6 +27,7 @@ public class TodayOracleUI : WindowBase
 	private Coroutine _prepareFlipCoroutine;
 	private Coroutine _idleVideoCoroutine;
 	private LoadingTextUI _loadingTextUI;
+	private int _tomorrowHookRequestId;
 
 	[SerializeField] private float flipRevealDelaySeconds = 1.2f;
 
@@ -58,7 +59,9 @@ public class TodayOracleUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		OracleForegroundEffects.Attach(this.Canvas, OracleForegroundEffectStyle.DailyOracle);
 		PlayIdleVideo();
+		LoadDueTomorrowHooks();
 
 		// 检查是否有缓存的 TodayOraclePayload，直接填充
 		if (_oracleService != null && _oracleService.CachedPayload != null
@@ -74,6 +77,8 @@ public class TodayOracleUI : WindowBase
 
 	public override void OnHide()
 	{
+		_tomorrowHookRequestId++;
+		OracleForegroundEffects.Detach(this.Canvas);
 		PauseIdleVideo();
 		base.OnHide();
 	}
@@ -137,16 +142,59 @@ public class TodayOracleUI : WindowBase
 		_idleVideoCoroutine = null;
 	}
 
+	private void LoadDueTomorrowHooks()
+	{
+		FirestoreManager firestore = FirestoreManager.Instance;
+		if (firestore == null || !firestore.IsInitialized)
+			return;
+
+		int requestId = ++_tomorrowHookRequestId;
+		firestore.LoadDueTomorrowHooks(hooks =>
+		{
+			if (requestId != _tomorrowHookRequestId || !gameObject.activeInHierarchy)
+				return;
+			if (hooks == null || hooks.Count == 0)
+				return;
+
+			MergeTomorrowHooksToMemory(hooks);
+			AppNotificationScheduler.Instance.NotifyTomorrowHookCount(hooks.Count);
+			ToastManager.ShowToast(hooks.Count == 1
+				? "昨天保存的线索可以回看了"
+				: $"有 {hooks.Count} 条明日线索可以回看");
+		});
+	}
+
+	private void MergeTomorrowHooksToMemory(List<TomorrowHook> hooks)
+	{
+		DialogSystem dialog = DialogSystem.Instance;
+		if (dialog == null || hooks == null || hooks.Count == 0) return;
+
+		MemorySource source = dialog.GetMemorySource() ?? new MemorySource();
+		source.tomorrowHooks ??= new List<TomorrowHook>();
+		foreach (TomorrowHook hook in hooks)
+		{
+			if (hook == null || string.IsNullOrWhiteSpace(hook.hookId)) continue;
+			int index = source.tomorrowHooks.FindIndex(item => item != null && item.hookId == hook.hookId);
+			if (index >= 0)
+				source.tomorrowHooks[index] = hook;
+			else
+				source.tomorrowHooks.Add(hook);
+		}
+
+		dialog.SetMemorySource(source);
+	}
+
 	#endregion
 
 	#region UI组件事件
-	public void OnDeepChatButtonClick()
-	{
-		// 先翻牌（如果还没翻）
-		if (_divinationEngine != null && !_divinationEngine.TodayCard.HasValue)
+		public void OnDeepChatButtonClick()
 		{
-			_divinationEngine.DrawDailyCard();
-		}
+			// 先翻牌（如果还没翻）
+			if (_divinationEngine != null && !_divinationEngine.TodayCard.HasValue)
+			{
+				if (!MembershipGate.CanUse(MembershipFeature.DailyOracle)) return;
+				_divinationEngine.DrawDailyCard();
+			}
 
 		// 把今日牌数据同步到 DialogSystem
 		if (_divinationEngine?.TodayCard.HasValue == true)
@@ -165,12 +213,17 @@ public class TodayOracleUI : WindowBase
 		UIModule.Instance.PopUpWindow<SwitchRoleUI>();
 	}
 
-	public void OnflipCardButtonClick()
-	{
-		if (_isPreparingFlip) return;
+		public void OnflipCardButtonClick()
+		{
+			if (_isPreparingFlip) return;
+			if (_divinationEngine != null && !_divinationEngine.TodayCard.HasValue
+				&& !MembershipGate.CanUse(MembershipFeature.DailyOracle))
+			{
+				return;
+			}
 
-		_prepareFlipCoroutine = uiComponent.StartCoroutine(PrepareAndRevealTodayCardRoutine());
-	}
+			_prepareFlipCoroutine = uiComponent.StartCoroutine(PrepareAndRevealTodayCardRoutine());
+		}
 
 	private IEnumerator PrepareAndRevealTodayCardRoutine()
 	{

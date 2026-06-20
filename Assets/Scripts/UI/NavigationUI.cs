@@ -13,6 +13,9 @@ public class NavigationUI : WindowBase
 {
 	public NavigationUIComponent uiComponent;
 
+	private const string FriendListWindowName = nameof(FriendUI);
+	private const string NoFriendWindowName = nameof(NoFriendUI);
+
 	/// <summary>
 	/// 当前活跃的导航窗口名称，用于防止重复点击同一导航栏
 	/// </summary>
@@ -29,7 +32,9 @@ public class NavigationUI : WindowBase
 		uiComponent.todayOracleToggle.isOn = true;
 		mCurrentActiveWindow = nameof(TodayOracleUI);
 		UIModule.Instance.PopUpWindow<TodayOracleUI>();
-		
+
+		FriendDataManager.Instance.DataChanged -= HandleFriendDataChanged;
+		FriendDataManager.Instance.DataChanged += HandleFriendDataChanged;
 	}
 	// 物体显示时执行
 	public override void OnShow()
@@ -44,11 +49,61 @@ public class NavigationUI : WindowBase
 	// 物体销毁时执行
 	public override void OnDestroy()
 	{
+		FriendDataManager.Instance.DataChanged -= HandleFriendDataChanged;
 		base.OnDestroy();
 	}
 	#endregion
 
 	#region API Function
+
+	private bool HasAnyFriend()
+	{
+		return FriendDataManager.Instance.RealFriendList.Count > 0
+			|| FriendDataManager.Instance.VirtualFriendList.Count > 0;
+	}
+
+	private bool IsFriendEntryActive()
+	{
+		return mCurrentActiveWindow == FriendListWindowName
+			|| mCurrentActiveWindow == NoFriendWindowName;
+	}
+
+	private void ShowFriendEntry()
+	{
+		bool hasAnyFriend = HasAnyFriend();
+		string targetWindowName = hasAnyFriend ? FriendListWindowName : NoFriendWindowName;
+		if (mCurrentActiveWindow == targetWindowName) return;
+
+		UIModule.Instance.HideWindow<FriendUI>();
+		UIModule.Instance.HideWindow<NoFriendUI>();
+
+		mCurrentActiveWindow = targetWindowName;
+		if (hasAnyFriend)
+		{
+			UIModule.Instance.PopUpWindow<FriendUI>();
+		}
+		else
+		{
+			UIModule.Instance.PopUpWindow<NoFriendUI>();
+		}
+	}
+
+	private void HideFriendEntry()
+	{
+		if (IsFriendEntryActive()) mCurrentActiveWindow = "";
+		UIModule.Instance.HideWindow<FriendUI>();
+		UIModule.Instance.HideWindow<NoFriendUI>();
+	}
+
+	private void HandleFriendDataChanged()
+	{
+		if (uiComponent == null || uiComponent.friendToggle == null || !uiComponent.friendToggle.isOn)
+		{
+			return;
+		}
+
+		ShowFriendEntry();
+	}
 
 	#endregion
 
@@ -85,14 +140,11 @@ public class NavigationUI : WindowBase
 	{
 		if(state)
 		{
-			if (mCurrentActiveWindow == nameof(FriendUI)) return;
-			mCurrentActiveWindow = nameof(FriendUI);
-			UIModule.Instance.PopUpWindow<FriendUI>();
+			ShowFriendEntry();
 		}
 		else
 		{
-			if (mCurrentActiveWindow == nameof(FriendUI)) mCurrentActiveWindow = "";
-			UIModule.Instance.HideWindow<FriendUI>();
+			HideFriendEntry();
 		}
 	}
 	public void OnmyToggleChange(bool state, Toggle toggle)
@@ -113,6 +165,12 @@ public class NavigationUI : WindowBase
 	public void OpenDialogUI()
 	{
 		uiComponent.dialogueToggle.isOn = true;
+	}
+
+	public void OpenFriendUI()
+	{
+		uiComponent.friendToggle.isOn = true;
+		ShowFriendEntry();
 	}
 
 

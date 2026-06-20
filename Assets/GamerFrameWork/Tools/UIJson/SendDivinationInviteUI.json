@@ -1,0 +1,569 @@
+{
+  "screenName": "SendDivinationInviteUI",
+  "resolution": { "x": 1080, "y": 1498 },
+  "matchWidthOrHeight": 0,
+  "includeMask": false,
+  "defaultFont": "Assets/GamerFrameWork/I2/Localization/Examples/Resources/ARIAL.TTF",
+  "elements": [
+    {
+      "name": "Background",
+      "type": "Image",
+      "sprite": "flow-1-flip",
+      "imageType": "Simple",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 0 },
+      "color": { "r": 0.25, "g": 0.18, "b": 0.35, "a": 1 }
+    },
+    {
+      "name": "DarkVeil",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 0 },
+      "color": { "r": 0.006, "g": 0.005, "b": 0.016, "a": 0.72 }
+    },
+    {
+      "name": "InstructionBorder",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -8 },
+      "size": { "x": 950, "y": 270 },
+      "color": { "r": 0.75, "g": 0.50, "b": 0.30, "a": 0.45 },
+      "children": [
+        {
+          "name": "InstructionPanel",
+          "type": "Panel",
+          "anchorMin": { "x": 0.5, "y": 0.5 },
+          "anchorMax": { "x": 0.5, "y": 0.5 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 940, "y": 260 },
+          "color": { "r": 0.075, "g": 0.066, "b": 0.116, "a": 0.94 },
+          "children": [
+            {
+              "name": "InstructionTitle",
+              "type": "Text",
+              "text": "✦  占卜说明  ✦",
+              "fontSize": 42,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.94, "g": 0.73, "b": 0.45, "a": 1 },
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -58 },
+              "size": { "x": 420, "y": 58 }
+            },
+            {
+              "name": "InstructionText",
+              "type": "Text",
+              "text": "本次为双人关系占卜，牌阵共三张。\n你和对方各自翻开属于自己的牌，\n只有你们可以看到自己可翻开的结果。",
+              "fontSize": 31,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.78, "g": 0.75, "b": 0.78, "a": 1 },
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -152 },
+              "size": { "x": 720, "y": 136 }
+            },
+            {
+              "name": "LeftMoonDecor",
+              "type": "Text",
+              "raycastTarget": false,
+              "text": "☾✦",
+              "fontSize": 46,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.86, "g": 0.58, "b": 0.34, "a": 0.80 },
+              "anchorMin": { "x": 0, "y": 0.5 },
+              "anchorMax": { "x": 0, "y": 0.5 },
+              "position": { "x": 105, "y": -10 },
+              "size": { "x": 90, "y": 90 }
+            },
+            {
+              "name": "RightMoonDecor",
+              "type": "Text",
+              "raycastTarget": false,
+              "text": "✦☽",
+              "fontSize": 46,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.86, "g": 0.58, "b": 0.34, "a": 0.80 },
+              "anchorMin": { "x": 1, "y": 0.5 },
+              "anchorMax": { "x": 1, "y": 0.5 },
+              "position": { "x": -105, "y": -10 },
+              "size": { "x": 90, "y": 90 }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CardAreaBorder",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -326 },
+      "size": { "x": 1080, "y": 1005 },
+      "color": { "r": 0.85, "g": 0.57, "b": 0.33, "a": 0.56 },
+      "children": [
+        {
+          "name": "CardArea",
+          "type": "Panel",
+          "anchorMin": { "x": 0.5, "y": 0.5 },
+          "anchorMax": { "x": 0.5, "y": 0.5 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 1070, "y": 995 },
+          "color": { "r": 0.072, "g": 0.066, "b": 0.112, "a": 0.94 },
+          "children": [
+            {
+              "name": "LeftCardShadow",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": -355, "y": -250 },
+              "size": { "x": 236, "y": 380 },
+              "color": { "r": 0.05, "g": 0.04, "b": 0.08, "a": 0.90 }
+            },
+            {
+              "name": "LeftTarotCard",
+              "type": "Image",
+              "sprite": "RWS_Tarot_18_Moon",
+              "imageType": "Simple",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": -355, "y": -250 },
+              "size": { "x": 224, "y": 362 },
+              "color": { "r": 0.55, "g": 0.48, "b": 0.68, "a": 1 }
+            },
+            {
+              "name": "LeftUserBadge",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": -438, "y": -103 },
+              "size": { "x": 82, "y": 82 },
+              "color": { "r": 0.28, "g": 0.13, "b": 0.42, "a": 1 },
+              "children": [
+                {
+                  "name": "LeftUserIcon",
+                  "type": "Text",
+                  "text": "●",
+                  "fontSize": 48,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.82, "g": 0.68, "b": 0.56, "a": 1 },
+                  "position": { "x": 0, "y": 2 },
+                  "size": { "x": 72, "y": 72 }
+                }
+              ]
+            },
+            {
+              "name": "MiddleCardShadow",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -250 },
+              "size": { "x": 236, "y": 380 },
+              "color": { "r": 0.03, "g": 0.025, "b": 0.035, "a": 0.96 }
+            },
+            {
+              "name": "MiddleTarotCard",
+              "type": "Image",
+              "sprite": "RWS_Tarot_17_Star",
+              "imageType": "Simple",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -250 },
+              "size": { "x": 224, "y": 362 },
+              "color": { "r": 0.42, "g": 0.34, "b": 0.28, "a": 1 }
+            },
+            {
+              "name": "MiddleGroupBadge",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -103 },
+              "size": { "x": 82, "y": 82 },
+              "color": { "r": 0.33, "g": 0.21, "b": 0.12, "a": 1 },
+              "children": [
+                {
+                  "name": "MiddleGroupIcon",
+                  "type": "Text",
+                  "text": "●●",
+                  "fontSize": 36,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.86, "g": 0.68, "b": 0.45, "a": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 76, "y": 70 }
+                }
+              ]
+            },
+            {
+              "name": "RightCardShadow",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 355, "y": -250 },
+              "size": { "x": 236, "y": 380 },
+              "color": { "r": 0.05, "g": 0.04, "b": 0.08, "a": 0.90 }
+            },
+            {
+              "name": "RightTarotCard",
+              "type": "Image",
+              "sprite": "RWS_Tarot_18_Moon",
+              "imageType": "Simple",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 355, "y": -250 },
+              "size": { "x": 224, "y": 362 },
+              "color": { "r": 0.55, "g": 0.48, "b": 0.68, "a": 1 }
+            },
+            {
+              "name": "RightUserBadge",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 272, "y": -103 },
+              "size": { "x": 82, "y": 82 },
+              "color": { "r": 0.28, "g": 0.13, "b": 0.42, "a": 1 },
+              "children": [
+                {
+                  "name": "RightUserIcon",
+                  "type": "Text",
+                  "text": "●",
+                  "fontSize": 48,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.82, "g": 0.68, "b": 0.56, "a": 1 },
+                  "position": { "x": 0, "y": 2 },
+                  "size": { "x": 72, "y": 72 }
+                }
+              ]
+            },
+            {
+              "name": "LeftCardCaption",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": -355, "y": -585 },
+              "size": { "x": 285, "y": 160 },
+              "color": { "r": 0.15, "g": 0.10, "b": 0.20, "a": 0.92 },
+              "children": [
+                {
+                  "name": "LeftCaptionTitle",
+                  "type": "Text",
+                  "text": "你可翻开",
+                  "fontSize": 36,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.84, "g": 0.65, "b": 1.00, "a": 1 },
+                  "position": { "x": 0, "y": 32 },
+                  "size": { "x": 230, "y": 50 }
+                },
+                {
+                  "name": "LeftCaptionBody",
+                  "type": "Text",
+                  "text": "你的内心与看法\n✦",
+                  "fontSize": 27,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.80, "g": 0.76, "b": 0.82, "a": 1 },
+                  "position": { "x": 0, "y": -35 },
+                  "size": { "x": 240, "y": 70 }
+                }
+              ]
+            },
+            {
+              "name": "MiddleCardCaption",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -585 },
+              "size": { "x": 285, "y": 160 },
+              "color": { "r": 0.13, "g": 0.11, "b": 0.14, "a": 0.94 },
+              "children": [
+                {
+                  "name": "MiddleCaptionTitle",
+                  "type": "Text",
+                  "text": "共同揭示",
+                  "fontSize": 36,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.94, "g": 0.73, "b": 0.42, "a": 1 },
+                  "position": { "x": 0, "y": 32 },
+                  "size": { "x": 230, "y": 50 }
+                },
+                {
+                  "name": "MiddleCaptionBody",
+                  "type": "Text",
+                  "text": "关系的现状与指引\n✦✦",
+                  "fontSize": 27,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.82, "g": 0.78, "b": 0.80, "a": 1 },
+                  "position": { "x": 0, "y": -35 },
+                  "size": { "x": 250, "y": 70 }
+                }
+              ]
+            },
+            {
+              "name": "RightCardCaption",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 355, "y": -585 },
+              "size": { "x": 285, "y": 160 },
+              "color": { "r": 0.15, "g": 0.10, "b": 0.20, "a": 0.92 },
+              "children": [
+                {
+                  "name": "RightCaptionTitle",
+                  "type": "Text",
+                  "text": "对方可翻开",
+                  "fontSize": 36,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.84, "g": 0.65, "b": 1.00, "a": 1 },
+                  "position": { "x": 0, "y": 32 },
+                  "size": { "x": 240, "y": 50 }
+                },
+                {
+                  "name": "RightCaptionBody",
+                  "type": "Text",
+                  "text": "对方的内心与想法\n✦",
+                  "fontSize": 27,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.80, "g": 0.76, "b": 0.82, "a": 1 },
+                  "position": { "x": 0, "y": -35 },
+                  "size": { "x": 250, "y": 70 }
+                }
+              ]
+            },
+            {
+              "name": "VisibilityLegend",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -790 },
+              "size": { "x": 1000, "y": 120 },
+              "color": { "r": 0.055, "g": 0.050, "b": 0.082, "a": 0.92 },
+              "children": [
+                {
+                  "name": "LegendLeftIcon",
+                  "type": "Text",
+                  "text": "●",
+                  "fontSize": 54,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.83, "g": 0.64, "b": 0.98, "a": 1 },
+                  "position": { "x": -390, "y": 0 },
+                  "size": { "x": 82, "y": 82 }
+                },
+                {
+                  "name": "LegendLeftText",
+                  "type": "Text",
+                  "text": "你可翻开\n仅你可见",
+                  "fontSize": 30,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.84, "g": 0.66, "b": 1.0, "a": 1 },
+                  "position": { "x": -250, "y": 0 },
+                  "size": { "x": 210, "y": 86 }
+                },
+                {
+                  "name": "LegendMiddleIcon",
+                  "type": "Text",
+                  "text": "●●",
+                  "fontSize": 38,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.93, "g": 0.72, "b": 0.42, "a": 1 },
+                  "position": { "x": -20, "y": 0 },
+                  "size": { "x": 92, "y": 82 }
+                },
+                {
+                  "name": "LegendMiddleText",
+                  "type": "Text",
+                  "text": "共同揭示\n你与对方可见",
+                  "fontSize": 30,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.94, "g": 0.73, "b": 0.45, "a": 1 },
+                  "position": { "x": 132, "y": 0 },
+                  "size": { "x": 230, "y": 86 }
+                },
+                {
+                  "name": "LegendRightIcon",
+                  "type": "Text",
+                  "text": "●",
+                  "fontSize": 54,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.83, "g": 0.64, "b": 0.98, "a": 1 },
+                  "position": { "x": 375, "y": 0 },
+                  "size": { "x": 82, "y": 82 }
+                },
+                {
+                  "name": "LegendRightText",
+                  "type": "Text",
+                  "text": "对方可翻开\n仅对方可见",
+                  "fontSize": 30,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.84, "g": 0.66, "b": 1.0, "a": 1 },
+                  "position": { "x": 500, "y": 0 },
+                  "size": { "x": 220, "y": 86 }
+                }
+              ]
+            },
+            {
+              "name": "PrivacyPanel",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -930 },
+              "size": { "x": 950, "y": 105 },
+              "color": { "r": 0.11, "g": 0.08, "b": 0.14, "a": 0.92 },
+              "children": [
+                {
+                  "name": "PrivacyShield",
+                  "type": "Text",
+                  "text": "♢",
+                  "fontSize": 62,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.50, "g": 0.45, "b": 0.58, "a": 1 },
+                  "position": { "x": -390, "y": 0 },
+                  "size": { "x": 90, "y": 82 }
+                },
+                {
+                  "name": "PrivacyTitle",
+                  "type": "Text",
+                  "text": "隐私保护已开启",
+                  "fontSize": 31,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.93, "g": 0.72, "b": 0.42, "a": 1 },
+                  "position": { "x": -115, "y": 20 },
+                  "size": { "x": 560, "y": 44 }
+                },
+                {
+                  "name": "PrivacyBody",
+                  "type": "Text",
+                  "text": "结果仅对各自可见，保障你们的信任与安全",
+                  "fontSize": 25,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Left",
+                  "textColor": { "r": 0.55, "g": 0.52, "b": 0.58, "a": 1 },
+                  "position": { "x": -115, "y": -22 },
+                  "size": { "x": 620, "y": 38 }
+                },
+                {
+                  "name": "PrivacyStar",
+                  "type": "Text",
+                  "text": "✧",
+                  "fontSize": 42,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.90, "g": 0.65, "b": 0.38, "a": 1 },
+                  "position": { "x": 385, "y": 0 },
+                  "size": { "x": 72, "y": 72 }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SendButtonGlow",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0.5, "y": 0 },
+      "anchorMax": { "x": 0.5, "y": 0 },
+      "position": { "x": 0, "y": 54 },
+      "size": { "x": 915, "y": 110 },
+      "color": { "r": 0.46, "g": 0.15, "b": 0.68, "a": 0.86 }
+    },
+    {
+      "name": "SendButtonPanel",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 0 },
+      "anchorMax": { "x": 0.5, "y": 0 },
+      "position": { "x": 0, "y": 54 },
+      "size": { "x": 880, "y": 96 },
+      "color": { "r": 0.28, "g": 0.10, "b": 0.42, "a": 0.96 },
+      "children": [
+        {
+          "name": "SendLeftSparkle",
+          "type": "Text",
+          "text": "✦",
+          "fontSize": 58,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.94, "g": 0.76, "b": 0.51, "a": 1 },
+          "position": { "x": -390, "y": 0 },
+          "size": { "x": 80, "y": 80 }
+        },
+        {
+          "name": "SendButtonText",
+          "type": "Text",
+          "text": "发送占卜邀请",
+          "fontSize": 46,
+          "fontStyle": "Bold",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.95, "g": 0.78, "b": 0.50, "a": 1 },
+          "position": { "x": -10, "y": 0 },
+          "size": { "x": 520, "y": 72 }
+        },
+        {
+          "name": "SendArrowCircle",
+          "type": "Panel",
+          "anchorMin": { "x": 1, "y": 0.5 },
+          "anchorMax": { "x": 1, "y": 0.5 },
+          "position": { "x": -60, "y": 0 },
+          "size": { "x": 78, "y": 78 },
+          "color": { "r": 0.18, "g": 0.10, "b": 0.13, "a": 0.92 },
+          "children": [
+            {
+              "name": "SendArrow",
+              "type": "Text",
+              "text": "➤",
+              "fontSize": 42,
+              "fontStyle": "Bold",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.95, "g": 0.75, "b": 0.42, "a": 1 },
+              "position": { "x": 2, "y": 0 },
+              "size": { "x": 70, "y": 70 }
+            }
+          ]
+        },
+        {
+          "name": "[Button]SendDivinationInvite",
+          "type": "Button",
+          "text": "",
+          "anchorMin": { "x": 0, "y": 0 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 0, "y": 0 },
+          "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+        }
+      ]
+    }
+  ]
+}
