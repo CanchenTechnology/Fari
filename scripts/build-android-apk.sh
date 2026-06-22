@@ -10,7 +10,13 @@ if [[ -n "$RELEASE_ENV_FILE" ]]; then
   fi
 
   if [[ ! -f "$RELEASE_ENV_FILE" ]]; then
-    echo "Release env file does not exist: $RELEASE_ENV_FILE" >&2
+    cat >&2 <<EOF
+Release env file does not exist: $RELEASE_ENV_FILE
+
+Create it, fill the real local values, then rerun:
+  ./scripts/init-release-env.sh
+  RELEASE_ENV_FILE=scripts/release.env CLEAN_ANDROID_BUILD=1 ./scripts/build-android-apk.sh
+EOF
     exit 3
   fi
 
@@ -61,6 +67,7 @@ mkdir -p "$(dirname "$OUTPUT_PATH")"
 
 if [[ "${CLEAN_ANDROID_BUILD:-0}" == "1" ]]; then
   rm -f "$OUTPUT_PATH"
+  rm -f "$OUTPUT_PATH.build-stamp"
 fi
 
 if ! "$UNITY_BIN" \
@@ -77,6 +84,7 @@ if ! "$UNITY_BIN" \
 fi
 
 "$ROOT_DIR/scripts/check-android-config.sh" --apk "$OUTPUT_PATH"
+date -u +"%Y-%m-%dT%H:%M:%SZ" > "$OUTPUT_PATH.build-stamp"
 
 echo "Android APK build finished and validated: $OUTPUT_PATH"
 echo "Unity log: $LOG_FILE"

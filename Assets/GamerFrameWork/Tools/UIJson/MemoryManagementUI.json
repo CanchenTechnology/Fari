@@ -1,0 +1,339 @@
+{
+  "screenName": "MemoryManagementUI",
+  "resolution": { "x": 1080, "y": 1920 },
+  "matchWidthOrHeight": 0,
+  "includeMask": false,
+  "defaultFont": "Assets/GamerFrameWork/I2/Localization/Examples/Resources/ARIAL.TTF",
+  "elements": [
+    {
+      "name": "Background",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "size": { "x": 0, "y": 0 },
+      "color": { "r": 0.006, "g": 0.006, "b": 0.018, "a": 1 }
+    },
+    {
+      "name": "PurpleAmbient",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "size": { "x": 0, "y": 0 },
+      "color": { "r": 0.035, "g": 0.022, "b": 0.070, "a": 0.68 }
+    },
+    {
+      "name": "TopAstrolabeDecor",
+      "type": "Text",
+      "raycastTarget": false,
+      "text": "◎\n\n     ╱╲\n◜──────────────◝",
+      "fontSize": 54,
+      "textAlignment": "Center",
+      "textColor": { "r": 0.44, "g": 0.27, "b": 0.12, "a": 0.25 },
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -92 },
+      "size": { "x": 660, "y": 210 }
+    },
+    {
+      "name": "StatusBar",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "size": { "x": 0, "y": 72 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        {
+          "name": "TimeText",
+          "type": "Text",
+          "text": "9:41",
+          "fontSize": 35,
+          "fontStyle": "Bold",
+          "textAlignment": "Left",
+          "textColor": { "r": 0.92, "g": 0.92, "b": 0.94, "a": 1 },
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "pivot": { "x": 0, "y": 1 },
+          "position": { "x": 64, "y": -28 },
+          "size": { "x": 160, "y": 48 }
+        },
+        {
+          "name": "StatusIcons",
+          "type": "Text",
+          "text": "▮▮▮  ≋  ▭",
+          "fontSize": 31,
+          "fontStyle": "Bold",
+          "textAlignment": "Right",
+          "textColor": { "r": 0.92, "g": 0.92, "b": 0.94, "a": 1 },
+          "anchorMin": { "x": 1, "y": 1 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "pivot": { "x": 1, "y": 1 },
+          "position": { "x": -48, "y": -28 },
+          "size": { "x": 260, "y": 48 }
+        }
+      ]
+    },
+    {
+      "name": "Header",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -92 },
+      "size": { "x": 0, "y": 190 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        {
+          "name": "TitleText",
+          "type": "Text",
+          "text": "记忆管理",
+          "fontSize": 66,
+          "fontStyle": "Bold",
+          "textAlignment": "Left",
+          "textColor": { "r": 0.92, "g": 0.92, "b": 0.94, "a": 1 },
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "pivot": { "x": 0, "y": 1 },
+          "position": { "x": 56, "y": -22 },
+          "size": { "x": 460, "y": 82 }
+        },
+        {
+          "name": "SubTitleText",
+          "type": "Text",
+          "text": "fari.ai 会根据互动形成你的专属记忆",
+          "fontSize": 31,
+          "textAlignment": "Left",
+          "textColor": { "r": 0.63, "g": 0.61, "b": 0.68, "a": 1 },
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "pivot": { "x": 0, "y": 1 },
+          "position": { "x": 56, "y": -116 },
+          "size": { "x": 690, "y": 52 }
+        },
+        {
+          "name": "PrivacyButtonBg",
+          "type": "Panel",
+          "anchorMin": { "x": 1, "y": 1 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "position": { "x": -86, "y": -70 },
+          "size": { "x": 74, "y": 74 },
+          "color": { "r": 0.035, "g": 0.030, "b": 0.050, "a": 0.92 },
+          "children": [
+            {
+              "name": "PrivacyIcon",
+              "type": "Text",
+              "text": "◇",
+              "fontSize": 45,
+              "textAlignment": "Center",
+              "textColor": { "r": 0.88, "g": 0.66, "b": 0.38, "a": 1 },
+              "position": { "x": 0, "y": 1 },
+              "size": { "x": 70, "y": 70 }
+            },
+            {
+              "name": "[Button]OpenPrivacySettings",
+              "type": "Button",
+              "text": "",
+              "anchorMin": { "x": 0, "y": 0 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "size": { "x": 0, "y": 0 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "[ScrollRect]MemoryOverviewScroll",
+      "type": "ScrollRect",
+      "horizontalScroll": false,
+      "verticalScroll": true,
+      "scrollMovementType": "Clamped",
+      "scrollInertia": true,
+      "scrollSensitivity": 24,
+      "layoutType": "None",
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "position": { "x": 0, "y": -28 },
+      "size": { "x": -64, "y": -402 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        {
+          "name": "Content",
+          "type": "Panel",
+          "raycastTarget": false,
+          "anchorMin": { "x": 0.5, "y": 1 },
+          "anchorMax": { "x": 0.5, "y": 1 },
+          "pivot": { "x": 0.5, "y": 1 },
+          "size": { "x": 1000, "y": 1285 },
+          "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+          "children": [
+            {
+              "name": "OverviewCardBorder",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "pivot": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -8 },
+              "size": { "x": 1000, "y": 372 },
+              "color": { "r": 0.34, "g": 0.26, "b": 0.52, "a": 0.58 },
+              "children": [
+                {
+                  "name": "OverviewCard",
+                  "type": "Panel",
+                  "raycastTarget": false,
+                  "size": { "x": 992, "y": 364 },
+                  "color": { "r": 0.040, "g": 0.038, "b": 0.075, "a": 0.92 },
+                  "children": [
+                    {
+                      "name": "OverviewTitle",
+                      "type": "Text",
+                      "text": "记忆概览",
+                      "fontSize": 40,
+                      "fontStyle": "Bold",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.92, "g": 0.90, "b": 0.92, "a": 1 },
+                      "position": { "x": -395, "y": 132 },
+                      "size": { "x": 300, "y": 54 }
+                    },
+                    {
+                      "name": "TopicMetric",
+                      "type": "Panel",
+                      "position": { "x": -360, "y": -30 },
+                      "size": { "x": 170, "y": 220 },
+                      "color": { "r": 0.105, "g": 0.080, "b": 0.175, "a": 0.82 },
+                      "children": [
+                        { "name": "TopicIcon", "type": "Text", "text": "●", "fontSize": 52, "textAlignment": "Center", "textColor": { "r": 0.55, "g": 0.33, "b": 0.96, "a": 1 }, "position": { "x": 0, "y": 55 }, "size": { "x": 90, "y": 70 } },
+                        { "name": "TopicLabel", "type": "Text", "text": "对话主题", "fontSize": 27, "textAlignment": "Center", "textColor": { "r": 0.72, "g": 0.70, "b": 0.76, "a": 1 }, "position": { "x": 0, "y": -18 }, "size": { "x": 150, "y": 40 } },
+                        { "name": "[Text]TopicCount", "type": "Text", "text": "12", "fontSize": 38, "fontStyle": "Bold", "textAlignment": "Center", "textColor": { "r": 0.90, "g": 0.88, "b": 0.92, "a": 1 }, "position": { "x": 0, "y": -70 }, "size": { "x": 120, "y": 52 } },
+                        { "name": "[Button]TopicMetric", "type": "Button", "text": "", "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 1, "g": 1, "b": 1, "a": 0 } }
+                      ]
+                    },
+                    {
+                      "name": "PreferenceMetric",
+                      "type": "Panel",
+                      "position": { "x": -120, "y": -30 },
+                      "size": { "x": 170, "y": 220 },
+                      "color": { "r": 0.105, "g": 0.080, "b": 0.175, "a": 0.82 },
+                      "children": [
+                        { "name": "PreferenceIcon", "type": "Text", "text": "♙", "fontSize": 52, "textAlignment": "Center", "textColor": { "r": 0.55, "g": 0.33, "b": 0.96, "a": 1 }, "position": { "x": 0, "y": 55 }, "size": { "x": 90, "y": 70 } },
+                        { "name": "PreferenceLabel", "type": "Text", "text": "个人偏好", "fontSize": 27, "textAlignment": "Center", "textColor": { "r": 0.72, "g": 0.70, "b": 0.76, "a": 1 }, "position": { "x": 0, "y": -18 }, "size": { "x": 150, "y": 40 } },
+                        { "name": "[Text]PreferenceCount", "type": "Text", "text": "8", "fontSize": 38, "fontStyle": "Bold", "textAlignment": "Center", "textColor": { "r": 0.90, "g": 0.88, "b": 0.92, "a": 1 }, "position": { "x": 0, "y": -70 }, "size": { "x": 120, "y": 52 } },
+                        { "name": "[Button]PreferenceMetric", "type": "Button", "text": "", "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 1, "g": 1, "b": 1, "a": 0 } }
+                      ]
+                    },
+                    {
+                      "name": "EmotionMetric",
+                      "type": "Panel",
+                      "position": { "x": 120, "y": -30 },
+                      "size": { "x": 170, "y": 220 },
+                      "color": { "r": 0.105, "g": 0.080, "b": 0.175, "a": 0.82 },
+                      "children": [
+                        { "name": "EmotionIcon", "type": "Text", "text": "♡", "fontSize": 58, "textAlignment": "Center", "textColor": { "r": 0.55, "g": 0.33, "b": 0.96, "a": 1 }, "position": { "x": 0, "y": 55 }, "size": { "x": 90, "y": 70 } },
+                        { "name": "EmotionLabel", "type": "Text", "text": "情感模式", "fontSize": 27, "textAlignment": "Center", "textColor": { "r": 0.72, "g": 0.70, "b": 0.76, "a": 1 }, "position": { "x": 0, "y": -18 }, "size": { "x": 150, "y": 40 } },
+                        { "name": "[Text]EmotionCount", "type": "Text", "text": "5", "fontSize": 38, "fontStyle": "Bold", "textAlignment": "Center", "textColor": { "r": 0.90, "g": 0.88, "b": 0.92, "a": 1 }, "position": { "x": 0, "y": -70 }, "size": { "x": 120, "y": 52 } },
+                        { "name": "[Button]EmotionMetric", "type": "Button", "text": "", "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 1, "g": 1, "b": 1, "a": 0 } }
+                      ]
+                    },
+                    {
+                      "name": "GrowthMetric",
+                      "type": "Panel",
+                      "position": { "x": 360, "y": -30 },
+                      "size": { "x": 170, "y": 220 },
+                      "color": { "r": 0.105, "g": 0.080, "b": 0.175, "a": 0.82 },
+                      "children": [
+                        { "name": "GrowthIcon", "type": "Text", "text": "↗", "fontSize": 58, "textAlignment": "Center", "textColor": { "r": 0.55, "g": 0.33, "b": 0.96, "a": 1 }, "position": { "x": 0, "y": 55 }, "size": { "x": 90, "y": 70 } },
+                        { "name": "GrowthLabel", "type": "Text", "text": "成长轨迹", "fontSize": 27, "textAlignment": "Center", "textColor": { "r": 0.72, "g": 0.70, "b": 0.76, "a": 1 }, "position": { "x": 0, "y": -18 }, "size": { "x": 150, "y": 40 } },
+                        { "name": "[Text]GrowthCount", "type": "Text", "text": "3", "fontSize": 38, "fontStyle": "Bold", "textAlignment": "Center", "textColor": { "r": 0.90, "g": 0.88, "b": 0.92, "a": 1 }, "position": { "x": 0, "y": -70 }, "size": { "x": 120, "y": 52 } },
+                        { "name": "[Button]GrowthMetric", "type": "Button", "text": "", "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 1, "g": 1, "b": 1, "a": 0 } }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "MemorySpaceCard",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "pivot": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -420 },
+              "size": { "x": 1000, "y": 410 },
+              "color": { "r": 0.038, "g": 0.036, "b": 0.070, "a": 0.92 },
+              "children": [
+                { "name": "MemorySpaceTitle", "type": "Text", "text": "你的记忆空间", "fontSize": 40, "fontStyle": "Bold", "textAlignment": "Left", "textColor": { "r": 0.92, "g": 0.90, "b": 0.92, "a": 1 }, "position": { "x": -365, "y": 150 }, "size": { "x": 360, "y": 56 } },
+                { "name": "MemoryChip1", "type": "Text", "text": "✦ 喜欢温柔直接的解读方式", "fontSize": 31, "textAlignment": "Left", "textColor": { "r": 0.86, "g": 0.82, "b": 0.88, "a": 1 }, "position": { "x": 0, "y": 68 }, "size": { "x": 810, "y": 46 } },
+                { "name": "MemoryChip2", "type": "Text", "text": "✦ 常询问关系中的边界感", "fontSize": 31, "textAlignment": "Left", "textColor": { "r": 0.86, "g": 0.82, "b": 0.88, "a": 1 }, "position": { "x": 0, "y": 8 }, "size": { "x": 810, "y": 46 } },
+                { "name": "MemoryChip3", "type": "Text", "text": "✦ 晚上更愿意进行深度对话", "fontSize": 31, "textAlignment": "Left", "textColor": { "r": 0.86, "g": 0.82, "b": 0.88, "a": 1 }, "position": { "x": 0, "y": -52 }, "size": { "x": 810, "y": 46 } },
+                { "name": "MemorySpaceHint", "type": "Text", "text": "点击管理可以查看、编辑、关闭或删除单条记忆。", "fontSize": 27, "textAlignment": "Center", "textColor": { "r": 0.58, "g": 0.56, "b": 0.64, "a": 1 }, "position": { "x": 0, "y": -150 }, "size": { "x": 760, "y": 44 } }
+              ]
+            },
+            {
+              "name": "ManageMemoryButtonBg",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "pivot": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -878 },
+              "size": { "x": 1000, "y": 126 },
+              "color": { "r": 0.34, "g": 0.16, "b": 0.72, "a": 0.95 },
+              "children": [
+                { "name": "ManageMemoryIcon", "type": "Text", "text": "▤", "fontSize": 45, "textAlignment": "Center", "textColor": { "r": 0.90, "g": 0.84, "b": 0.94, "a": 1 }, "position": { "x": -145, "y": 0 }, "size": { "x": 70, "y": 70 } },
+                { "name": "ManageMemoryText", "type": "Text", "text": "管理记忆", "fontSize": 42, "fontStyle": "Bold", "textAlignment": "Center", "textColor": { "r": 0.92, "g": 0.90, "b": 0.94, "a": 1 }, "position": { "x": 35, "y": 0 }, "size": { "x": 320, "y": 68 } },
+                { "name": "[Button]ManageMemory", "type": "Button", "text": "", "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 1, "g": 1, "b": 1, "a": 0 } }
+              ]
+            },
+            {
+              "name": "ClearMemoryButtonBg",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "pivot": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -1040 },
+              "size": { "x": 1000, "y": 126 },
+              "color": { "r": 0.070, "g": 0.050, "b": 0.090, "a": 0.88 },
+              "children": [
+                { "name": "ClearMemoryIcon", "type": "Text", "text": "⌫", "fontSize": 45, "textAlignment": "Center", "textColor": { "r": 0.93, "g": 0.42, "b": 0.34, "a": 1 }, "position": { "x": -175, "y": 0 }, "size": { "x": 70, "y": 70 } },
+                { "name": "ClearMemoryText", "type": "Text", "text": "清除全部记忆", "fontSize": 42, "fontStyle": "Bold", "textAlignment": "Center", "textColor": { "r": 0.93, "g": 0.42, "b": 0.34, "a": 1 }, "position": { "x": 45, "y": 0 }, "size": { "x": 400, "y": 68 } },
+                { "name": "[Button]ClearAllMemory", "type": "Button", "text": "", "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 1, "g": 1, "b": 1, "a": 0 } }
+              ]
+            },
+            {
+              "name": "PrivacyNote",
+              "type": "Text",
+              "text": "◇ 你的记忆仅用于提升体验，隐私安全由你掌控",
+              "fontSize": 29,
+              "textAlignment": "Center",
+              "textColor": { "r": 0.59, "g": 0.57, "b": 0.65, "a": 1 },
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "pivot": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -1205 },
+              "size": { "x": 900, "y": 48 }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "BottomNav",
+      "type": "Panel",
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 0 },
+      "pivot": { "x": 0.5, "y": 0 },
+      "position": { "x": 0, "y": 28 },
+      "size": { "x": -64, "y": 150 },
+      "color": { "r": 0.045, "g": 0.045, "b": 0.070, "a": 0.96 },
+      "children": [
+        { "name": "NavOracle", "type": "Text", "text": "☾\n今日神谕", "fontSize": 28, "textAlignment": "Center", "textColor": { "r": 0.58, "g": 0.56, "b": 0.60, "a": 1 }, "position": { "x": -360, "y": 0 }, "size": { "x": 160, "y": 120 } },
+        { "name": "NavChat", "type": "Text", "text": "▣\n对话", "fontSize": 28, "textAlignment": "Center", "textColor": { "r": 0.58, "g": 0.56, "b": 0.60, "a": 1 }, "position": { "x": -120, "y": 0 }, "size": { "x": 160, "y": 120 } },
+        { "name": "NavPlay", "type": "Text", "text": "✦\n一起玩", "fontSize": 28, "textAlignment": "Center", "textColor": { "r": 0.58, "g": 0.56, "b": 0.60, "a": 1 }, "position": { "x": 120, "y": 0 }, "size": { "x": 160, "y": 120 } },
+        { "name": "NavMy", "type": "Text", "text": "♙\n我的", "fontSize": 31, "textAlignment": "Center", "textColor": { "r": 0.70, "g": 0.42, "b": 0.98, "a": 1 }, "position": { "x": 360, "y": 0 }, "size": { "x": 160, "y": 120 } }
+      ]
+    }
+  ]
+}

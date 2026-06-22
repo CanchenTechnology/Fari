@@ -15,17 +15,18 @@ using SuperScrollView;
 public class CreateFriendInfoUI : WindowBase
 {
 	private const string HistoryItemPrefabName = "HistoryCardItem";
+	private const string RelationshipDivinationButtonName = "RelationshipDivinationButton";
 
 	public CreateFriendInfoUIComponent uiComponent;
 	private static FriendDataManager.FriendData sPendingFriend;
 
 	private FriendDataManager.FriendData currentFriend;
+	private Button relationshipDivinationButton;
 	private readonly List<FriendProfileHistoryEntry> historyEntries = new List<FriendProfileHistoryEntry>();
 	private bool historyListInitialized;
 	private bool isRefreshingSyncSwitch;
 	private Sprite defaultAvatarSprite;
 	private int requestVersion;
-	private Button relationshipDivinationButton;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -55,12 +56,11 @@ public class CreateFriendInfoUI : WindowBase
 			return;
 		}
 
-			requestVersion++;
-			RefreshProfile();
-			EnsureRelationshipDivinationButton();
-			SetRelationshipDivinationButtonVisible(true);
-			LoadRecentOracleHistory();
-			LoadSyncSettingsThenRefresh();
+		requestVersion++;
+		RefreshProfile();
+		RefreshRelationshipDivinationButton();
+		LoadRecentOracleHistory();
+		LoadSyncSettingsThenRefresh();
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -105,6 +105,69 @@ public class CreateFriendInfoUI : WindowBase
 		SetText(uiComponent.birthdayTimeText, FormatOptional(currentFriend.birthTime, "未填写"));
 		SetText(uiComponent.birthdayCityText, FormatOptional(currentFriend.city, "未填写"));
 		SetText(uiComponent.userNameText, FormatOptional(currentFriend.name, "未命名好友"));
+	}
+
+	private void RefreshRelationshipDivinationButton()
+	{
+		if (uiComponent == null) return;
+
+		relationshipDivinationButton = relationshipDivinationButton != null
+			? relationshipDivinationButton
+			: FindRelationshipDivinationButton();
+		if (relationshipDivinationButton == null)
+			relationshipDivinationButton = CreateRelationshipDivinationButton();
+		if (relationshipDivinationButton == null) return;
+
+		bool visible = CreatedFriendRelationshipDivinationLocalFlow.CanHandle(currentFriend);
+		relationshipDivinationButton.gameObject.SetActive(visible);
+		relationshipDivinationButton.interactable = visible;
+		relationshipDivinationButton.onClick.RemoveAllListeners();
+		relationshipDivinationButton.onClick.AddListener(OnRelationshipDivinationButtonClick);
+		RelationshipDivinationFlow.SetButtonText(relationshipDivinationButton, "关系占卜");
+	}
+
+	private Button FindRelationshipDivinationButton()
+	{
+		Button[] buttons = this.gameObject.GetComponentsInChildren<Button>(true);
+		foreach (Button button in buttons)
+		{
+			if (button != null && button.gameObject.name == RelationshipDivinationButtonName)
+				return button;
+		}
+
+		return null;
+	}
+
+	private Button CreateRelationshipDivinationButton()
+	{
+		Button sourceButton = uiComponent.EditProfileButton != null
+			? uiComponent.EditProfileButton
+			: uiComponent.MoreRecordsButton;
+		if (sourceButton == null || sourceButton.transform.parent == null)
+			return null;
+
+		GameObject buttonObject = UnityEngine.Object.Instantiate(sourceButton.gameObject, sourceButton.transform.parent);
+		buttonObject.name = RelationshipDivinationButtonName;
+		Button button = buttonObject.GetComponent<Button>();
+		if (button == null)
+		{
+			UnityEngine.Object.Destroy(buttonObject);
+			return null;
+		}
+
+		RectTransform rect = buttonObject.GetComponent<RectTransform>();
+		RectTransform sourceRect = sourceButton.GetComponent<RectTransform>();
+		if (rect != null && sourceRect != null)
+		{
+			rect.anchorMin = sourceRect.anchorMin;
+			rect.anchorMax = sourceRect.anchorMax;
+			rect.pivot = sourceRect.pivot;
+			rect.sizeDelta = sourceRect.sizeDelta;
+			float verticalOffset = Mathf.Max(sourceRect.rect.height + 16f, 72f);
+			rect.anchoredPosition = sourceRect.anchoredPosition + new Vector2(0f, -verticalOffset);
+		}
+
+		return button;
 	}
 
 	private string BuildSignatureText()
@@ -356,10 +419,7 @@ public class CreateFriendInfoUI : WindowBase
 				return;
 			}
 
-			if (settings.ShouldPublishToFeed)
-				store.PublishTodaySummary(OnTodaySummarySyncUpdated);
-			else
-				store.DisableTodaySummary(OnTodaySummarySyncUpdated);
+			store.ApplySyncSettingsToPublishedSummaries(settings, 30, OnTodaySummarySyncUpdated);
 		});
 	}
 
@@ -372,46 +432,6 @@ public class CreateFriendInfoUI : WindowBase
 	{
 		if (text != null)
 			text.text = value ?? string.Empty;
-	}
-
-	private void EnsureRelationshipDivinationButton()
-	{
-		if (relationshipDivinationButton != null) return;
-		if (uiComponent?.EditProfileButton == null) return;
-
-		GameObject go = UnityEngine.Object.Instantiate(uiComponent.EditProfileButton.gameObject, uiComponent.EditProfileButton.transform.parent);
-		go.name = "[Button]RelationshipDivination";
-		relationshipDivinationButton = go.GetComponent<Button>();
-		if (relationshipDivinationButton == null) return;
-
-		relationshipDivinationButton.onClick.RemoveAllListeners();
-		relationshipDivinationButton.onClick.AddListener(OnRelationshipDivinationButtonClick);
-		SetButtonText(relationshipDivinationButton, "✦ 关系占卜 ✦");
-
-		RectTransform source = uiComponent.EditProfileButton.GetComponent<RectTransform>();
-		RectTransform target = go.GetComponent<RectTransform>();
-		if (source != null && target != null)
-		{
-			target.anchorMin = source.anchorMin;
-			target.anchorMax = source.anchorMax;
-			target.pivot = source.pivot;
-			target.sizeDelta = source.sizeDelta;
-			target.anchoredPosition = source.anchoredPosition + new Vector2(0f, -Mathf.Max(source.rect.height, source.sizeDelta.y, 58f) - 14f);
-		}
-	}
-
-	private void SetRelationshipDivinationButtonVisible(bool visible)
-	{
-		if (relationshipDivinationButton != null)
-			relationshipDivinationButton.gameObject.SetActive(visible);
-	}
-
-	private void SetButtonText(Button button, string value)
-	{
-		if (button == null) return;
-		Text text = button.GetComponentInChildren<Text>(true);
-		if (text != null)
-			text.text = value;
 	}
 
 	#endregion
@@ -444,15 +464,22 @@ public class CreateFriendInfoUI : WindowBase
 		{
 			currentFriend = updatedFriend;
 			RefreshProfile();
+			RefreshRelationshipDivinationButton();
 			LoadRecentOracleHistory();
 		});
 	}
-		public void OnRelationshipDivinationButtonClick()
+
+	public void OnRelationshipDivinationButtonClick()
+	{
+		if (currentFriend == null)
 		{
-			if (currentFriend == null) return;
-			if (!RelationshipDivinationFlow.CanUseTwoPersonDivination(currentFriend, true)) return;
-			RelationshipDivinationOverlay.StartForFriend(transform, currentFriend);
+			ToastManager.ShowToast("好友资料不完整");
+			return;
 		}
+
+		CreatedFriendRelationshipDivinationLocalFlow.TryStart(currentFriend);
+	}
+
 	public void OnSyncSwitchClick()
 	{
 		if (isRefreshingSyncSwitch || uiComponent?.SwitchSwitch == null) return;

@@ -91,7 +91,10 @@ public class FeedbackUI : WindowBase
 		}
 
 		if (_feedbackEntries.Count == 0)
+		{
 			LoadCachedFeedbackEntries();
+			MergeLocalPendingFeedbackEntries();
+		}
 
 		if (_chatMessages.Count == 0)
 		{
@@ -130,9 +133,15 @@ public class FeedbackUI : WindowBase
 			return;
 		}
 
+		if (UserDataManager.Instance == null || string.IsNullOrEmpty(UserDataManager.Instance.FirebaseUid))
+		{
+			RefreshViews();
+			return;
+		}
+
 		firestore.LoadFeedback(entries =>
 		{
-			if (entries != null && entries.Count > 0)
+			if (entries != null)
 			{
 				List<FeedbackEntry> pendingEntries = CollectPendingFeedbackEntries();
 				_feedbackEntries.Clear();
@@ -409,21 +418,29 @@ public class FeedbackUI : WindowBase
 
 	private void LoadCachedFeedbackEntries()
 	{
-		string json = PlayerPrefs.GetString(GetFeedbackCacheKey(), string.Empty);
+		LoadCachedFeedbackEntriesForUid(GetFeedbackCacheUid(), _feedbackEntries, clearTarget: true);
+	}
+
+	private void LoadCachedFeedbackEntriesForUid(string uid, List<FeedbackEntry> target, bool clearTarget)
+	{
+		if (target == null) return;
+		if (clearTarget)
+			target.Clear();
+
+		string json = PlayerPrefs.GetString(GetFeedbackCacheKey(uid), string.Empty);
 		if (string.IsNullOrEmpty(json)) return;
 
 		try
 		{
 			var cache = JsonUtility.FromJson<FeedbackEntryCache>(json);
 			if (cache?.entries == null) return;
-			_feedbackEntries.Clear();
 			foreach (var entry in cache.entries)
 			{
 				if (entry != null && !string.IsNullOrWhiteSpace(entry.content))
 				{
 					if (string.IsNullOrEmpty(entry.feedbackId))
 						entry.feedbackId = Guid.NewGuid().ToString("N");
-					_feedbackEntries.Add(entry);
+					target.Add(entry);
 				}
 			}
 		}
@@ -435,8 +452,16 @@ public class FeedbackUI : WindowBase
 
 	private void SaveFeedbackEntriesToCache()
 	{
+		SaveFeedbackEntriesToCacheForUid(GetFeedbackCacheUid(), _feedbackEntries);
+	}
+
+	private void SaveFeedbackEntriesToCacheForUid(string uid, List<FeedbackEntry> source)
+	{
 		var entries = new List<FeedbackEntry>();
-		foreach (var entry in _feedbackEntries)
+		if (source == null)
+			source = new List<FeedbackEntry>();
+
+		foreach (var entry in source)
 		{
 			if (entry != null && !string.IsNullOrWhiteSpace(entry.content))
 				entries.Add(entry);
@@ -445,13 +470,18 @@ public class FeedbackUI : WindowBase
 		}
 
 		string json = JsonUtility.ToJson(new FeedbackEntryCache { entries = entries });
-		PlayerPrefs.SetString(GetFeedbackCacheKey(), json);
+		PlayerPrefs.SetString(GetFeedbackCacheKey(uid), json);
 		PlayerPrefs.Save();
 	}
 
 	private string GetFeedbackCacheKey()
 	{
-		return FEEDBACK_CACHE_KEY_PREFIX + GetFeedbackCacheUid();
+		return GetFeedbackCacheKey(GetFeedbackCacheUid());
+	}
+
+	private string GetFeedbackCacheKey(string uid)
+	{
+		return FEEDBACK_CACHE_KEY_PREFIX + (string.IsNullOrEmpty(uid) ? "local" : uid);
 	}
 
 	private string GetFeedbackCacheUid()
@@ -460,6 +490,49 @@ public class FeedbackUI : WindowBase
 		if (string.IsNullOrEmpty(uid))
 			uid = "local";
 		return uid;
+	}
+
+	private void MergeLocalPendingFeedbackEntries()
+	{
+		string currentUid = GetFeedbackCacheUid();
+		if (currentUid == "local") return;
+
+		var localEntries = new List<FeedbackEntry>();
+		LoadCachedFeedbackEntriesForUid("local", localEntries, clearTarget: true);
+		if (localEntries.Count == 0) return;
+
+		var remainingLocal = new List<FeedbackEntry>();
+		bool migratedAny = false;
+		foreach (FeedbackEntry entry in localEntries)
+		{
+			if (entry == null || string.IsNullOrWhiteSpace(entry.content))
+				continue;
+
+			if (!IsPendingStatus(entry.status))
+			{
+				remainingLocal.Add(entry);
+				continue;
+			}
+
+			if (string.IsNullOrEmpty(entry.feedbackId))
+				entry.feedbackId = Guid.NewGuid().ToString("N");
+
+			bool exists = _feedbackEntries.Exists(existing =>
+				existing != null
+				&& !string.IsNullOrEmpty(existing.feedbackId)
+				&& existing.feedbackId == entry.feedbackId);
+			if (!exists)
+			{
+				entry.status = "待同步";
+				_feedbackEntries.Add(entry);
+				migratedAny = true;
+			}
+		}
+
+		if (!migratedAny) return;
+
+		SaveFeedbackEntriesToCache();
+		SaveFeedbackEntriesToCacheForUid("local", remainingLocal);
 	}
 
 	private List<FeedbackEntry> CollectPendingFeedbackEntries()

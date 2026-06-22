@@ -36,6 +36,7 @@ public class CreateFriendInfoUIComponent:MonoBehaviour
 	    target.AddButtonClickListener(BackButton,mWindow.OnBackButtonClick);
 	    target.AddButtonClickListener(MoreRecordsButton,mWindow.OnMoreRecordsButtonClick);
 	    target.AddButtonClickListener(EditProfileButton,mWindow.OnEditProfileButtonClick);
+	    CreateFriendInfoRelationshipDivinationBinder.Bind(mWindow,this);
 	    if (SwitchSwitch != null)
 	    {
 	        Button syncButton = SwitchSwitch.GetComponent<Button>();
@@ -44,5 +45,32 @@ public class CreateFriendInfoUIComponent:MonoBehaviour
 	            syncButton.onClick.AddListener(mWindow.OnSyncSwitchClick);
 	        }
 	    }
+	}
+}
+
+public static class CreateFriendInfoRelationshipDivinationBinder
+{
+	private const string ButtonName = "RelationshipDivinationButton";
+
+	public static void Bind(CreateFriendInfoUI window, CreateFriendInfoUIComponent component)
+	{
+		if (window == null || component == null) return;
+
+		Button existing = FindExistingButton(component);
+		if (existing == null) return;
+		existing.onClick.RemoveAllListeners();
+		existing.gameObject.SetActive(false);
+	}
+
+	private static Button FindExistingButton(CreateFriendInfoUIComponent component)
+	{
+		Button[] buttons = component.GetComponentsInChildren<Button>(true);
+		foreach (Button button in buttons)
+		{
+			if (button != null && button.gameObject.name == ButtonName)
+				return button;
+		}
+
+		return null;
 	}
 }

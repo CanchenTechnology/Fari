@@ -143,11 +143,11 @@ public class DailyDivinationSyncSettingsUI : WindowBase
 				return;
 			}
 
-			UpdateTodaySummary(settings);
+			UpdatePublishedSummaries(settings);
 		});
 	}
 
-	private void UpdateTodaySummary(DailyDivinationSyncSettings settings)
+	private void UpdatePublishedSummaries(DailyDivinationSyncSettings settings)
 	{
 		var store = DailyOracleFirestore.Instance;
 		if (store == null || !store.IsReady)
@@ -158,14 +158,7 @@ public class DailyDivinationSyncSettingsUI : WindowBase
 			return;
 		}
 
-		if (settings.ShouldPublishToFeed)
-		{
-			store.PublishTodaySummary(OnSummaryUpdated);
-		}
-		else
-		{
-			store.DisableTodaySummary(OnSummaryUpdated);
-		}
+		store.ApplySyncSettingsToPublishedSummaries(settings, 30, OnSummaryUpdated);
 	}
 
 	private void OnSummaryUpdated(bool success)

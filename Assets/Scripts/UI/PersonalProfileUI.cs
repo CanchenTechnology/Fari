@@ -1,7 +1,7 @@
-/*---------------------------------
+﻿/*---------------------------------
  * Title: UI表现层脚本自动化生成工具-不会被覆盖
  * Author: GamerFrameWork
- * Date: 6/11/2026 1:53:22 PM
+ * Date: 6/21/2026 11:12:56 AM
  * Description: UI 表现层，该层只负责界面的交互、表现相关的更新，不允许编写任何业务逻辑代码
  * 注意: 以下文件是自动生成的，再次生成不会覆盖原有的代码，会在原有的代码上进行新增，可放心使用
 ---------------------------------*/
@@ -15,17 +15,21 @@ public class PersonalProfileUI : WindowBase
 {
 	public PersonalProfileUIComponent uiComponent;
 
-	// 头像精灵引用（需要在 Inspector 中配置或通过 Resource 加载）
-	public Sprite moonAvatarSprite;
-	public Sprite personAvatarSprite;
+	private const string DefaultDisplayUserName = "Luna";
+	private const string EmptyDisplayText = "未填写";
+	private const int MaxBioLength = 80;
 	private bool isAvatarUploading;
-	private InputField _bioInputField;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
 	public override void OnAwake()
 	{
 		uiComponent = gameObject.GetComponent<PersonalProfileUIComponent>();
+		if (uiComponent == null)
+		{
+			Debug.LogError("PersonalProfileUI 缺少 UI 组件绑定脚本：PersonalProfileUIComponent");
+			return;
+		}
 		uiComponent.InitComponent(this);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		base.OnAwake();
@@ -34,8 +38,8 @@ public class PersonalProfileUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
-		EnsureAvatarUploadClick();
-		EnsureBioInputField();
+		EnsureAvatarClickHandler(uiComponent?.AvatarImageImage);
+		EnsureAvatarClickHandler(uiComponent?.AvatarHeadImage);
 		LoadDataToUI();
 	}
 	// 物体隐藏时执行
@@ -50,240 +54,172 @@ public class PersonalProfileUI : WindowBase
 	}
 	#endregion
 
-	#region 数据加载与刷新
+	#region API Function
 
-	/// <summary>
-	/// 从 UserDataManager 加载数据到界面
-	/// </summary>
 	private void LoadDataToUI()
 	{
-		var manager = UserDataManager.Instance;
+		UserDataManager manager = UserDataManager.Instance;
+		if (manager == null || uiComponent == null) return;
 
-		// 加载文本数据
-		uiComponent.UserNameInputInputField.text = manager.UserName;
-		uiComponent.BirthdayInputInputField.text = manager.Birthday;
-		uiComponent.TimeInputInputField.text = manager.BirthTime;
-		uiComponent.CityInputInputField.text = manager.City;
-		if (_bioInputField != null)
-			_bioInputField.text = manager.ProfileBio;
+		SetText(uiComponent.UserNameTitleText, string.IsNullOrWhiteSpace(manager.UserName)
+			? DefaultDisplayUserName
+			: manager.UserName.Trim());
+		SetText(uiComponent.birthdayTextText, FormatBirthdayForDisplay(manager.Birthday));
+		SetText(uiComponent.birthdayTimeText, FormatTimeForDisplay(manager.BirthTime));
+		SetText(uiComponent.CityTextText, FormatOptional(manager.City));
 
-		// 加载头像
+		if (uiComponent.BioInputInputField != null)
+			uiComponent.BioInputInputField.text = NormalizeBio(manager.ProfileBio);
+
 		RefreshAvatar();
 	}
 
-	/// <summary>
-	/// 刷新头像显示
-	/// </summary>
 	private void RefreshAvatar()
 	{
-		var manager = UserDataManager.Instance;
-		Sprite sprite = null;
+		UserDataManager manager = UserDataManager.Instance;
+		if (manager == null) return;
 
-		if (!string.IsNullOrEmpty(manager.PhotoUrl) && GameManager.Instance != null)
+		if (!string.IsNullOrWhiteSpace(manager.PhotoUrl))
 		{
-			GameManager.Instance.StartCoroutine(GoogleUserInfoHelper.LoadAndCacheAvatarCoroutine(
-				manager.PhotoUrl,
-				loadedSprite =>
-				{
-					if (loadedSprite != null && uiComponent.AvatarImageImage != null)
-					{
-						uiComponent.AvatarImageImage.sprite = loadedSprite;
-						uiComponent.AvatarImageImage.preserveAspect = true;
-					}
-				}));
-		}
+			if (uiComponent == null)
+			{
+				ApplyAvatarFallback();
+				return;
+			}
 
-		switch (manager.CurrentAvatar)
-		{
-			case AvatarType.Moon:
-				sprite = moonAvatarSprite;
-				break;
-			case AvatarType.Person:
-				sprite = personAvatarSprite;
-				break;
-		}
-
-		if (sprite != null)
-		{
-			uiComponent.AvatarImageImage.sprite = sprite;
-			uiComponent.AvatarImageImage.preserveAspect = true;
-		}
-	}
-
-	private void EnsureAvatarUploadClick()
-	{
-		if (uiComponent == null || uiComponent.AvatarImageImage == null) return;
-
-		Button button = uiComponent.AvatarImageImage.GetComponent<Button>();
-		if (button == null)
-		{
-			button = uiComponent.AvatarImageImage.gameObject.AddComponent<Button>();
-			button.transition = Selectable.Transition.None;
-		}
-
-		button.onClick.RemoveListener(OnAvatarImageClick);
-		button.onClick.AddListener(OnAvatarImageClick);
-	}
-
-	private void EnsureBioInputField()
-	{
-		if (_bioInputField != null) return;
-
-		_bioInputField = FindRuntimeBioInput();
-		if (_bioInputField != null)
-		{
-			BindBioInput();
+			uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadCurrentUserAvatarCoroutine((sprite, _) =>
+			{
+				if (sprite != null)
+					ApplyAvatar(sprite);
+				else
+					ApplyAvatarFallback();
+			}));
 			return;
 		}
 
-		if (uiComponent == null || uiComponent.SaveBtnButton == null) return;
-		Transform infoRoot = uiComponent.SaveBtnButton.transform.parent;
-		if (infoRoot == null) return;
-
-		GameObject row = new GameObject("RuntimeBioRow", typeof(RectTransform));
-		row.transform.SetParent(infoRoot, false);
-		var rowRect = row.GetComponent<RectTransform>();
-		rowRect.anchorMin = new Vector2(0f, 0f);
-		rowRect.anchorMax = new Vector2(0f, 0f);
-		rowRect.pivot = new Vector2(0.5f, 0.5f);
-		rowRect.sizeDelta = new Vector2(864f, 165.517f);
-		row.transform.SetSiblingIndex(uiComponent.SaveBtnButton.transform.GetSiblingIndex());
-
-		Text label = CreateRuntimeText(row.transform, "BioLabel", "个人简介", 30, FontStyle.Normal, new Color(0.9f, 0.84f, 1f, 1f));
-		var labelRect = label.GetComponent<RectTransform>();
-		labelRect.anchorMin = new Vector2(0f, 1f);
-		labelRect.anchorMax = new Vector2(1f, 1f);
-		labelRect.pivot = new Vector2(0f, 1f);
-		labelRect.anchoredPosition = new Vector2(0f, 0f);
-		labelRect.sizeDelta = new Vector2(0f, 56f);
-		label.alignment = TextAnchor.MiddleLeft;
-
-		GameObject inputGo = new GameObject("[InputField]BioInput", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(InputField));
-		inputGo.transform.SetParent(row.transform, false);
-		var inputRect = inputGo.GetComponent<RectTransform>();
-		inputRect.anchorMin = new Vector2(0.5f, 0.5f);
-		inputRect.anchorMax = new Vector2(0.5f, 0.5f);
-		inputRect.pivot = new Vector2(0.5f, 0.5f);
-		inputRect.anchoredPosition = new Vector2(0f, -32.384f);
-		inputRect.sizeDelta = new Vector2(864f, 100.75f);
-
-		Image inputBg = inputGo.GetComponent<Image>();
-		inputBg.color = new Color(0f, 0f, 0f, 1f);
-
-		Text text = CreateRuntimeText(inputGo.transform, "Text", string.Empty, 28, FontStyle.Normal, Color.white);
-		var textRect = text.GetComponent<RectTransform>();
-		textRect.anchorMin = Vector2.zero;
-		textRect.anchorMax = Vector2.one;
-		textRect.offsetMin = new Vector2(28f, 8f);
-		textRect.offsetMax = new Vector2(-28f, -8f);
-		text.alignment = TextAnchor.MiddleLeft;
-		text.horizontalOverflow = HorizontalWrapMode.Wrap;
-
-		Text placeholder = CreateRuntimeText(inputGo.transform, "Placeholder", "写一句给自己的简介或签名", 28, FontStyle.Italic, new Color(0.58f, 0.54f, 0.66f, 1f));
-		var placeholderRect = placeholder.GetComponent<RectTransform>();
-		placeholderRect.anchorMin = Vector2.zero;
-		placeholderRect.anchorMax = Vector2.one;
-		placeholderRect.offsetMin = new Vector2(28f, 8f);
-		placeholderRect.offsetMax = new Vector2(-28f, -8f);
-		placeholder.alignment = TextAnchor.MiddleLeft;
-		placeholder.horizontalOverflow = HorizontalWrapMode.Wrap;
-
-		_bioInputField = inputGo.GetComponent<InputField>();
-		_bioInputField.targetGraphic = inputBg;
-		_bioInputField.textComponent = text;
-		_bioInputField.placeholder = placeholder;
-		_bioInputField.characterLimit = 80;
-		_bioInputField.lineType = InputField.LineType.SingleLine;
-		BindBioInput();
+		ApplyAvatarFallback();
 	}
 
-	private InputField FindRuntimeBioInput()
+	private void ApplyAvatar(Sprite sprite)
 	{
-		foreach (InputField input in gameObject.GetComponentsInChildren<InputField>(true))
+		if (sprite == null)
 		{
-			if (input != null && input.gameObject.name.Contains("Bio"))
-				return input;
+			ApplyAvatarFallback();
+			return;
 		}
 
-		return null;
+		ApplyAvatarToImage(uiComponent?.AvatarImageImage, sprite);
+		ApplyAvatarToImage(uiComponent?.AvatarHeadImage, sprite);
 	}
 
-	private Text CreateRuntimeText(Transform parent, string name, string content, int fontSize, FontStyle style, Color color)
+	private void ApplyAvatarToImage(Image target, Sprite sprite)
 	{
-		GameObject go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
-		go.transform.SetParent(parent, false);
-		Text text = go.GetComponent<Text>();
-		text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-		text.fontSize = fontSize;
-		text.fontStyle = style;
-		text.color = color;
-		text.text = content ?? string.Empty;
-		text.raycastTarget = false;
-		text.horizontalOverflow = HorizontalWrapMode.Wrap;
-		text.verticalOverflow = VerticalWrapMode.Truncate;
-		return text;
+		if (target == null || sprite == null) return;
+		target.sprite = sprite;
+		target.preserveAspect = true;
+		target.color = Color.white;
 	}
 
-	private void BindBioInput()
+	private void ApplyAvatarFallback()
 	{
-		if (_bioInputField == null) return;
-		_bioInputField.onEndEdit.RemoveListener(OnBioInputEnd);
-		_bioInputField.onEndEdit.AddListener(OnBioInputEnd);
+		SetFallbackColor(uiComponent?.AvatarImageImage, UserDataManager.Instance?.CurrentAvatar ?? AvatarType.Moon);
+		SetFallbackColor(uiComponent?.AvatarHeadImage, UserDataManager.Instance?.CurrentAvatar ?? AvatarType.Moon);
 	}
 
-	#endregion
-
-	#region API Function
-
-	private bool TryApplyProfileInputs(out string validationMessage)
+	private void SetFallbackColor(Image image, AvatarType avatarType)
 	{
-		validationMessage = string.Empty;
-
-		string userName = uiComponent.UserNameInputInputField != null
-			? uiComponent.UserNameInputInputField.text.Trim()
-			: UserDataManager.Instance.UserName;
-		string birthday = uiComponent.BirthdayInputInputField != null
-			? uiComponent.BirthdayInputInputField.text.Trim()
-			: UserDataManager.Instance.Birthday;
-		string birthTime = uiComponent.TimeInputInputField != null
-			? uiComponent.TimeInputInputField.text.Trim()
-			: UserDataManager.Instance.BirthTime;
-		string city = uiComponent.CityInputInputField != null
-			? uiComponent.CityInputInputField.text.Trim()
-			: UserDataManager.Instance.City;
-		string bio = _bioInputField != null
-			? NormalizeBio(_bioInputField.text)
-			: UserDataManager.Instance.ProfileBio;
-
-		if (!TryNormalizeBirthday(birthday, out string normalizedBirthday))
+		if (image == null) return;
+		if (image.sprite != null)
 		{
-			validationMessage = "生日格式请填写为 1998-08-08";
-			return false;
+			image.preserveAspect = true;
+			return;
 		}
 
-		if (!TryNormalizeBirthTime(birthTime, out string normalizedBirthTime))
+		image.color = avatarType == AvatarType.Moon
+			? new Color(0.18f, 0.08f, 0.25f, 1f)
+			: new Color(0.11f, 0.10f, 0.18f, 1f);
+	}
+
+	private void EnsureAvatarClickHandler(Image image)
+	{
+		if (image == null) return;
+
+		Button button = image.GetComponent<Button>();
+		if (button == null)
 		{
-			validationMessage = "出生时间格式请填写为 08:30";
-			return false;
+			button = image.gameObject.AddComponent<Button>();
+			button.transition = Selectable.Transition.None;
 		}
 
-		if (uiComponent.UserNameInputInputField != null)
-			uiComponent.UserNameInputInputField.text = userName;
-		if (uiComponent.BirthdayInputInputField != null)
-			uiComponent.BirthdayInputInputField.text = normalizedBirthday;
-		if (uiComponent.TimeInputInputField != null)
-			uiComponent.TimeInputInputField.text = normalizedBirthTime;
-		if (uiComponent.CityInputInputField != null)
-			uiComponent.CityInputInputField.text = city;
-		if (_bioInputField != null)
-			_bioInputField.text = bio;
+		button.onClick.RemoveListener(OnSetAvatarButtonClick);
+		button.onClick.AddListener(OnSetAvatarButtonClick);
+	}
 
-		UserDataManager.Instance.SetUserName(userName);
-		UserDataManager.Instance.SetBirthday(normalizedBirthday);
-		UserDataManager.Instance.SetBirthTime(normalizedBirthTime);
-		UserDataManager.Instance.SetCity(city);
-		UserDataManager.Instance.SetProfileBio(bio);
-		return true;
+	private void ApplyProfileInputsToUserData()
+	{
+		UserDataManager manager = UserDataManager.Instance;
+		if (manager == null) return;
+
+		string bio = uiComponent?.BioInputInputField != null
+			? NormalizeBio(uiComponent.BioInputInputField.text)
+			: manager.ProfileBio;
+		string birthday = GetNormalizedBirthdayFromUI();
+		string birthTime = GetNormalizedBirthTimeFromUI();
+		string city = GetValueText(uiComponent?.CityTextText);
+
+		manager.SetProfileBio(bio);
+		manager.SetBirthday(birthday);
+		manager.SetBirthTime(birthTime);
+		manager.SetCity(IsEmptyDisplayValue(city) ? string.Empty : city.Trim());
+
+		string currentTitle = GetValueText(uiComponent?.UserNameTitleText);
+		if (!string.IsNullOrWhiteSpace(manager.UserName))
+		{
+			manager.SetUserName(manager.UserName.Trim());
+		}
+		else if (!IsEmptyDisplayValue(currentTitle) && currentTitle != DefaultDisplayUserName)
+		{
+			manager.SetUserName(currentTitle.Trim());
+		}
+	}
+
+	private string GetNormalizedBirthdayFromUI()
+	{
+		string value = GetValueText(uiComponent?.birthdayTextText);
+		if (TryNormalizeBirthday(value, out string normalized))
+			return normalized;
+		return string.Empty;
+	}
+
+	private string GetNormalizedBirthTimeFromUI()
+	{
+		string value = GetValueText(uiComponent?.birthdayTimeText);
+		if (TryNormalizeBirthTime(value, out string normalized))
+			return normalized;
+		return string.Empty;
+	}
+
+	private void SaveProfile()
+	{
+		ApplyProfileInputsToUserData();
+
+		UserDataManager manager = UserDataManager.Instance;
+		if (manager == null)
+		{
+			ShowToast("用户资料服务暂不可用");
+			return;
+		}
+
+		manager.SaveData();
+		FirestoreManager.Instance?.SaveUserData(success =>
+		{
+			if (!success)
+				Debug.LogWarning("[PersonalProfileUI] 用户资料云端同步失败");
+		});
+
+		ShowToast(manager.IsProfileComplete()
+			? "保存成功！"
+			: "资料已保存，但信息尚未填写完整");
 	}
 
 	private string NormalizeBio(string input)
@@ -295,13 +231,13 @@ public class PersonalProfileUI : WindowBase
 		while (value.Contains("  ", StringComparison.Ordinal))
 			value = value.Replace("  ", " ");
 
-		return value.Length > 80 ? value.Substring(0, 80) : value;
+		return value.Length > MaxBioLength ? value.Substring(0, MaxBioLength) : value;
 	}
 
 	private bool TryNormalizeBirthday(string input, out string normalized)
 	{
 		normalized = string.Empty;
-		if (string.IsNullOrWhiteSpace(input))
+		if (IsEmptyDisplayValue(input))
 			return true;
 
 		string value = input.Trim()
@@ -332,7 +268,7 @@ public class PersonalProfileUI : WindowBase
 	private bool TryNormalizeBirthTime(string input, out string normalized)
 	{
 		normalized = string.Empty;
-		if (string.IsNullOrWhiteSpace(input))
+		if (IsEmptyDisplayValue(input))
 			return true;
 
 		string value = input.Trim()
@@ -358,40 +294,48 @@ public class PersonalProfileUI : WindowBase
 		return true;
 	}
 
-	private void NormalizeBirthdayField(bool showToast)
+	private string FormatBirthdayForDisplay(string value)
 	{
-		if (uiComponent.BirthdayInputInputField == null) return;
+		if (!TryNormalizeBirthday(value, out string normalized) || string.IsNullOrEmpty(normalized))
+			return EmptyDisplayText;
 
-		string value = uiComponent.BirthdayInputInputField.text;
-		if (TryNormalizeBirthday(value, out string normalized))
-		{
-			uiComponent.BirthdayInputInputField.text = normalized;
-			return;
-		}
-
-		if (showToast)
-			ToastManager.ShowToast("生日格式请填写为 1998-08-08");
+		return DateTime.TryParseExact(normalized, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime date)
+			? date.ToString("yyyy.MM.dd")
+			: normalized.Replace("-", ".");
 	}
 
-	private void NormalizeBirthTimeField(bool showToast)
+	private string FormatTimeForDisplay(string value)
 	{
-		if (uiComponent.TimeInputInputField == null) return;
-
-		string value = uiComponent.TimeInputInputField.text;
-		if (TryNormalizeBirthTime(value, out string normalized))
-		{
-			uiComponent.TimeInputInputField.text = normalized;
-			return;
-		}
-
-		if (showToast)
-			ToastManager.ShowToast("出生时间格式请填写为 08:30");
+		return TryNormalizeBirthTime(value, out string normalized) && !string.IsNullOrEmpty(normalized)
+			? normalized
+			: EmptyDisplayText;
 	}
 
-	private void TrimTextField(InputField field)
+	private string FormatOptional(string value)
 	{
-		if (field != null)
-			field.text = field.text.Trim();
+		return string.IsNullOrWhiteSpace(value) ? EmptyDisplayText : value.Trim();
+	}
+
+	private bool IsEmptyDisplayValue(string value)
+	{
+		return string.IsNullOrWhiteSpace(value) || value.Trim() == EmptyDisplayText;
+	}
+
+	private string GetValueText(Text text)
+	{
+		return text == null ? string.Empty : text.text;
+	}
+
+	private void SetText(Text text, string value)
+	{
+		if (text != null)
+			text.text = value ?? string.Empty;
+	}
+
+	private void ShowToast(string message)
+	{
+		if (!string.IsNullOrWhiteSpace(message))
+			ToastManager.ShowToast(message);
 	}
 
 	#endregion
@@ -399,38 +343,87 @@ public class PersonalProfileUI : WindowBase
 	#region UI组件事件
 	public void OnBackButtonClick()
 	{
-		// 返回上一界面
 		HideWindow();
-		
 	}
-	public void OnMoonAvatarBtnButtonClick()
+
+	public void OnBioInputInputChange(string text)
 	{
-		// 切换到月亮头像
-		UserDataManager.Instance.SetAvatarType(AvatarType.Moon);
-		RefreshAvatar();
 	}
-	public void OnPersonAvatarBtnButtonClick()
+
+	public void OnBioInputInputEnd(string text)
 	{
-		// 切换到人物头像
-		UserDataManager.Instance.SetAvatarType(AvatarType.Person);
-		RefreshAvatar();
+		if (uiComponent?.BioInputInputField != null)
+			uiComponent.BioInputInputField.text = NormalizeBio(text);
 	}
-	public void OnAvatarImageClick()
+
+	public void OnBirthdayArrowButtonClick()
+	{
+		string initial = GetNormalizedBirthdayFromUI();
+		if (string.IsNullOrEmpty(initial))
+			initial = UserDataManager.Instance?.Birthday ?? string.Empty;
+
+		SpinPickerUI.ShowDate(initial, value =>
+		{
+			if (!TryNormalizeBirthday(value, out string normalized))
+			{
+				ShowToast("生日格式无效");
+				return;
+			}
+
+			SetText(uiComponent?.birthdayTextText, FormatBirthdayForDisplay(normalized));
+		});
+	}
+
+	public void OnTimeArrowButtonClick()
+	{
+		string initial = GetNormalizedBirthTimeFromUI();
+		if (string.IsNullOrEmpty(initial))
+			initial = UserDataManager.Instance?.BirthTime ?? string.Empty;
+
+		SpinPickerUI.ShowTime(initial, value =>
+		{
+			if (!TryNormalizeBirthTime(value, out string normalized))
+			{
+				ShowToast("出生时间格式无效");
+				return;
+			}
+
+			SetText(uiComponent?.birthdayTimeText, FormatTimeForDisplay(normalized));
+		});
+	}
+
+	public void OnCityArrowButtonClick()
+	{
+		string initial = GetValueText(uiComponent?.CityTextText);
+		if (IsEmptyDisplayValue(initial))
+			initial = UserDataManager.Instance?.City ?? string.Empty;
+
+		SpinPickerUI.ShowRegion(initial, value =>
+		{
+			SetText(uiComponent?.CityTextText, FormatOptional(value));
+		});
+	}
+
+	public void OnSetAvatarButtonClick()
 	{
 		if (isAvatarUploading) return;
 
+		AvatarUploadManager uploadManager = AvatarUploadManager.Instance;
+		if (uploadManager == null)
+		{
+			ShowToast("头像上传服务暂不可用");
+			return;
+		}
+
 		isAvatarUploading = true;
-		ToastManager.ShowToast("正在上传头像...");
-		AvatarUploadManager.Instance.PickAndUploadAvatar(
+		ShowToast("正在上传头像...");
+		uploadManager.PickAndUploadAvatar(
 			result =>
 			{
 				isAvatarUploading = false;
-				if (result != null && result.previewSprite != null && uiComponent.AvatarImageImage != null)
-				{
-					uiComponent.AvatarImageImage.sprite = result.previewSprite;
-					uiComponent.AvatarImageImage.preserveAspect = true;
-				}
-				ToastManager.ShowToast("头像已保存");
+				if (result != null && result.previewSprite != null)
+					ApplyAvatar(result.previewSprite);
+				ShowToast("头像已保存");
 			},
 			error =>
 			{
@@ -438,68 +431,14 @@ public class PersonalProfileUI : WindowBase
 				if (!string.IsNullOrEmpty(error) && error != "已取消选择头像")
 				{
 					Debug.LogWarning("[PersonalProfileUI] 头像上传失败: " + error);
-					ToastManager.ShowToast(error);
+					ShowToast(error);
 				}
 			});
 	}
-	public void OnUserNameInputInputChange(string text)
-	{
-	}
-	public void OnUserNameInputInputEnd(string text)
-	{
-		TrimTextField(uiComponent.UserNameInputInputField);
-	}
-	public void OnBirthdayInputInputChange(string text)
-	{
-	}
-	public void OnBirthdayInputInputEnd(string text)
-	{
-		NormalizeBirthdayField(true);
-	}
-	public void OnTimeInputInputChange(string text)
-	{
-	}
-	public void OnTimeInputInputEnd(string text)
-	{
-		NormalizeBirthTimeField(true);
-	}
-	public void OnCityInputInputChange(string text)
-	{
-	}
-	public void OnCityInputInputEnd(string text)
-	{
-		TrimTextField(uiComponent.CityInputInputField);
-	}
-	private void OnBioInputEnd(string text)
-	{
-		if (_bioInputField != null)
-			_bioInputField.text = NormalizeBio(text);
-	}
+
 	public void OnSaveBtnButtonClick()
 	{
-		if (!TryApplyProfileInputs(out string validationMessage))
-		{
-			ToastManager.ShowToast(validationMessage);
-			return;
-		}
-
-		// 保存数据到本地
-		UserDataManager.Instance.SaveData();
-		FirestoreManager.Instance?.SaveUserData(success =>
-		{
-			if (!success)
-				Debug.LogWarning("[PersonalProfileUI] 用户资料云端同步失败");
-		});
-
-		// 可选：校验数据完整性
-		if (UserDataManager.Instance.IsProfileComplete())
-		{
-			ToastManager.ShowToast("保存成功！");
-		}
-		else
-		{
-			ToastManager.ShowToast("资料已保存，但信息尚未填写完整");
-		}
+		SaveProfile();
 	}
 	#endregion
 }

@@ -57,6 +57,9 @@ public class TwoPersonDivinationInviteSentFlowUI : WindowBase
 		currentRecord = RelationshipDivinationFlow.CurrentRecord;
 		currentFriend = RelationshipDivinationFlow.CurrentFriend;
 		isProcessing = false;
+		if (HandleTerminalState())
+			return;
+
 		Render();
 		StartCountdown();
 	}
@@ -77,7 +80,7 @@ public class TwoPersonDivinationInviteSentFlowUI : WindowBase
 			return;
 		}
 
-		RelationshipDivinationFirestore service = RelationshipDivinationFirestore.Instance;
+		RelationshipDivinationFirestore service = RelationshipDivinationFlow.GetOrCreateService();
 		if (service == null)
 		{
 			ToastManager.ShowToast("关系占卜服务初始化中，请稍后再试");
@@ -107,7 +110,7 @@ public class TwoPersonDivinationInviteSentFlowUI : WindowBase
 			return;
 		}
 
-		RelationshipDivinationFirestore service = RelationshipDivinationFirestore.Instance;
+		RelationshipDivinationFirestore service = RelationshipDivinationFlow.GetOrCreateService();
 		if (service == null)
 		{
 			ToastManager.ShowToast("关系占卜服务初始化中，请稍后再试");
@@ -153,12 +156,40 @@ public class TwoPersonDivinationInviteSentFlowUI : WindowBase
 		UpdateButtons();
 	}
 
+	private bool HandleTerminalState()
+	{
+		if (currentRecord == null) return false;
+
+		if (currentRecord.IsCancelled)
+		{
+			ToastManager.ShowToast("这次双人占卜邀请已取消");
+			RelationshipDivinationFlow.HideFlowWindows();
+			return true;
+		}
+
+		if (currentRecord.IsCompleted || currentRecord.isLocalOnly)
+		{
+			RelationshipDivinationFlow.ShowRevealReady(currentRecord, currentFriend);
+			return true;
+		}
+
+		if (RelationshipDivinationFlow.IsInviteExpired(currentRecord))
+		{
+			ToastManager.ShowToast("邀请已过期，请重新发起双人占卜");
+			RelationshipDivinationFlow.HideFlowWindows();
+			return true;
+		}
+
+		return false;
+	}
+
 	private void UpdateButtons()
 	{
 		if (uiComponent == null || currentRecord == null) return;
 
 		string uid = RelationshipDivinationFlow.GetCurrentUid();
-		bool canReveal = currentRecord.CanCurrentUserReveal(uid);
+		bool expired = RelationshipDivinationFlow.GetInviteRemaining(currentRecord) <= System.TimeSpan.Zero && !currentRecord.isLocalOnly;
+		bool canReveal = !expired && currentRecord.CanCurrentUserReveal(uid);
 		if (uiComponent.FlipMyCardButton != null)
 			uiComponent.FlipMyCardButton.interactable = !isProcessing && canReveal;
 		if (uiComponent.CancelInviteButton != null)
@@ -192,8 +223,12 @@ public class TwoPersonDivinationInviteSentFlowUI : WindowBase
 	{
 		while (currentRecord != null && gameObject != null && gameObject.activeInHierarchy)
 		{
+			if (HandleTerminalState())
+				yield break;
+
 			if (uiComponent?.InviteCountdownText != null)
 				uiComponent.InviteCountdownText.text = RelationshipDivinationFlow.FormatRemaining(RelationshipDivinationFlow.GetInviteRemaining(currentRecord));
+			UpdateButtons();
 			yield return new WaitForSeconds(1f);
 		}
 	}

@@ -22,12 +22,14 @@ public class FacebookInviteUI : WindowBase
 		uiComponent.InitComponent(this);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		base.OnAwake();
+		NotificationUnreadBadge.Attach(uiComponent.NotificationsButton);
 	}
 	// 物体显示时执行
 	public override void OnShow()
 	{
 		base.OnShow();
 		BindFacebookActionButtons();
+		NotificationUnreadBadge.Attach(uiComponent.NotificationsButton);
 	}
 	// 物体隐藏时执行
 	public override void OnHide()

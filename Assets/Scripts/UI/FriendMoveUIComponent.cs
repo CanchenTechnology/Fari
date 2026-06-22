@@ -16,6 +16,7 @@ public class FriendMoveUIComponent:MonoBehaviour
 	public Button ViewFriendButton;
 	public Button SendOracleRelatonButton;
 	public Button DeleteFriendButton;
+	public Button BlockFriendButton;
 	public Button CancelButton;
 	public void InitComponent(WindowBase target)
 	{
@@ -26,6 +27,7 @@ public class FriendMoveUIComponent:MonoBehaviour
 	    target.AddButtonClickListener(ViewFriendButton,mWindow.OnViewFriendButtonClick);
 	    target.AddButtonClickListener(SendOracleRelatonButton,mWindow.OnSendOracleRelatonButtonClick);
 	    target.AddButtonClickListener(DeleteFriendButton,mWindow.OnDeleteFriendButtonClick);
+	    target.AddButtonClickListener(BlockFriendButton,mWindow.OnBlockFriendButtonClick);
 	    target.AddButtonClickListener(CancelButton,mWindow.OnCancelButtonClick);
 	}
 }

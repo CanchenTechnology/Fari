@@ -5,6 +5,7 @@
  * Description: UI 表现层，该层只负责界面的交互、表现相关的更新，不允许编写任何业务逻辑代码
  * 注意: 以下文件是自动生成的，再次生成不会覆盖原有的代码，会在原有的代码上进行新增，可放心使用
 ---------------------------------*/
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine.UI;
 using UnityEngine;
@@ -12,6 +13,8 @@ using GamerFrameWork.UIFrameWork;
 
 public class FriendUI : WindowBase
 {
+	private static readonly bool ShowDailyOracleFeed = false;
+
 	public FriendUIComponent uiComponent;
 
 	// 当前活跃的 FriendItem 列表（用于管理回收）
@@ -27,6 +30,9 @@ public class FriendUI : WindowBase
 	private Transform relationshipInviteRoot;
 	private Text relationshipInviteStatusText;
 	private int relationshipInviteRequestId;
+	private Coroutine relationshipInviteRetryCoroutine;
+	private int cloudFriendSyncRequestId;
+	private Coroutine cloudFriendSyncRetryCoroutine;
 
 	// 折叠状态
 	private bool realFriendExpanded = true;
@@ -51,15 +57,8 @@ public class FriendUI : WindowBase
 		FriendDataManager.Instance.DataChanged += HandleFriendDataChanged;
 		RefreshAllViews();
 		RefreshRelationshipDivinationInvites();
-		RefreshDailyOracleFeed();
-		FirestoreManager.Instance.LoadFriends(_ =>
-		{
-			RefreshAllViews();
-			RefreshRelationshipDivinationInvites();
-			RefreshDailyOracleFeed();
-		});
-		FirestoreManager.Instance.LoadFriendRequests(_ => RefreshAllViews());
-		FirestoreManager.Instance.LoadVirtualFriends(_ => RefreshAllViews());
+		HideDailyOracleFeed();
+		RefreshCloudFriendData();
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -67,6 +66,9 @@ public class FriendUI : WindowBase
 		base.OnHide();
 		dailyOracleFeedRequestId++;
 		relationshipInviteRequestId++;
+		cloudFriendSyncRequestId++;
+		StopRelationshipInviteRetry();
+		StopCloudFriendSyncRetry();
 		FriendDataManager.Instance.DataChanged -= HandleFriendDataChanged;
 		// 隐藏时回收所有对象到池中
 		ReleaseAllItems();
@@ -113,7 +115,7 @@ public class FriendUI : WindowBase
 		{
 			RefreshAllViews();
 			RefreshRelationshipDivinationInvites();
-			RefreshDailyOracleFeed();
+			HideDailyOracleFeed();
 		}
 	}
 
@@ -187,6 +189,77 @@ public class FriendUI : WindowBase
 		ForceRebuildLayout(uiComponent.InviteBannerTransform);
 	}
 
+	private void RefreshCloudFriendData()
+	{
+		int requestId = ++cloudFriendSyncRequestId;
+		FirestoreManager firestore = FirestoreManager.Instance;
+		if (firestore == null || !firestore.IsInitialized)
+		{
+			ScheduleCloudFriendSyncRetry(requestId);
+			return;
+		}
+
+		LoadCloudFriendData(firestore, requestId);
+	}
+
+	private void LoadCloudFriendData(FirestoreManager firestore, int requestId)
+	{
+		if (firestore == null) return;
+
+		firestore.LoadFriends(_ =>
+		{
+			if (requestId != cloudFriendSyncRequestId || !gameObject.activeInHierarchy) return;
+			RefreshAllViews();
+			RefreshRelationshipDivinationInvites();
+			HideDailyOracleFeed();
+		});
+		firestore.LoadFriendRequests(_ =>
+		{
+			if (requestId != cloudFriendSyncRequestId || !gameObject.activeInHierarchy) return;
+			RefreshAllViews();
+		});
+		firestore.LoadVirtualFriends(_ =>
+		{
+			if (requestId != cloudFriendSyncRequestId || !gameObject.activeInHierarchy) return;
+			RefreshAllViews();
+		});
+	}
+
+	private void ScheduleCloudFriendSyncRetry(int requestId)
+	{
+		StopCloudFriendSyncRetry();
+		if (uiComponent == null || !gameObject.activeInHierarchy) return;
+		cloudFriendSyncRetryCoroutine = uiComponent.StartCoroutine(CloudFriendSyncRetryRoutine(requestId));
+	}
+
+	private void StopCloudFriendSyncRetry()
+	{
+		if (cloudFriendSyncRetryCoroutine != null && uiComponent != null)
+			uiComponent.StopCoroutine(cloudFriendSyncRetryCoroutine);
+		cloudFriendSyncRetryCoroutine = null;
+	}
+
+	private IEnumerator CloudFriendSyncRetryRoutine(int requestId)
+	{
+		const int maxAttempts = 10;
+		for (int i = 0; i < maxAttempts; i++)
+		{
+			yield return new WaitForSeconds(1.5f);
+			if (requestId != cloudFriendSyncRequestId || gameObject == null || !gameObject.activeInHierarchy)
+				yield break;
+
+			FirestoreManager firestore = FirestoreManager.Instance;
+			if (firestore != null && firestore.IsInitialized)
+			{
+				cloudFriendSyncRetryCoroutine = null;
+				LoadCloudFriendData(firestore, requestId);
+				yield break;
+			}
+		}
+
+		cloudFriendSyncRetryCoroutine = null;
+	}
+
 	private void RefreshRelationshipDivinationInvites()
 	{
 		EnsureRelationshipInviteRoot();
@@ -195,18 +268,36 @@ public class FriendUI : WindowBase
 		int requestId = ++relationshipInviteRequestId;
 		SetRelationshipInviteStatus("正在读取关系占卜邀请...");
 
-		RelationshipDivinationFirestore store = RelationshipDivinationFirestore.Instance;
+		RelationshipDivinationFirestore store = RelationshipDivinationFlow.GetOrCreateService();
 		if (store == null || !store.IsReady)
 		{
-			RenderRelationshipInvites(null);
+			RenderRelationshipInviteStatus("双人关系占卜邀请同步中，稍后自动刷新。");
+			ScheduleRelationshipInviteRetry(requestId);
 			return;
 		}
 
-		store.LoadIncomingInvites(records =>
+		store.LoadIncomingInvites((records, succeeded) =>
 		{
 			if (requestId != relationshipInviteRequestId || !gameObject.activeInHierarchy) return;
+			StopRelationshipInviteRetry();
+			if (!succeeded)
+			{
+				RenderRelationshipInviteStatus("双人关系占卜邀请同步失败，请稍后再试。");
+				return;
+			}
+
 			RenderRelationshipInvites(records);
 		});
+	}
+
+	private void RenderRelationshipInviteStatus(string statusText)
+	{
+		ReleaseRelationshipInviteItems();
+		if (relationshipInviteRoot == null) return;
+
+		relationshipInviteRoot.gameObject.SetActive(true);
+		SetRelationshipInviteStatus(statusText);
+		ForceRebuildLayout(relationshipInviteRoot);
 	}
 
 	private void RenderRelationshipInvites(List<RelationshipDivinationRecord> records)
@@ -232,8 +323,51 @@ public class FriendUI : WindowBase
 		ForceRebuildLayout(relationshipInviteRoot);
 	}
 
+	private void ScheduleRelationshipInviteRetry(int requestId)
+	{
+		StopRelationshipInviteRetry();
+		if (uiComponent == null || !gameObject.activeInHierarchy) return;
+		relationshipInviteRetryCoroutine = uiComponent.StartCoroutine(RelationshipInviteRetryRoutine(requestId));
+	}
+
+	private void StopRelationshipInviteRetry()
+	{
+		if (relationshipInviteRetryCoroutine != null && uiComponent != null)
+			uiComponent.StopCoroutine(relationshipInviteRetryCoroutine);
+		relationshipInviteRetryCoroutine = null;
+	}
+
+	private IEnumerator RelationshipInviteRetryRoutine(int requestId)
+	{
+		const int maxAttempts = 10;
+		for (int i = 0; i < maxAttempts; i++)
+		{
+			yield return new WaitForSeconds(1.5f);
+			if (requestId != relationshipInviteRequestId || gameObject == null || !gameObject.activeInHierarchy)
+				yield break;
+
+			RelationshipDivinationFirestore store = RelationshipDivinationFirestore.Instance;
+			if (store != null && store.IsReady)
+			{
+				relationshipInviteRetryCoroutine = null;
+				RefreshRelationshipDivinationInvites();
+				yield break;
+			}
+		}
+
+		if (requestId == relationshipInviteRequestId && gameObject != null && gameObject.activeInHierarchy)
+			RenderRelationshipInviteStatus("双人关系占卜邀请仍在同步中，稍后重新进入好友页刷新。");
+		relationshipInviteRetryCoroutine = null;
+	}
+
 	private void RefreshDailyOracleFeed()
 	{
+		if (!ShowDailyOracleFeed)
+		{
+			HideDailyOracleFeed();
+			return;
+		}
+
 		EnsureDailyOracleFeedRoot();
 		if (dailyOracleFeedRoot == null) return;
 
@@ -391,6 +525,17 @@ public class FriendUI : WindowBase
 		activeDailyOracleFeedItems.Clear();
 	}
 
+	private void HideDailyOracleFeed()
+	{
+		dailyOracleFeedRequestId++;
+		ReleaseDailyOracleFeedItems();
+		if (dailyOracleFeedRoot != null)
+		{
+			dailyOracleFeedRoot.gameObject.SetActive(false);
+			ForceRebuildLayout(dailyOracleFeedRoot.parent);
+		}
+	}
+
 	private void ReleaseRelationshipInviteItems()
 	{
 		foreach (GameObject item in activeRelationshipInviteItems)
@@ -416,6 +561,7 @@ public class FriendUI : WindowBase
 
 	private void EnsureDailyOracleFeedRoot()
 	{
+		if (!ShowDailyOracleFeed) return;
 		if (dailyOracleFeedRoot != null) return;
 
 		Transform parent = uiComponent.InviteBannerTransform != null
@@ -690,6 +836,8 @@ public class FriendUI : WindowBase
 	/// </summary>
 	private void ForceRebuildLayout(Transform contentTransform)
 	{
+		if (contentTransform == null) return;
+
 		LayoutRebuilder.ForceRebuildLayoutImmediate(contentTransform as RectTransform);
 
 		// 向上逐级刷新，确保父节点（可能有 ContentSizeFitter）也同步

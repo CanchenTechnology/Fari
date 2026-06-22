@@ -333,6 +333,9 @@ namespace GamerFrameWork.UIFrameWork
         }
         public void DestroyAllWindow(List<string> filterList = null)
         {
+            ClearStackWindows();
+            mStartPopStackWndStatus = false;
+
             for (int i = mAllWindowList.Count - 1; i >= 0; i--)
             {
                 WindowBase window = mAllWindowList[i];
@@ -343,6 +346,11 @@ namespace GamerFrameWork.UIFrameWork
                 DestroyWindow(window.Name);
             }
             Resources.UnloadUnusedAssets();
+        }
+
+        public void DestroyAllWindows(List<string> filterList = null)
+        {
+            DestroyAllWindow(filterList);
         }
 
         #endregion
@@ -365,6 +373,13 @@ namespace GamerFrameWork.UIFrameWork
             {
                 window = LoadWindow2AB(wndName);
             }
+
+            if (window == null)
+            {
+                Debug.LogError($"[LoadWindow] load failed, wndName={wndName}, loadType={loadType}");
+                return null;
+            }
+
             window.transform.localScale = Vector3.one;
             window.transform.localPosition = Vector3.zero;
             window.transform.rotation = Quaternion.identity;
@@ -378,7 +393,21 @@ namespace GamerFrameWork.UIFrameWork
         /// <returns></returns>
         private GameObject LoadWindow2Res(string wndName)
         {
-            GameObject window = GameObject.Instantiate<GameObject>(Resources.Load<GameObject>(mWindowConfig.GetWindowData(wndName).path), mUIRoot);
+            var path = mWindowConfig.GetWindowData(wndName)?.path;
+            if (string.IsNullOrEmpty(path))
+            {
+                Debug.LogError($"[LoadWindow2Res] path is null, wndName={wndName}");
+                return null;
+            }
+
+            GameObject prefab = Resources.Load<GameObject>(path);
+            if (prefab == null)
+            {
+                Debug.LogError($"[LoadWindow2Res] load failed, path={path}");
+                return null;
+            }
+
+            GameObject window = GameObject.Instantiate<GameObject>(prefab, mUIRoot);
             return window;
         }
         /// <summary>
@@ -410,7 +439,10 @@ namespace GamerFrameWork.UIFrameWork
 
         private void DestroyWindow2FrameWork(GameObject windowObj)
         {
-            //GameObject.Destroy(windowObj);
+            if (windowObj != null)
+            {
+                GameObject.Destroy(windowObj);
+            }
 
             //调用资源框架的释放接口
             //HotFixAssetsFrame.Release(windowObj,true);

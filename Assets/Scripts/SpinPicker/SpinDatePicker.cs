@@ -127,7 +127,7 @@ public class SpinDatePicker : MonoBehaviour
 	private void MoveListToValue(LoopListView2 listView, int value, int firstValue)
 	{
 		if (listView == null) return;
-		listView.MovePanelToItemIndex(value - firstValue - 1, 0);
+		listView.MovePanelToItemIndex(value - firstValue, 0);
 		listView.FinishSnapImmediately();
 	}
 

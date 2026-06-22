@@ -69,26 +69,55 @@ TMP_DIR="$(mktemp -d)"
 ID_TOKEN=""
 LOCAL_ID=""
 
+curl_http() {
+  local output="$1"
+  shift
+
+  local status_file="$TMP_DIR/curl-status-$RANDOM.txt"
+  local error_file="$TMP_DIR/curl-error-$RANDOM.txt"
+  local exit_code=0
+  local http_status
+
+  curl \
+    --silent \
+    --show-error \
+    --location \
+    --max-time "$CURL_MAX_TIME" \
+    --connect-timeout "$CURL_CONNECT_TIMEOUT" \
+    --retry "$CURL_RETRY" \
+    --retry-all-errors \
+    --retry-delay "$CURL_RETRY_DELAY" \
+    "$@" \
+    --output "$output" \
+    --write-out "%{http_code}" \
+    >"$status_file" \
+    2>"$error_file" || exit_code=$?
+
+  http_status="$(tr -d '\r\n' <"$status_file" 2>/dev/null || true)"
+  [[ -f "$output" ]] || : >"$output"
+
+  if [[ "$exit_code" -ne 0 || ! "$http_status" =~ ^[0-9][0-9][0-9]$ ]]; then
+    echo "curl request failed with exit $exit_code; treating as HTTP 000." >&2
+    if [[ -s "$error_file" ]]; then
+      sed -n '1,8p' "$error_file" >&2
+    fi
+    http_status="000"
+  fi
+
+  rm -f "$status_file" "$error_file"
+  printf "%s" "$http_status"
+}
+
 cleanup_smoke() {
   local status=$?
   if [[ "$CLEANUP_AUTH_USER" == "1" && -n "${ID_TOKEN:-}" ]]; then
     local delete_body="$TMP_DIR/delete-auth.json"
     local delete_http
     delete_http="$(
-      curl \
-        --silent \
-        --show-error \
-        --location \
-        --max-time "$CURL_MAX_TIME" \
-        --connect-timeout "$CURL_CONNECT_TIMEOUT" \
-        --retry "$CURL_RETRY" \
-        --retry-all-errors \
-        --retry-delay "$CURL_RETRY_DELAY" \
+      curl_http "$delete_body" \
         --request POST \
         --header "Content-Type: application/json" \
         --data "{\"idToken\":\"$ID_TOKEN\"}" \
-        --output "$delete_body" \
-        --write-out "%{http_code}" \
         "https://identitytoolkit.googleapis.com/v1/accounts:delete?key=$API_KEY"
     )" || delete_http="000"
 
@@ -106,20 +135,10 @@ trap cleanup_smoke EXIT
 
 AUTH_BODY="$TMP_DIR/auth.json"
 AUTH_HTTP="$(
-  curl \
-    --silent \
-    --show-error \
-    --location \
-    --max-time "$CURL_MAX_TIME" \
-    --connect-timeout "$CURL_CONNECT_TIMEOUT" \
-    --retry "$CURL_RETRY" \
-    --retry-all-errors \
-    --retry-delay "$CURL_RETRY_DELAY" \
+  curl_http "$AUTH_BODY" \
     --request POST \
     --header "Content-Type: application/json" \
     --data '{"returnSecureToken":true}' \
-    --output "$AUTH_BODY" \
-    --write-out "%{http_code}" \
     "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=$API_KEY"
 )"
 
@@ -129,20 +148,10 @@ if [[ "$AUTH_HTTP" != "200" ]]; then
     TEST_PASSWORD="MoonlySmoke${RANDOM}!"
     echo "anonymous auth is disabled; creating temporary email/password smoke user"
     AUTH_HTTP="$(
-      curl \
-        --silent \
-        --show-error \
-        --location \
-        --max-time "$CURL_MAX_TIME" \
-        --connect-timeout "$CURL_CONNECT_TIMEOUT" \
-        --retry "$CURL_RETRY" \
-        --retry-all-errors \
-        --retry-delay "$CURL_RETRY_DELAY" \
+      curl_http "$AUTH_BODY" \
         --request POST \
         --header "Content-Type: application/json" \
         --data "{\"email\":\"$TEST_EMAIL\",\"password\":\"$TEST_PASSWORD\",\"returnSecureToken\":true}" \
-        --output "$AUTH_BODY" \
-        --write-out "%{http_code}" \
         "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=$API_KEY"
     )"
   fi
@@ -174,38 +183,18 @@ call_json() {
 
   if [[ "$method" == "GET" ]]; then
     http_status="$(
-      curl \
-        --silent \
-        --show-error \
-        --location \
-        --max-time "$CURL_MAX_TIME" \
-        --connect-timeout "$CURL_CONNECT_TIMEOUT" \
-        --retry "$CURL_RETRY" \
-        --retry-all-errors \
-        --retry-delay "$CURL_RETRY_DELAY" \
+      curl_http "$output" \
         --request GET \
         --header "Authorization: Bearer $ID_TOKEN" \
-        --output "$output" \
-        --write-out "%{http_code}" \
         "$url"
     )"
   else
     http_status="$(
-      curl \
-        --silent \
-        --show-error \
-        --location \
-        --max-time "$CURL_MAX_TIME" \
-        --connect-timeout "$CURL_CONNECT_TIMEOUT" \
-        --retry "$CURL_RETRY" \
-        --retry-all-errors \
-        --retry-delay "$CURL_RETRY_DELAY" \
+      curl_http "$output" \
         --request "$method" \
         --header "Content-Type: application/json" \
         --header "Authorization: Bearer $ID_TOKEN" \
         --data "$data" \
-        --output "$output" \
-        --write-out "%{http_code}" \
         "$url"
     )"
   fi

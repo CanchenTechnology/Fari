@@ -10,7 +10,13 @@ if [[ -n "$RELEASE_ENV_FILE" ]]; then
   fi
 
   if [[ ! -f "$RELEASE_ENV_FILE" ]]; then
-    echo "Release env file does not exist: $RELEASE_ENV_FILE" >&2
+    cat >&2 <<EOF
+Release env file does not exist: $RELEASE_ENV_FILE
+
+Create it, fill the real local values, then rerun:
+  ./scripts/init-release-env.sh
+  RELEASE_ENV_FILE=scripts/release.env ./scripts/check-release-blockers.sh
+EOF
     exit 3
   fi
 
@@ -24,6 +30,8 @@ fi
 PROJECT_ID="${FIREBASE_PROJECT:-fari-app-b2fd2}"
 IOS_EXPORT_PATH="${IOS_EXPORT_PATH:-Builds/iOS}"
 ANDROID_APK_PATH="${ANDROID_APK_PATH:-Builds/Android/MoonlyApp.apk}"
+PUBLIC_CONFIG_PATH="${PUBLIC_CONFIG_PATH:-functions/public-config.example.json}"
+REQUIRE_REAL_SOCIAL_LINKS="${REQUIRE_REAL_SOCIAL_LINKS:-1}"
 LOG_DIR="${LOG_DIR:-/tmp/moonly_release_blockers}"
 
 BLOCKERS=0
@@ -216,9 +224,13 @@ file_is_stale_against_sources() {
     Assets/Scripts \
     Assets/Plugins \
     Assets/Editor \
+    Assets/GameData \
+    Assets/Resources \
+    Assets/GamerFrameWork \
     Packages \
     ProjectSettings \
     functions \
+    -path "functions/public-config.live.json" -prune -o \
     -type f \
     -newer "$marker" \
     -print \
@@ -291,6 +303,17 @@ check_android_signing_env() {
   fi
 }
 
+check_selected_public_config() {
+  local args=("functions/scripts/set-public-config.js" "--dry-run" "--project" "$PROJECT_ID")
+
+  if truthy "$REQUIRE_REAL_SOCIAL_LINKS"; then
+    args+=("--require-real-social-links")
+  fi
+
+  args+=("$PUBLIC_CONFIG_PATH")
+  run_required_check "selected public app config release validation: $PUBLIC_CONFIG_PATH" "public-config-selected" node "${args[@]}"
+}
+
 cd "$ROOT_DIR" || exit 1
 
 echo "Moonly release blockers check"
@@ -323,6 +346,11 @@ echo
 
 run_required_check "IAP product ID consistency" "iap-products" scripts/check-iap-products.sh
 run_required_check "public config dry-run validation" "public-config-dry-run" node functions/scripts/set-public-config.js --dry-run functions/public-config.example.json
+if truthy "${RUN_PUBLIC_CONFIG_UPDATE:-0}"; then
+  check_selected_public_config
+else
+  warn "public app config update is not selected; set RUN_PUBLIC_CONFIG_UPDATE=1 PUBLIC_CONFIG_PATH=functions/public-config.live.json REQUIRE_REAL_SOCIAL_LINKS=1 when publishing real social/IAP display config"
+fi
 run_required_check "Android source configuration" "android-source" scripts/check-android-config.sh
 run_required_check "iOS export validator self-test" "ios-export-self-test" scripts/check-ios-export.sh --self-test
 echo
@@ -330,7 +358,10 @@ echo
 if [[ -d "$IOS_EXPORT_PATH" ]]; then
   run_required_check "existing iOS export validation: $IOS_EXPORT_PATH" "ios-export-existing" scripts/check-ios-export.sh "$IOS_EXPORT_PATH"
 
-  ios_marker="$IOS_EXPORT_PATH/Unity-iPhone.xcodeproj/project.pbxproj"
+  ios_marker="$IOS_EXPORT_PATH/.export-stamp"
+  if [[ ! -f "$ios_marker" ]]; then
+    ios_marker="$IOS_EXPORT_PATH/Unity-iPhone.xcodeproj/project.pbxproj"
+  fi
   if file_is_stale_against_sources "$ios_marker"; then
     block "existing iOS export is older than current source/config; rebuild with CLEAN_IOS_EXPORT=1 ./scripts/build-ios-xcode.sh"
   else
@@ -343,7 +374,11 @@ fi
 if [[ -f "$ANDROID_APK_PATH" ]]; then
   run_required_check "existing Android APK validation: $ANDROID_APK_PATH" "android-apk-existing" scripts/check-android-config.sh --apk "$ANDROID_APK_PATH"
 
-  if file_is_stale_against_sources "$ANDROID_APK_PATH"; then
+  android_marker="$ANDROID_APK_PATH.build-stamp"
+  if [[ ! -f "$android_marker" ]]; then
+    android_marker="$ANDROID_APK_PATH"
+  fi
+  if file_is_stale_against_sources "$android_marker"; then
     ANDROID_REBUILD_NEEDED=1
     block "existing Android APK is older than current source/config; rebuild with CLEAN_ANDROID_BUILD=1 ./scripts/build-android-apk.sh"
   else
@@ -388,20 +423,39 @@ echo
 
 cat <<'EOF'
 Release unblock commands:
-  1. Close Unity, then rebuild current artifacts:
+  1. Create and fill the private local release env file:
+     ./scripts/init-release-env.sh
+
+     Required values:
+       ANDROID_KEYSTORE_PASS
+       ANDROID_KEYALIAS_PASS
+       APPLE_SHARED_SECRET
+       GOOGLE_SERVICE_ACCOUNT_JSON_FILE or GOOGLE_SERVICE_ACCOUNT_JSON
+       IAP_RECEIPT or REAL_IAP_RECEIPT
+       PUBLIC_CONFIG_PATH=functions/public-config.live.json with real social links if updating public config
+
+  2. Recommended one-command continuation after the env file is filled:
+     RELEASE_ENV_FILE=scripts/release.env ./scripts/finish-release.sh
+
+  3. Manual artifact rebuild path:
      CLEAN_IOS_EXPORT=1 ./scripts/build-ios-xcode.sh
      ANDROID_KEYSTORE_PASS=<keystore_password> ANDROID_KEYALIAS_PASS=<alias_password> CLEAN_ANDROID_BUILD=1 ./scripts/build-android-apk.sh
 
-  2. Configure Google Play Games only if Play Games services are enabled:
+  4. Configure Google Play Games only if Play Games services are enabled:
      GOOGLE_PLAY_GAMES_APP_ID=<numeric_app_id> ./scripts/configure-google-play-games.sh
 
-  3. Set missing IAP secrets, then redeploy Functions:
+  5. Publish real social links and public IAP display config:
+     ./scripts/init-public-config.sh
+     # edit functions/public-config.live.json with real account/community URLs
+     RUN_PUBLIC_CONFIG_UPDATE=1 PUBLIC_CONFIG_PATH=functions/public-config.live.json REQUIRE_REAL_SOCIAL_LINKS=1 ./scripts/prepare-release.sh
+
+  6. Manual IAP secret setup path:
 EOF
 print_iap_secret_unblock_command
 cat <<'EOF'
 
-  4. Verify online release path:
-     CHECK_FIREBASE_SECRETS=1 CHECK_FUNCTIONS_SMOKE=1 CHECK_IAP_FAKE_SMOKE=1 CHECK_IAP_REAL_RECEIPT=1 IAP_RECEIPT=<sandbox_receipt> ./scripts/check-release-blockers.sh
+  7. Manual online release verification:
+     CHECK_FIREBASE_SECRETS=1 CHECK_FUNCTIONS_SMOKE=1 CHECK_IAP_FAKE_SMOKE=1 CHECK_IAP_REAL_RECEIPT=1 RUN_PUBLIC_CONFIG_UPDATE=1 PUBLIC_CONFIG_PATH=functions/public-config.live.json IAP_RECEIPT=<sandbox_receipt> ./scripts/check-release-blockers.sh
 EOF
 echo
 

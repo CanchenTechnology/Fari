@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["invitation_text"],
+  "properties": {
+    "invitation_text": {
+      "type": "string",
+      "minLength": 40,
+      "maxLength": 90
+    }
+  }
+}

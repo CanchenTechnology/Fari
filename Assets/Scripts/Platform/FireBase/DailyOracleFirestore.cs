@@ -22,6 +22,7 @@ using XFGameFrameWork;
 /// </summary>
 public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
 {
+    private const string LOCAL_CACHE_PREFIX = "DailyOracleCache_";
     private FirebaseFirestore _db;
     private bool _isInitialized = false;
 
@@ -99,12 +100,16 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
 
     public void LoadByDate(string date, Action<DailyOracleCloudRecord> onComplete)
     {
-        if (!CheckReady(_ => onComplete?.Invoke(null))) return;
+        if (!IsReady)
+        {
+            onComplete?.Invoke(LoadByDateLocal(date));
+            return;
+        }
 
         string uid = GetCurrentUid();
         if (string.IsNullOrEmpty(uid))
         {
-            onComplete?.Invoke(null);
+            onComplete?.Invoke(LoadByDateLocal(date));
             return;
         }
 
@@ -114,11 +119,14 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
             {
                 if (task.IsFaulted || task.IsCanceled || !task.Result.Exists)
                 {
-                    onComplete?.Invoke(null);
+                    onComplete?.Invoke(LoadByDateLocal(date));
                     return;
                 }
 
-                onComplete?.Invoke(DailyOracleCloudRecord.FromSnapshot(task.Result));
+                DailyOracleCloudRecord record = DailyOracleCloudRecord.FromSnapshot(task.Result);
+                if (record != null && record.HasPayload)
+                    SaveRecordLocal(record);
+                onComplete?.Invoke(record);
             });
     }
 
@@ -129,12 +137,15 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
 
     public void SaveByDate(string date, TarotCard card, bool upright, TodayOraclePayload payload, string locale, Action<bool> onComplete = null)
     {
-        if (!CheckReady(onComplete)) return;
         if (card == null || payload == null)
         {
             onComplete?.Invoke(false);
             return;
         }
+
+        SaveByDateLocal(date, card, upright, payload, locale);
+
+        if (!CheckReady(onComplete)) return;
 
         string uid = GetCurrentUid();
         if (string.IsNullOrEmpty(uid))
@@ -176,9 +187,97 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
                 }
 
                 Debug.Log($"[DailyOracleFirestore] 今日神谕已保存: {date}");
+                SaveByDateLocal(date, card, upright, payload, locale);
                 SaveSummaryByDate(uid, date, card, upright, payload, locale, DailyDivinationSyncSettingsManager.Instance.GetSettings());
                 onComplete?.Invoke(true);
             });
+    }
+
+    public static DailyOracleCloudRecord LoadTodayLocal()
+    {
+        return LoadByDateLocal(DateTime.Now.ToString("yyyy-MM-dd"));
+    }
+
+    public static DailyOracleCloudRecord LoadByDateLocal(string date)
+    {
+        if (string.IsNullOrWhiteSpace(date))
+            date = DateTime.Now.ToString("yyyy-MM-dd");
+
+        foreach (string key in GetLocalCacheKeys(date))
+        {
+            string json = PlayerPrefs.GetString(key, "");
+            if (string.IsNullOrWhiteSpace(json)) continue;
+
+            try
+            {
+                DailyOracleCloudRecord record = JsonUtility.FromJson<DailyOracleCloudRecord>(json);
+                if (record != null && record.date == date && record.HasPayload)
+                    return record;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[DailyOracleFirestore] 本地今日神谕缓存解析失败: {e.Message}");
+            }
+        }
+
+        return null;
+    }
+
+    public static void SaveTodayLocal(TarotCard card, bool upright, TodayOraclePayload payload, string locale)
+    {
+        SaveByDateLocal(DateTime.Now.ToString("yyyy-MM-dd"), card, upright, payload, locale);
+    }
+
+    public static void ClearLocalCacheForCurrentUser(int daysBack = 366)
+    {
+        int safeDaysBack = Mathf.Clamp(daysBack, 1, 3660);
+        for (int i = 0; i < safeDaysBack; i++)
+        {
+            string date = DateTime.Now.Date.AddDays(-i).ToString("yyyy-MM-dd");
+            foreach (string key in GetLocalCacheKeys(date))
+                PlayerPrefs.DeleteKey(key);
+        }
+
+        PlayerPrefs.Save();
+        Debug.Log("[DailyOracleFirestore] 已清除当前用户本地每日神谕缓存");
+    }
+
+    public static void SaveByDateLocal(string date, TarotCard card, bool upright, TodayOraclePayload payload, string locale)
+    {
+        if (card == null || payload == null) return;
+        if (string.IsNullOrWhiteSpace(date))
+            date = DateTime.Now.ToString("yyyy-MM-dd");
+
+        SaveRecordLocal(new DailyOracleCloudRecord
+        {
+            date = date,
+            cardId = card.cardId ?? "",
+            cardName = card.nameZh ?? "",
+            orientation = upright ? "upright" : "reversed",
+            title = payload.title ?? "",
+            oracle = payload.oracle ?? "",
+            detail = payload.detail ?? "",
+            dos = payload.dos ?? new List<string>(),
+            donts = payload.donts ?? new List<string>(),
+            microAction = payload.microAction ?? "",
+            locale = string.IsNullOrEmpty(locale) ? "zh-CN" : locale,
+            oracleId = GetCurrentOracleId(),
+            createdAtLocal = DateTime.Now.ToString("o"),
+            syncEnabled = DailyDivinationSyncSettingsManager.Instance.Enabled,
+            visibility = DailyDivinationSyncSettingsManager.Instance.GetSettings().VisibilityKey,
+            summaryOnly = false,
+        });
+    }
+
+    private static void SaveRecordLocal(DailyOracleCloudRecord record)
+    {
+        if (record == null || string.IsNullOrWhiteSpace(record.date) || !record.HasPayload)
+            return;
+
+        string json = JsonUtility.ToJson(record);
+        foreach (string key in GetWritableLocalCacheKeys(record.date))
+            PlayerPrefs.SetString(key, json);
+        PlayerPrefs.Save();
     }
 
     public void PublishTodaySummary(Action<bool> onComplete = null)
@@ -198,6 +297,41 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
     public void DisableTodaySummary(Action<bool> onComplete = null)
     {
         DisableSummaryByDate(DateTime.Now.ToString("yyyy-MM-dd"), onComplete);
+    }
+
+    public void ApplySyncSettingsToPublishedSummaries(DailyDivinationSyncSettings settings, int daysBack = 30, Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+
+        settings ??= DailyDivinationSyncSettingsManager.Instance.GetSettings();
+        string uid = GetCurrentUid();
+        if (string.IsNullOrEmpty(uid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        int safeDaysBack = Mathf.Clamp(daysBack, 1, 90);
+        int pending = safeDaysBack;
+        bool hasFailure = false;
+        string today = DateTime.Now.ToString("yyyy-MM-dd");
+
+        void CompleteOne(bool success)
+        {
+            if (!success) hasFailure = true;
+            pending--;
+            if (pending <= 0)
+                onComplete?.Invoke(!hasFailure);
+        }
+
+        for (int i = 0; i < safeDaysBack; i++)
+        {
+            string date = DateTime.Now.AddDays(-i).ToString("yyyy-MM-dd");
+            if (settings.ShouldPublishToFeed && date == today)
+                PublishSummaryByDate(uid, date, settings, CompleteOne);
+            else
+                UpdateExistingSummarySettingsByDate(uid, date, settings, CompleteOne);
+        }
     }
 
     public void LoadFriendSummary(string ownerUid, string date, Action<DailyOracleSummaryRecord> onComplete)
@@ -416,6 +550,69 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
             });
     }
 
+    private void PublishSummaryByDate(string uid, string date, DailyDivinationSyncSettings settings, Action<bool> onComplete)
+    {
+        GetDailyDoc(uid, date)
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogWarning($"[DailyOracleFirestore] 读取每日牌用于同步摘要失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                if (!task.Result.Exists)
+                {
+                    UpdateExistingSummarySettingsByDate(uid, date, settings, onComplete);
+                    return;
+                }
+
+                DailyOracleCloudRecord record = DailyOracleCloudRecord.FromSnapshot(task.Result);
+                if (record == null || !record.HasPayload)
+                {
+                    UpdateExistingSummarySettingsByDate(uid, date, settings, onComplete);
+                    return;
+                }
+
+                SaveSummaryFromRecord(record, settings, onComplete);
+            });
+    }
+
+    private void UpdateExistingSummarySettingsByDate(string uid, string date, DailyDivinationSyncSettings settings, Action<bool> onComplete)
+    {
+        GetSummaryDoc(uid, date)
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogWarning($"[DailyOracleFirestore] 读取每日占卜摘要权限失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                if (!task.Result.Exists)
+                {
+                    onComplete?.Invoke(true);
+                    return;
+                }
+
+                var data = new Dictionary<string, object>
+                {
+                    { "ownerUid", uid },
+                    { "date", date },
+                    { "syncEnabled", settings.ShouldPublishToFeed },
+                    { "visibility", settings.VisibilityKey },
+                    { "summaryOnly", true },
+                    { "updatedAt", FieldValue.ServerTimestamp },
+                };
+
+                SetSummaryData(uid, date, data, onComplete);
+            });
+    }
+
     private void DisableSummaryByDate(string date, Action<bool> onComplete = null)
     {
         if (!CheckReady(onComplete)) return;
@@ -462,6 +659,66 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
             return false;
         }
         return true;
+    }
+
+    private static IEnumerable<string> GetLocalCacheKeys(string date)
+    {
+        HashSet<string> keys = new HashSet<string>();
+
+        foreach (string ownerKey in GetLocalOwnerKeys())
+        {
+            string key = BuildLocalCacheKey(ownerKey, date);
+            if (keys.Add(key))
+                yield return key;
+        }
+
+        string localKey = BuildLocalCacheKey("local", date);
+        if (keys.Add(localKey))
+            yield return localKey;
+    }
+
+    private static IEnumerable<string> GetWritableLocalCacheKeys(string date)
+    {
+        string primaryOwner = FirstNonEmpty(
+            UserDataManager.Instance?.FirebaseUid,
+            Firebase.Auth.FirebaseAuth.DefaultInstance?.CurrentUser?.UserId,
+            UserDataManager.Instance?.UserId,
+            "local");
+
+        yield return BuildLocalCacheKey(primaryOwner, date);
+
+        if (primaryOwner != "local")
+            yield return BuildLocalCacheKey("local", date);
+    }
+
+    private static IEnumerable<string> GetLocalOwnerKeys()
+    {
+        yield return FirstNonEmpty(UserDataManager.Instance?.FirebaseUid, "");
+        yield return FirstNonEmpty(Firebase.Auth.FirebaseAuth.DefaultInstance?.CurrentUser?.UserId, "");
+        yield return FirstNonEmpty(UserDataManager.Instance?.UserId, "");
+        yield return "local";
+    }
+
+    private static string BuildLocalCacheKey(string ownerKey, string date)
+    {
+        return LOCAL_CACHE_PREFIX + SanitizeKey(string.IsNullOrWhiteSpace(ownerKey) ? "local" : ownerKey) + "_" + date;
+    }
+
+    private static string SanitizeKey(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "local";
+        return value.Replace(" ", "_").Replace("/", "_").Replace("\\", "_").Replace(":", "_");
+    }
+
+    private static string FirstNonEmpty(params string[] values)
+    {
+        if (values == null) return "";
+        foreach (string value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+        return "";
     }
 
     private static string GetCurrentUid()

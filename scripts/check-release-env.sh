@@ -16,6 +16,9 @@ Usage:
   ./scripts/check-release-env.sh --no-env-file
 
 Checks local release inputs without uploading secrets, deploying, building, or printing secret values.
+
+Before first use:
+  ./scripts/init-release-env.sh
 EOF
 }
 
@@ -49,7 +52,7 @@ is_placeholder() {
   local value="${1:-}"
   [[ -z "$value" ]] && return 0
   case "$value" in
-    *"<"*">"*|*"/path/to/"*|"..."|"TODO"|"todo"|"changeme"|"CHANGE_ME"|"dry-run"*|"dry_run"*)
+    *"<"*">"*|*"/path/to/"*|*"/absolute/path/"*|"..."|"TODO"|"todo"|"changeme"|"CHANGE_ME"|"dry-run"*|"dry_run"*)
       return 0
       ;;
     *)
@@ -69,8 +72,31 @@ require_secret_value() {
   fi
 }
 
+validate_apple_shared_secret() {
+  local value="${APPLE_SHARED_SECRET:-}"
+
+  if is_placeholder "$value"; then
+    fail "APPLE_SHARED_SECRET is missing or still a placeholder"
+    return
+  fi
+
+  if [[ "$value" =~ [[:space:]] ]]; then
+    fail "APPLE_SHARED_SECRET must not contain whitespace"
+    return
+  fi
+
+  if [[ "${#value}" -lt 16 ]]; then
+    fail "APPLE_SHARED_SECRET looks too short"
+  else
+    ok "APPLE_SHARED_SECRET format looks usable"
+  fi
+}
+
 validate_package_name() {
   local value="${GOOGLE_PACKAGE_NAME:-}"
+  local project_settings="$ROOT_DIR/ProjectSettings/ProjectSettings.asset"
+  local android_bundle=""
+
   if is_placeholder "$value"; then
     fail "GOOGLE_PACKAGE_NAME is missing or still a placeholder"
     return
@@ -85,6 +111,26 @@ NODE
     ok "GOOGLE_PACKAGE_NAME format is valid"
   else
     fail "GOOGLE_PACKAGE_NAME format is invalid"
+    return
+  fi
+
+  if [[ -f "$project_settings" ]]; then
+    android_bundle="$(node - "$project_settings" <<'NODE'
+const fs = require("fs");
+const path = process.argv[2];
+const text = fs.readFileSync(path, "utf8");
+const match = text.match(/applicationIdentifier:\s*\n(?:.*\n)*?\s+Android:\s*([^\s]+)/);
+if (match) process.stdout.write(match[1]);
+NODE
+)"
+  fi
+
+  if [[ -z "$android_bundle" ]]; then
+    warn "ProjectSettings Android bundle id could not be read; GOOGLE_PACKAGE_NAME match not verified"
+  elif [[ "$value" == "$android_bundle" ]]; then
+    ok "GOOGLE_PACKAGE_NAME matches ProjectSettings Android bundle id"
+  else
+    fail "GOOGLE_PACKAGE_NAME ($value) does not match ProjectSettings Android bundle id ($android_bundle)"
   fi
 }
 
@@ -111,7 +157,9 @@ const path = process.argv[2];
 const data = JSON.parse(fs.readFileSync(path, "utf8"));
 if (data.type !== "service_account") throw new Error("type must be service_account");
 if (!data.client_email) throw new Error("client_email missing");
+if (!data.client_email.endsWith(".gserviceaccount.com")) throw new Error("client_email must be a service account");
 if (!data.private_key) throw new Error("private_key missing");
+if (!data.private_key.includes("BEGIN PRIVATE KEY")) throw new Error("private_key must be a PEM private key");
 NODE
     then
       ok "GOOGLE_SERVICE_ACCOUNT_JSON_FILE is valid service account JSON"
@@ -130,7 +178,9 @@ NODE
 const data = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || "");
 if (data.type !== "service_account") throw new Error("type must be service_account");
 if (!data.client_email) throw new Error("client_email missing");
+if (!data.client_email.endsWith(".gserviceaccount.com")) throw new Error("client_email must be a service account");
 if (!data.private_key) throw new Error("private_key missing");
+if (!data.private_key.includes("BEGIN PRIVATE KEY")) throw new Error("private_key must be a PEM private key");
 NODE
   then
     ok "GOOGLE_SERVICE_ACCOUNT_JSON is valid service account JSON"
@@ -147,7 +197,35 @@ validate_receipt_inputs() {
   if is_placeholder "$receipt"; then
     fail "IAP_RECEIPT or REAL_IAP_RECEIPT is missing or still a placeholder"
   else
-    ok "real sandbox IAP receipt input is present"
+    if node - "$receipt" "$store" <<'NODE' >/dev/null 2>&1
+const receipt = process.argv[2] || "";
+const expectedStore = process.argv[3] || "AppleAppStore";
+
+if (receipt.length < 20) {
+  throw new Error("receipt looks too short");
+}
+if (/moonly-smoke-receipt|fake|placeholder|TODO/i.test(receipt)) {
+  throw new Error("receipt looks fake");
+}
+
+const trimmed = receipt.trim();
+if (trimmed.startsWith("{")) {
+  const data = JSON.parse(trimmed);
+  const store = data.Store || data.store || "";
+  if (store && store !== expectedStore) {
+    throw new Error("receipt store mismatch");
+  }
+  const payload = data.Payload || data.payload || data.receipt || "";
+  if (!payload || String(payload).length < 10) {
+    throw new Error("Unity receipt JSON is missing a usable Payload");
+  }
+}
+NODE
+    then
+      ok "real sandbox IAP receipt input format looks usable"
+    else
+      fail "IAP_RECEIPT or REAL_IAP_RECEIPT does not look like a real receipt for the selected store"
+    fi
   fi
 
   if is_placeholder "$product_id"; then
@@ -180,6 +258,27 @@ validate_android_keystore() {
     ok "Android keystore passwords are valid for the configured alias"
   else
     fail "Android keystore password validation failed; see /tmp/moonly_release_env_android_keystore.log"
+  fi
+}
+
+validate_public_config() {
+  if ! truthy "${RUN_PUBLIC_CONFIG_UPDATE:-0}"; then
+    return
+  fi
+
+  local public_config_path="${PUBLIC_CONFIG_PATH:-functions/public-config.example.json}"
+  local args=("functions/scripts/set-public-config.js" "--dry-run" "--project" "${FIREBASE_PROJECT:-fari-app-b2fd2}")
+
+  if truthy "${REQUIRE_REAL_SOCIAL_LINKS:-1}"; then
+    args+=("--require-real-social-links")
+  fi
+
+  args+=("$public_config_path")
+
+  if (cd "$ROOT_DIR" && node "${args[@]}") >/tmp/moonly_release_env_public_config.log 2>&1; then
+    ok "public app config is valid"
+  else
+    fail "public app config validation failed; see /tmp/moonly_release_env_public_config.log"
   fi
 }
 
@@ -223,7 +322,7 @@ echo
 
 if [[ -n "$ENV_FILE_INPUT" ]]; then
   if [[ ! -f "$ENV_FILE_INPUT" ]]; then
-    fail "release env file does not exist"
+    fail "release env file does not exist; create it with ./scripts/init-release-env.sh"
   else
     ok "release env file exists"
     set -a
@@ -236,10 +335,11 @@ fi
 require_secret_value ANDROID_KEYSTORE_PASS
 require_secret_value ANDROID_KEYALIAS_PASS
 validate_android_keystore
-require_secret_value APPLE_SHARED_SECRET
+validate_apple_shared_secret
 validate_package_name
 validate_google_service_account
 validate_receipt_inputs
+validate_public_config
 
 if [[ "${REQUIRE_GOOGLE_PLAY_GAMES:-0}" == "1" ]]; then
   require_secret_value GOOGLE_PLAY_GAMES_APP_ID

@@ -18,6 +18,7 @@ This is the final one-command release continuation.
 It loads scripts/release.env by default, unless --no-env-file is used, then runs:
   - IAP Firebase secret setup
   - Firebase Functions deploy with secret bindings
+  - Optional public app config update when RUN_PUBLIC_CONFIG_UPDATE=1
   - iOS Xcode export rebuild
   - Android APK rebuild
   - release blocker gate with real sandbox receipt verification
@@ -29,6 +30,9 @@ Required local values in the env file:
   GOOGLE_PACKAGE_NAME
   GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_JSON_FILE
   IAP_RECEIPT or REAL_IAP_RECEIPT
+
+Before first use:
+  ./scripts/init-release-env.sh
 EOF
 }
 
@@ -70,8 +74,8 @@ if [[ -n "$ENV_FILE_INPUT" && ! -f "$ENV_FILE_INPUT" ]]; then
   cat >&2 <<EOF
 Release env file does not exist: $ENV_FILE_INPUT
 
-Create it from the template, fill the real local values, then rerun:
-  cp scripts/release.env.example scripts/release.env
+Create it with the release env initializer, fill the real local values, then rerun:
+  ./scripts/init-release-env.sh
   RELEASE_ENV_FILE=scripts/release.env ./scripts/finish-release.sh
 EOF
   exit 3
@@ -90,11 +94,22 @@ else
 fi
 unset RELEASE_ENV_FILE
 
+if [[ "$FORCE_DRY_RUN" != "1" || "${CHECK_RELEASE_ENV_ON_DRY_RUN:-0}" == "1" ]]; then
+  echo "== Validate final release inputs =="
+  if [[ -n "$ENV_FILE_INPUT" ]]; then
+    RELEASE_ENV_FILE="$ENV_FILE_INPUT" "$ROOT_DIR/scripts/check-release-env.sh"
+  else
+    "$ROOT_DIR/scripts/check-release-env.sh" --no-env-file
+  fi
+  echo
+fi
+
 export DRY_RUN="$FORCE_DRY_RUN"
 export REPORT_ONLY=0
 export RUN_CONFIGURE_GOOGLE_PLAY_GAMES="${RUN_CONFIGURE_GOOGLE_PLAY_GAMES:-auto}"
 export RUN_ALL_SECRET_SETUP=0
 export RUN_IAP_SECRET_SETUP=1
+export RUN_PUBLIC_CONFIG_UPDATE="${RUN_PUBLIC_CONFIG_UPDATE:-0}"
 export RUN_DEPLOY=1
 export RUN_BUILDS=1
 export RUN_IOS_BUILD=1

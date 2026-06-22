@@ -155,6 +155,22 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
         }
     }
 
+    public static void ClearLocalDefault()
+    {
+        try
+        {
+            string dir = Path.Combine(Application.persistentDataPath, "dialog_cache");
+            string path = Path.Combine(dir, "dialog_default.json");
+            if (File.Exists(path))
+                File.Delete(path);
+            Debug.Log("[DialogHistoryFirestore] 已清除本地对话缓存");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[DialogHistoryFirestore] 清除本地对话缓存失败: {ex.Message}");
+        }
+    }
+
     private string GetLocalCachePath()
     {
         string dir = Path.Combine(Application.persistentDataPath, "dialog_cache");
@@ -176,6 +192,7 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
             { "activeActionKind", snapshot.activeActionKind ?? "" },
             { "activeRelationshipId", snapshot.activeRelationshipId ?? "" },
             { "activeFriendContext", snapshot.activeFriendContext ?? "" },
+            { "activeContextAttachments", SerializeContextAttachments(snapshot.activeContextAttachments) },
             { "savedAtLocal", DateTime.Now.ToString("o") }
         };
     }
@@ -212,6 +229,7 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
                 { "friendContext", msg.friendContext ?? "" },
                 { "ttsAudioReady", msg.ttsAudioReady },
                 { "ttsDurationSeconds", msg.ttsDurationSeconds },
+                { "contextAttachments", SerializeContextAttachments(msg.contextAttachments) },
                 { "oraclePromptId", msg.oraclePromptId ?? "" },
                 { "oracleScene", msg.oracleScene ?? "" },
                 { "oracleStage", msg.oracleStage ?? "" },
@@ -261,6 +279,30 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
         return list;
     }
 
+    private List<object> SerializeContextAttachments(List<ChatContextAttachment> contexts)
+    {
+        var list = new List<object>();
+        if (contexts == null) return list;
+
+        foreach (var context in contexts)
+        {
+            if (context == null) continue;
+            list.Add(new Dictionary<string, object>
+            {
+                { "contextType", context.contextType.ToString() },
+                { "id", context.id ?? "" },
+                { "title", context.title ?? "" },
+                { "subtitle", context.subtitle ?? "" },
+                { "preview", context.preview ?? "" },
+                { "payload", context.payload ?? "" },
+                { "source", context.source ?? "" },
+                { "createdAt", context.createdAt ?? "" }
+            });
+        }
+
+        return list;
+    }
+
     private List<object> SerializeStringList(List<string> values)
     {
         var list = new List<object>();
@@ -285,7 +327,8 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
             activeReadingState = GetString(data, "activeReadingState"),
             activeActionKind = GetString(data, "activeActionKind"),
             activeRelationshipId = GetString(data, "activeRelationshipId"),
-            activeFriendContext = GetString(data, "activeFriendContext")
+            activeFriendContext = GetString(data, "activeFriendContext"),
+            activeContextAttachments = DeserializeContextAttachments(GetList(data, "activeContextAttachments"))
         };
 
         return snapshot;
@@ -325,6 +368,7 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
                 friendContext = GetString(map, "friendContext"),
                 ttsAudioReady = GetBool(map, "ttsAudioReady"),
                 ttsDurationSeconds = GetFloat(map, "ttsDurationSeconds"),
+                contextAttachments = DeserializeContextAttachments(GetList(map, "contextAttachments")),
                 oraclePromptId = GetString(map, "oraclePromptId"),
                 oracleScene = GetString(map, "oracleScene"),
                 oracleStage = GetString(map, "oracleStage"),
@@ -374,6 +418,31 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
         }
 
         return draws;
+    }
+
+    private List<ChatContextAttachment> DeserializeContextAttachments(List<object> values)
+    {
+        var contexts = new List<ChatContextAttachment>();
+        if (values == null) return contexts;
+
+        foreach (var value in values)
+        {
+            var map = value as Dictionary<string, object>;
+            if (map == null) continue;
+            contexts.Add(new ChatContextAttachment
+            {
+                contextType = ParseEnum(GetString(map, "contextType"), ChatContextType.Condition),
+                id = GetString(map, "id"),
+                title = GetString(map, "title"),
+                subtitle = GetString(map, "subtitle"),
+                preview = GetString(map, "preview"),
+                payload = GetString(map, "payload"),
+                source = GetString(map, "source"),
+                createdAt = GetString(map, "createdAt")
+            });
+        }
+
+        return contexts;
     }
 
     private List<string> DeserializeStringList(List<object> values)
@@ -467,6 +536,7 @@ public class DialogHistorySnapshot
 {
     public List<ChatMessageData> messages = new List<ChatMessageData>();
     public List<DeepSeekAPI.Message> apiMessages = new List<DeepSeekAPI.Message>();
+    public List<ChatContextAttachment> activeContextAttachments = new List<ChatContextAttachment>();
     public string activeReadingId;
     public string activeReadingState;
     public string activeActionKind;

@@ -125,7 +125,7 @@ public static class AppReadinessDiagnostics
             if (string.IsNullOrWhiteSpace(schedulerSummary))
                 schedulerSummary = "no scheduled summary yet";
 
-            return $"daily={settings.DailyOracleEnabled}, return={settings.DivinationReturnEnabled}, friends={settings.FriendInteractionEnabled}, system={settings.ActivitySystemEnabled}, time={settings.ReminderTime}, schedule={schedulerSummary}";
+            return $"daily={settings.DailyOracleEnabled}, dialogue={settings.DialogueReplyEnabled}, return={settings.DivinationReturnEnabled}, friends={settings.FriendInteractionEnabled}, system={settings.ActivitySystemEnabled}, time={settings.ReminderTime}, schedule={schedulerSummary}";
         }
         catch (Exception ex)
         {

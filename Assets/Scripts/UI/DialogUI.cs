@@ -36,10 +36,10 @@ public class DialogUI : WindowBase
     public string astrologyVoiceType = "zh_female_shuangkuaidv2";
     [Tooltip("单次 TTS 请求分段长度，需小于服务端 1200 字限制")]
     public int ttsSegmentMaxLength = 1100;
-    [Tooltip("普通 AI 文本回复完成后，先合成语音，再显示并按音频时长追字播放")]
-    public bool autoPlayAITextWithVoice = true;
-    [Tooltip("开启后，普通 AI 文本在语音合成完成前不会出现在聊天列表")]
-    public bool delayAITextUntilVoiceReady = true;
+    [Tooltip("已废弃：现在 AI 文本先显示，TTS 只由用户点击语音按钮触发")]
+    public bool autoPlayAITextWithVoice = false;
+    [Tooltip("已废弃：现在不再等待语音生成后才显示 AI 文本")]
+    public bool delayAITextUntilVoiceReady = false;
 
     private TTSManager ttsManager;
     private ChatItem _currentTTSItem; // 当前正在播放语音的 ChatItem
@@ -48,7 +48,7 @@ public class DialogUI : WindowBase
     private Coroutine _cloudDialogLoadCoroutine;
     private readonly Dictionary<int, PreparedTTSAudio> _preparedTTSByMessageId = new Dictionary<int, PreparedTTSAudio>();
     private readonly Queue<System.Action> _pendingAIRequests = new Queue<System.Action>();
-    private bool _forceNextAIMessageAsThreeCardSpread;
+    private bool _forceNextAIMessageAsInteractionCard;
     private FriendDataManager.FriendData _activeAtFriend;
     private RectTransform _inputTextRect;
     private RectTransform _inputPlaceholderRect;
@@ -115,7 +115,7 @@ public class DialogUI : WindowBase
     {
         base.OnShow();
         OracleForegroundEffects.Attach(this.Canvas, OracleForegroundEffectStyle.Dialog);
-        ClearAtFriendSelection(false);
+        ClearAtFriendSelection(false, false);
         LoadCloudDialogState();
     }
     // 物体隐藏时执行
@@ -352,10 +352,10 @@ public class DialogUI : WindowBase
 
                 if (mIsFirstChunk)
                 {
-                    if (_forceNextAIMessageAsThreeCardSpread && ShouldTriggerInteractionCard())
+                    if (_forceNextAIMessageAsInteractionCard && ShouldTriggerInteractionCard())
                     {
-                        ConvertMessageToInteractionCard(streamingMessageIndex, "", 3);
-                        _forceNextAIMessageAsThreeCardSpread = false;
+                        ConvertMessageToInteractionCard(streamingMessageIndex, "");
+                        _forceNextAIMessageAsInteractionCard = false;
                     }
 
                     // 首个 chunk：列表需要刷新以显示新条目
@@ -395,11 +395,12 @@ public class DialogUI : WindowBase
                 }
 
                 // ---- 检查是否需要展示 InteractionCard ----
+                ApplyRuntimePlanForInteractionCard();
                 if (ShouldTriggerInteractionCard())
                 {
                     HideLoadingIndicator();
                     ConvertMessageToInteractionCard(streamingMessageIndex, fullContent);
-                    _forceNextAIMessageAsThreeCardSpread = false;
+                    _forceNextAIMessageAsInteractionCard = false;
                     RefreshChatAfterAIMessage(streamingMessageIndex);
                     ProcessNextQueuedAIRequest();
                     return;
@@ -417,13 +418,14 @@ public class DialogUI : WindowBase
 
                 HideLoadingIndicator();
                 RefreshChatAfterAIMessage(streamingMessageIndex);
+                PrepareTTSForCompletedAIMessage(streamingMessageIndex);
                 ProcessNextQueuedAIRequest();
             },
             // ---- onError: 流式出错 ----
             (error) =>
             {
                 HideLoadingIndicator();
-                _forceNextAIMessageAsThreeCardSpread = false;
+                _forceNextAIMessageAsInteractionCard = false;
 
                 Debug.LogError("AI响应错误: " + error);
                 ToastManager.ShowToast("AI响应失败，请稍后重试。");
@@ -439,19 +441,12 @@ public class DialogUI : WindowBase
 
     private bool ShouldDelayAITextUntilVoiceReady()
     {
-        return enableTTS
-            && autoPlayAITextWithVoice
-            && delayAITextUntilVoiceReady
-            && ttsManager != null
-            && !ShouldTriggerInteractionCard();
+        return false;
     }
 
     private bool ShouldAutoPlayAITextWithVoice(string text)
     {
-        return enableTTS
-            && autoPlayAITextWithVoice
-            && ttsManager != null
-            && !string.IsNullOrWhiteSpace(text);
+        return false;
     }
 
     private void RefreshChatAfterAIMessage(int messageIndex)
@@ -469,6 +464,49 @@ public class DialogUI : WindowBase
         return shownItem != null ? shownItem.GetComponent<ChatItem>() : null;
     }
 
+    private void PrepareTTSForCompletedAIMessage(int messageIndex)
+    {
+        if (!enableTTS || ttsManager == null || dialogSystem == null) return;
+
+        var msgData = dialogSystem.GetMessageByIndex(messageIndex);
+        if (msgData == null || msgData.roleType != DialogRoleType.AI) return;
+        if (msgData.messageType != MsgType.Str) return;
+        if (string.IsNullOrWhiteSpace(msgData.content)) return;
+        if (msgData.ttsAudioReady && _preparedTTSByMessageId.ContainsKey(msgData.id)) return;
+
+        uiComponent.StartCoroutine(PrepareTTSForCompletedAIMessageRoutine(messageIndex, msgData));
+    }
+
+    private IEnumerator PrepareTTSForCompletedAIMessageRoutine(int messageIndex, ChatMessageData msgData)
+    {
+        PreparedTTSAudio prepared = null;
+        string error = null;
+
+        yield return uiComponent.StartCoroutine(PrepareTTSAudio(msgData.id, msgData.content, msgData.divinerType,
+            (result, synthError) =>
+            {
+                prepared = result;
+                error = synthError;
+            }));
+
+        if (prepared == null || prepared.totalDuration <= 0f)
+        {
+            Debug.LogWarning($"[DialogUI] TTS 后台准备失败: {error}");
+            dialogSystem.SetAIMessageTTSInfo(messageIndex, 0f, false);
+            yield break;
+        }
+
+        dialogSystem.SetAIMessageTTSInfo(messageIndex, prepared.totalDuration, true);
+
+        var item = GetShownChatItem(messageIndex);
+        if (item != null)
+        {
+            item.SetTTSLength(prepared.totalDuration);
+            item.UpdateTTSButtonAfterStream(msgData.content);
+            item.ShowTTSLoading(false);
+        }
+    }
+
     /// <summary>
     /// 将最后一条流式消息转换为 InteractionCard 类型
     /// </summary>
@@ -484,8 +522,11 @@ public class DialogUI : WindowBase
 
     private void ConvertMessageToInteractionCard(int messageIndex, string fullContent, int forcedCardCount)
     {
-        int targetCardCount = forcedCardCount > 0 ? forcedCardCount : GetCurrentSpreadCardCount();
-        string spreadKind = FindSpreadKindByCardCount(targetCardCount);
+        var spreadDef = GetCurrentSpreadDefinition();
+        int targetCardCount = forcedCardCount > 0
+            ? forcedCardCount
+            : (spreadDef?.cardCount ?? GetCurrentSpreadCardCount());
+        string spreadKind = spreadDef?.kind ?? FindSpreadKindByCardCount(targetCardCount);
         MsgType msgType;
 
         switch (targetCardCount)
@@ -544,8 +585,40 @@ public class DialogUI : WindowBase
 
         _activeAtFriend = friend;
         RefreshAtFriendBox();
-        dialogSystem.ActivateFriendContext(friend, extraContext);
+        dialogSystem.AddFriendChatContext(friend, extraContext);
         Debug.Log($"关联好友：{GetAtFriendDisplayName(friend)}");
+    }
+
+    public void AddTarotCardChatContext(TarotCard card, bool upright, string sourceTitle = "塔罗牌", string description = "")
+    {
+        dialogSystem?.AddTarotCardChatContext(card, upright, sourceTitle, description);
+        RefreshAtFriendBox();
+    }
+
+    public void AddTodayCardChatContext(TodayCardPayload payload)
+    {
+        dialogSystem?.AddTodayCardChatContext(payload);
+        RefreshAtFriendBox();
+    }
+
+    public void AddReadingChatContext(string readingId, string title, string preview, string payload, string source = "reading")
+    {
+        dialogSystem?.AddReadingChatContext(readingId, title, preview, payload, source);
+        RefreshAtFriendBox();
+    }
+
+    public void AddConditionChatContext(string id, string title, string description)
+    {
+        dialogSystem?.AddConditionChatContext(id, title, description);
+        RefreshAtFriendBox();
+    }
+
+    public void ClearAllChatContexts()
+    {
+        _activeAtFriend = null;
+        dialogSystem?.ClearActiveChatContexts();
+        RefreshAtFriendBox();
+        ToastManager.ShowToast("已清除带入条件");
     }
 
     /// <summary>
@@ -607,9 +680,15 @@ public class DialogUI : WindowBase
 
     private void ClearAtFriendSelection(bool showToast)
     {
+        ClearAtFriendSelection(showToast, true);
+    }
+
+    private void ClearAtFriendSelection(bool showToast, bool clearContext)
+    {
         _activeAtFriend = null;
         RefreshAtFriendBox();
-        dialogSystem?.ClearActiveFriendContext();
+        if (clearContext)
+            dialogSystem?.ClearActiveFriendContext();
 
         if (showToast)
         {
@@ -627,7 +706,8 @@ public class DialogUI : WindowBase
         }
         else
         {
-            dialogSystem.ClearActiveFriendContext();
+            // 没有 UI 上的 @ 好友时，不主动清除数据层上下文。
+            // 用户点击取消按钮时会通过 ClearAtFriendSelection 显式清除。
         }
 
         RefreshAtFriendBox();
@@ -636,18 +716,22 @@ public class DialogUI : WindowBase
     private void RefreshAtFriendBox()
     {
         bool hasFriend = _activeAtFriend != null;
+        string activeContextPreview = !hasFriend && dialogSystem != null
+            ? dialogSystem.BuildActiveContextPreview()
+            : "";
+        bool hasContextPreview = !string.IsNullOrWhiteSpace(activeContextPreview);
         if (uiComponent?.artFriendRectTransfrom != null)
         {
-            uiComponent.artFriendRectTransfrom.gameObject.SetActive(hasFriend);
+            uiComponent.artFriendRectTransfrom.gameObject.SetActive(hasFriend || hasContextPreview);
         }
 
-        string label = hasFriend ? $"@{GetAtFriendDisplayName(_activeAtFriend)}" : string.Empty;
+        string label = hasFriend ? $"@{GetAtFriendDisplayName(_activeAtFriend)}" : activeContextPreview;
         if (uiComponent?.artFriendNameText != null)
         {
             uiComponent.artFriendNameText.text = label;
         }
 
-        ApplyAtFriendDynamicLayout(hasFriend, label);
+        ApplyAtFriendDynamicLayout(hasFriend || hasContextPreview, label);
     }
 
     private string GetAtFriendDisplayName(FriendDataManager.FriendData friend)
@@ -928,7 +1012,10 @@ public class DialogUI : WindowBase
     }
     public void OncancelArtButtonClick()
     {
-        ClearAtFriendSelection(true);
+        if (_activeAtFriend != null)
+            ClearAtFriendSelection(true);
+        else
+            ClearAllChatContexts();
     }
 
     /// <summary>
@@ -989,7 +1076,7 @@ public class DialogUI : WindowBase
 
         // 添加用户消息
         dialogSystem.AddUserMessage(question);
-        _forceNextAIMessageAsThreeCardSpread = true;
+        _forceNextAIMessageAsInteractionCard = true;
 
         UpdateChatScrollView();
 
@@ -1306,8 +1393,9 @@ public class DialogUI : WindowBase
         }
 
         dialogSystem.SetAIMessageTTSInfo(messageIndex, prepared.totalDuration, true);
-        item.PrepareSyncedSpeech(msgData.content, prepared.totalDuration);
-        yield return uiComponent.StartCoroutine(PlayPreparedTTSWithSyncedText(item, msgData.id, msgData.content, prepared));
+        item.SetTTSLength(prepared.totalDuration);
+        item.UpdateTTSButtonAfterStream(msgData.content);
+        yield return uiComponent.StartCoroutine(PlayPreparedTTSOnly(item, msgData.id, prepared));
     }
 
     private IEnumerator PrepareTTSAudio(int messageId, string text, DivinerType divinerType,
@@ -1338,6 +1426,9 @@ public class DialogUI : WindowBase
             string synthError = null;
             bool done = false;
 
+            while (ttsManager != null && ttsManager.IsSynthesizing)
+                yield return null;
+
             ttsManager.Speak(segments[i],
                 (result) =>
                 {
@@ -1350,7 +1441,13 @@ public class DialogUI : WindowBase
                     done = true;
                 });
 
-            yield return new WaitUntil(() => done);
+            yield return new WaitUntil(() => done || ttsManager == null || !ttsManager.IsSynthesizing);
+
+            if (!done)
+            {
+                onComplete?.Invoke(null, "TTS 请求已被取消");
+                yield break;
+            }
 
             if (!string.IsNullOrEmpty(synthError) || clip == null)
             {
@@ -1364,6 +1461,30 @@ public class DialogUI : WindowBase
 
         _preparedTTSByMessageId[messageId] = prepared;
         onComplete?.Invoke(prepared, null);
+    }
+
+    private IEnumerator PlayPreparedTTSOnly(ChatItem item, int messageId, PreparedTTSAudio prepared)
+    {
+        if (AudioManager.Instance == null)
+        {
+            ToastManager.ShowToast("音频管理器未就绪");
+            CleanupCurrentTTS(messageId);
+            yield break;
+        }
+
+        for (int i = 0; i < prepared.clips.Count; i++)
+        {
+            if (_currentTTSMessageId != messageId)
+                yield break;
+
+            var clip = prepared.clips[i];
+            AudioManager.Instance.PlayVoice(clip, interrupt: true);
+            Debug.Log($"[DialogUI] TTS 播放第 {i + 1}/{prepared.clips.Count} 段, 总时长={prepared.totalDuration:F1}s");
+            yield return new WaitForSeconds(clip.length + 0.05f);
+        }
+
+        CleanupCurrentTTS(messageId);
+        _ttsPlaybackCoroutine = null;
     }
 
     private IEnumerator PlayPreparedTTSWithSyncedText(ChatItem item, int messageId, string fullText,
@@ -1594,16 +1715,27 @@ public class DialogUI : WindowBase
         return phase == DivinationPhase.ChoosingSpread;
     }
 
+    private void ApplyRuntimePlanForInteractionCard()
+    {
+        if (dialogSystem == null || divinationEngine == null) return;
+
+        var runtimePlan = dialogSystem.GetLastRuntimePlan();
+        var plan = runtimePlan?.divinationPlan;
+        if (plan == null) return;
+        if (runtimePlan.stage != "before_draw") return;
+
+        divinationEngine.ApplyRuntimeDivinationPlan(plan);
+    }
+
     /// <summary>
     /// 在对话中添加互动牌阵卡片消息（根据牌阵卡牌数自动选择 1/3/5 类型）
     /// </summary>
     private void AddInteractionCardToChat(string aiResponse)
     {
         // 从 DivinationEngine 获取合适的牌阵定义，优先取会话中已选中的牌阵
-        int targetCardCount = GetCurrentSpreadCardCount();
-
-        // 查找对应卡牌数的牌阵
-        string spreadKind = FindSpreadKindByCardCount(targetCardCount);
+        var spreadDef = GetCurrentSpreadDefinition();
+        int targetCardCount = spreadDef?.cardCount ?? GetCurrentSpreadCardCount();
+        string spreadKind = spreadDef?.kind ?? FindSpreadKindByCardCount(targetCardCount);
 
         switch (targetCardCount)
         {
@@ -1628,15 +1760,25 @@ public class DialogUI : WindowBase
     private int GetCurrentSpreadCardCount()
     {
         // 优先从当前会话中获取
-        if (divinationEngine?.CurrentSession != null
-            && !string.IsNullOrEmpty(divinationEngine.CurrentSession.spreadKind))
-        {
-            var def = divinationEngine.GetSpreadDefinition(divinationEngine.CurrentSession.spreadKind);
-            if (def != null) return def.cardCount;
-        }
+        var def = GetCurrentSpreadDefinition();
+        if (def != null) return def.cardCount;
 
         // 回退：默认 3 张牌阵
         return 3;
+    }
+
+    private SpreadDefinition GetCurrentSpreadDefinition()
+    {
+        if (divinationEngine?.CurrentSession == null)
+            return null;
+
+        string spreadKind = divinationEngine.CurrentSession.spreadKind;
+        if (string.IsNullOrEmpty(spreadKind))
+            spreadKind = divinationEngine.CurrentSession.divinationPlan?.spreadKind;
+        if (string.IsNullOrEmpty(spreadKind))
+            return null;
+
+        return divinationEngine.GetSpreadDefinition(spreadKind);
     }
 
     /// <summary>
@@ -1656,8 +1798,8 @@ public class DialogUI : WindowBase
         // 回退默认值
         return cardCount switch
         {
-            1 => "single_mirror",
-            5 => "five_choice_gate",
+            1 => "mirror_card",
+            5 => "choice_gate",
             _ => "self_repair"
         };
     }

@@ -28,12 +28,14 @@ public class MyUI : WindowBase
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		base.OnAwake();
 		EnsureLatestRecordEntryClick();
+		NotificationUnreadBadge.Attach(uiComponent.noticeButton);
 	}
 	// 物体显示时执行
 	public override void OnShow()
 	{
 		base.OnShow();
 		EnsureLatestRecordEntryClick();
+		NotificationUnreadBadge.Attach(uiComponent.noticeButton);
 		RefreshDashboard();
 	}
 	// 物体隐藏时执行
@@ -98,7 +100,7 @@ public class MyUI : WindowBase
 		if (stats == null) return;
 
 		if (uiComponent.tatTodayCardValueText != null)
-			uiComponent.tatTodayCardValueText.text = stats.GetDailyOracleDisplay(_isPro);
+			uiComponent.tatTodayCardValueText.text = stats.GetReadingDisplay(_isPro);
 
 		if (uiComponent.StatTodaydialouNumText != null)
 			uiComponent.StatTodaydialouNumText.text = stats.GetDialogDisplay(_isPro);
@@ -236,7 +238,7 @@ public class MyUI : WindowBase
 	}
 	public void OnmemoryButtonClick()
 	{
-		UIModule.Instance.PopUpWindow<MemoryManagementUI>();
+		UIModule.Instance.PopUpWindow<MemoryManageUI>();
 	}
 	public void OnproButtonClick()
 	{

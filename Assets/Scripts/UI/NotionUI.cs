@@ -8,6 +8,7 @@
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
+using UltimateClean;
 
 public class NotionUI : WindowBase
 {
@@ -22,11 +23,14 @@ public class NotionUI : WindowBase
 		uiComponent.InitComponent(this);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		base.OnAwake();
+		BindSwitchButtons();
 	}
 	// 物体显示时执行
 	public override void OnShow()
 	{
 		base.OnShow();
+		BindSwitchButtons();
+		NotificationUnreadState.ClearUnread();
 		LoadCloudSettingsThenRefresh();
 	}
 	// 物体隐藏时执行
@@ -37,11 +41,46 @@ public class NotionUI : WindowBase
 	// 物体销毁时执行
 	public override void OnDestroy()
 	{
+		UnbindSwitchButtons();
 		base.OnDestroy();
 	}
 	#endregion
 
 	#region API Function
+	private void BindSwitchButtons()
+	{
+		BindSwitchButton(uiComponent?.DailyOracleSwitch, OnDailyOracleSwitchClick);
+		BindSwitchButton(uiComponent?.DialogueSwitch, OnDialogueSwitchClick);
+		BindSwitchButton(uiComponent?.DivinationReturnSwitch, OnDivinationReturnSwitchClick);
+		BindSwitchButton(uiComponent?.FriendInteractionSwitch, OnFriendInteractionSwitchClick);
+		BindSwitchButton(uiComponent?.ActivitySystemSwitch, OnActivitySystemSwitchClick);
+	}
+
+	private void UnbindSwitchButtons()
+	{
+		UnbindSwitchButton(uiComponent?.DailyOracleSwitch, OnDailyOracleSwitchClick);
+		UnbindSwitchButton(uiComponent?.DialogueSwitch, OnDialogueSwitchClick);
+		UnbindSwitchButton(uiComponent?.DivinationReturnSwitch, OnDivinationReturnSwitchClick);
+		UnbindSwitchButton(uiComponent?.FriendInteractionSwitch, OnFriendInteractionSwitchClick);
+		UnbindSwitchButton(uiComponent?.ActivitySystemSwitch, OnActivitySystemSwitchClick);
+	}
+
+	private void BindSwitchButton(Switch sw, UnityEngine.Events.UnityAction action)
+	{
+		if (sw == null) return;
+		Button button = sw.GetComponent<Button>();
+		if (button == null) return;
+		button.onClick.RemoveListener(action);
+		button.onClick.AddListener(action);
+	}
+
+	private void UnbindSwitchButton(Switch sw, UnityEngine.Events.UnityAction action)
+	{
+		if (sw == null) return;
+		Button button = sw.GetComponent<Button>();
+		if (button == null) return;
+		button.onClick.RemoveListener(action);
+	}
 
 	/// <summary>
 	/// 刷新通知设置UI显示
@@ -54,21 +93,11 @@ public class NotionUI : WindowBase
 		if (settings == null) return;
 		_isRefreshing = true;
 
-		// 刷新各 Toggle 状态（避免触发事件循环）
-		if (uiComponent.DailyOracleToggle != null)
-			uiComponent.DailyOracleToggle.isOn = settings.DailyOracleEnabled;
-
-		if (uiComponent.DialogueReplyToggle != null)
-			uiComponent.DialogueReplyToggle.isOn = settings.DialogueReplyEnabled;
-
-		if (uiComponent.DivinationReturnToggle != null)
-			uiComponent.DivinationReturnToggle.isOn = settings.DivinationReturnEnabled;
-
-		if (uiComponent.FriendInteractionToggle != null)
-			uiComponent.FriendInteractionToggle.isOn = settings.FriendInteractionEnabled;
-
-		if (uiComponent.ActivitySystemToggle != null)
-			uiComponent.ActivitySystemToggle.isOn = settings.ActivitySystemEnabled;
+		SetSwitchState(uiComponent.DailyOracleSwitch, settings.DailyOracleEnabled);
+		SetSwitchState(uiComponent.DialogueSwitch, settings.DialogueReplyEnabled);
+		SetSwitchState(uiComponent.DivinationReturnSwitch, settings.DivinationReturnEnabled);
+		SetSwitchState(uiComponent.FriendInteractionSwitch, settings.FriendInteractionEnabled);
+		SetSwitchState(uiComponent.ActivitySystemSwitch, settings.ActivitySystemEnabled);
 
 		// 刷新提醒时间显示
 		if (uiComponent.TimeValueText != null)
@@ -80,6 +109,13 @@ public class NotionUI : WindowBase
 				: "占卜结果回访提醒已关闭";
 
 		_isRefreshing = false;
+	}
+
+	private void SetSwitchState(Switch sw, bool enabled)
+	{
+		if (sw == null) return;
+		if (sw.IsToggled() != enabled)
+			sw.Toggle();
 	}
 
 	private void LoadCloudSettingsThenRefresh()
@@ -138,6 +174,42 @@ public class NotionUI : WindowBase
 		return go.AddComponent<NotificationSettingsManager>();
 	}
 
+	private void SaveDailyOraclePreference(bool enabled)
+	{
+		GetSettingsManager()?.SetDailyOracle(enabled);
+		SaveCloudSettings();
+		ToastManager.ShowToast(enabled ? "已开启每日神谕提醒" : "已关闭每日神谕提醒");
+	}
+
+	private void SaveDialogueReplyPreference(bool enabled)
+	{
+		GetSettingsManager()?.SetDialogueReply(enabled);
+		SaveCloudSettings();
+		ToastManager.ShowToast(enabled ? "已开启对话回复提醒" : "已关闭对话回复提醒");
+	}
+
+	private void SaveDivinationReturnPreference(bool enabled)
+	{
+		GetSettingsManager()?.SetDivinationReturn(enabled);
+		SaveCloudSettings();
+		RefreshUI();
+		ToastManager.ShowToast(enabled ? "已开启占卜回访提醒" : "已关闭占卜回访提醒");
+	}
+
+	private void SaveFriendInteractionPreference(bool enabled)
+	{
+		GetSettingsManager()?.SetFriendInteraction(enabled);
+		SaveCloudSettings();
+		ToastManager.ShowToast(enabled ? "已开启好友互动提醒" : "已关闭好友互动提醒");
+	}
+
+	private void SaveActivitySystemPreference(bool enabled)
+	{
+		GetSettingsManager()?.SetActivitySystem(enabled);
+		SaveCloudSettings();
+		ToastManager.ShowToast(enabled ? "已开启活动与系统通知" : "已关闭活动与系统通知");
+	}
+
 	#endregion
 
 	#region UI组件事件
@@ -145,41 +217,66 @@ public class NotionUI : WindowBase
 	{
 		HideWindow();
 	}
+
+	public void OnDailyOracleSwitchClick()
+	{
+		if (_isRefreshing) return;
+		bool enabled = uiComponent?.DailyOracleSwitch == null || uiComponent.DailyOracleSwitch.IsToggled();
+		SaveDailyOraclePreference(enabled);
+	}
+
+	public void OnDialogueSwitchClick()
+	{
+		if (_isRefreshing) return;
+		bool enabled = uiComponent?.DialogueSwitch == null || uiComponent.DialogueSwitch.IsToggled();
+		SaveDialogueReplyPreference(enabled);
+	}
+
+	public void OnDivinationReturnSwitchClick()
+	{
+		if (_isRefreshing) return;
+		bool enabled = uiComponent?.DivinationReturnSwitch == null || uiComponent.DivinationReturnSwitch.IsToggled();
+		SaveDivinationReturnPreference(enabled);
+	}
+
+	public void OnFriendInteractionSwitchClick()
+	{
+		if (_isRefreshing) return;
+		bool enabled = uiComponent?.FriendInteractionSwitch != null && uiComponent.FriendInteractionSwitch.IsToggled();
+		SaveFriendInteractionPreference(enabled);
+	}
+
+	public void OnActivitySystemSwitchClick()
+	{
+		if (_isRefreshing) return;
+		bool enabled = uiComponent?.ActivitySystemSwitch == null || uiComponent.ActivitySystemSwitch.IsToggled();
+		SaveActivitySystemPreference(enabled);
+	}
+
 	public void OnDailyOracleToggleChange(bool state, Toggle toggle)
 	{
 		if (_isRefreshing) return;
-		GetSettingsManager()?.SetDailyOracle(state);
-		SaveCloudSettings();
-		ToastManager.ShowToast("偏好设置已保存");
+		SaveDailyOraclePreference(state);
 	}
 	public void OnDialogueReplyToggleChange(bool state, Toggle toggle)
 	{
 		if (_isRefreshing) return;
-		GetSettingsManager()?.SetDialogueReply(state);
-		SaveCloudSettings();
-		ToastManager.ShowToast("偏好设置已保存");
+		SaveDialogueReplyPreference(state);
 	}
 	public void OnDivinationReturnToggleChange(bool state, Toggle toggle)
 	{
 		if (_isRefreshing) return;
-		GetSettingsManager()?.SetDivinationReturn(state);
-		SaveCloudSettings();
-		RefreshUI();
-		ToastManager.ShowToast("偏好设置已保存");
+		SaveDivinationReturnPreference(state);
 	}
 	public void OnFriendInteractionToggleChange(bool state, Toggle toggle)
 	{
 		if (_isRefreshing) return;
-		GetSettingsManager()?.SetFriendInteraction(state);
-		SaveCloudSettings();
-		ToastManager.ShowToast("偏好设置已保存");
+		SaveFriendInteractionPreference(state);
 	}
 	public void OnActivitySystemToggleChange(bool state, Toggle toggle)
 	{
 		if (_isRefreshing) return;
-		GetSettingsManager()?.SetActivitySystem(state);
-		SaveCloudSettings();
-		ToastManager.ShowToast("偏好设置已保存");
+		SaveActivitySystemPreference(state);
 	}
 	public void OnTimeSettingButtonClick()
 	{

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
@@ -44,16 +45,28 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     #region 状态
 
     private const string PUBLIC_APP_CONFIG_CACHE_KEY = "PublicAppConfigCache_v1";
+    private const string PENDING_REAL_FRIEND_DELETE_KEY_PREFIX = "PendingRealFriendDeletes_";
+    private const string PENDING_REAL_FRIEND_BLOCK_KEY_PREFIX = "PendingRealFriendBlocks_";
     private const int FIRESTORE_DELETE_BATCH_LIMIT = 450;
+    private const float USER_SEARCH_STORE_READY_TIMEOUT_SECONDS = 5f;
+    private const float USER_SEARCH_STORE_READY_POLL_SECONDS = 0.2f;
 
     private FirebaseFirestore _db;
     private bool _isInitialized = false;
+    private bool _hasSubscribedFirebaseInit = false;
+    private bool _initRetryScheduled = false;
 
     /// <summary>Firestore 是否已初始化</summary>
     public bool IsInitialized => _isInitialized;
 
     /// <summary>最近一次用户搜索失败原因，给 UI 做更明确的提示。</summary>
     public string LastUserSearchError { get; private set; } = string.Empty;
+
+    [Serializable]
+    private class PendingUidList
+    {
+        public List<string> uids = new List<string>();
+    }
 
     #endregion
 
@@ -67,32 +80,64 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
 
     private void InitFirestore()
     {
+        if (_isInitialized && _db != null) return;
+
         // 核心逻辑：Firestore 的运行依赖于 FirebaseApp 的成功初始化。
         // 所以这里先检查身份验证管理器（FirebaseAuthManager）是否已经准备好了。
-        if (FirebaseAuthManager.Instance != null && FirebaseAuthManager.Instance.IsFirebaseInitialized)
+        FirebaseAuthManager authManager = FirebaseAuthManager.Instance;
+        if (authManager == null)
+        {
+            ScheduleInitRetry();
+            return;
+        }
+
+        if (authManager.IsFirebaseInitialized)
         {
             // 如果已经好了，直接初始化 Firestore
             OnFirebaseReady();
         }
-        else
+        else if (!_hasSubscribedFirebaseInit)
         {
             // 如果还没好，就订阅初始化完成的事件，等它好了再回调 OnFirebaseReady
-            FirebaseAuthManager.Instance.OnFirebaseInitialized += OnFirebaseReady;
+            _hasSubscribedFirebaseInit = true;
+            authManager.OnFirebaseInitialized += OnFirebaseReady;
         }
+    }
+
+    private void ScheduleInitRetry()
+    {
+        if (_initRetryScheduled) return;
+
+        _initRetryScheduled = true;
+        Invoke(nameof(RetryInitFirestore), 0.5f);
+    }
+
+    private void RetryInitFirestore()
+    {
+        _initRetryScheduled = false;
+        InitFirestore();
     }
 
     private void OnFirebaseReady()
     {
+        FirebaseAuthManager authManager = FirebaseAuthManager.Instance;
+        if (authManager != null && _hasSubscribedFirebaseInit)
+            authManager.OnFirebaseInitialized -= OnFirebaseReady;
+        _hasSubscribedFirebaseInit = false;
+
         try
         {
             // 获取当前默认的 Firestore 数据库实例
             _db = FirebaseFirestore.DefaultInstance;
             _isInitialized = true;
             Debug.Log("[FirestoreManager] Firestore 初始化完成");
+            SyncPendingRealFriendDeletes();
+            SyncPendingRealFriendBlocks();
         }
         catch (Exception e)
         {
             Debug.LogError($"[FirestoreManager] Firestore 初始化失败: {e.Message}");
+            ScheduleInitRetry();
         }
     }
 
@@ -318,6 +363,54 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     public void SearchUsersByName(string keyword, Action<List<UserSearchResult>> onComplete, int limit = 3)
     {
         LastUserSearchError = string.Empty;
+
+        if (!IsUserSearchStoreReady())
+        {
+            InitFirestore();
+            StartCoroutine(WaitForUserSearchStoreReadyThenSearch(keyword, onComplete, limit));
+            return;
+        }
+
+        SearchUsersByNameReady(keyword, onComplete, limit);
+    }
+
+    private IEnumerator WaitForUserSearchStoreReadyThenSearch(string keyword, Action<List<UserSearchResult>> onComplete, int limit)
+    {
+        float deadline = Time.realtimeSinceStartup + USER_SEARCH_STORE_READY_TIMEOUT_SECONDS;
+
+        while (Time.realtimeSinceStartup < deadline)
+        {
+            if (IsUserSearchStoreReady())
+            {
+                SearchUsersByNameReady(keyword, onComplete, limit);
+                yield break;
+            }
+
+            if (!_isInitialized || _db == null)
+                InitFirestore();
+
+            yield return new WaitForSecondsRealtime(USER_SEARCH_STORE_READY_POLL_SECONDS);
+        }
+
+#if UNITY_EDITOR
+        string normalizedKeyword = NormalizeSearchText(keyword);
+        if (!string.IsNullOrEmpty(normalizedKeyword))
+        {
+            int resultLimit = Math.Max(1, limit);
+            int fetchLimit = GetUserSearchFetchLimit(resultLimit);
+            Debug.Log("[FirestoreManager] Editor 搜索未等到 Firestore SDK 就绪，改用公开资料 REST 查询");
+            SearchUsersByNameViaRestInEditor(keyword, normalizedKeyword, GetCurrentUserSearchUid(), resultLimit, fetchLimit, onComplete);
+            yield break;
+        }
+#endif
+
+        LastUserSearchError = BuildUserSearchStoreNotReadyMessage();
+        Debug.LogWarning($"[FirestoreManager] {LastUserSearchError}");
+        onComplete?.Invoke(new List<UserSearchResult>());
+    }
+
+    private void SearchUsersByNameReady(string keyword, Action<List<UserSearchResult>> onComplete, int limit)
+    {
         if (!CheckReady(_ =>
         {
             LastUserSearchError = "Firestore 尚未初始化";
@@ -331,7 +424,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             return;
         }
 
-        string currentUid = UserDataManager.Instance.FirebaseUid;
+        string currentUid = GetCurrentUserSearchUid();
         int resultLimit = Math.Max(1, limit);
         int fetchLimit = GetUserSearchFetchLimit(resultLimit);
         CollectionReference profilesRef = _db.Collection("public_profiles");
@@ -357,6 +450,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 }
 
                 AddUserSearchResults(results, task.Result.Documents, currentUid);
+                Debug.Log($"[FirestoreManager] SDK 前缀搜索 keyword={normalizedKeyword}, count={results.Count}, currentUid={currentUid}");
                 if (CountNonSelfResults(results, currentUid) < resultLimit)
                 {
                     SearchUsersByKeywordArray(normalizedKeyword, currentUid, resultLimit, fetchLimit, results, onComplete);
@@ -373,6 +467,35 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
 #endif
                 onComplete?.Invoke(results);
             });
+    }
+
+    private bool IsUserSearchStoreReady()
+    {
+        return _isInitialized && _db != null;
+    }
+
+    private string BuildUserSearchStoreNotReadyMessage()
+    {
+        FirebaseAuthManager authManager = FirebaseAuthManager.Instance;
+        if (authManager == null)
+            return "Firebase 认证服务未初始化";
+
+        if (!authManager.IsFirebaseInitialized)
+            return "Firebase 尚未初始化完成，请稍后再试";
+
+        return "Firestore 尚未初始化";
+    }
+
+    private static string GetCurrentUserSearchUid()
+    {
+        string uid = UserDataManager.Instance != null ? UserDataManager.Instance.FirebaseUid : string.Empty;
+        if (!string.IsNullOrEmpty(uid))
+            return uid;
+
+        FirebaseAuthManager authManager = FirebaseAuthManager.Instance;
+        return authManager != null && authManager.CurrentUser != null
+            ? authManager.CurrentUser.UserId
+            : string.Empty;
     }
 
     private void SearchUsersByKeywordArray(
@@ -628,21 +751,61 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     /// </summary>
     public void RemoveRealFriend(FriendDataManager.FriendData friend, Action<bool> onComplete = null)
     {
-        if (!CheckReady(onComplete)) return;
-        if (friend == null || friend.isVirtual || string.IsNullOrEmpty(friend.firebaseUid))
+        if (friend == null || friend.isVirtual)
         {
             onComplete?.Invoke(false);
             return;
         }
 
-        string currentUid = UserDataManager.Instance.FirebaseUid;
         string friendUid = friend.firebaseUid;
-        if (string.IsNullOrEmpty(currentUid) || currentUid == friendUid)
+        if (string.IsNullOrEmpty(friendUid))
+        {
+            bool removed = FriendDataManager.Instance != null && FriendDataManager.Instance.RemoveRealFriend(friend.id);
+            Debug.LogWarning($"[FirestoreManager] 真实好友缺少 Firebase UID，已尝试仅本地删除: id={friend.id}, success={removed}");
+            onComplete?.Invoke(removed);
+            return;
+        }
+
+        string currentUid = GetCurrentFirebaseUid();
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            QueuePendingRealFriendDelete(friendUid);
+            FriendDataManager.Instance?.RemoveRealFriendByFirebaseUid(friendUid);
+            Debug.Log($"[FirestoreManager] 当前用户 UID 未就绪，已本地删除真实好友并等待同步: {friendUid}");
+            onComplete?.Invoke(true);
+            return;
+        }
+
+        if (currentUid == friendUid)
         {
             onComplete?.Invoke(false);
             return;
         }
 
+        if (!_isInitialized || _db == null)
+        {
+            QueuePendingRealFriendDelete(friendUid);
+            FriendDataManager.Instance?.RemoveRealFriendByFirebaseUid(friendUid);
+            Debug.Log($"[FirestoreManager] Firestore 未初始化，已本地删除真实好友并等待同步: {friendUid}");
+            onComplete?.Invoke(true);
+            return;
+        }
+
+        CommitRemoveRealFriend(currentUid, friendUid, success =>
+        {
+            if (success)
+            {
+                FriendDataManager.Instance?.RemoveRealFriendByFirebaseUid(friendUid);
+                RemovePendingRealFriendDelete(friendUid);
+                Debug.Log($"[FirestoreManager] 已删除真实好友: {friendUid}");
+            }
+
+            onComplete?.Invoke(success);
+        });
+    }
+
+    private void CommitRemoveRealFriend(string currentUid, string friendUid, Action<bool> onComplete)
+    {
         WriteBatch batch = _db.StartBatch();
         DocumentReference myFriendRef = _db.Collection("users")
             .Document(currentUid)
@@ -664,10 +827,283 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 return;
             }
 
-            FriendDataManager.Instance.RemoveRealFriendByFirebaseUid(friendUid);
-            Debug.Log($"[FirestoreManager] 已删除真实好友: {friendUid}");
             onComplete?.Invoke(true);
         });
+    }
+
+    public static void QueueRealFriendDeleteLocal(string friendUid)
+    {
+        QueuePendingRealFriendDelete(friendUid);
+    }
+
+    public static void QueueRealFriendBlockLocal(string friendUid)
+    {
+        QueuePendingRealFriendBlock(friendUid);
+    }
+
+    private static void QueuePendingRealFriendDelete(string friendUid)
+    {
+        if (string.IsNullOrWhiteSpace(friendUid)) return;
+
+        string key = GetPendingRealFriendDeleteKey();
+        List<string> pending = LoadPendingRealFriendDeletes(key);
+        if (!pending.Exists(uid => uid == friendUid))
+            pending.Add(friendUid);
+
+        SavePendingRealFriendDeletes(key, pending);
+    }
+
+    private static void QueuePendingRealFriendBlock(string friendUid)
+    {
+        if (string.IsNullOrWhiteSpace(friendUid)) return;
+
+        string key = GetPendingRealFriendBlockKey();
+        List<string> pending = LoadPendingRealFriendBlocks(key);
+        if (!pending.Exists(uid => uid == friendUid))
+            pending.Add(friendUid);
+
+        SavePendingRealFriendBlocks(key, pending);
+    }
+
+    private static void RemovePendingRealFriendDelete(string friendUid)
+    {
+        if (string.IsNullOrWhiteSpace(friendUid)) return;
+
+        foreach (string key in GetPendingRealFriendDeleteKeysForSync())
+        {
+            List<string> pending = LoadPendingRealFriendDeletes(key);
+            if (pending.RemoveAll(uid => uid == friendUid) > 0)
+                SavePendingRealFriendDeletes(key, pending);
+        }
+    }
+
+    private static void RemovePendingRealFriendBlock(string friendUid)
+    {
+        if (string.IsNullOrWhiteSpace(friendUid)) return;
+
+        foreach (string key in GetPendingRealFriendBlockKeysForSync())
+        {
+            List<string> pending = LoadPendingRealFriendBlocks(key);
+            if (pending.RemoveAll(uid => uid == friendUid) > 0)
+                SavePendingRealFriendBlocks(key, pending);
+        }
+    }
+
+    private void SyncPendingRealFriendDeletes()
+    {
+        if (!_isInitialized || _db == null) return;
+
+        string currentUid = GetCurrentFirebaseUid();
+        if (string.IsNullOrWhiteSpace(currentUid)) return;
+
+        foreach (string key in GetPendingRealFriendDeleteKeysForSync())
+        {
+            List<string> pending = LoadPendingRealFriendDeletes(key);
+            if (pending.Count == 0) continue;
+
+            foreach (string friendUid in new List<string>(pending))
+            {
+                if (string.IsNullOrWhiteSpace(friendUid) || friendUid == currentUid)
+                {
+                    RemovePendingRealFriendDelete(friendUid);
+                    continue;
+                }
+
+                CommitRemoveRealFriend(currentUid, friendUid, success =>
+                {
+                    if (!success) return;
+                    RemovePendingRealFriendDelete(friendUid);
+                    Debug.Log($"[FirestoreManager] 已同步待删除真实好友: {friendUid}");
+                });
+            }
+        }
+    }
+
+    private void SyncPendingRealFriendBlocks()
+    {
+        if (!_isInitialized || _db == null) return;
+
+        string currentUid = GetCurrentFirebaseUid();
+        if (string.IsNullOrWhiteSpace(currentUid)) return;
+
+        foreach (string key in GetPendingRealFriendBlockKeysForSync())
+        {
+            List<string> pending = LoadPendingRealFriendBlocks(key);
+            if (pending.Count == 0) continue;
+
+            foreach (string friendUid in new List<string>(pending))
+            {
+                if (string.IsNullOrWhiteSpace(friendUid) || friendUid == currentUid)
+                {
+                    RemovePendingRealFriendBlock(friendUid);
+                    continue;
+                }
+
+                CommitBlockRealFriend(currentUid, friendUid, null, success =>
+                {
+                    if (!success) return;
+                    FriendDataManager.Instance?.AddBlockedUser(friendUid);
+                    RemovePendingRealFriendBlock(friendUid);
+                    Debug.Log($"[FirestoreManager] 已同步待屏蔽真实好友: {friendUid}");
+                });
+            }
+        }
+    }
+
+    private static string GetPendingRealFriendDeleteKey()
+    {
+        string currentUid = GetCurrentFirebaseUid();
+        if (!string.IsNullOrWhiteSpace(currentUid))
+            return BuildPendingRealFriendDeleteKey(currentUid);
+
+        string localUserId = UserDataManager.Instance?.UserId ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(localUserId))
+            return BuildPendingRealFriendDeleteKey(localUserId);
+
+        return BuildPendingRealFriendDeleteKey("local");
+    }
+
+    private static string GetPendingRealFriendBlockKey()
+    {
+        string currentUid = GetCurrentFirebaseUid();
+        if (!string.IsNullOrWhiteSpace(currentUid))
+            return BuildPendingRealFriendBlockKey(currentUid);
+
+        string localUserId = UserDataManager.Instance?.UserId ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(localUserId))
+            return BuildPendingRealFriendBlockKey(localUserId);
+
+        return BuildPendingRealFriendBlockKey("local");
+    }
+
+    private static List<string> GetPendingRealFriendDeleteKeysForSync()
+    {
+        List<string> keys = new List<string>();
+
+        void AddKey(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            string key = BuildPendingRealFriendDeleteKey(value);
+            if (!keys.Contains(key))
+                keys.Add(key);
+        }
+
+        AddKey(GetCurrentFirebaseUid());
+        AddKey(UserDataManager.Instance?.UserId);
+        AddKey("local");
+        return keys;
+    }
+
+    private static List<string> GetPendingRealFriendBlockKeysForSync()
+    {
+        List<string> keys = new List<string>();
+
+        void AddKey(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            string key = BuildPendingRealFriendBlockKey(value);
+            if (!keys.Contains(key))
+                keys.Add(key);
+        }
+
+        AddKey(GetCurrentFirebaseUid());
+        AddKey(UserDataManager.Instance?.UserId);
+        AddKey("local");
+        return keys;
+    }
+
+    private static string GetCurrentFirebaseUid()
+    {
+        string uid = UserDataManager.Instance?.FirebaseUid ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(uid))
+            return uid.Trim();
+
+        uid = Firebase.Auth.FirebaseAuth.DefaultInstance?.CurrentUser?.UserId ?? string.Empty;
+        return string.IsNullOrWhiteSpace(uid) ? string.Empty : uid.Trim();
+    }
+
+    private static string BuildPendingRealFriendDeleteKey(string userKey)
+    {
+        return PENDING_REAL_FRIEND_DELETE_KEY_PREFIX + (string.IsNullOrWhiteSpace(userKey) ? "local" : userKey.Trim());
+    }
+
+    private static string BuildPendingRealFriendBlockKey(string userKey)
+    {
+        return PENDING_REAL_FRIEND_BLOCK_KEY_PREFIX + (string.IsNullOrWhiteSpace(userKey) ? "local" : userKey.Trim());
+    }
+
+    private static List<string> LoadPendingRealFriendDeletes(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return new List<string>();
+
+        string json = PlayerPrefs.GetString(key, string.Empty);
+        if (string.IsNullOrWhiteSpace(json)) return new List<string>();
+
+        try
+        {
+            PendingUidList data = JsonUtility.FromJson<PendingUidList>(json);
+            return data?.uids ?? new List<string>();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[FirestoreManager] 待同步好友删除队列读取失败，已重置。{ex.Message}");
+            PlayerPrefs.DeleteKey(key);
+            PlayerPrefs.Save();
+            return new List<string>();
+        }
+    }
+
+    private static List<string> LoadPendingRealFriendBlocks(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return new List<string>();
+
+        string json = PlayerPrefs.GetString(key, string.Empty);
+        if (string.IsNullOrWhiteSpace(json)) return new List<string>();
+
+        try
+        {
+            PendingUidList data = JsonUtility.FromJson<PendingUidList>(json);
+            return data?.uids ?? new List<string>();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[FirestoreManager] 待同步好友屏蔽队列读取失败，已重置。{ex.Message}");
+            PlayerPrefs.DeleteKey(key);
+            PlayerPrefs.Save();
+            return new List<string>();
+        }
+    }
+
+    private static void SavePendingRealFriendDeletes(string key, List<string> pending)
+    {
+        if (string.IsNullOrEmpty(key)) return;
+
+        if (pending == null || pending.Count == 0)
+        {
+            PlayerPrefs.DeleteKey(key);
+        }
+        else
+        {
+            PlayerPrefs.SetString(key, JsonUtility.ToJson(new PendingUidList { uids = pending }));
+        }
+
+        PlayerPrefs.Save();
+    }
+
+    private static void SavePendingRealFriendBlocks(string key, List<string> pending)
+    {
+        if (string.IsNullOrEmpty(key)) return;
+
+        if (pending == null || pending.Count == 0)
+        {
+            PlayerPrefs.DeleteKey(key);
+        }
+        else
+        {
+            PlayerPrefs.SetString(key, JsonUtility.ToJson(new PendingUidList { uids = pending }));
+        }
+
+        PlayerPrefs.Save();
     }
 
     public void LoadBlockedUsers(Action<HashSet<string>> onComplete)
@@ -712,27 +1148,67 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
 
     public void BlockRealFriend(FriendDataManager.FriendData friend, Action<bool> onComplete = null)
     {
-        if (!CheckReady(onComplete)) return;
-        if (friend == null || friend.isVirtual || string.IsNullOrEmpty(friend.firebaseUid))
+        if (friend == null || friend.isVirtual)
         {
             onComplete?.Invoke(false);
             return;
         }
 
-        string currentUid = UserDataManager.Instance.FirebaseUid;
         string friendUid = friend.firebaseUid;
-        if (string.IsNullOrEmpty(currentUid) || currentUid == friendUid)
+        if (string.IsNullOrEmpty(friendUid))
+        {
+            bool removed = FriendDataManager.Instance != null && FriendDataManager.Instance.RemoveRealFriend(friend.id);
+            Debug.LogWarning($"[FirestoreManager] 真实好友缺少 Firebase UID，无法写入屏蔽列表，已尝试仅本地移除: id={friend.id}, success={removed}");
+            onComplete?.Invoke(removed);
+            return;
+        }
+
+        string currentUid = GetCurrentFirebaseUid();
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            QueuePendingRealFriendBlock(friendUid);
+            FriendDataManager.Instance?.AddBlockedUser(friendUid);
+            Debug.Log($"[FirestoreManager] 当前用户 UID 未就绪，已本地屏蔽真实好友并等待同步: {friendUid}");
+            onComplete?.Invoke(true);
+            return;
+        }
+
+        if (currentUid == friendUid)
         {
             onComplete?.Invoke(false);
             return;
         }
 
+        if (!_isInitialized || _db == null)
+        {
+            QueuePendingRealFriendBlock(friendUid);
+            FriendDataManager.Instance?.AddBlockedUser(friendUid);
+            Debug.Log($"[FirestoreManager] Firestore 未初始化，已本地屏蔽真实好友并等待同步: {friendUid}");
+            onComplete?.Invoke(true);
+            return;
+        }
+
+        CommitBlockRealFriend(currentUid, friendUid, friend, success =>
+        {
+            if (success)
+            {
+                FriendDataManager.Instance?.AddBlockedUser(friendUid);
+                RemovePendingRealFriendBlock(friendUid);
+                Debug.Log($"[FirestoreManager] 已屏蔽用户: {friendUid}");
+            }
+
+            onComplete?.Invoke(success);
+        });
+    }
+
+    private void CommitBlockRealFriend(string currentUid, string friendUid, FriendDataManager.FriendData friend, Action<bool> onComplete)
+    {
         Dictionary<string, object> blockedData = new Dictionary<string, object>
         {
             { "uid", friendUid },
-            { "displayName", friend.name ?? string.Empty },
-            { "email", string.IsNullOrWhiteSpace(friend.handle) ? string.Empty : friend.handle.TrimStart('@') },
-            { "photoUrl", friend.photoUrl ?? string.Empty },
+            { "displayName", friend?.name ?? string.Empty },
+            { "email", string.IsNullOrWhiteSpace(friend?.handle) ? string.Empty : friend.handle.TrimStart('@') },
+            { "photoUrl", friend?.photoUrl ?? string.Empty },
             { "createdAt", FieldValue.ServerTimestamp },
             { "updatedAt", FieldValue.ServerTimestamp },
         };
@@ -757,8 +1233,6 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 return;
             }
 
-            FriendDataManager.Instance.AddBlockedUser(friendUid);
-            Debug.Log($"[FirestoreManager] 已屏蔽用户: {friendUid}");
             onComplete?.Invoke(true);
         });
     }
@@ -1627,7 +2101,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 if (task.IsFaulted || task.IsCanceled)
                 {
                     Debug.LogError($"[FirestoreManager] 加载反馈失败: {task.Exception?.InnerException?.Message}");
-                    onComplete?.Invoke(result);
+                    onComplete?.Invoke(null);
                     return;
                 }
 
@@ -1826,6 +2300,98 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     }
 
     /// <summary>
+    /// 保存记忆隐私设置。
+    /// 路径：users/{uid}/settings/memory_privacy
+    /// </summary>
+    public void SaveMemoryPrivacySettings(Action<bool> onComplete = null)
+    {
+        SaveMemoryPrivacySettings(MemoryPrivacySettings.CreateSnapshot(), onComplete);
+    }
+
+    public void SaveMemoryPrivacySettings(MemoryPrivacySettingsSnapshot settings, Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+        settings ??= new MemoryPrivacySettingsSnapshot();
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        var data = new Dictionary<string, object>
+        {
+            { "shareAllMemoryEnabled", settings.shareAllMemoryEnabled },
+            { "autoTopicEnabled", settings.autoTopicEnabled },
+            { "autoPreferenceEnabled", settings.autoPreferenceEnabled },
+            { "autoEmotionEnabled", settings.autoEmotionEnabled },
+            { "autoGrowthEnabled", settings.autoGrowthEnabled },
+            { "requireConfirmBeforeAdd", settings.requireConfirmBeforeAdd },
+            { "updatedAt", FieldValue.ServerTimestamp },
+        };
+
+        _db.Collection("users")
+            .Document(currentUid)
+            .Collection("settings")
+            .Document("memory_privacy")
+            .SetAsync(data, SetOptions.MergeAll)
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogError($"[FirestoreManager] 保存记忆隐私设置失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                onComplete?.Invoke(true);
+            });
+    }
+
+    /// <summary>
+    /// 加载记忆隐私设置。
+    /// </summary>
+    public void LoadMemoryPrivacySettings(Action<bool> onComplete = null)
+    {
+        if (!CheckReady(onComplete)) return;
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        _db.Collection("users")
+            .Document(currentUid)
+            .Collection("settings")
+            .Document("memory_privacy")
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled || !task.Result.Exists)
+                {
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                Dictionary<string, object> data = task.Result.ToDictionary();
+                MemoryPrivacySettings.ApplySnapshot(new MemoryPrivacySettingsSnapshot
+                {
+                    shareAllMemoryEnabled = GetBool(data, "shareAllMemoryEnabled", true),
+                    autoTopicEnabled = GetBool(data, "autoTopicEnabled", true),
+                    autoPreferenceEnabled = GetBool(data, "autoPreferenceEnabled", true),
+                    autoEmotionEnabled = GetBool(data, "autoEmotionEnabled", true),
+                    autoGrowthEnabled = GetBool(data, "autoGrowthEnabled", false),
+                    requireConfirmBeforeAdd = GetBool(data, "requireConfirmBeforeAdd", true),
+                });
+
+                onComplete?.Invoke(true);
+            });
+    }
+
+    /// <summary>
     /// 加载公开配置：社媒链接、IAP 商品 ID 等。
     /// 路径：app_config/public
     /// </summary>
@@ -1886,7 +2452,9 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     {
         if (!CheckReady(onComplete)) return;
 
-        string uid = UserDataManager.Instance.FirebaseUid;
+        string uid = UserDataManager.Instance?.FirebaseUid ?? string.Empty;
+        if (string.IsNullOrEmpty(uid))
+            uid = Firebase.Auth.FirebaseAuth.DefaultInstance?.CurrentUser?.UserId ?? string.Empty;
         if (string.IsNullOrEmpty(uid))
         {
             onComplete?.Invoke(false);
@@ -1951,6 +2519,16 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         }
 
         DocumentReference docRef = _db.Collection("users").Document(uid);
+        void CompleteAfterLogin(bool success)
+        {
+            if (success)
+            {
+                SyncPendingRealFriendDeletes();
+                SyncPendingRealFriendBlocks();
+            }
+            onComplete?.Invoke(success);
+        }
+
         docRef.GetSnapshotAsync().ContinueWithOnMainThread(task =>
         {
             if (task.IsFaulted || task.IsCanceled)
@@ -1965,7 +2543,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             if (!snapshot.Exists)
             {
                 // 情况 1：云端无数据 → 首次登录，执行全新创建逻辑，打上创建时间戳
-                CreateUserData(onComplete);
+                CreateUserData(CompleteAfterLogin);
             }
             else
             {
@@ -1978,7 +2556,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                         DialogSystem.Instance?.SetMemorySource(source);
                 });
                 // 第二步：再把本地最终的合并结果推给云端保存（同时刷新最后登录时间 lastSignInAt）
-                SaveUserData(onComplete);
+                SaveUserData(CompleteAfterLogin);
             }
         });
     }
@@ -2285,6 +2863,11 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 {
                     LastUserSearchError = string.Empty;
                     Debug.Log($"[FirestoreManager] Editor REST 搜索成功，来源={result.proxyLabel}，数量={result.users.Count}");
+                    foreach (UserSearchResult user in result.users)
+                    {
+                        if (user == null) continue;
+                        Debug.Log($"[FirestoreManager] Editor REST 搜索结果 uid={user.uid}, name={user.displayName}, self={user.isSelf}");
+                    }
                 }
 
                 onComplete?.Invoke(result.users);
@@ -2784,6 +3367,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             { "sourceConversationId", candidate.sourceConversationId ?? "" },
             { "sourceMessageId", candidate.sourceMessageId ?? "" },
             { "createdAt", candidate.createdAt ?? "" },
+            { "important", candidate.important },
         };
     }
 
@@ -2894,6 +3478,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             sourceConversationId = GetString(data, "sourceConversationId", ""),
             sourceMessageId = GetString(data, "sourceMessageId", ""),
             createdAt = GetString(data, "createdAt", ""),
+            important = GetBool(data, "important", false),
         };
     }
 
@@ -3134,6 +3719,10 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         await DeleteQueryInBatchesAsync(_db.Collection("daily_oracle_summaries").WhereEqualTo("ownerUid", uid));
         await DeleteQueryInBatchesAsync(_db.Collection("relationship_divinations").WhereEqualTo("initiatorUid", uid));
         await DeleteQueryInBatchesAsync(_db.Collection("relationship_divinations").WhereEqualTo("receiverUid", uid));
+        await DeleteQueryInBatchesAsync(_db.Collection("feedback").WhereEqualTo("uid", uid));
+        await DeleteQueryInBatchesAsync(_db.Collection("iap_receipts").WhereEqualTo("uid", uid));
+        await DeleteQueryInBatchesAsync(_db.Collection("usage_limits").WhereEqualTo("uid", uid));
+        await DeleteQueryInBatchesAsync(_db.Collection("payment_events").WhereEqualTo("uid", uid));
     }
 
     private async Task DeleteQueryInBatchesAsync(Query query)

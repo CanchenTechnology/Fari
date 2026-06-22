@@ -130,7 +130,19 @@ namespace GamerFrameWork.OracleRuntime
             if (activeReadingState == "completed" || !string.IsNullOrEmpty(activeReadingId))
                 return MakeResult("follow_up", "reading_continuity");
 
-            // 用户想要占卜
+            // 普通决策焦虑不等于占卜意图：先给人话判断/澄清，不自动推牌。
+            if (!HasDivinationIntent(text) && IsDecisionOrActionQuestion(text))
+            {
+                if (scene == "relationship_anxiety" || scene == "breakup_relapse" ||
+                    scene == "ambiguous_situation" || scene == "career_uncertainty")
+                {
+                    return messageCount > 0
+                        ? MakeResult("micro_action", "non_tarot_decision_action")
+                        : MakeResult("clarify", "non_tarot_decision_clarify");
+                }
+            }
+
+            // 用户明确要求占卜/抽牌/牌阵时才进入占卜流程
             if (HasDivinationIntent(text))
             {
                 if (IsImmediateDrawRequest(text))
@@ -155,7 +167,14 @@ namespace GamerFrameWork.OracleRuntime
         public static bool HasDivinationIntent(string text)
         {
             return Regex.IsMatch(text ?? "",
-                @"占卜|塔罗|抽牌|牌阵|神谕|该不该|要不要|会不会|走向|阻碍|建议.*牌|card|tarot|spread|reading|oracle|pull.*card|draw.*card",
+                @"占卜|塔罗|抽牌|牌阵|神谕|建议.*牌|用牌|看牌|card|tarot|spread|reading|oracle|pull.*card|draw.*card",
+                RegexOptions.IgnoreCase);
+        }
+
+        private static bool IsDecisionOrActionQuestion(string text)
+        {
+            return Regex.IsMatch(text ?? "",
+                @"(该不该|要不要|会不会|怎么办|该如何|该怎么|能不能|要怎么|走向|还有没有可能|what.*should.*i.*do|should.*i|will.*they|next.*step|how.*respond)",
                 RegexOptions.IgnoreCase);
         }
 

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
+using Newtonsoft.Json.Linq;
 using GamerFrameWork.OracleRuntime;
 
 /// <summary>
@@ -108,6 +110,31 @@ public class DailyOracleService : MonoBehaviour
         StartCoroutine(RequestDailyOracleRoutine(card, upright, onComplete));
     }
 
+    public bool TryRestoreFromRecord(DailyOracleCloudRecord record, out TodayOraclePreparedReading preparedReading)
+    {
+        preparedReading = null;
+        if (record == null || !record.HasPayload) return false;
+
+        TarotCard card = TarotDeck.GetById(record.cardId);
+        if (card == null) return false;
+
+        bool upright = record.IsUpright;
+        TodayOraclePayload payload = record.ToPayload();
+
+        CurrentCard = card;
+        CurrentUpright = upright;
+        CachedPayload = payload;
+        MarkOracleCache(card, upright);
+
+        DivinationEngine.Instance?.SetTodayCardFromCloud(card, upright, record.date);
+
+        CachedPreparedReading = BuildPreparedReading(card, upright, payload, null);
+        MarkPreparedCache(card, upright);
+        preparedReading = CachedPreparedReading;
+        DailyOracleHistoryBridge.SaveDailyRecord(record, true);
+        return true;
+    }
+
     private System.Collections.IEnumerator RequestDailyOracleRoutine(
         TarotCard card, bool upright, Action<TodayOraclePayload> onComplete)
     {
@@ -141,8 +168,22 @@ public class DailyOracleService : MonoBehaviour
 
                 CachedPayload = cloudRecord.ToPayload();
                 MarkOracleCache(card, upright);
+                DailyOracleHistoryBridge.SaveDailyRecord(cloudRecord, true);
                 IsOracleLoading = false;
                 Debug.Log($"[DailyOracleService] 使用云端今日神谕缓存: {cloudRecord.cardId}");
+                onComplete?.Invoke(CachedPayload);
+                OnOracleGenerated?.Invoke(CachedPayload);
+                yield break;
+            }
+        }
+        else
+        {
+            DailyOracleCloudRecord localRecord = DailyOracleFirestore.LoadTodayLocal();
+            if (TryRestoreFromRecord(localRecord, out TodayOraclePreparedReading restoredReading))
+            {
+                CachedPayload = restoredReading.oraclePayload;
+                IsOracleLoading = false;
+                Debug.Log($"[DailyOracleService] 使用本地今日神谕缓存: {localRecord.cardId}");
                 onComplete?.Invoke(CachedPayload);
                 OnOracleGenerated?.Invoke(CachedPayload);
                 yield break;
@@ -152,8 +193,8 @@ public class DailyOracleService : MonoBehaviour
         // 1. 构建 ChatPayload
         var payload = BuildDailyOraclePayload(card, upright);
 
-        // 2. 获取 MemorySource（从 DialogSystem）
-        var memorySource = DialogSystem.Instance?.GetMemorySource();
+        // 2. 获取用于 Prompt 的 MemorySource（用户关闭共享时为空记忆源）
+        var memorySource = DialogSystem.Instance?.GetMemorySourceForPrompt();
 
         // 3. 通过 ContextAssembler 组装 daily_oracle 场景消息
         var assemblyResult = ContextAssembler.AssembleSceneCall(
@@ -164,6 +205,7 @@ public class DailyOracleService : MonoBehaviour
             Debug.LogError("[DailyOracleService] 组装消息失败，使用降级模板");
             CachedPayload = BuildFallbackPayload(card, upright, CurrentLocale);
             MarkOracleCache(card, upright);
+            DailyOracleFirestore.SaveTodayLocal(card, upright, CachedPayload, CurrentLocale);
             IsOracleLoading = false;
             onComplete?.Invoke(CachedPayload);
             OnOracleGenerated?.Invoke(CachedPayload);
@@ -202,6 +244,7 @@ public class DailyOracleService : MonoBehaviour
         {
             CachedPayload = ParseDailyOracleResponse(aiResponse, card, upright, CurrentLocale);
             MarkOracleCache(card, upright);
+            DailyOracleFirestore.SaveTodayLocal(card, upright, CachedPayload, CurrentLocale);
             Debug.Log($"[DailyOracleService] AI 神谕生成成功: {card.nameZh}");
         }
         else
@@ -209,6 +252,7 @@ public class DailyOracleService : MonoBehaviour
             Debug.LogWarning($"[DailyOracleService] AI 请求失败: {errorMsg}，使用降级模板");
             CachedPayload = BuildFallbackPayload(card, upright, CurrentLocale);
             MarkOracleCache(card, upright);
+            DailyOracleFirestore.SaveTodayLocal(card, upright, CachedPayload, CurrentLocale);
         }
 
         DialogSystem.Instance?.RecordExternalPrompt(
@@ -216,6 +260,7 @@ public class DailyOracleService : MonoBehaviour
             string.IsNullOrEmpty(aiResponse) ? CachedPayload?.detail : aiResponse);
 
         DailyOracleFirestore.Instance?.SaveToday(card, upright, CachedPayload, CurrentLocale);
+        DailyOracleHistoryBridge.SaveToday(card, upright, CachedPayload, CurrentLocale, true);
 
         IsOracleLoading = false;
         onComplete?.Invoke(CachedPayload);
@@ -445,14 +490,10 @@ public class DailyOracleService : MonoBehaviour
         var kwStr = string.Join(ls.KwSep, card.keywords);
 
         var message = $"[系统指令] 今日已抽牌：{cardSummary}。请根据以上规则，{ls.LangInstr}。"
-                    + $"不要解释推理过程，直接输出内容。牌名=\"{card.nameZh}\"，元素={card.element}，"
+                    + $"不要解释推理过程，直接输出符合 schema 的 JSON。牌名=\"{card.nameZh}\"，元素={card.element}，"
                     + $"类型={card.arcana}（{arcanaLabel}），"
                     + $"关键词={kwStr}。"
-                    + $"方向={orientationLabel}。"
-                    + $"输出格式：先输出\"{ls.TitleField}\"（≤{ls.TitleMax}{ls.CharUnit}），"
-                    + $"再输出\"{ls.OracleField}\"（一句话，≤{ls.OracleMax}{ls.CharUnit}），"
-                    + $"再输出\"{ls.DetailField}\"（{ls.DetailInstr}）。"
-                    + ls.OldFieldWarning;
+                    + $"方向={orientationLabel}。";
 
         return new ChatPayload
         {
@@ -498,6 +539,12 @@ public class DailyOracleService : MonoBehaviour
             donts = new List<string>(),
             microAction = ""
         };
+
+        if (TryParseDailyOracleJson(aiResponse, payload))
+        {
+            NormalizeDailyOraclePayload(payload, card, upright, locale);
+            return payload;
+        }
 
         var lines = aiResponse.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
 
@@ -557,7 +604,54 @@ public class DailyOracleService : MonoBehaviour
             }
         }
 
-        // 降级处理
+        NormalizeDailyOraclePayload(payload, card, upright, locale);
+        return payload;
+    }
+
+    private bool TryParseDailyOracleJson(string aiResponse, TodayOraclePayload payload)
+    {
+        if (string.IsNullOrWhiteSpace(aiResponse) || payload == null) return false;
+
+        string json = ExtractJsonObject(aiResponse);
+        if (string.IsNullOrWhiteSpace(json)) return false;
+
+        try
+        {
+            JObject obj = JObject.Parse(json);
+            payload.title = ReadString(obj, "title");
+            payload.oracle = ReadString(obj, "oracle_sentence");
+            payload.detail = ReadString(obj, "detail");
+            payload.dos = ReadStringArray(obj, "do");
+            payload.donts = ReadStringArray(obj, "dont");
+
+            if (obj["full_reading"] is JObject fullReading)
+            {
+                string core = ReadString(fullReading, "core_meaning");
+                string today = ReadString(fullReading, "today_meaning");
+                string reminder = ReadString(fullReading, "deeper_reminder");
+                payload.microAction = ReadString(fullReading, "micro_action");
+
+                var detailParts = new List<string>();
+                if (!string.IsNullOrWhiteSpace(payload.detail)) detailParts.Add(payload.detail);
+                if (!string.IsNullOrWhiteSpace(core)) detailParts.Add(core);
+                if (!string.IsNullOrWhiteSpace(today)) detailParts.Add(today);
+                if (!string.IsNullOrWhiteSpace(reminder)) detailParts.Add(reminder);
+                payload.detail = string.Join("\n", detailParts.Where(part => !string.IsNullOrWhiteSpace(part)));
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[DailyOracleService] 每日神谕 JSON 解析失败，回退旧格式解析: {ex.Message}");
+            return false;
+        }
+    }
+
+    private void NormalizeDailyOraclePayload(TodayOraclePayload payload, TarotCard card, bool upright, string locale)
+    {
+        if (payload == null) return;
+
         if (string.IsNullOrEmpty(payload.title))
         {
             payload.title = GetFallbackTitle(card, locale);
@@ -570,8 +664,6 @@ public class DailyOracleService : MonoBehaviour
         {
             payload.detail = BuildFallbackDetail(card, upright, locale);
         }
-
-        return payload;
     }
 
     /// <summary>
@@ -846,10 +938,10 @@ public class DailyOracleService : MonoBehaviour
         CurrentUpright = upright;
 
         var payload = BuildInterpretationPayload(card, upright);
-        var memorySource = DialogSystem.Instance?.GetMemorySource();
+        var memorySource = DialogSystem.Instance?.GetMemorySourceForPrompt();
 
         var assemblyResult = ContextAssembler.AssembleSceneCall(
-            "daily_oracle", payload, memorySource, oracleVoiceId: "tarot_reader");
+            "complete_interpretation", payload, memorySource, oracleVoiceId: "tarot_reader");
 
         if (assemblyResult?.messages == null || assemblyResult.messages.Count == 0)
         {
@@ -903,7 +995,6 @@ public class DailyOracleService : MonoBehaviour
     private ChatPayload BuildInterpretationPayload(TarotCard card, bool upright)
     {
         var orientation = upright ? "upright" : "reversed";
-        var cardSummary = card.ToSummary(upright);
         var locale = CurrentLocale;
         var ls = GetLocStrings(locale);
 
@@ -913,22 +1004,16 @@ public class DailyOracleService : MonoBehaviour
 
         var message =
             $"[系统指令] 用户正在查看今日塔罗牌。请根据以上规则，{ls.LangInstr}。" +
-            $"不要解释推理过程，直接输出内容。" +
+            $"不要解释推理过程，直接输出符合 schema 的 JSON。" +
             $"牌名=\"{card.nameZh}\"，元素={card.element}，" +
             $"类型={card.arcana}（{arcanaLabel}），" +
             $"关键词={kwStr}。" +
-            $"方向={orientationLabel}。" +
-            $"请按以下格式输出，每个段落一个字段，用冒号分隔字段名和内容：" +
-            $"先输出\"{ls.DescField}\"：{ls.DescInstr} " +
-            $"再输出\"{ls.TagsField}\"：{ls.TagsInstr} " +
-            $"再输出\"{ls.MeaningField}\"：{ls.MeaningInstr} " +
-            $"再输出\"{ls.ActionField}\"：{ls.ActionInstr} " +
-            $"最后输出\"{ls.TopicsField}\"：{ls.TopicsInstr}，用\"1. 2. 3. 4.\"编号分行列出。";
+            $"方向={orientationLabel}。";
 
         return new ChatPayload
         {
-            scene = "daily_oracle",
-            actionKind = "daily_oracle",
+            scene = "complete_interpretation",
+            actionKind = "complete_interpretation",
             locale = locale,
             message = message,
             todayCard = new TodayCardPayload
@@ -962,6 +1047,12 @@ public class DailyOracleService : MonoBehaviour
             actionSuggestion = "",
             topics = new List<string>()
         };
+
+        if (TryParseInterpretationJson(aiResponse, result))
+        {
+            NormalizeInterpretationResult(result, card, upright, locale);
+            return result;
+        }
 
         var lines = aiResponse.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
 
@@ -1042,7 +1133,70 @@ public class DailyOracleService : MonoBehaviour
             }
         }
 
-        // 降级处理：缺失字段使用 fallback
+        NormalizeInterpretationResult(result, card, upright, locale);
+        return result;
+    }
+
+    private bool TryParseInterpretationJson(string aiResponse, CompleteInterpretationPayload result)
+    {
+        if (string.IsNullOrWhiteSpace(aiResponse) || result == null) return false;
+
+        string json = ExtractJsonObject(aiResponse);
+        if (string.IsNullOrWhiteSpace(json)) return false;
+
+        try
+        {
+            JObject obj = JObject.Parse(json);
+            result.description = ReadString(obj, "description");
+            result.meaningAnalysis = ReadString(obj, "meaningAnalysis");
+            result.actionSuggestion = ReadString(obj, "actionSuggestion");
+            result.tags = ReadStringArray(obj, "tags");
+            result.topics = ReadStringArray(obj, "topics");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[DailyOracleService] 完整解读 JSON 解析失败，回退旧格式解析: {ex.Message}");
+            return false;
+        }
+    }
+
+    private static string ExtractJsonObject(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "";
+        int start = text.IndexOf('{');
+        int end = text.LastIndexOf('}');
+        if (start < 0 || end <= start) return "";
+        return text.Substring(start, end - start + 1);
+    }
+
+    private static string ReadString(JObject obj, string key)
+    {
+        return obj?[key]?.Type == JTokenType.String
+            ? obj[key].Value<string>()?.Trim() ?? ""
+            : "";
+    }
+
+    private static List<string> ReadStringArray(JObject obj, string key)
+    {
+        var result = new List<string>();
+        JArray arr = obj?[key] as JArray;
+        if (arr == null) return result;
+
+        foreach (JToken token in arr)
+        {
+            string value = token.Type == JTokenType.String ? token.Value<string>()?.Trim() : "";
+            if (!string.IsNullOrWhiteSpace(value))
+                result.Add(value);
+        }
+
+        return result;
+    }
+
+    private void NormalizeInterpretationResult(CompleteInterpretationPayload result, TarotCard card, bool upright, string locale)
+    {
+        if (result == null) return;
+
         if (string.IsNullOrEmpty(result.description))
             result.description = BuildFallbackDescription(card, upright, locale);
         if (result.tags == null || result.tags.Count < 3)
@@ -1060,8 +1214,6 @@ public class DailyOracleService : MonoBehaviour
         while (result.tags.Count < 3) result.tags.Add("");
         while (result.topics.Count > 4) result.topics.RemoveAt(result.topics.Count - 1);
         while (result.topics.Count < 4) result.topics.Add("");
-
-        return result;
     }
 
     private CompleteInterpretationPayload BuildFallbackInterpretation(

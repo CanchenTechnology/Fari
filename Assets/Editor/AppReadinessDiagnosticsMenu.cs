@@ -9,8 +9,12 @@ public static class AppReadinessDiagnosticsMenu
     private const string ReleaseBlockersEnvCommand = "RELEASE_ENV_FILE=scripts/release.env ./scripts/check-release-blockers.sh";
     private const string PrepareReleaseCommand = "MOONLY_PROXY='http://[::1]:7897' MOONLY_ALL_PROXY=socks5://127.0.0.1:10808 CURL_MAX_TIME=180 REPORT_ONLY=1 ./scripts/prepare-release.sh";
     private const string PrepareReleaseEnvCommand = "RELEASE_ENV_FILE=scripts/release.env REPORT_ONLY=1 ./scripts/prepare-release.sh";
+    private const string InitReleaseEnvCommand = "./scripts/init-release-env.sh";
     private const string CheckReleaseEnvCommand = "RELEASE_ENV_FILE=scripts/release.env ./scripts/check-release-env.sh";
     private const string FinishReleaseEnvCommand = "RELEASE_ENV_FILE=scripts/release.env ./scripts/finish-release.sh";
+    private const string InitPublicConfigCommand = "./scripts/init-public-config.sh";
+    private const string PublicConfigValidationCommand = "node functions/scripts/set-public-config.js --dry-run --require-real-social-links functions/public-config.live.json";
+    private const string PublicConfigReleaseCommand = "RUN_PUBLIC_CONFIG_UPDATE=1 PUBLIC_CONFIG_PATH=functions/public-config.live.json REQUIRE_REAL_SOCIAL_LINKS=1 ./scripts/prepare-release.sh";
     private const string IosExportCommand = "CLEAN_IOS_EXPORT=1 ./scripts/build-ios-xcode.sh";
     private const string AndroidKeystoreCheckCommand = "RELEASE_ENV_FILE=scripts/release.env ./scripts/check-android-keystore.sh";
     private const string AndroidBuildCommand = "CLEAN_ANDROID_BUILD=1 ./scripts/build-android-apk.sh";
@@ -63,6 +67,13 @@ public static class AppReadinessDiagnosticsMenu
         Debug.Log("[Moonly] Prepare release env command copied:\n" + PrepareReleaseEnvCommand);
     }
 
+    [MenuItem("Tools/Moonly/Copy Init Release Env Command")]
+    public static void CopyInitReleaseEnvCommand()
+    {
+        GUIUtility.systemCopyBuffer = InitReleaseEnvCommand;
+        Debug.Log("[Moonly] Init release env command copied:\n" + InitReleaseEnvCommand);
+    }
+
     [MenuItem("Tools/Moonly/Copy Check Release Env Command")]
     public static void CopyCheckReleaseEnvCommand()
     {
@@ -75,6 +86,27 @@ public static class AppReadinessDiagnosticsMenu
     {
         GUIUtility.systemCopyBuffer = FinishReleaseEnvCommand;
         Debug.Log("[Moonly] Finish release env command copied:\n" + FinishReleaseEnvCommand);
+    }
+
+    [MenuItem("Tools/Moonly/Copy Init Public Config Command")]
+    public static void CopyInitPublicConfigCommand()
+    {
+        GUIUtility.systemCopyBuffer = InitPublicConfigCommand;
+        Debug.Log("[Moonly] Init public config command copied:\n" + InitPublicConfigCommand);
+    }
+
+    [MenuItem("Tools/Moonly/Copy Public Config Validation Command")]
+    public static void CopyPublicConfigValidationCommand()
+    {
+        GUIUtility.systemCopyBuffer = PublicConfigValidationCommand;
+        Debug.Log("[Moonly] Public config validation command copied:\n" + PublicConfigValidationCommand);
+    }
+
+    [MenuItem("Tools/Moonly/Copy Public Config Release Command")]
+    public static void CopyPublicConfigReleaseCommand()
+    {
+        GUIUtility.systemCopyBuffer = PublicConfigReleaseCommand;
+        Debug.Log("[Moonly] Public config release command copied:\n" + PublicConfigReleaseCommand);
     }
 
     [MenuItem("Tools/Moonly/Copy iOS Xcode Export Command")]

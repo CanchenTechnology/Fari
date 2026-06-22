@@ -411,10 +411,7 @@ public class FriendProfileUI : WindowBase
 				return;
 			}
 
-			if (settings.ShouldPublishToFeed)
-				store.PublishTodaySummary(OnTodaySummarySyncUpdated);
-			else
-				store.DisableTodaySummary(OnTodaySummarySyncUpdated);
+			store.ApplySyncSettingsToPublishedSummaries(settings, 30, OnTodaySummarySyncUpdated);
 		});
 	}
 
@@ -477,79 +474,9 @@ public class FriendProfileUI : WindowBase
 			return;
 		}
 
-		FriendRuntimeDialog.ShowActionSheet(
-			transform,
-			FormatOptionalName(currentFriend.name),
-			"选择要对这个真实好友执行的操作。",
-			new FriendRuntimeAction("发起关系占卜", () =>
-			{
-				RelationshipDivinationOverlay.StartForFriend(transform, currentFriend);
-			}),
-			new FriendRuntimeAction("删除好友", () =>
-			{
-				FriendRuntimeDialog.ShowConfirm(
-					transform,
-					"删除好友",
-					$"确定删除「{FormatOptionalName(currentFriend.name)}」吗？双方好友关系会解除。",
-					"删除",
-					RemoveCurrentRealFriend);
-			}, true),
-			new FriendRuntimeAction("屏蔽好友", () =>
-			{
-				FriendRuntimeDialog.ShowConfirm(
-					transform,
-					"屏蔽好友",
-					$"确定屏蔽「{FormatOptionalName(currentFriend.name)}」吗？屏蔽后会解除好友关系，并且搜索结果会显示为已屏蔽。",
-					"屏蔽",
-					BlockCurrentRealFriend);
-			}, true),
-			new FriendRuntimeAction("取消", null));
+		FriendMoveUI.Show(currentFriend);
 	}
 
-	private void RemoveCurrentRealFriend()
-	{
-		FirestoreManager firestore = FirestoreManager.Instance;
-		if (firestore == null || !firestore.IsInitialized)
-		{
-			ToastManager.ShowToast("好友服务未初始化，无法删除好友");
-			return;
-		}
-
-		isRemovingFriend = true;
-		ToastManager.ShowToast($"正在删除 {currentFriend.name}");
-		firestore.RemoveRealFriend(currentFriend, success =>
-		{
-			isRemovingFriend = false;
-			ToastManager.ShowToast(success ? "已删除好友" : "删除好友失败，请稍后再试");
-			if (success)
-				HideWindow();
-		});
-	}
-
-	private void BlockCurrentRealFriend()
-	{
-		FirestoreManager firestore = FirestoreManager.Instance;
-		if (firestore == null || !firestore.IsInitialized)
-		{
-			ToastManager.ShowToast("好友服务未初始化，无法屏蔽好友");
-			return;
-		}
-
-		isRemovingFriend = true;
-		ToastManager.ShowToast($"正在屏蔽 {currentFriend.name}");
-		firestore.BlockRealFriend(currentFriend, success =>
-		{
-			isRemovingFriend = false;
-			ToastManager.ShowToast(success ? "已屏蔽好友" : "屏蔽失败，请稍后再试");
-			if (success)
-				HideWindow();
-		});
-	}
-
-	private string FormatOptionalName(string value)
-	{
-		return string.IsNullOrWhiteSpace(value) ? "好友" : value.Trim();
-	}
 	public void OnAllRecordsButtonClick()
 	{
 		if (currentFriend == null || string.IsNullOrWhiteSpace(currentFriend.firebaseUid))

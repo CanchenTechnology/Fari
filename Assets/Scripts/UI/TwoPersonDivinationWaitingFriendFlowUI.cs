@@ -55,6 +55,9 @@ public class TwoPersonDivinationWaitingFriendFlowUI : WindowBase
 	{
 		currentRecord = RelationshipDivinationFlow.CurrentRecord;
 		currentFriend = RelationshipDivinationFlow.CurrentFriend;
+		if (HandleTerminalState())
+			return;
+
 		Render();
 		StartPolling();
 	}
@@ -125,29 +128,46 @@ public class TwoPersonDivinationWaitingFriendFlowUI : WindowBase
 		}
 	}
 
-	private void RefreshRemoteRecord()
-	{
-		RelationshipDivinationFlow.RefreshCurrentRecord(updated =>
+		private void RefreshRemoteRecord()
 		{
-			if (updated == null || gameObject == null || !gameObject.activeInHierarchy) return;
+			RelationshipDivinationFlow.RefreshCurrentRecord(updated =>
+			{
+				if (updated == null || gameObject == null || !gameObject.activeInHierarchy) return;
 
-			currentRecord = updated;
-			if (updated.IsCancelled)
+				currentRecord = updated;
+				if (HandleTerminalState())
+					return;
+
+				Render();
+			});
+		}
+
+		private bool HandleTerminalState()
+		{
+			if (currentRecord == null) return false;
+
+			if (currentRecord.IsCancelled)
 			{
 				ToastManager.ShowToast("这次双人占卜邀请已取消");
 				RelationshipDivinationFlow.HideFlowWindows();
-				return;
+				return true;
 			}
 
-			if (updated.IsCompleted)
+			if (currentRecord.IsCompleted || currentRecord.isLocalOnly)
 			{
-				RelationshipDivinationFlow.ShowRevealReady(updated, currentFriend);
-				return;
+				RelationshipDivinationFlow.ShowRevealReady(currentRecord, currentFriend);
+				return true;
 			}
 
-			Render();
-		});
-	}
+			if (RelationshipDivinationFlow.IsInviteExpired(currentRecord))
+			{
+				ToastManager.ShowToast("这次双人占卜邀请已过期");
+				RelationshipDivinationFlow.HideFlowWindows();
+				return true;
+			}
+
+			return false;
+		}
 
 	private void ApplyCardSprite(Image target, RelationshipDivinationCard card)
 	{

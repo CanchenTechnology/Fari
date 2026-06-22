@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reply", "suggested_message", "followup_questions", "voice_text"],
+  "properties": {
+    "reply": {
+      "type": "string",
+      "maxLength": 220
+    },
+    "suggested_message": {
+      "type": "string",
+      "maxLength": 90
+    },
+    "followup_questions": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "string",
+        "maxLength": 28
+      }
+    },
+    "voice_text": {
+      "type": "string",
+      "maxLength": 80
+    }
+  }
+}

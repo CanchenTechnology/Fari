@@ -64,13 +64,6 @@ public static class RelationshipDivinationFlow
             return;
         }
 
-        if (CurrentFriend != null && !IsDebugTestFriend(CurrentFriend) && IsDailyLimitReached(CurrentFriend))
-        {
-            ToastManager.ShowToast("你们今天已经完成过一次双人占卜，明天再开启新的指引");
-            HideFlowWindows();
-            return;
-        }
-
         if (record.CanCurrentUserReveal(uid))
         {
             ShowInviteSent(record, CurrentFriend);
@@ -83,6 +76,9 @@ public static class RelationshipDivinationFlow
 
     public static void ShowInviteSent(RelationshipDivinationRecord record, FriendDataManager.FriendData friend = null)
     {
+        if (TryHandleTerminalRecord(record, friend))
+            return;
+
         CurrentRecord = record;
         CurrentFriend = friend ?? CurrentFriend ?? FindFriendForRecord(record) ?? BuildFallbackFriend(record);
         HideFlowWindows();
@@ -91,6 +87,9 @@ public static class RelationshipDivinationFlow
 
     public static void ShowWaitingFriend(RelationshipDivinationRecord record, FriendDataManager.FriendData friend = null)
     {
+        if (TryHandleTerminalRecord(record, friend))
+            return;
+
         CurrentRecord = record;
         CurrentFriend = friend ?? CurrentFriend ?? FindFriendForRecord(record) ?? BuildFallbackFriend(record);
         HideFlowWindows();
@@ -116,10 +115,63 @@ public static class RelationshipDivinationFlow
         UIModule.Instance.HideWindow<TwoPersonDivinationResultFlowUI>();
     }
 
+    private static bool TryHandleTerminalRecord(RelationshipDivinationRecord record, FriendDataManager.FriendData friend)
+    {
+        if (record == null) return false;
+
+        FriendDataManager.FriendData resolvedFriend = friend ?? CurrentFriend ?? FindFriendForRecord(record) ?? BuildFallbackFriend(record);
+
+        if (record.IsCancelled)
+        {
+            CurrentRecord = record;
+            CurrentFriend = resolvedFriend;
+            ToastManager.ShowToast("这次双人占卜邀请已取消");
+            HideFlowWindows();
+            return true;
+        }
+
+        if (record.IsCompleted || record.isLocalOnly)
+        {
+            ShowRevealReady(record, resolvedFriend);
+            return true;
+        }
+
+        if (IsInviteExpired(record))
+        {
+            CurrentRecord = record;
+            CurrentFriend = resolvedFriend;
+            ToastManager.ShowToast("这次双人占卜邀请已过期");
+            HideFlowWindows();
+            return true;
+        }
+
+        return false;
+    }
+
+    public static RelationshipDivinationFirestore GetOrCreateService()
+    {
+        RelationshipDivinationFirestore service = RelationshipDivinationFirestore.Instance;
+        if (service != null)
+            return service;
+
+        GameObject go = new GameObject("RelationshipDivinationFirestore");
+        return go.AddComponent<RelationshipDivinationFirestore>();
+    }
+
+    public static DivinationRecordFirestore GetOrCreateHistoryService()
+    {
+        DivinationRecordFirestore service = DivinationRecordFirestore.Instance;
+        if (service != null)
+            return service;
+
+        GameObject go = new GameObject("DivinationRecordFirestore");
+        return go.AddComponent<DivinationRecordFirestore>();
+    }
+
     public static void RefreshCurrentRecord(Action<RelationshipDivinationRecord> onComplete)
     {
         RelationshipDivinationRecord record = CurrentRecord;
-        RelationshipDivinationFirestore service = RelationshipDivinationFirestore.Instance;
+        RelationshipDivinationFirestore service = GetOrCreateService();
         if (record == null || record.isLocalOnly || service == null)
         {
             onComplete?.Invoke(record);
@@ -150,7 +202,7 @@ public static class RelationshipDivinationFlow
         if (!CanUseTwoPersonDivination(friend, true))
             return;
 
-        RelationshipDivinationFirestore service = RelationshipDivinationFirestore.Instance;
+        RelationshipDivinationFirestore service = GetOrCreateService();
         if (service == null)
         {
             ToastManager.ShowToast("关系占卜服务初始化中，请稍后再试");
@@ -163,23 +215,53 @@ public static class RelationshipDivinationFlow
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(friend.firebaseUid) || !service.IsReady)
+        if (!service.IsReady)
+        {
+            ToastManager.ShowToast("关系占卜服务初始化中，请稍后再试");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(friend.firebaseUid))
         {
             if (CanCreateNewReading(friend, true))
                 onCanCreate?.Invoke();
             return;
         }
 
-        service.LoadActiveWithFriend(friend.firebaseUid, active =>
+        service.LoadActiveWithFriend(friend.firebaseUid, (active, activeQuerySucceeded) =>
         {
+            if (!activeQuerySucceeded)
+            {
+                ToastManager.ShowToast("双人占卜邀请同步失败，请稍后再试");
+                return;
+            }
+
             if (active != null)
             {
                 ShowRecord(active, friend);
                 return;
             }
 
-            if (CanCreateNewReading(friend, true))
+            if (!CanCreateNewReading(friend, true))
+                return;
+
+            service.LoadCompletedTodayWithFriend(friend.firebaseUid, (completed, querySucceeded) =>
+            {
+                if (!querySucceeded)
+                {
+                    ToastManager.ShowToast("双人占卜记录同步失败，请稍后再试");
+                    return;
+                }
+
+                if (completed != null)
+                {
+                    MarkDailyCompleted(completed);
+                    ToastManager.ShowToast("你们今天已经完成过一次双人占卜，明天再开启新的指引");
+                    return;
+                }
+
                 onCanCreate?.Invoke();
+            });
         });
     }
 
@@ -198,7 +280,13 @@ public static class RelationshipDivinationFlow
     public static bool CanUseTwoPersonDivination(FriendDataManager.FriendData friend, bool showToast)
     {
         if (friend == null) return false;
-        if (friend.isVirtual) return true;
+        if (friend.isVirtual)
+        {
+            if (showToast)
+                ToastManager.ShowToast("自己创建的好友暂不支持双人占卜，请选择真实好友");
+            return false;
+        }
+
         if (!friend.isVirtual && !string.IsNullOrWhiteSpace(friend.firebaseUid)) return true;
 
         if (showToast)
@@ -208,6 +296,9 @@ public static class RelationshipDivinationFlow
 
     public static string GetDailyLimitText(FriendDataManager.FriendData friend)
     {
+        if (friend != null && friend.isVirtual)
+            return "自己创建的好友暂不支持双人占卜";
+
         if (IsDebugTestFriend(friend))
             return "测试好友 · 不受每日次数限制";
 
@@ -419,8 +510,7 @@ public static class RelationshipDivinationFlow
         if (record == null || (!record.IsCompleted && !record.isLocalOnly)) return;
 
         DivinationRecordData recordData = BuildDivinationRecord(record);
-        DivinationRecordFirestore.SaveRecordLocal(recordData);
-        DivinationRecordFirestore.Instance?.SaveRecord(recordData);
+        GetOrCreateHistoryService()?.SaveRecord(recordData, false);
     }
 
     public static void MarkDailyCompleted(RelationshipDivinationRecord record)
@@ -428,8 +518,30 @@ public static class RelationshipDivinationFlow
         string key = BuildDailyKey(record);
         if (string.IsNullOrEmpty(key)) return;
 
-        PlayerPrefs.SetString(key, DateTime.Now.ToString("yyyyMMdd"));
+        DateTime completedDate = GetCompletedDate(record);
+        if (completedDate == DateTime.MinValue || completedDate.Date != DateTime.Now.Date)
+            return;
+
+        string today = DateTime.Now.ToString("yyyyMMdd");
+        if (PlayerPrefs.GetString(key, "") == today)
+            return;
+
+        PlayerPrefs.SetString(key, today);
         PlayerPrefs.Save();
+    }
+
+    private static DateTime GetCompletedDate(RelationshipDivinationRecord record)
+    {
+        if (record == null || (!record.IsCompleted && !record.isLocalOnly))
+            return DateTime.MinValue;
+
+        DateTime completed = ParseTime(record.completedAt);
+        if (completed != DateTime.MinValue) return completed;
+
+        DateTime updated = ParseTime(record.updatedAt);
+        if (updated != DateTime.MinValue) return updated;
+
+        return ParseTime(record.createdAt);
     }
 
     private static bool IsDailyLimitReached(FriendDataManager.FriendData friend)

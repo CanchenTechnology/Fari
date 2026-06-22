@@ -50,9 +50,9 @@ namespace GamerFrameWork.OracleRuntime
 
         private static bool HasThirdPartyClaim(string text)
         {
-            // 检测 "他/她觉得""他/她在想""我朋友说" 等第三方内心状态断言
+            // 检测 "他/她到底怎么想""他一定喜欢我" 等第三方秘密心理断言请求
             var thirdPartyPattern = new Regex(
-                @"(他|她|ta|他/她)(一定|肯定|绝对|就是|在|会|觉得|认为|想|喜欢|讨厌|恨).{0,20}(我|的)",
+                @"((他|她|ta|对方).{0,12}(心里|内心|真实想法|到底怎么想|到底喜不喜欢|是不是喜欢|一定|肯定|偷偷|其实).{0,16}(我|喜欢|爱|在乎|放不下|讨厌|恨)|\b(secretly feel|secretly loves|secretly hates|what does .* really think|what is .* hiding|spy on|read .* mind)\b)",
                 RegexOptions.IgnoreCase | RegexOptions.Compiled);
             return thirdPartyPattern.IsMatch(text);
         }

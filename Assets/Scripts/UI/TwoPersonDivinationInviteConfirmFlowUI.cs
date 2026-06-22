@@ -89,7 +89,14 @@ public class TwoPersonDivinationInviteConfirmFlowUI : WindowBase
 
 	private void CreateInvite()
 	{
-		RelationshipDivinationFirestore service = RelationshipDivinationFirestore.Instance;
+		if (CreatedFriendRelationshipDivinationLocalFlow.TryStart(currentFriend))
+		{
+			isSubmitting = false;
+			UpdateSubmitState();
+			return;
+		}
+
+		RelationshipDivinationFirestore service = RelationshipDivinationFlow.GetOrCreateService();
 		if (service == null)
 		{
 			ToastManager.ShowToast("关系占卜服务初始化中，请稍后再试");
@@ -114,7 +121,7 @@ public class TwoPersonDivinationInviteConfirmFlowUI : WindowBase
 		if (currentFriend == null || currentFriend.isVirtual || string.IsNullOrWhiteSpace(currentFriend.firebaseUid))
 			return;
 
-		RelationshipDivinationFirestore service = RelationshipDivinationFirestore.Instance;
+		RelationshipDivinationFirestore service = RelationshipDivinationFlow.GetOrCreateService();
 		if (service == null || !service.IsReady) return;
 
 		service.LoadActiveWithFriend(currentFriend.firebaseUid, active =>

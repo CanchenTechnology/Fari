@@ -1,0 +1,171 @@
+{
+  "version": "1.0.0",
+  "basePrompts": [
+    {
+      "id": "persona.nocturne_oracle",
+      "kind": "persona",
+      "resourcePath": "prompts/persona/nocturne_oracle",
+      "required": true
+    },
+    {
+      "id": "skills.tarot_skill",
+      "kind": "skill",
+      "resourcePath": "prompts/skills/tarot_skill",
+      "required": true
+    },
+    {
+      "id": "policies.safety_boundaries",
+      "kind": "policy",
+      "resourcePath": "prompts/policies/safety_boundaries",
+      "required": true
+    }
+  ],
+  "scenePrompts": [
+    {
+      "id": "scenes.daily_oracle",
+      "kind": "scene",
+      "resourcePath": "prompts/scenes/daily_oracle",
+      "required": true
+    },
+    {
+      "id": "scenes.complete_interpretation",
+      "kind": "scene",
+      "resourcePath": "prompts/scenes/complete_interpretation",
+      "required": true
+    },
+    {
+      "id": "scenes.chat_entry",
+      "kind": "scene",
+      "resourcePath": "prompts/scenes/chat_entry",
+      "required": true
+    },
+    {
+      "id": "scenes.chat_companion",
+      "kind": "scene",
+      "resourcePath": "prompts/scenes/chat_companion",
+      "required": true
+    },
+    {
+      "id": "scenes.quick_reading",
+      "kind": "scene",
+      "resourcePath": "prompts/scenes/quick_reading",
+      "required": true
+    },
+    {
+      "id": "scenes.spread_invitation",
+      "kind": "scene",
+      "resourcePath": "prompts/scenes/spread_invitation",
+      "required": true
+    },
+    {
+      "id": "scenes.card_reveal",
+      "kind": "scene",
+      "resourcePath": "prompts/scenes/card_reveal",
+      "required": true
+    },
+    {
+      "id": "scenes.card_position_description",
+      "kind": "scene",
+      "resourcePath": "prompts/scenes/card_position_description",
+      "required": true
+    },
+    {
+      "id": "scenes.three_card_reading",
+      "kind": "scene",
+      "resourcePath": "prompts/scenes/three_card_reading",
+      "required": true
+    },
+    {
+      "id": "scenes.followup_reading",
+      "kind": "scene",
+      "resourcePath": "prompts/scenes/followup_reading",
+      "required": true
+    },
+    {
+      "id": "scenes.friend_divination_result",
+      "kind": "scene",
+      "resourcePath": "prompts/scenes/friend_divination_result",
+      "required": true
+    },
+    {
+      "id": "scenes.user_memory_summary",
+      "kind": "scene",
+      "resourcePath": "prompts/scenes/user_memory_summary",
+      "required": true
+    }
+  ],
+  "outputSchemas": [
+    {
+      "id": "schemas.daily_oracle",
+      "kind": "schema",
+      "resourcePath": "prompts/output_schemas/daily_oracle.schema",
+      "required": true
+    },
+    {
+      "id": "schemas.complete_interpretation",
+      "kind": "schema",
+      "resourcePath": "prompts/output_schemas/complete_interpretation.schema",
+      "required": true
+    },
+    {
+      "id": "schemas.chat_entry",
+      "kind": "schema",
+      "resourcePath": "prompts/output_schemas/chat_entry.schema",
+      "required": true
+    },
+    {
+      "id": "schemas.chat_companion",
+      "kind": "schema",
+      "resourcePath": "prompts/output_schemas/chat_companion.schema",
+      "required": true
+    },
+    {
+      "id": "schemas.quick_reading",
+      "kind": "schema",
+      "resourcePath": "prompts/output_schemas/quick_reading.schema",
+      "required": true
+    },
+    {
+      "id": "schemas.spread_invitation",
+      "kind": "schema",
+      "resourcePath": "prompts/output_schemas/spread_invitation.schema",
+      "required": true
+    },
+    {
+      "id": "schemas.card_reveal",
+      "kind": "schema",
+      "resourcePath": "prompts/output_schemas/card_reveal.schema",
+      "required": true
+    },
+    {
+      "id": "schemas.three_card",
+      "kind": "schema",
+      "resourcePath": "prompts/output_schemas/three_card.schema",
+      "required": true
+    },
+    {
+      "id": "schemas.followup_reading",
+      "kind": "schema",
+      "resourcePath": "prompts/output_schemas/followup_reading.schema",
+      "required": true
+    },
+    {
+      "id": "schemas.friend_divination_result",
+      "kind": "schema",
+      "resourcePath": "prompts/output_schemas/friend_divination_result.schema",
+      "required": true
+    },
+    {
+      "id": "schemas.user_memory_summary",
+      "kind": "schema",
+      "resourcePath": "prompts/output_schemas/user_memory_summary.schema",
+      "required": true
+    },
+    {
+      "id": "schemas.divination_verdict",
+      "kind": "schema",
+      "resourcePath": "prompts/output_schemas/divination_verdict.schema",
+      "required": true
+    }
+  ]
+}

@@ -3,7 +3,9 @@
 ## 入口
 
 - 本地文件：`web-admin/feedback-admin.html`
-- 部署目标：Firebase Hosting，`firebase.json` 已配置 `hosting.public = web-admin`
+- 线上地址：`https://fari-app-b2fd2.web.app/feedback-admin`
+- 部署目标：Firebase Hosting，`firebase.json` 已配置 `hosting.site = fari-app-b2fd2`、`hosting.public = web-admin`
+- 当前状态：已于 2026-06-20 部署到 live channel，并通过 HTTP 200 访问验证。
 - 依赖接口：
   - `adminFeedbackList`
   - `adminFeedbackUpdate`

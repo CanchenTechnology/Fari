@@ -1,10 +1,47 @@
 {
   "type": "object",
-  "required": ["cards", "synthesis", "advice", "followup_questions"],
+  "additionalProperties": false,
+  "required": ["reading_type", "summary", "cards", "synthesis", "advice", "followup_questions"],
   "properties": {
-    "cards": { "type": "array" },
+    "reading_type": { "type": "string", "const": "three_card" },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "text"],
+      "properties": {
+        "title": { "type": "string", "maxLength": 8 },
+        "text": { "type": "string", "maxLength": 40 }
+      }
+    },
+    "cards": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["position", "card_name", "orientation", "short_interpretation", "deep_interpretation"],
+        "properties": {
+          "position": { "type": "string" },
+          "card_name": { "type": "string" },
+          "orientation": { "type": "string", "enum": ["upright", "reversed"] },
+          "short_interpretation": { "type": "string", "maxLength": 48 },
+          "deep_interpretation": { "type": "string" }
+        }
+      }
+    },
     "synthesis": { "type": "string" },
-    "advice": { "type": "array", "items": { "type": "string" } },
-    "followup_questions": { "type": "array", "items": { "type": "string" } }
+    "advice": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": { "type": "string" }
+    },
+    "followup_questions": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "type": "string" }
+    }
   }
 }

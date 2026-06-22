@@ -133,6 +133,14 @@ public class DivinationEngine : MonoBehaviour
         Debug.Log($"[DivinationEngine] 使用云端今日牌: {card.nameZh} ({(upright ? "正位" : "逆位")})");
     }
 
+    public void ClearTodayCard()
+    {
+        TodayCard = null;
+        _todayCardDate = null;
+        DialogSystem.Instance?.SetTodayCardPayload(null);
+        Debug.Log("[DivinationEngine] 今日牌缓存已清除");
+    }
+
     /// <summary>
     /// 获取今日牌的 TodayCardPayload
     /// </summary>
@@ -184,9 +192,94 @@ public class DivinationEngine : MonoBehaviour
         var session = StartDivination(question);
         // 快速占卜直接进入选牌阵阶段
         session.phase = DivinationPhase.ChoosingSpread;
+        session.spreadKind = PlanSpreadKind(question, session.scene);
         Debug.Log($"[DivinationEngine] 快速占卜——跳过澄清，直接选牌阵");
         SyncToDialogSystem();
         return session;
+    }
+
+    /// <summary>
+    /// 将 OracleRuntime 自动规划出的 DivinationPlan 同步为当前可交互牌阵会话。
+    /// 只规划，不抽牌；真正抽牌仍由 SelectSpread / 洗牌 UI 完成并生成 ReadingLock。
+    /// </summary>
+    public DivinationSession ApplyRuntimeDivinationPlan(DivinationPlan plan)
+    {
+        if (plan == null) return CurrentSession;
+
+        if (CurrentSession != null &&
+            CurrentSession.readingLock != null &&
+            (CurrentSession.phase == DivinationPhase.CardsLocked ||
+             CurrentSession.phase == DivinationPhase.Revealing ||
+             CurrentSession.phase == DivinationPhase.GeneratingVerdict ||
+             CurrentSession.phase == DivinationPhase.Completed))
+        {
+            return CurrentSession;
+        }
+
+        var session = CurrentSession ?? new DivinationSession
+        {
+            readingId = Guid.NewGuid().ToString("N").Substring(0, 12),
+            createdAt = DateTime.Now.ToString("o")
+        };
+
+        session.question = string.IsNullOrWhiteSpace(plan.question) ? session.question : plan.question;
+        session.scene = string.IsNullOrWhiteSpace(plan.scene) ? session.scene : plan.scene;
+        session.phase = DivinationPhase.ChoosingSpread;
+        session.spreadKind = plan.spreadKind;
+        session.divinationPlan = plan;
+
+        CurrentSession = session;
+        Debug.Log($"[DivinationEngine] 应用 Runtime DivinationPlan [{plan.planId}], spreadKind={plan.spreadKind}, cardCount={plan.cardCount}");
+        SyncToDialogSystem();
+        return session;
+    }
+
+    /// <summary>
+    /// 根据问题和场景选择合适牌阵。只做规划，不抽牌；抽牌必须走 SelectSpread 并生成 ReadingLock。
+    /// </summary>
+    public string PlanSpreadKind(string question, string scene = null)
+    {
+        EnsureSpreadDefs();
+        string text = (question ?? "").ToLowerInvariant();
+        string currentScene = scene ?? CurrentSession?.scene ?? "";
+
+        if (text.Contains("深入") || text.Contains("完整") || text.Contains("全貌") ||
+            text.Contains("整体") || text.Contains("复杂") || text.Contains("很多") ||
+            text.Contains("deep reading") || text.Contains("full picture"))
+            return HasSpread("celtic_inspired_deep_cross") ? "celtic_inspired_deep_cross" : SpreadDefinitions[0].kind;
+
+        if (text.Contains("自我价值") || text.Contains("羞耻") || text.Contains("不够好") ||
+            text.Contains("讨厌自己") || text.Contains("睡前") || text.Contains("修复自己") ||
+            text.Contains("照顾自己") || text.Contains("self worth") || text.Contains("self-care"))
+            return HasSpread("self_repair") ? "self_repair" : SpreadDefinitions[0].kind;
+
+        if (text.Contains("未来") || text.Contains("下个月") || text.Contains("长期") ||
+            text.Contains("时间线") || text.Contains("七天") || text.Contains("7天") ||
+            text.Contains("复合") || text.Contains("回来") || text.Contains("走向") ||
+            text.Contains("timeline") || text.Contains("long term"))
+            return HasSpread("timeline_thread") ? "timeline_thread" : SpreadDefinitions[0].kind;
+
+        if (text.Contains("反复") || text.Contains("总是") || text.Contains("一直") ||
+            text.Contains("模式") || text.Contains("循环") || text.Contains("拉扯") ||
+            text.Contains("重复") || text.Contains("为什么每次"))
+            return HasSpread("pattern_map") ? "pattern_map" : SpreadDefinitions[0].kind;
+
+        if (text.Contains("要不要") || text.Contains("该不该") || text.Contains("选择") ||
+            text.Contains("二选一") || text.Contains("option") || text.Contains("choose"))
+            return HasSpread("choice_gate") ? "choice_gate" : SpreadDefinitions[0].kind;
+
+        if (currentScene == "relationship_anxiety" || currentScene == "breakup_relapse" ||
+            text.Contains("关系") || text.Contains("喜欢") || text.Contains("复合") ||
+            text.Contains("暧昧") || text.Contains("前任") || text.Contains("对方"))
+            return HasSpread("relationship_tension") ? "relationship_tension" : SpreadDefinitions[0].kind;
+
+        if (currentScene == "career_uncertainty")
+            return HasSpread("pattern_map") ? "pattern_map" : SpreadDefinitions[0].kind;
+
+        if (text.Contains("一张") || text.Contains("快速") || text.Contains("此刻") || text.Contains("现在"))
+            return HasSpread("mirror_card") ? "mirror_card" : SpreadDefinitions[0].kind;
+
+        return HasSpread("mirror_card") ? "mirror_card" : SpreadDefinitions[0].kind;
     }
 
     /// <summary>
@@ -206,6 +299,8 @@ public class DivinationEngine : MonoBehaviour
             Debug.LogError($"[DivinationEngine] Unknown spread kind: {spreadKind}");
             return new List<LockedCard>();
         }
+
+        CurrentSession.divinationPlan = BuildDivinationPlan(spreadDef);
 
         int cardCount = spreadDef.cardCount;
         var draws = TarotDeck.DrawMultiple(cardCount);
@@ -251,6 +346,56 @@ public class DivinationEngine : MonoBehaviour
         return lockedCards;
     }
 
+    private DivinationPlan BuildDivinationPlan(SpreadDefinition spreadDef)
+    {
+        if (spreadDef == null || CurrentSession == null) return null;
+        return new DivinationPlan
+        {
+            planId = Guid.NewGuid().ToString("N").Substring(0, 12),
+            userId = "",
+            conversationId = "dialog",
+            question = CurrentSession.question ?? "",
+            scene = CurrentSession.scene ?? "",
+            spreadKind = spreadDef.kind,
+            cardCount = spreadDef.cardCount,
+            complexity = spreadDef.cardCount <= 1 ? "light" : spreadDef.cardCount >= 5 ? "deep" : "standard",
+            positions = spreadDef.positions != null
+                ? new List<SpreadPosition>(spreadDef.positions)
+                : new List<SpreadPosition>(),
+            reasonForSpread = BuildSpreadReason(spreadDef.kind),
+            professionalFrame = new List<string> { "牌是镜子，不是绝对预测", "只根据用户问题和已锁定牌面解读" },
+            requiresProForFullReading = spreadDef.cardCount >= 5,
+            createdAt = DateTime.Now.ToString("o")
+        };
+    }
+
+    /// <summary>
+    /// 为当前会话生成牌阵规划。供手动洗牌/互动牌阵 UI 在锁牌前补齐 Runtime 上下文。
+    /// </summary>
+    public DivinationPlan BuildActiveDivinationPlan(string spreadKind)
+    {
+        if (CurrentSession == null) return null;
+        string resolvedKind = string.IsNullOrEmpty(spreadKind)
+            ? CurrentSession.spreadKind
+            : spreadKind;
+        return BuildDivinationPlan(GetSpreadDefinition(resolvedKind));
+    }
+
+    private string BuildSpreadReason(string spreadKind)
+    {
+        return spreadKind switch
+        {
+            "mirror_card" => "问题需要先看清此刻核心状态。",
+            "relationship_tension" => "关系问题需要区分用户位置、对方动态和互动张力。",
+            "choice_gate" => "选择题需要并列比较两个方向，而不是直接替用户决定。",
+            "pattern_map" => "反复出现的困境需要看过去影响、当前模式和可改变的行动。",
+            "timeline_thread" => "带有时间线的问题需要看当前路径的倾向，而不是把未来说成定局。",
+            "self_repair" => "自我议题需要从看见、放下到行动逐步落地。",
+            "celtic_inspired_deep_cross" => "复杂局面需要看中心、压力、根部、外部场和干净行动。",
+            _ => "这个牌阵能把问题拆成更容易行动的部分。"
+        };
+    }
+
     /// <summary>
     /// 标记牌面已揭晓 → 进入解读阶段
     /// </summary>
@@ -283,19 +428,19 @@ public class DivinationEngine : MonoBehaviour
     private void SaveCurrentSessionToFirestore(string shortVerdict)
     {
         var firestore = DivinationRecordFirestore.Instance;
-        if (firestore != null && firestore.IsReady)
+        if (firestore != null)
         {
             firestore.SaveFromSession(CurrentSession, shortVerdict, success =>
             {
                 if (success)
                     Debug.Log($"[DivinationEngine] 占卜记录已同步至 Firestore: {CurrentSession.readingId}");
                 else
-                    Debug.LogWarning($"[DivinationEngine] Firestore 同步失败，记录仅在内存中: {CurrentSession.readingId}");
+                    Debug.LogWarning($"[DivinationEngine] Firestore 暂未同步，占卜记录未保存: {CurrentSession.readingId}");
             });
         }
         else
         {
-            Debug.Log("[DivinationEngine] Firestore 未就绪，跳过自动保存（记录仅在内存中）");
+            Debug.LogWarning("[DivinationEngine] 历史服务不可用，跳过自动保存");
         }
     }
 
@@ -378,6 +523,11 @@ public class DivinationEngine : MonoBehaviour
         return null;
     }
 
+    private bool HasSpread(string kind)
+    {
+        return GetSpreadDefinition(kind) != null;
+    }
+
     /// <summary>
     /// 获取牌阵定义（按 label 匹配）
     /// </summary>
@@ -396,6 +546,7 @@ public class DivinationEngine : MonoBehaviour
         _dialogSystem.SetActiveReadingState(ActiveReadingState);
         _dialogSystem.SetActiveActionKind(ActiveActionKind);
         _dialogSystem.SetActiveReadingId(ActiveReadingId);
+        _dialogSystem.SetActiveDivinationPlan(CurrentSession?.divinationPlan);
 
         if (CurrentSession?.readingLock != null)
             _dialogSystem.SetReadingLock(CurrentSession.readingLock);
@@ -452,36 +603,78 @@ public class DivinationEngine : MonoBehaviour
                 },
                 new SpreadDefinition
                 {
-                    kind = "choice_gate", label = "选择之门·二选一牌阵",
-                    description = "选项A vs 选项B · 哪条路更适合你",
-                    cardCount = 3,
+                    kind = "choice_gate", label = "选择之门·五卡牌阵",
+                    description = "路径A · 路径B · 恐惧声音 · 价值声音 · 干净行动",
+                    cardCount = 5,
                     positions = new List<SpreadPosition>
                     {
-                        new SpreadPosition { key = "option_a", label = "选项A", prompt = "选择A的能量走向",
-                            therapeuticRole = "视角拓展", tarotTheoryAxis = "路径A" },
-                        new SpreadPosition { key = "option_b", label = "选项B", prompt = "选择B的能量走向",
-                            therapeuticRole = "视角拓展", tarotTheoryAxis = "路径B" },
-                        new SpreadPosition { key = "advice", label = "指南", prompt = "穿越纠结的内在指引",
-                            therapeuticRole = "价值澄清", tarotTheoryAxis = "超然视角" }
+                        new SpreadPosition { key = "option_a", label = "路径A", prompt = "选择A会打开什么",
+                            therapeuticRole = "clarify", tarotTheoryAxis = "wands" },
+                        new SpreadPosition { key = "option_b", label = "路径B", prompt = "选择B会打开什么",
+                            therapeuticRole = "clarify", tarotTheoryAxis = "swords" },
+                        new SpreadPosition { key = "fear_voice", label = "恐惧的声音", prompt = "哪个恐惧正在替你做决定",
+                            therapeuticRole = "externalize", tarotTheoryAxis = "swords" },
+                        new SpreadPosition { key = "values_voice", label = "价值的声音", prompt = "哪个价值真正想带路",
+                            therapeuticRole = "reframe", tarotTheoryAxis = "cups" },
+                        new SpreadPosition { key = "one_clean_action", label = "干净行动", prompt = "无论结果如何，未来24小时可以做的自尊行动",
+                            therapeuticRole = "action", tarotTheoryAxis = "pentacles" }
                     }
                 },
                 new SpreadDefinition
                 {
                     kind = "pattern_map", label = "模式地图·五卡牌阵",
-                    description = "过去影响·当前模式·隐藏动力·建议行动·可能结果",
+                    description = "表层循环 · 底层需要 · 保护策略 · 模式代价 · 新行动",
                     cardCount = 5,
                     positions = new List<SpreadPosition>
                     {
-                        new SpreadPosition { key = "past", label = "过去影响", prompt = "影响当前局面的过去因素",
-                            therapeuticRole = "模式溯源", tarotTheoryAxis = "时间线-过去" },
-                        new SpreadPosition { key = "present", label = "当前模式", prompt = "你正在经历的重复模式",
-                            therapeuticRole = "认知觉察", tarotTheoryAxis = "时间线-现在" },
-                        new SpreadPosition { key = "hidden", label = "隐藏动力", prompt = "表面之下的潜意识驱力",
-                            therapeuticRole = "阴影觉察", tarotTheoryAxis = "阴影面" },
-                        new SpreadPosition { key = "advice", label = "建议行动", prompt = "打破循环的具体行动",
-                            therapeuticRole = "行为激活", tarotTheoryAxis = "出路" },
-                        new SpreadPosition { key = "outcome", label = "可能结果", prompt = "当前路径的可能走向（非预测）",
-                            therapeuticRole = "正念觉察", tarotTheoryAxis = "时间线-未来", consentBoundary = "仅作为觉察工具" }
+                        new SpreadPosition { key = "surface_loop", label = "表层循环", prompt = "表面上一直重复的模式",
+                            therapeuticRole = "mirror", tarotTheoryAxis = "swords" },
+                        new SpreadPosition { key = "emotional_need", label = "底层需要", prompt = "循环下面真正未被照顾的需要",
+                            therapeuticRole = "clarify", tarotTheoryAxis = "cups" },
+                        new SpreadPosition { key = "protective_strategy", label = "保护策略", prompt = "哪个行为在试图保护你",
+                            therapeuticRole = "externalize", tarotTheoryAxis = "court" },
+                        new SpreadPosition { key = "cost_of_pattern", label = "代价", prompt = "这个模式继续无意识运转会消耗什么",
+                            therapeuticRole = "reframe", tarotTheoryAxis = "pentacles" },
+                        new SpreadPosition { key = "new_pattern_action", label = "新行动", prompt = "一个能打断循环且保住尊严的小行动",
+                            therapeuticRole = "action", tarotTheoryAxis = "wands" }
+                    }
+                },
+                new SpreadDefinition
+                {
+                    kind = "timeline_thread", label = "时间线·五卡牌阵",
+                    description = "现在 · 下一步信号 · 转折点 · 当前路径倾向 · 锚定行动",
+                    cardCount = 5,
+                    positions = new List<SpreadPosition>
+                    {
+                        new SpreadPosition { key = "now", label = "现在", prompt = "当前情绪和关系天气",
+                            therapeuticRole = "mirror", tarotTheoryAxis = "cups" },
+                        new SpreadPosition { key = "next_step", label = "下一步信号", prompt = "如果什么都不改变，接下来可能出现的倾向",
+                            therapeuticRole = "clarify", tarotTheoryAxis = "swords" },
+                        new SpreadPosition { key = "turning_point", label = "转折点", prompt = "你可以中断旧路径的位置",
+                            therapeuticRole = "reframe", tarotTheoryAxis = "wands" },
+                        new SpreadPosition { key = "likely_tendency", label = "当前路径倾向", prompt = "当前模式继续时更可能形成的趋势，而非预测",
+                            therapeuticRole = "integrate", tarotTheoryAxis = "major_arcana", consentBoundary = "仅作为觉察工具" },
+                        new SpreadPosition { key = "anchor_action", label = "锚定行动", prompt = "贯穿这段时间线的稳定行动",
+                            therapeuticRole = "action", tarotTheoryAxis = "pentacles" }
+                    }
+                },
+                new SpreadDefinition
+                {
+                    kind = "celtic_inspired_deep_cross", label = "深层十字·五卡轻量版",
+                    description = "问题中心 · 交叉压力 · 根部模式 · 外部场 · 干净行动",
+                    cardCount = 5,
+                    positions = new List<SpreadPosition>
+                    {
+                        new SpreadPosition { key = "center", label = "问题中心", prompt = "当前局面的核心",
+                            therapeuticRole = "mirror", tarotTheoryAxis = "major_arcana" },
+                        new SpreadPosition { key = "crossing", label = "交叉压力", prompt = "让问题复杂化的压力",
+                            therapeuticRole = "externalize", tarotTheoryAxis = "swords" },
+                        new SpreadPosition { key = "root", label = "根部模式", prompt = "当前事件下面更旧的模式",
+                            therapeuticRole = "clarify", tarotTheoryAxis = "cups" },
+                        new SpreadPosition { key = "field", label = "现实/关系场", prompt = "你可以观察到的外部环境",
+                            therapeuticRole = "externalize", tarotTheoryAxis = "pentacles" },
+                        new SpreadPosition { key = "clean_action", label = "干净行动", prompt = "现在保护主体性的行动",
+                            therapeuticRole = "action", tarotTheoryAxis = "wands" }
                     }
                 }
             };

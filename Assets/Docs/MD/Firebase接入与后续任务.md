@@ -268,15 +268,17 @@ moonly.pro.yearly
 
 ```bash
 node functions/scripts/set-public-config.js --dry-run functions/public-config.example.json
+node functions/scripts/set-public-config.js --dry-run --require-real-social-links functions/public-config.live.json
 ```
 
 验证通过后再写入 Firestore：
 
 ```bash
 MOONLY_PROXY='http://[::1]:7897' node functions/scripts/set-public-config.js functions/public-config.example.json
+MOONLY_PROXY='http://[::1]:7897' node functions/scripts/set-public-config.js --require-real-social-links functions/public-config.live.json
 ```
 
-`set-public-config.js` 会校验社媒链接必须是 `https` URL，月度 / 年度 Pro 商品必须存在、类型必须为 `subscription`、商品 ID 不能重复。完整 readiness 也会自动运行 dry-run，避免把坏配置推到 `app_config/public`。
+`set-public-config.js` 会校验社媒链接必须是 `https` URL，月度 / 年度 Pro 商品必须存在、类型必须为 `subscription`、商品 ID 不能重复。加 `--require-real-social-links` 后，会拒绝 Instagram / Facebook / X / TikTok / Pinterest 平台首页占位链接。完整 readiness 也会自动运行 dry-run，避免把坏配置推到 `app_config/public`。最终发版续跑可在 `scripts/release.env` 中设置 `RUN_PUBLIC_CONFIG_UPDATE=1`、`PUBLIC_CONFIG_PATH=functions/public-config.live.json` 和 `REQUIRE_REAL_SOCIAL_LINKS=1`，再执行 `RELEASE_ENV_FILE=scripts/release.env ./scripts/finish-release.sh`。
 
 如果 Unity Editor 里 Firestore 报 `Unavailable`、搜索用户一直失败，可以单独跑网络检查：
 

@@ -222,17 +222,34 @@ public class ChatItem : MonoBehaviour
         mMsgText.gameObject.SetActive(true);
 
         // 设置文本内容
-        mMsgText.text = data.content;
+        mMsgText.text = BuildDisplayText(data);
 
         // TTS 按钮：仅 AI 消息显示
         bool isAIMessage = data.roleType == DialogRoleType.AI;
         if (ttsPlayButton != null)
         {
-            ttsPlayButton.gameObject.SetActive(isAIMessage && !string.IsNullOrEmpty(data.content));
+            ttsPlayButton.gameObject.SetActive(isAIMessage
+                && !string.IsNullOrEmpty(data.content)
+                && data.ttsAudioReady);
         }
         SetTTSLength(isAIMessage ? data.ttsDurationSeconds : 0f);
 
         ApplyTextBubbleLayout(reserveVoiceSpace: isAIMessage);
+    }
+
+    private string BuildDisplayText(ChatMessageData data)
+    {
+        if (data == null) return "";
+
+        string content = data.content ?? "";
+        if (data.roleType != DialogRoleType.User)
+            return content;
+
+        string contextPreview = DialogSystem.FormatContextPreview(data.contextAttachments);
+        if (string.IsNullOrWhiteSpace(contextPreview))
+            return content;
+
+        return $"<color=#D9B56E>{contextPreview}</color>\n{content}";
     }
 
     private void ApplyTextBubbleLayout(bool reserveVoiceSpace, string layoutText = null)

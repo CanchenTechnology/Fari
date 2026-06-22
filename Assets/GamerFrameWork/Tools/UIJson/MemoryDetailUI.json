@@ -1,0 +1,91 @@
+{
+  "screenName": "MemoryDetailUI",
+  "resolution": { "x": 1080, "y": 1920 },
+  "matchWidthOrHeight": 0,
+  "includeMask": false,
+  "defaultFont": "Assets/GamerFrameWork/I2/Localization/Examples/Resources/ARIAL.TTF",
+  "elements": [
+    { "name": "Background", "type": "Panel", "raycastTarget": false, "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 0.006, "g": 0.006, "b": 0.018, "a": 1 } },
+    { "name": "PurpleAmbient", "type": "Panel", "raycastTarget": false, "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 0.035, "g": 0.022, "b": 0.070, "a": 0.65 } },
+    {
+      "name": "StatusBar",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "size": { "x": 0, "y": 72 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        { "name": "TimeText", "type": "Text", "text": "9:41", "fontSize": 35, "fontStyle": "Bold", "textAlignment": "Left", "textColor": { "r": 0.92, "g": 0.92, "b": 0.94, "a": 1 }, "anchorMin": { "x": 0, "y": 1 }, "anchorMax": { "x": 0, "y": 1 }, "pivot": { "x": 0, "y": 1 }, "position": { "x": 64, "y": -28 }, "size": { "x": 160, "y": 48 } },
+        { "name": "StatusIcons", "type": "Text", "text": "▮▮▮  ≋  ▭", "fontSize": 31, "fontStyle": "Bold", "textAlignment": "Right", "textColor": { "r": 0.92, "g": 0.92, "b": 0.94, "a": 1 }, "anchorMin": { "x": 1, "y": 1 }, "anchorMax": { "x": 1, "y": 1 }, "pivot": { "x": 1, "y": 1 }, "position": { "x": -48, "y": -28 }, "size": { "x": 260, "y": 48 } }
+      ]
+    },
+    {
+      "name": "BackButtonCircle",
+      "type": "Panel",
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 0, "y": 1 },
+      "position": { "x": 82, "y": -124 },
+      "size": { "x": 72, "y": 72 },
+      "color": { "r": 0.025, "g": 0.022, "b": 0.040, "a": 0.88 },
+      "children": [
+        { "name": "BackIcon", "type": "Text", "text": "‹", "fontSize": 66, "textAlignment": "Center", "textColor": { "r": 0.90, "g": 0.70, "b": 0.45, "a": 1 }, "position": { "x": -2, "y": 2 }, "size": { "x": 68, "y": 68 } },
+        { "name": "[Button]Back", "type": "Button", "text": "", "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 1, "g": 1, "b": 1, "a": 0 } }
+      ]
+    },
+    {
+      "name": "TitleGroup",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -88 },
+      "size": { "x": 0, "y": 118 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        { "name": "TitleLineLeft", "type": "Panel", "raycastTarget": false, "position": { "x": -310, "y": -48 }, "size": { "x": 160, "y": 1.5 }, "color": { "r": 0.78, "g": 0.52, "b": 0.28, "a": 0.42 } },
+        { "name": "TitleLineRight", "type": "Panel", "raycastTarget": false, "position": { "x": 310, "y": -48 }, "size": { "x": 160, "y": 1.5 }, "color": { "r": 0.78, "g": 0.52, "b": 0.28, "a": 0.42 } },
+        { "name": "TitleText", "type": "Text", "text": "记忆详情", "fontSize": 56, "textAlignment": "Center", "textColor": { "r": 0.94, "g": 0.73, "b": 0.46, "a": 1 }, "position": { "x": 0, "y": -48 }, "size": { "x": 360, "y": 76 } }
+      ]
+    },
+    {
+      "name": "DetailCard",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -240 },
+      "size": { "x": 980, "y": 580 },
+      "color": { "r": 0.040, "g": 0.038, "b": 0.073, "a": 0.94 },
+      "children": [
+        { "name": "TypePill", "type": "Text", "text": "情感模式", "fontSize": 28, "textAlignment": "Center", "textColor": { "r": 0.88, "g": 0.62, "b": 0.98, "a": 1 }, "position": { "x": -335, "y": 220 }, "size": { "x": 170, "y": 52 } },
+        { "name": "[Text]MemoryDateText", "type": "Text", "text": "2026.06.21", "fontSize": 27, "textAlignment": "Right", "textColor": { "r": 0.62, "g": 0.59, "b": 0.68, "a": 1 }, "position": { "x": 330, "y": 220 }, "size": { "x": 220, "y": 44 } },
+        { "name": "SourceText", "type": "Text", "text": "来自对话", "fontSize": 27, "textAlignment": "Left", "textColor": { "r": 0.62, "g": 0.59, "b": 0.68, "a": 1 }, "position": { "x": -350, "y": 160 }, "size": { "x": 230, "y": 44 } },
+        { "name": "[Text]MemoryContentText", "type": "Text", "text": "你在关系问题中更在意真实回应，而不是表面安慰。", "fontSize": 40, "fontStyle": "Bold", "textAlignment": "Left", "textColor": { "r": 0.91, "g": 0.88, "b": 0.92, "a": 1 }, "position": { "x": 0, "y": 58 }, "size": { "x": 820, "y": 128 } },
+        { "name": "Divider", "type": "Panel", "raycastTarget": false, "position": { "x": 0, "y": -40 }, "size": { "x": 780, "y": 1.5 }, "color": { "r": 0.62, "g": 0.45, "b": 0.72, "a": 0.32 } },
+        { "name": "UsageTitle", "type": "Text", "text": "AI 如何使用它", "fontSize": 34, "fontStyle": "Bold", "textAlignment": "Left", "textColor": { "r": 0.94, "g": 0.73, "b": 0.46, "a": 1 }, "position": { "x": -320, "y": -92 }, "size": { "x": 330, "y": 50 } },
+        { "name": "UsageList", "type": "Text", "text": "1. 调整回答语气\n2. 避免重复询问\n3. 提供更贴合的建议", "fontSize": 30, "textAlignment": "Left", "textColor": { "r": 0.78, "g": 0.75, "b": 0.82, "a": 1 }, "position": { "x": 0, "y": -190 }, "size": { "x": 820, "y": 150 } }
+      ]
+    },
+    {
+      "name": "ControlCard",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -860 },
+      "size": { "x": 980, "y": 360 },
+      "color": { "r": 0.038, "g": 0.035, "b": 0.068, "a": 0.92 },
+      "children": [
+        { "name": "EnableLabel", "type": "Text", "text": "启用记忆", "fontSize": 34, "textAlignment": "Left", "textColor": { "r": 0.88, "g": 0.85, "b": 0.90, "a": 1 }, "position": { "x": -255, "y": 110 }, "size": { "x": 270, "y": 54 } },
+        { "name": "EnablePill", "type": "Panel", "position": { "x": 315, "y": 110 }, "size": { "x": 160, "y": 62 }, "color": { "r": 0.34, "g": 0.18, "b": 0.64, "a": 0.94 }, "children": [ { "name": "EnablePillText", "type": "Text", "text": "开启", "fontSize": 27, "textAlignment": "Center", "textColor": { "r": 0.92, "g": 0.88, "b": 0.95, "a": 1 }, "size": { "x": 150, "y": 52 } }, { "name": "[Button]ToggleEnableMemory", "type": "Button", "text": "", "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 1, "g": 1, "b": 1, "a": 0 } } ] },
+        { "name": "ImportantLabel", "type": "Text", "text": "标记重要", "fontSize": 34, "textAlignment": "Left", "textColor": { "r": 0.88, "g": 0.85, "b": 0.90, "a": 1 }, "position": { "x": -255, "y": 20 }, "size": { "x": 270, "y": 54 } },
+        { "name": "ImportantPill", "type": "Panel", "position": { "x": 315, "y": 20 }, "size": { "x": 160, "y": 62 }, "color": { "r": 0.080, "g": 0.060, "b": 0.095, "a": 0.90 }, "children": [ { "name": "ImportantPillText", "type": "Text", "text": "未标记", "fontSize": 27, "textAlignment": "Center", "textColor": { "r": 0.66, "g": 0.63, "b": 0.70, "a": 1 }, "size": { "x": 150, "y": 52 } }, { "name": "[Button]ToggleImportantMemory", "type": "Button", "text": "", "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 1, "g": 1, "b": 1, "a": 0 } } ] },
+        { "name": "[Button]EditMemory", "type": "Button", "text": "编辑记忆", "fontSize": 34, "textColor": { "r": 0.92, "g": 0.88, "b": 0.95, "a": 1 }, "position": { "x": -245, "y": -108 }, "size": { "x": 390, "y": 88 }, "color": { "r": 0.31, "g": 0.15, "b": 0.66, "a": 0.94 } },
+        { "name": "[Button]DeleteMemory", "type": "Button", "text": "删除记忆", "fontSize": 34, "textColor": { "r": 0.93, "g": 0.42, "b": 0.34, "a": 1 }, "position": { "x": 245, "y": -108 }, "size": { "x": 390, "y": 88 }, "color": { "r": 0.065, "g": 0.046, "b": 0.078, "a": 0.92 } }
+      ]
+    }
+  ]
+}

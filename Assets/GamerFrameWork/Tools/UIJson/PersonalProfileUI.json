@@ -1,0 +1,931 @@
+{
+  "screenName": "PersonalProfileUI",
+  "resolution": { "x": 1080, "y": 1920 },
+  "matchWidthOrHeight": 0,
+  "includeMask": false,
+  "defaultFont": "Assets/GamerFrameWork/I2/Localization/Examples/Resources/ARIAL.TTF",
+  "elements": [
+    {
+      "name": "Background",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 0 },
+      "color": { "r": 0.006, "g": 0.006, "b": 0.018, "a": 1 }
+    },
+    {
+      "name": "PurpleAmbient",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 0 },
+      "color": { "r": 0.035, "g": 0.020, "b": 0.065, "a": 0.58 }
+    },
+    {
+      "name": "TopAstrolabeDecor",
+      "type": "Text",
+      "raycastTarget": false,
+      "text": "◎\n\n       ╱╲\n  ◜──────────────◝",
+      "fontSize": 50,
+      "fontStyle": "Normal",
+      "textAlignment": "Center",
+      "textColor": { "r": 0.43, "g": 0.26, "b": 0.10, "a": 0.25 },
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -118 },
+      "size": { "x": 640, "y": 195 }
+    },
+    {
+      "name": "StatusBar",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 72 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        {
+          "name": "TimeText",
+          "type": "Text",
+          "text": "9:41",
+          "fontSize": 35,
+          "fontStyle": "Bold",
+          "textAlignment": "Left",
+          "textColor": { "r": 0.92, "g": 0.92, "b": 0.94, "a": 1 },
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "pivot": { "x": 0, "y": 1 },
+          "position": { "x": 64, "y": -28 },
+          "size": { "x": 170, "y": 48 }
+        },
+        {
+          "name": "StatusIcons",
+          "type": "Text",
+          "text": "▮▮▮  ≋  ▭",
+          "fontSize": 31,
+          "fontStyle": "Bold",
+          "textAlignment": "Right",
+          "textColor": { "r": 0.92, "g": 0.92, "b": 0.94, "a": 1 },
+          "anchorMin": { "x": 1, "y": 1 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "pivot": { "x": 1, "y": 1 },
+          "position": { "x": -50, "y": -28 },
+          "size": { "x": 260, "y": 48 }
+        }
+      ]
+    },
+    {
+      "name": "BackButtonCircle",
+      "type": "Panel",
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 0, "y": 1 },
+      "position": { "x": 82, "y": -134 },
+      "size": { "x": 74, "y": 74 },
+      "color": { "r": 0.028, "g": 0.023, "b": 0.040, "a": 0.88 },
+      "children": [
+        {
+          "name": "BackIcon",
+          "type": "Text",
+          "text": "‹",
+          "fontSize": 68,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.90, "g": 0.70, "b": 0.45, "a": 1 },
+          "position": { "x": -2, "y": 2 },
+          "size": { "x": 70, "y": 70 }
+        },
+        {
+          "name": "[Button]Back",
+          "type": "Button",
+          "text": "",
+          "anchorMin": { "x": 0, "y": 0 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 0, "y": 0 },
+          "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+        }
+      ]
+    },
+    {
+      "name": "TitleGroup",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -104 },
+      "size": { "x": 0, "y": 118 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        {
+          "name": "TitleLineLeft",
+          "type": "Panel",
+          "raycastTarget": false,
+          "position": { "x": -330, "y": -45 },
+          "size": { "x": 155, "y": 1.5 },
+          "color": { "r": 0.78, "g": 0.52, "b": 0.28, "a": 0.45 }
+        },
+        {
+          "name": "TitleLineRight",
+          "type": "Panel",
+          "raycastTarget": false,
+          "position": { "x": 330, "y": -45 },
+          "size": { "x": 155, "y": 1.5 },
+          "color": { "r": 0.78, "g": 0.52, "b": 0.28, "a": 0.45 }
+        },
+        {
+          "name": "TitleStarLeft",
+          "type": "Text",
+          "text": "✦",
+          "fontSize": 38,
+          "fontStyle": "Bold",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.92, "g": 0.70, "b": 0.42, "a": 1 },
+          "position": { "x": -210, "y": -45 },
+          "size": { "x": 70, "y": 58 }
+        },
+        {
+          "name": "TitleStarRight",
+          "type": "Text",
+          "text": "✦",
+          "fontSize": 38,
+          "fontStyle": "Bold",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.92, "g": 0.70, "b": 0.42, "a": 1 },
+          "position": { "x": 210, "y": -45 },
+          "size": { "x": 70, "y": 58 }
+        },
+        {
+          "name": "TitleText",
+          "type": "Text",
+          "text": "我的个人资料",
+          "fontSize": 56,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.94, "g": 0.73, "b": 0.46, "a": 1 },
+          "position": { "x": 0, "y": -45 },
+          "size": { "x": 500, "y": 74 }
+        }
+      ]
+    },
+    {
+      "name": "ProfileHeaderBorder",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -250 },
+      "size": { "x": 996, "y": 330 },
+      "color": { "r": 0.37, "g": 0.23, "b": 0.47, "a": 0.55 },
+      "children": [
+        {
+          "name": "ProfileHeaderPanel",
+          "type": "Panel",
+          "raycastTarget": false,
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 988, "y": 322 },
+          "color": { "r": 0.055, "g": 0.048, "b": 0.085, "a": 0.92 },
+          "children": [
+            {
+              "name": "AvatarGlow",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0, "y": 0.5 },
+              "anchorMax": { "x": 0, "y": 0.5 },
+              "position": { "x": 198, "y": 0 },
+              "size": { "x": 210, "y": 210 },
+              "color": { "r": 0.20, "g": 0.08, "b": 0.28, "a": 0.80 }
+            },
+            {
+              "name": "AvatarBorder",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0, "y": 0.5 },
+              "anchorMax": { "x": 0, "y": 0.5 },
+              "position": { "x": 198, "y": 0 },
+              "size": { "x": 186, "y": 186 },
+              "color": { "r": 0.70, "g": 0.36, "b": 0.88, "a": 0.95 }
+            },
+            {
+              "name": "[Image]AvatarImage",
+              "type": "Image",
+              "imageType": "Simple",
+              "raycastTarget": true,
+              "anchorMin": { "x": 0, "y": 0.5 },
+              "anchorMax": { "x": 0, "y": 0.5 },
+              "position": { "x": 198, "y": 0 },
+              "size": { "x": 170, "y": 170 },
+              "color": { "r": 0.075, "g": 0.055, "b": 0.105, "a": 1 }
+            },
+            {
+              "name": "AvatarPlaceholderMark",
+              "type": "Text",
+              "raycastTarget": false,
+              "text": "☾",
+              "fontSize": 82,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.86, "g": 0.60, "b": 0.95, "a": 0.45 },
+              "anchorMin": { "x": 0, "y": 0.5 },
+              "anchorMax": { "x": 0, "y": 0.5 },
+              "position": { "x": 198, "y": 5 },
+              "size": { "x": 150, "y": 150 }
+            },
+            {
+              "name": "UserNameTitle",
+              "type": "Text",
+              "text": "Luna",
+              "fontSize": 50,
+              "fontStyle": "Bold",
+              "textAlignment": "Left",
+              "textColor": { "r": 0.88, "g": 0.86, "b": 0.90, "a": 1 },
+              "anchorMin": { "x": 0, "y": 0.5 },
+              "anchorMax": { "x": 0, "y": 0.5 },
+              "pivot": { "x": 0, "y": 0.5 },
+              "position": { "x": 392, "y": 42 },
+              "size": { "x": 190, "y": 68 }
+            },
+            {
+              "name": "NameEditIcon",
+              "type": "Text",
+              "text": "✎",
+              "fontSize": 44,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.68, "g": 0.38, "b": 0.92, "a": 1 },
+              "anchorMin": { "x": 0, "y": 0.5 },
+              "anchorMax": { "x": 0, "y": 0.5 },
+              "position": { "x": 546, "y": 42 },
+              "size": { "x": 56, "y": 56 }
+            },
+            {
+              "name": "[InputField]BioInput",
+              "type": "InputField",
+              "text": "",
+              "placeholderText": "愿星辰指引你前行的方向。",
+              "fontSize": 30,
+              "textColor": { "r": 0.70, "g": 0.68, "b": 0.73, "a": 1 },
+              "characterLimit": 80,
+              "contentType": "Standard",
+              "lineType": "SingleLine",
+              "interactable": true,
+              "anchorMin": { "x": 0, "y": 0.5 },
+              "anchorMax": { "x": 0, "y": 0.5 },
+              "pivot": { "x": 0, "y": 0.5 },
+              "position": { "x": 392, "y": -48 },
+              "size": { "x": 500, "y": 54 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+            },
+            {
+              "name": "[Button]MoonAvatarBtn",
+              "type": "Button",
+              "text": "",
+              "anchorMin": { "x": 0, "y": 0 },
+              "anchorMax": { "x": 0, "y": 0 },
+              "position": { "x": 20, "y": 20 },
+              "size": { "x": 2, "y": 2 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+            },
+            {
+              "name": "[Button]PersonAvatarBtn",
+              "type": "Button",
+              "text": "",
+              "anchorMin": { "x": 0, "y": 0 },
+              "anchorMax": { "x": 0, "y": 0 },
+              "position": { "x": 28, "y": 20 },
+              "size": { "x": 2, "y": 2 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "InfoCardBorder",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -628 },
+      "size": { "x": 996, "y": 1002 },
+      "color": { "r": 0.37, "g": 0.23, "b": 0.47, "a": 0.55 },
+      "children": [
+        {
+          "name": "InfoCard",
+          "type": "Panel",
+          "raycastTarget": false,
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 988, "y": 994 },
+          "color": { "r": 0.032, "g": 0.031, "b": 0.058, "a": 0.94 },
+          "children": [
+            {
+              "name": "BirthdayIcon",
+              "type": "Text",
+              "text": "▣",
+              "fontSize": 44,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.68, "g": 0.38, "b": 0.92, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "position": { "x": 92, "y": -104 },
+              "size": { "x": 62, "y": 62 }
+            },
+            {
+              "name": "BirthdayLabel",
+              "type": "Text",
+              "text": "生日",
+              "fontSize": 32,
+              "fontStyle": "Normal",
+              "textAlignment": "Left",
+              "textColor": { "r": 0.88, "g": 0.86, "b": 0.90, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "pivot": { "x": 0, "y": 0.5 },
+              "position": { "x": 150, "y": -104 },
+              "size": { "x": 180, "y": 58 }
+            },
+            {
+              "name": "[InputField]BirthdayInput",
+              "type": "InputField",
+              "text": "",
+              "placeholderText": "1998.08.16",
+              "fontSize": 31,
+              "textColor": { "r": 0.76, "g": 0.74, "b": 0.78, "a": 1 },
+              "contentType": "Standard",
+              "lineType": "SingleLine",
+              "anchorMin": { "x": 1, "y": 1 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "pivot": { "x": 1, "y": 0.5 },
+              "position": { "x": -112, "y": -104 },
+              "size": { "x": 250, "y": 58 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+            },
+            {
+              "name": "BirthdayArrow",
+              "type": "Text",
+              "text": "›",
+              "fontSize": 54,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.70, "g": 0.55, "b": 0.38, "a": 1 },
+              "anchorMin": { "x": 1, "y": 1 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": -58, "y": -104 },
+              "size": { "x": 54, "y": 64 }
+            },
+            {
+              "name": "DividerBirthday",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": 0, "y": -186 },
+              "size": { "x": -80, "y": 1.5 },
+              "color": { "r": 0.30, "g": 0.28, "b": 0.35, "a": 0.38 }
+            },
+            {
+              "name": "TimeIcon",
+              "type": "Text",
+              "text": "◷",
+              "fontSize": 48,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.68, "g": 0.38, "b": 0.92, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "position": { "x": 92, "y": -258 },
+              "size": { "x": 62, "y": 62 }
+            },
+            {
+              "name": "TimeLabel",
+              "type": "Text",
+              "text": "出生时间",
+              "fontSize": 32,
+              "fontStyle": "Normal",
+              "textAlignment": "Left",
+              "textColor": { "r": 0.88, "g": 0.86, "b": 0.90, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "pivot": { "x": 0, "y": 0.5 },
+              "position": { "x": 150, "y": -258 },
+              "size": { "x": 210, "y": 58 }
+            },
+            {
+              "name": "[InputField]TimeInput",
+              "type": "InputField",
+              "text": "",
+              "placeholderText": "21:40",
+              "fontSize": 31,
+              "textColor": { "r": 0.76, "g": 0.74, "b": 0.78, "a": 1 },
+              "contentType": "Standard",
+              "lineType": "SingleLine",
+              "anchorMin": { "x": 1, "y": 1 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "pivot": { "x": 1, "y": 0.5 },
+              "position": { "x": -112, "y": -258 },
+              "size": { "x": 155, "y": 58 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+            },
+            {
+              "name": "TimeArrow",
+              "type": "Text",
+              "text": "›",
+              "fontSize": 54,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.70, "g": 0.55, "b": 0.38, "a": 1 },
+              "anchorMin": { "x": 1, "y": 1 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": -58, "y": -258 },
+              "size": { "x": 54, "y": 64 }
+            },
+            {
+              "name": "DividerTime",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": 0, "y": -342 },
+              "size": { "x": -80, "y": 1.5 },
+              "color": { "r": 0.30, "g": 0.28, "b": 0.35, "a": 0.38 }
+            },
+            {
+              "name": "CityIcon",
+              "type": "Text",
+              "text": "⌖",
+              "fontSize": 48,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.68, "g": 0.38, "b": 0.92, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "position": { "x": 92, "y": -412 },
+              "size": { "x": 62, "y": 62 }
+            },
+            {
+              "name": "CityLabel",
+              "type": "Text",
+              "text": "出生城市",
+              "fontSize": 32,
+              "fontStyle": "Normal",
+              "textAlignment": "Left",
+              "textColor": { "r": 0.88, "g": 0.86, "b": 0.90, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "pivot": { "x": 0, "y": 0.5 },
+              "position": { "x": 150, "y": -412 },
+              "size": { "x": 210, "y": 58 }
+            },
+            {
+              "name": "[InputField]CityInput",
+              "type": "InputField",
+              "text": "",
+              "placeholderText": "Shanghai, China",
+              "fontSize": 31,
+              "textColor": { "r": 0.76, "g": 0.74, "b": 0.78, "a": 1 },
+              "contentType": "Standard",
+              "lineType": "SingleLine",
+              "anchorMin": { "x": 1, "y": 1 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "pivot": { "x": 1, "y": 0.5 },
+              "position": { "x": -112, "y": -412 },
+              "size": { "x": 335, "y": 58 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+            },
+            {
+              "name": "CityArrow",
+              "type": "Text",
+              "text": "›",
+              "fontSize": 54,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.70, "g": 0.55, "b": 0.38, "a": 1 },
+              "anchorMin": { "x": 1, "y": 1 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": -58, "y": -412 },
+              "size": { "x": 54, "y": 64 }
+            },
+            {
+              "name": "DividerCity",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": 0, "y": -496 },
+              "size": { "x": -80, "y": 1.5 },
+              "color": { "r": 0.30, "g": 0.28, "b": 0.35, "a": 0.38 }
+            },
+            {
+              "name": "AvatarRowIcon",
+              "type": "Text",
+              "text": "♙",
+              "fontSize": 48,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.68, "g": 0.38, "b": 0.92, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "position": { "x": 92, "y": -568 },
+              "size": { "x": 62, "y": 62 }
+            },
+            {
+              "name": "AvatarRowLabel",
+              "type": "Text",
+              "text": "头像",
+              "fontSize": 32,
+              "fontStyle": "Normal",
+              "textAlignment": "Left",
+              "textColor": { "r": 0.88, "g": 0.86, "b": 0.90, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "pivot": { "x": 0, "y": 0.5 },
+              "position": { "x": 150, "y": -568 },
+              "size": { "x": 180, "y": 58 }
+            },
+            {
+              "name": "AvatarThumbBorder",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 1, "y": 1 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": -150, "y": -568 },
+              "size": { "x": 78, "y": 78 },
+              "color": { "r": 0.35, "g": 0.18, "b": 0.44, "a": 1 },
+              "children": [
+                {
+                  "name": "AvatarThumbMark",
+                  "type": "Text",
+                  "text": "☾",
+                  "fontSize": 42,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.86, "g": 0.60, "b": 0.95, "a": 0.70 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 70, "y": 70 }
+                }
+              ]
+            },
+            {
+              "name": "AvatarArrow",
+              "type": "Text",
+              "text": "›",
+              "fontSize": 54,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.70, "g": 0.55, "b": 0.38, "a": 1 },
+              "anchorMin": { "x": 1, "y": 1 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": -58, "y": -568 },
+              "size": { "x": 54, "y": 64 }
+            },
+            {
+              "name": "DividerAvatar",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": 0, "y": -650 },
+              "size": { "x": -80, "y": 1.5 },
+              "color": { "r": 0.30, "g": 0.28, "b": 0.35, "a": 0.38 }
+            },
+            {
+              "name": "UserNameIcon",
+              "type": "Text",
+              "text": "♙",
+              "fontSize": 48,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.68, "g": 0.38, "b": 0.92, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "position": { "x": 92, "y": -722 },
+              "size": { "x": 62, "y": 62 }
+            },
+            {
+              "name": "UserNameLabel",
+              "type": "Text",
+              "text": "用户名称",
+              "fontSize": 32,
+              "fontStyle": "Normal",
+              "textAlignment": "Left",
+              "textColor": { "r": 0.88, "g": 0.86, "b": 0.90, "a": 1 },
+              "anchorMin": { "x": 0, "y": 1 },
+              "anchorMax": { "x": 0, "y": 1 },
+              "pivot": { "x": 0, "y": 0.5 },
+              "position": { "x": 150, "y": -722 },
+              "size": { "x": 210, "y": 58 }
+            },
+            {
+              "name": "[InputField]UserNameInput",
+              "type": "InputField",
+              "text": "",
+              "placeholderText": "Luna",
+              "fontSize": 31,
+              "textColor": { "r": 0.76, "g": 0.74, "b": 0.78, "a": 1 },
+              "contentType": "Name",
+              "lineType": "SingleLine",
+              "characterLimit": 24,
+              "anchorMin": { "x": 1, "y": 1 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "pivot": { "x": 1, "y": 0.5 },
+              "position": { "x": -140, "y": -722 },
+              "size": { "x": 185, "y": 58 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+            },
+            {
+              "name": "UserNameEditIcon",
+              "type": "Text",
+              "text": "✎",
+              "fontSize": 40,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.68, "g": 0.38, "b": 0.92, "a": 1 },
+              "anchorMin": { "x": 1, "y": 1 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": -100, "y": -722 },
+              "size": { "x": 48, "y": 54 }
+            },
+            {
+              "name": "UserNameArrow",
+              "type": "Text",
+              "text": "›",
+              "fontSize": 54,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.70, "g": 0.55, "b": 0.38, "a": 1 },
+              "anchorMin": { "x": 1, "y": 1 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": -58, "y": -722 },
+              "size": { "x": 54, "y": 64 }
+            },
+            {
+              "name": "SaveButtonGlow",
+              "type": "Panel",
+              "raycastTarget": false,
+              "anchorMin": { "x": 0.5, "y": 0 },
+              "anchorMax": { "x": 0.5, "y": 0 },
+              "position": { "x": 0, "y": 72 },
+              "size": { "x": 880, "y": 122 },
+              "color": { "r": 0.34, "g": 0.11, "b": 0.50, "a": 0.42 }
+            },
+            {
+              "name": "SaveButtonVisual",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 0 },
+              "anchorMax": { "x": 0.5, "y": 0 },
+              "position": { "x": 0, "y": 72 },
+              "size": { "x": 860, "y": 108 },
+              "color": { "r": 0.37, "g": 0.13, "b": 0.52, "a": 0.98 },
+              "children": [
+                {
+                  "name": "SaveLeftSpark",
+                  "type": "Text",
+                  "text": "✦",
+                  "fontSize": 42,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.72, "g": 0.40, "b": 0.96, "a": 1 },
+                  "position": { "x": -362, "y": 0 },
+                  "size": { "x": 70, "y": 62 }
+                },
+                {
+                  "name": "SaveButtonText",
+                  "type": "Text",
+                  "text": "保存修改",
+                  "fontSize": 40,
+                  "fontStyle": "Normal",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.92, "g": 0.76, "b": 1.00, "a": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 300, "y": 66 }
+                },
+                {
+                  "name": "SaveRightSpark",
+                  "type": "Text",
+                  "text": "✦",
+                  "fontSize": 42,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Center",
+                  "textColor": { "r": 0.72, "g": 0.40, "b": 0.96, "a": 1 },
+                  "position": { "x": 362, "y": 0 },
+                  "size": { "x": 70, "y": 62 }
+                },
+                {
+                  "name": "[Button]SaveBtn",
+                  "type": "Button",
+                  "text": "",
+                  "anchorMin": { "x": 0, "y": 0 },
+                  "anchorMax": { "x": 1, "y": 1 },
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 0, "y": 0 },
+                  "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "FooterHint",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -1722 },
+      "size": { "x": 780, "y": 60 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        {
+          "name": "FooterLineLeft",
+          "type": "Panel",
+          "raycastTarget": false,
+          "position": { "x": -320, "y": 0 },
+          "size": { "x": 95, "y": 1.5 },
+          "color": { "r": 0.58, "g": 0.40, "b": 0.24, "a": 0.34 }
+        },
+        {
+          "name": "FooterStarLeft",
+          "type": "Text",
+          "text": "✦",
+          "fontSize": 30,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.78, "g": 0.54, "b": 0.31, "a": 1 },
+          "position": { "x": -248, "y": 0 },
+          "size": { "x": 50, "y": 42 }
+        },
+        {
+          "name": "FooterText",
+          "type": "Text",
+          "text": "这些信息将帮助神谕更准确地理解你。",
+          "fontSize": 28,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.62, "g": 0.59, "b": 0.64, "a": 1 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 570, "y": 46 }
+        },
+        {
+          "name": "FooterStarRight",
+          "type": "Text",
+          "text": "✦",
+          "fontSize": 30,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.78, "g": 0.54, "b": 0.31, "a": 1 },
+          "position": { "x": 248, "y": 0 },
+          "size": { "x": 50, "y": 42 }
+        },
+        {
+          "name": "FooterLineRight",
+          "type": "Panel",
+          "raycastTarget": false,
+          "position": { "x": 320, "y": 0 },
+          "size": { "x": 95, "y": 1.5 },
+          "color": { "r": 0.58, "g": 0.40, "b": 0.24, "a": 0.34 }
+        }
+      ]
+    },
+    {
+      "name": "BottomNav",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 0 },
+      "pivot": { "x": 0.5, "y": 0 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 146 },
+      "color": { "r": 0.025, "g": 0.026, "b": 0.045, "a": 0.94 },
+      "children": [
+        {
+          "name": "NavHomeIcon",
+          "type": "Text",
+          "text": "☾",
+          "fontSize": 46,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.76, "g": 0.56, "b": 0.32, "a": 1 },
+          "position": { "x": -430, "y": 35 },
+          "size": { "x": 86, "y": 62 }
+        },
+        {
+          "name": "NavHomeText",
+          "type": "Text",
+          "text": "首页",
+          "fontSize": 26,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.66, "g": 0.55, "b": 0.43, "a": 1 },
+          "position": { "x": -430, "y": -34 },
+          "size": { "x": 100, "y": 42 }
+        },
+        {
+          "name": "NavDialogIcon",
+          "type": "Text",
+          "text": "▢",
+          "fontSize": 42,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.76, "g": 0.56, "b": 0.32, "a": 1 },
+          "position": { "x": -215, "y": 35 },
+          "size": { "x": 86, "y": 62 }
+        },
+        {
+          "name": "NavDialogText",
+          "type": "Text",
+          "text": "对话",
+          "fontSize": 26,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.66, "g": 0.55, "b": 0.43, "a": 1 },
+          "position": { "x": -215, "y": -34 },
+          "size": { "x": 100, "y": 42 }
+        },
+        {
+          "name": "NavDiaryIcon",
+          "type": "Text",
+          "text": "♧",
+          "fontSize": 44,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.76, "g": 0.56, "b": 0.32, "a": 1 },
+          "position": { "x": 0, "y": 35 },
+          "size": { "x": 86, "y": 62 }
+        },
+        {
+          "name": "NavDiaryText",
+          "type": "Text",
+          "text": "日记",
+          "fontSize": 26,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.66, "g": 0.55, "b": 0.43, "a": 1 },
+          "position": { "x": 0, "y": -34 },
+          "size": { "x": 100, "y": 42 }
+        },
+        {
+          "name": "NavRitualIcon",
+          "type": "Text",
+          "text": "♨",
+          "fontSize": 44,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.76, "g": 0.56, "b": 0.32, "a": 1 },
+          "position": { "x": 215, "y": 35 },
+          "size": { "x": 86, "y": 62 }
+        },
+        {
+          "name": "NavRitualText",
+          "type": "Text",
+          "text": "仪式",
+          "fontSize": 26,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.66, "g": 0.55, "b": 0.43, "a": 1 },
+          "position": { "x": 215, "y": -34 },
+          "size": { "x": 100, "y": 42 }
+        },
+        {
+          "name": "NavMineSelected",
+          "type": "Panel",
+          "raycastTarget": false,
+          "position": { "x": 430, "y": 20 },
+          "size": { "x": 112, "y": 112 },
+          "color": { "r": 0.18, "g": 0.07, "b": 0.25, "a": 0.88 },
+          "children": [
+            {
+              "name": "NavMineIcon",
+              "type": "Text",
+              "text": "♙",
+              "fontSize": 44,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.88, "g": 0.55, "b": 1.00, "a": 1 },
+              "position": { "x": 0, "y": 22 },
+              "size": { "x": 86, "y": 58 }
+            },
+            {
+              "name": "NavMineText",
+              "type": "Text",
+              "text": "我的",
+              "fontSize": 26,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.88, "g": 0.55, "b": 1.00, "a": 1 },
+              "position": { "x": 0, "y": -34 },
+              "size": { "x": 90, "y": 38 }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

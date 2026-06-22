@@ -26,8 +26,11 @@ public class TodayOracleUI : WindowBase
 	private bool _isPreparingFlip;
 	private Coroutine _prepareFlipCoroutine;
 	private Coroutine _idleVideoCoroutine;
+	private Coroutine _restoreTodayCoroutine;
 	private LoadingTextUI _loadingTextUI;
 	private int _tomorrowHookRequestId;
+	private int _todayStateRequestId;
+	private bool _isRestoringToday;
 
 	[SerializeField] private float flipRevealDelaySeconds = 1.2f;
 
@@ -62,22 +65,14 @@ public class TodayOracleUI : WindowBase
 		OracleForegroundEffects.Attach(this.Canvas, OracleForegroundEffectStyle.DailyOracle);
 		PlayIdleVideo();
 		LoadDueTomorrowHooks();
-
-		// 检查是否有缓存的 TodayOraclePayload，直接填充
-		if (_oracleService != null && _oracleService.CachedPayload != null
-			&& _divinationEngine?.TodayCard.HasValue == true)
-		{
-			var (card, upright) = _divinationEngine.TodayCard.Value;
-			_currentCard = card;
-			_currentUpright = upright;
-			if (_oracleService.IsCachedOracleFor(card, upright))
-				PopulateOracleFields(_oracleService.CachedPayload);
-		}
+		RefreshTodayOracleState();
 	}
 
 	public override void OnHide()
 	{
 		_tomorrowHookRequestId++;
+		_todayStateRequestId++;
+		StopRestoreTodayCoroutine();
 		OracleForegroundEffects.Detach(this.Canvas);
 		PauseIdleVideo();
 		base.OnHide();
@@ -85,6 +80,8 @@ public class TodayOracleUI : WindowBase
 
 	public override void OnDestroy()
 	{
+		_todayStateRequestId++;
+		StopRestoreTodayCoroutine();
 		StopPrepareFlipCoroutine();
 		base.OnDestroy();
 	}
@@ -215,7 +212,12 @@ public class TodayOracleUI : WindowBase
 
 		public void OnflipCardButtonClick()
 		{
-			if (_isPreparingFlip) return;
+			if (_isPreparingFlip || _isRestoringToday) return;
+			if (TryRestoreSavedToday(DailyOracleFirestore.LoadTodayLocal()))
+				return;
+			if (TryRevealConsumedTodayFallback(false))
+				return;
+
 			if (_divinationEngine != null && !_divinationEngine.TodayCard.HasValue
 				&& !MembershipGate.CanUse(MembershipFeature.DailyOracle))
 			{
@@ -242,6 +244,7 @@ public class TodayOracleUI : WindowBase
 		_currentCard = card;
 		_currentUpright = upright;
 		Debug.Log($"[TodayOracleUI] 翻牌准备: {card.nameZh} ({(upright ? "正位" : "逆位")})");
+		DailyOracleFirestore.SaveTodayLocal(card, upright, BuildLocalFallback(card, upright), DailyOracleService.CurrentLocale);
 		ShowLoadingText(card);
 
 		EnsureDailyOracleService();
@@ -273,7 +276,7 @@ public class TodayOracleUI : WindowBase
 			preparedReading = BuildLocalPreparedReading(card, upright);
 
 		HideLoadingText();
-		RevealPreparedReading(preparedReading);
+		RevealPreparedReading(preparedReading, true);
 		_isPreparingFlip = false;
 		_prepareFlipCoroutine = null;
 	}
@@ -453,7 +456,7 @@ public class TodayOracleUI : WindowBase
 		};
 	}
 
-	private void RevealPreparedReading(TodayOraclePreparedReading preparedReading)
+	private void RevealPreparedReading(TodayOraclePreparedReading preparedReading, bool openReadingWindow)
 	{
 		if (preparedReading == null) return;
 
@@ -469,8 +472,11 @@ public class TodayOracleUI : WindowBase
 		DialogSystem.Instance?.SetTodayCardPayload(
 			preparedReading.cardPayload ?? _divinationEngine?.GetTodayCardPayload());
 
-		uiComponent.ReadingCardContainerTransform.gameObject.SetActive(true);
-		UIModule.Instance.PopUpWindow<OracleReadingUI>();
+		SetFlipButtonVisible(false);
+		SetReadingContainerVisible(true);
+		DailyOracleHistoryBridge.SavePreparedReading(preparedReading, true);
+		if (openReadingWindow)
+			UIModule.Instance.PopUpWindow<OracleReadingUI>();
 		Debug.Log($"[TodayOracleUI] 翻牌展示: {preparedReading.cardDisplayName}");
 	}
 
@@ -483,6 +489,198 @@ public class TodayOracleUI : WindowBase
 		}
 		HideLoadingText();
 		_isPreparingFlip = false;
+	}
+
+	private void StopRestoreTodayCoroutine()
+	{
+		if (_restoreTodayCoroutine != null)
+		{
+			uiComponent.StopCoroutine(_restoreTodayCoroutine);
+			_restoreTodayCoroutine = null;
+		}
+		_isRestoringToday = false;
+	}
+
+	private void RefreshTodayOracleState()
+	{
+		int requestId = ++_todayStateRequestId;
+		StopRestoreTodayCoroutine();
+		_restoreTodayCoroutine = uiComponent.StartCoroutine(RestoreTodayOracleStateRoutine(requestId));
+	}
+
+	private IEnumerator RestoreTodayOracleStateRoutine(int requestId)
+	{
+		_isRestoringToday = true;
+		SetFlipButtonVisible(false);
+		SetReadingContainerVisible(false);
+
+		if (TryRestoreSavedToday(DailyOracleFirestore.LoadTodayLocal())
+			|| TryRevealInMemoryToday()
+			|| TryRevealCurrentTodayFallback())
+		{
+			FinishRestoreTodayRoutine();
+			yield break;
+		}
+
+		DailyOracleCloudRecord cloudRecord = null;
+		DailyOracleFirestore store = DailyOracleFirestore.Instance;
+		if (store != null)
+		{
+			float elapsed = 0f;
+			while (!store.IsReady && elapsed < 2f)
+			{
+				if (requestId != _todayStateRequestId || !gameObject.activeInHierarchy)
+					yield break;
+
+				elapsed += Time.deltaTime;
+				yield return null;
+			}
+
+			bool loaded = false;
+			store.LoadToday(record =>
+			{
+				cloudRecord = record;
+				loaded = true;
+			});
+
+			float loadElapsed = 0f;
+			while (!loaded && loadElapsed < 5f)
+			{
+				if (requestId != _todayStateRequestId || !gameObject.activeInHierarchy)
+					yield break;
+
+				loadElapsed += Time.deltaTime;
+				yield return null;
+			}
+		}
+
+		if (requestId != _todayStateRequestId || !gameObject.activeInHierarchy)
+			yield break;
+
+		if (!TryRestoreSavedToday(cloudRecord) && !TryRevealConsumedTodayFallback(false))
+			ApplyUndrawnState();
+
+		FinishRestoreTodayRoutine();
+	}
+
+	private void FinishRestoreTodayRoutine()
+	{
+		_isRestoringToday = false;
+		_restoreTodayCoroutine = null;
+	}
+
+	private bool TryRevealInMemoryToday()
+	{
+		if (_divinationEngine?.TodayCard.HasValue != true)
+			return false;
+
+		var (card, upright) = _divinationEngine.TodayCard.Value;
+		EnsureDailyOracleService();
+
+		if (_oracleService != null && _oracleService.IsCachedPreparedReadingFor(card, upright))
+		{
+			RevealPreparedReading(_oracleService.CachedPreparedReading, false);
+			return true;
+		}
+
+		if (_oracleService != null && _oracleService.IsCachedOracleFor(card, upright))
+		{
+			RevealPreparedReading(BuildPreparedReadingFromPayload(card, upright, _oracleService.CachedPayload), false);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryRevealCurrentTodayFallback()
+	{
+		if (_divinationEngine?.TodayCard.HasValue != true)
+			return false;
+
+		var (card, upright) = _divinationEngine.TodayCard.Value;
+		DailyOracleFirestore.SaveTodayLocal(card, upright, BuildLocalFallback(card, upright), DailyOracleService.CurrentLocale);
+		RevealPreparedReading(BuildLocalPreparedReading(card, upright), false);
+		return true;
+	}
+
+	private bool TryRevealConsumedTodayFallback(bool openReadingWindow)
+	{
+		if (!HasUsedDailyOracleToday() || _divinationEngine == null)
+			return false;
+
+		var (card, upright) = _divinationEngine.TodayCard.HasValue
+			? _divinationEngine.TodayCard.Value
+			: _divinationEngine.DrawDailyCard();
+
+		DailyOracleFirestore.SaveTodayLocal(card, upright, BuildLocalFallback(card, upright), DailyOracleService.CurrentLocale);
+		RevealPreparedReading(BuildLocalPreparedReading(card, upright), openReadingWindow);
+		Debug.LogWarning($"[TodayOracleUI] 今日牌已用过但缓存缺失，已用本地模板重建: {card.nameZh} ({(upright ? "正位" : "逆位")})");
+		return true;
+	}
+
+	private bool TryRestoreSavedToday(DailyOracleCloudRecord record)
+	{
+		EnsureDailyOracleService();
+		if (_oracleService == null || !_oracleService.TryRestoreFromRecord(record, out TodayOraclePreparedReading preparedReading))
+			return false;
+
+		RevealPreparedReading(preparedReading, false);
+		return true;
+	}
+
+	private TodayOraclePreparedReading BuildPreparedReadingFromPayload(TarotCard card, bool upright, TodayOraclePayload payload)
+	{
+		TodayOraclePayload fallback = BuildLocalFallback(card, upright);
+		TodayOraclePayload safePayload = payload ?? fallback;
+		return new TodayOraclePreparedReading
+		{
+			card = card,
+			upright = upright,
+			cardId = card.cardId,
+			cardDisplayName = card.DisplayName(upright),
+			cardDescription = FirstNonEmpty(safePayload.detail, fallback.detail),
+			cardMeaning = FirstNonEmpty(safePayload.oracle, fallback.oracle),
+			cardIcon = TarotSpriteLoader.Load(card.cardId),
+			cardPayload = _divinationEngine?.GetTodayCardPayload(),
+			oraclePayload = safePayload,
+			interpretationPayload = null,
+			preparedAt = System.DateTime.Now.ToString("o")
+		};
+	}
+
+	private void ApplyUndrawnState()
+	{
+		SetReadingContainerVisible(false);
+		SetFlipButtonVisible(true);
+	}
+
+	private bool HasUsedDailyOracleToday()
+	{
+		return UsageStatsManager.Instance != null
+			&& UsageStatsManager.Instance.HasUsedDailyOracleToday();
+	}
+
+	private void SetFlipButtonVisible(bool visible)
+	{
+		if (uiComponent?.flipCardButton != null)
+			uiComponent.flipCardButton.gameObject.SetActive(visible);
+	}
+
+	private void SetReadingContainerVisible(bool visible)
+	{
+		if (uiComponent?.ReadingCardContainerTransform != null)
+			uiComponent.ReadingCardContainerTransform.gameObject.SetActive(visible);
+	}
+
+	private static string FirstNonEmpty(params string[] values)
+	{
+		if (values == null) return "";
+		foreach (string value in values)
+		{
+			if (!string.IsNullOrWhiteSpace(value))
+				return value;
+		}
+		return "";
 	}
 
 	private void ShowLoadingText(TarotCard card)

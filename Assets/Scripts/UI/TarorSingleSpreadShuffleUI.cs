@@ -8,10 +8,12 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 using GamerFrameWork;
+using GamerFrameWork.OracleRuntime;
 using XFGameFrameWork;
 
 public class TarorSingleSpreadShuffleUI : WindowBase
@@ -522,17 +524,35 @@ public class TarorSingleSpreadShuffleUI : WindowBase
             ? string.Join("、", card.keywords.GetRange(0, Mathf.Min(3, card.keywords.Count)))
             : card.nameZh;
 
-        return new List<DeepSeekAPI.Message>
+        var payload = new ChatPayload
         {
-            new DeepSeekAPI.Message("system",
-                "你是 Nocturne Oracle 的塔罗解读助手。输出要短、直接、具体，像清醒朋友说话，不像塔罗百科。"
-                + "不要诊断，不要绝对预测，不要声称知道第三方秘密心理。"),
-            new DeepSeekAPI.Message("user",
-                $"牌阵：{spreadName}\n"
+            scene = "card_position_description",
+            locale = "zh-CN",
+            message = $"牌阵：{spreadName}\n"
                 + $"位置：{position}\n"
                 + $"卡牌：{card.nameZh}（{orientation}）\n"
-                + $"关键词：{keywords}\n"
-                + "请只生成这张牌在这个位置上的描述，1到2句中文。不要标题，不要列表，不要重复牌名超过一次。")
+                + $"关键词：{keywords}",
+            user = new UserPayloadProfile
+            {
+                preferredTone = "tarot_reader",
+                locale = "zh-CN"
+            }
+        };
+
+        MemorySource memorySource = DialogSystem.Instance?.GetMemorySourceForPrompt();
+        AssemblyResult assembly = ContextAssembler.AssembleSceneCall(
+            "card_position_description",
+            payload,
+            memorySource,
+            oracleVoiceId: "tarot_reader");
+
+        if (assembly?.messages != null && assembly.messages.Count > 0)
+            return assembly.messages.Select(message => new DeepSeekAPI.Message(message.role, message.content)).ToList();
+
+        return new List<DeepSeekAPI.Message>
+        {
+            new DeepSeekAPI.Message("system", ScenePrompts.Get("card_position_description")),
+            new DeepSeekAPI.Message("user", payload.message)
         };
     }
 
@@ -802,6 +822,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
         session.lockedCards = lockedList;
         session.spreadKind = spreadKind;
+        session.divinationPlan = DivinationEngine.Instance.BuildActiveDivinationPlan(spreadKind);
         session.phase = DivinationPhase.CardsLocked;
 
         session.readingLock = new GamerFrameWork.OracleRuntime.ReadingLock
@@ -820,6 +841,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
             dialogSystem.SetActiveReadingState("cards_locked");
             dialogSystem.SetActiveActionKind("reveal_card");
             dialogSystem.SetActiveReadingId(session.readingId);
+            dialogSystem.SetActiveDivinationPlan(session.divinationPlan);
         }
 
         Debug.Log($"[TarorSingleSpreadShuffleUI] 已同步 {lockedList.Count} 张牌到 DivinationEngine, spreadKind={spreadKind}");

@@ -65,6 +65,7 @@ public class ChatMessageData
     public string friendContext;
     public bool ttsAudioReady;       // 是否已经为这条 AI 文本准备过语音
     public float ttsDurationSeconds; // 语音总时长，用于聊天气泡显示
+    public List<ChatContextAttachment> contextAttachments; // 本条消息发送时带入的上下文快照
     public string oraclePromptId;
     public string oracleScene;
     public string oracleStage;
@@ -82,6 +83,46 @@ public class TarotDrawData
 {
     public string cardId;
     public bool upright;
+}
+
+public enum ChatContextType
+{
+    Friend,
+    TarotCard,
+    DailyOracle,
+    Reading,
+    Condition
+}
+
+/// <summary>
+/// 用户发起对话时带入的上下文附件。它不会改写用户原文，而是作为 Runtime Context 单独传给 AI。
+/// </summary>
+[System.Serializable]
+public class ChatContextAttachment
+{
+    public ChatContextType contextType;
+    public string id;
+    public string title;
+    public string subtitle;
+    public string preview;
+    public string payload;
+    public string source;
+    public string createdAt;
+
+    public ChatContextAttachment Clone()
+    {
+        return new ChatContextAttachment
+        {
+            contextType = contextType,
+            id = id,
+            title = title,
+            subtitle = subtitle,
+            preview = preview,
+            payload = payload,
+            source = source,
+            createdAt = createdAt
+        };
+    }
 }
 
 /// <summary>
@@ -109,10 +150,10 @@ public class DialogSystem : MonoSingleton<DialogSystem>
 
     [Header("系统提示词")]
     [TextArea(3, 10)]
-    public string TarotSystemPrompt = "你是一位神秘的塔罗师，说话风格神秘而优雅，善于用塔罗牌的意象来回答问题。你的回复应该包含塔罗牌相关的隐喻和建议。回复 concise 一些，在200字以内。";
+    public string TarotSystemPrompt = "你是 Nocturne Oracle，一位克制、清醒的塔罗神谕师。普通聊天不要每句都强行讲牌；只有用户进入占卜、追问牌面或上下文合适时才使用塔罗语言。回复短、直接、具体，关系问题给行为级建议，不做绝对预测。";
 
     [TextArea(3, 10)]
-    public string AstrologySystemPrompt = "你是一位专业的占星师，说话风格温柔而知性，善于用星象和星座来回答问题。你的回复应该包含星象相关的分析和建议。回复 concise 一些，在200字以内。";
+    public string AstrologySystemPrompt = "你是 Nocturne Oracle 的占星师视角，说话温柔但清醒。可以使用星象、周期和节奏作为隐喻，但普通聊天不要每句都硬套星座。回复短、直接、具体，不做绝对预测，不诊断，不声称知道第三方秘密心理。";
 
     [Header("Oracle Runtime 集成")]
     [Tooltip("启用后使用 ContextAssembler 结构化 Prompt，替代简单系统提示词")]
@@ -136,6 +177,12 @@ public class DialogSystem : MonoSingleton<DialogSystem>
 
     /// <summary>当前动作类型（供 SceneRouter 路由）</summary>
     private string activeActionKind = "";
+
+    /// <summary>当前占卜规划（供 OracleRuntime 注入 Divination Plan）</summary>
+    private DivinationPlan activeDivinationPlan;
+
+    /// <summary>当前逐张揭牌 AI 解读的牌 ID；完整解读时保持为空。</summary>
+    private string currentRevealCardId = "";
 
     /// <summary>最近一次 OracleRuntime 组装结果（用于输出守卫和调试）</summary>
     private AssemblyResult lastAssemblyResult;
@@ -162,12 +209,18 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     private const int MAX_FRIEND_RELATED_HISTORY = 8;
     private const int MAX_FRIEND_MEMORY_LINES = 8;
     private const int MAX_FRIEND_READING_LINES = 4;
+    private const int MAX_ACTIVE_CONTEXTS = 8;
+    private const int MAX_CONTEXT_PAYLOAD_CHARS = 1800;
+    private const int MAX_CONTEXT_PREVIEW_CHARS = 120;
 
     // 消息列表
     private List<ChatMessageData> mChatMessageList = new List<ChatMessageData>();
 
     // DeepSeek API 消息历史
     private List<DeepSeekAPI.Message> mApiMessageHistory = new List<DeepSeekAPI.Message>();
+
+    // 当前聊天带入的上下文。用户消息会保存一份快照，防止后续切换后历史错乱。
+    private List<ChatContextAttachment> activeContextAttachments = new List<ChatContextAttachment>();
 
     // 消息ID计数器
     private int mMessageIdCounter = 0;
@@ -229,7 +282,267 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     /// </summary>
     public string GetCurrentSystemPrompt()
     {
+        string resourcePrompt = BuildResourceBackedSystemPrompt();
+        if (!string.IsNullOrWhiteSpace(resourcePrompt))
+            return resourcePrompt;
+
         return CurrentDivinerType == DivinerType.Tarot ? TarotSystemPrompt : AstrologySystemPrompt;
+    }
+
+    private string BuildResourceBackedSystemPrompt()
+    {
+        string persona = PromptResources.LoadById(
+            "persona.nocturne_oracle",
+            "prompts/persona/nocturne_oracle");
+        string safety = PromptResources.LoadById(
+            "policies.safety_boundaries",
+            "prompts/policies/safety_boundaries");
+
+        if (string.IsNullOrWhiteSpace(persona) && string.IsNullOrWhiteSpace(safety))
+            return "";
+
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(persona))
+            parts.Add(persona);
+
+        if (CurrentDivinerType == DivinerType.Tarot)
+        {
+            string tarotSkill = PromptResources.LoadById(
+                "skills.tarot_skill",
+                "prompts/skills/tarot_skill");
+            if (!string.IsNullOrWhiteSpace(tarotSkill))
+                parts.Add(tarotSkill);
+        }
+        else
+        {
+            parts.Add(
+                "## 当前占卜师视角\n"
+                + "当前用户选择的是占星师视角。你可以使用星象、周期、节奏和人格观察作为隐喻，"
+                + "但普通聊天不要每句都硬套星座，不要做绝对预测。");
+        }
+
+        if (!string.IsNullOrWhiteSpace(safety))
+            parts.Add(safety);
+
+        parts.Add(
+            "## 普通对话输出\n"
+            + "只输出用户可见的自然语言，不要 JSON，不要 Markdown 字段名。\n"
+            + "短、直接、具体，像清醒朋友说话。普通聊天不要强行讲牌；关系问题给行为级建议。");
+
+        return string.Join("\n\n", parts);
+    }
+
+    public void AddOrReplaceActiveChatContext(ChatContextAttachment attachment)
+    {
+        if (attachment == null) return;
+
+        attachment.id = attachment.id ?? "";
+        attachment.title = ClipForContext(attachment.title ?? "", MAX_CONTEXT_PREVIEW_CHARS);
+        attachment.subtitle = ClipForContext(attachment.subtitle ?? "", MAX_CONTEXT_PREVIEW_CHARS);
+        attachment.preview = ClipForContext(attachment.preview ?? "", MAX_CONTEXT_PREVIEW_CHARS);
+        attachment.payload = ClipForContext(attachment.payload ?? "", MAX_CONTEXT_PAYLOAD_CHARS);
+        attachment.createdAt = string.IsNullOrWhiteSpace(attachment.createdAt)
+            ? DateTime.Now.ToString("o")
+            : attachment.createdAt;
+
+        activeContextAttachments.RemoveAll(existing => IsSameChatContext(existing, attachment));
+        activeContextAttachments.Add(attachment);
+
+        while (activeContextAttachments.Count > MAX_ACTIVE_CONTEXTS)
+            activeContextAttachments.RemoveAt(0);
+
+        SaveCloudDialogHistory();
+    }
+
+    public void AddFriendChatContext(FriendDataManager.FriendData friend, string extraContext = "")
+    {
+        if (friend == null) return;
+
+        string friendContext = friend.BuildOracleContext();
+        string relationshipId = BuildFriendRelationshipId(friend);
+        activeRelationshipId = relationshipId;
+        activeFriendContext = BuildEnrichedFriendContext(friend, friendContext, relationshipId, extraContext);
+
+        AddOrReplaceActiveChatContext(new ChatContextAttachment
+        {
+            contextType = ChatContextType.Friend,
+            id = relationshipId,
+            title = $"@{FirstNonEmpty(friend.name, friend.handle, "好友")}",
+            subtitle = FirstNonEmpty(friend.relationship, friend.isVirtual ? "创建的好友档案" : "真实好友"),
+            preview = string.IsNullOrWhiteSpace(extraContext)
+                ? ClipForContext(friend.info, MAX_CONTEXT_PREVIEW_CHARS)
+                : ClipForContext(extraContext, MAX_CONTEXT_PREVIEW_CHARS),
+            payload = activeFriendContext,
+            source = "friend"
+        });
+    }
+
+    public void AddTarotCardChatContext(TarotCard card, bool upright, string sourceTitle = "塔罗牌", string description = "")
+    {
+        if (card == null) return;
+
+        string orientation = upright ? "正位" : "逆位";
+        string title = $"{sourceTitle}：{card.nameZh}（{orientation}）";
+        string keywords = card.keywords != null && card.keywords.Count > 0
+            ? string.Join("、", card.keywords)
+            : "";
+        string payload = $"{title}\n牌ID：{card.cardId}\n英文名：{card.nameEn}\n元素：{card.element}\n关键词：{keywords}";
+        if (!string.IsNullOrWhiteSpace(description))
+            payload += "\n补充描述：" + description.Trim();
+
+        AddOrReplaceActiveChatContext(new ChatContextAttachment
+        {
+            contextType = ChatContextType.TarotCard,
+            id = $"{sourceTitle}:{card.cardId}:{(upright ? "upright" : "reversed")}",
+            title = title,
+            subtitle = keywords,
+            preview = FirstNonEmpty(description, keywords),
+            payload = payload,
+            source = sourceTitle
+        });
+    }
+
+    public void AddTodayCardChatContext(TodayCardPayload payload)
+    {
+        if (payload == null) return;
+
+        string displayName = FirstNonEmpty(payload.displayName, payload.nameZh, payload.cardName, "今日牌");
+        string title = FirstNonEmpty(payload.title, "今日塔罗") + "：" + displayName;
+        string contextPayload =
+            $"{title}\n牌ID：{payload.cardId}\n牌名：{FirstNonEmpty(payload.nameZh, payload.cardName)}\n方向：{payload.orientation}\n生成时间：{payload.generatedAt}";
+        if (!string.IsNullOrWhiteSpace(payload.oracleText))
+            contextPayload += "\n今日神谕：" + payload.oracleText.Trim();
+
+        AddOrReplaceActiveChatContext(new ChatContextAttachment
+        {
+            contextType = ChatContextType.DailyOracle,
+            id = $"today:{payload.cardId}:{payload.orientation}",
+            title = title,
+            subtitle = payload.orientation == "reversed" ? "逆位" : "正位",
+            preview = payload.oracleText,
+            payload = contextPayload,
+            source = "today_oracle"
+        });
+    }
+
+    public void AddReadingChatContext(string readingId, string title, string preview, string payload, string source = "reading")
+    {
+        if (string.IsNullOrWhiteSpace(readingId) && string.IsNullOrWhiteSpace(title)) return;
+
+        AddOrReplaceActiveChatContext(new ChatContextAttachment
+        {
+            contextType = ChatContextType.Reading,
+            id = FirstNonEmpty(readingId, title),
+            title = FirstNonEmpty(title, "占卜记录"),
+            subtitle = string.IsNullOrWhiteSpace(readingId) ? "" : $"readingId:{readingId}",
+            preview = preview,
+            payload = payload,
+            source = source
+        });
+    }
+
+    public void AddConditionChatContext(string id, string title, string description)
+    {
+        if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(description)) return;
+
+        AddOrReplaceActiveChatContext(new ChatContextAttachment
+        {
+            contextType = ChatContextType.Condition,
+            id = FirstNonEmpty(id, title, description),
+            title = FirstNonEmpty(title, "当前条件"),
+            subtitle = "条件",
+            preview = description,
+            payload = description,
+            source = "condition"
+        });
+    }
+
+    public void RemoveActiveChatContext(ChatContextType contextType, string id = null)
+    {
+        activeContextAttachments.RemoveAll(context =>
+            context != null
+            && context.contextType == contextType
+            && (string.IsNullOrWhiteSpace(id) || NormalizeContextKey(context.id) == NormalizeContextKey(id)));
+        SaveCloudDialogHistory();
+    }
+
+    public void ClearActiveChatContexts()
+    {
+        activeContextAttachments.Clear();
+        activeRelationshipId = "";
+        activeFriendContext = "";
+        todayCardPayload = null;
+        SaveCloudDialogHistory();
+    }
+
+    public List<ChatContextAttachment> GetActiveChatContexts()
+    {
+        return CloneContextAttachments(activeContextAttachments);
+    }
+
+    public string BuildActiveContextPreview()
+    {
+        return FormatContextPreview(activeContextAttachments);
+    }
+
+    public static string FormatContextPreview(List<ChatContextAttachment> contexts)
+    {
+        if (contexts == null || contexts.Count == 0) return "";
+
+        var labels = new List<string>();
+        foreach (var context in contexts)
+        {
+            if (context == null) continue;
+            string label = FirstNonEmpty(context.title, context.preview, context.id);
+            if (string.IsNullOrWhiteSpace(label)) continue;
+            labels.Add(ClipForContext(label, 28));
+        }
+
+        return labels.Count == 0 ? "" : "带入：" + string.Join(" · ", labels);
+    }
+
+    private static bool IsSameChatContext(ChatContextAttachment a, ChatContextAttachment b)
+    {
+        if (a == null || b == null) return false;
+        if (a.contextType != b.contextType) return false;
+        string aKey = FirstNonEmpty(a.id, a.title, a.source);
+        string bKey = FirstNonEmpty(b.id, b.title, b.source);
+        return NormalizeContextKey(aKey) == NormalizeContextKey(bKey);
+    }
+
+    private static List<ChatContextAttachment> CloneContextAttachments(List<ChatContextAttachment> source)
+    {
+        var result = new List<ChatContextAttachment>();
+        if (source == null) return result;
+
+        foreach (var context in source)
+        {
+            if (context != null)
+                result.Add(context.Clone());
+        }
+
+        return result;
+    }
+
+    private List<ChatContextAttachment> GetLatestUserContextSnapshot()
+    {
+        for (int i = mChatMessageList.Count - 1; i >= 0; i--)
+        {
+            var message = mChatMessageList[i];
+            if (message == null || message.roleType != DialogRoleType.User) continue;
+            if (message.contextAttachments != null && message.contextAttachments.Count > 0)
+                return message.contextAttachments;
+        }
+
+        return activeContextAttachments;
+    }
+
+    private List<ChatContextAttachment> GetPromptContextSnapshot()
+    {
+        var latestUserContexts = GetLatestUserContextSnapshot();
+        return latestUserContexts != null && latestUserContexts.Count > 0
+            ? CloneContextAttachments(latestUserContexts)
+            : CloneContextAttachments(activeContextAttachments);
     }
 
     /// <summary>
@@ -244,7 +557,8 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             messageType = MsgType.Str,
             content = content,
             options = null,
-            divinerType = CurrentDivinerType
+            divinerType = CurrentDivinerType,
+            contextAttachments = CloneContextAttachments(activeContextAttachments)
         };
         mChatMessageList.Add(data);
         UsageStatsManager.Instance?.TrackDialogMessage();
@@ -274,7 +588,8 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             messageType = MsgType.Str,
             content = content,
             options = options,
-            divinerType = CurrentDivinerType
+            divinerType = CurrentDivinerType,
+            contextAttachments = CloneContextAttachments(GetLatestUserContextSnapshot())
         };
         ApplyOracleRuntimeMetadata(data, lastAssemblyResult?.promptRecord);
         mChatMessageList.Add(data);
@@ -287,6 +602,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         if (recentAssistantReplies.Count > MAX_RECENT_MESSAGES)
             recentAssistantReplies.RemoveAt(0);
 
+        AppNotificationScheduler.Instance?.NotifyDialogueReplyReady(content);
         SaveCloudDialogHistory();
         return data;
     }
@@ -301,7 +617,8 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             messageType = MsgType.DailyCard,
             content = content,
 
-            divinerType = CurrentDivinerType
+            divinerType = CurrentDivinerType,
+            contextAttachments = CloneContextAttachments(activeContextAttachments)
         };
         mChatMessageList.Add(data);
 
@@ -345,6 +662,16 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         {
             activeRelationshipId = relationshipId;
             activeFriendContext = enrichedFriendContext;
+            AddOrReplaceActiveChatContext(new ChatContextAttachment
+            {
+                contextType = ChatContextType.Friend,
+                id = relationshipId,
+                title = $"@{FirstNonEmpty(friend.name, friend.handle, "好友")}",
+                subtitle = FirstNonEmpty(friend.relationship, friend.isVirtual ? "创建的好友档案" : "真实好友"),
+                preview = ClipForContext(friend.info, MAX_CONTEXT_PREVIEW_CHARS),
+                payload = activeFriendContext,
+                source = "friend"
+            });
         }
 
         // 同时添加到 API 历史，让塔罗师知道当前 @ 的好友档案。
@@ -374,13 +701,14 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         string relationshipId = BuildFriendRelationshipId(friend);
         activeRelationshipId = relationshipId;
         activeFriendContext = BuildEnrichedFriendContext(friend, friendContext, relationshipId, extraContext);
-        SaveCloudDialogHistory();
+        AddFriendChatContext(friend, extraContext);
     }
 
     public void ClearActiveFriendContext()
     {
         activeRelationshipId = "";
         activeFriendContext = "";
+        activeContextAttachments.RemoveAll(context => context != null && context.contextType == ChatContextType.Friend);
         SaveCloudDialogHistory();
     }
 
@@ -479,13 +807,13 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         return memorySource.candidates
             .Where(candidate => candidate != null
                 && !string.IsNullOrWhiteSpace(candidate.text)
-                && !string.Equals(candidate.status, "dismissed", StringComparison.OrdinalIgnoreCase)
+                && MemoryUiStore.IsCandidateEnabled(candidate)
                 && MemoryCandidateMatchesFriend(candidate, friend, relationshipId))
             .OrderByDescending(candidate => candidate.confidence)
             .Take(limit)
             .Select(candidate =>
             {
-                string status = string.IsNullOrWhiteSpace(candidate.status) ? "pending" : candidate.status;
+                string status = string.IsNullOrWhiteSpace(candidate.status) ? "promoted" : candidate.status;
                 string type = string.IsNullOrWhiteSpace(candidate.type) ? "memory" : candidate.type;
                 return $"[{status}/{type}] {candidate.text}";
             })
@@ -732,7 +1060,8 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             content = content,
             spreadKind = spreadKind ?? "self_repair",
             options = GetTarotOptions(),
-            divinerType = CurrentDivinerType
+            divinerType = CurrentDivinerType,
+            contextAttachments = CloneContextAttachments(GetLatestUserContextSnapshot())
         };
         CaptureDivinationSnapshot(data);
         mChatMessageList.Add(data);
@@ -749,7 +1078,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     /// 添加单排牌阵互动卡片消息（AI 主动触发）
     /// </summary>
     /// <param name="content">AI 的引导文案</param>
-    /// <param name="spreadKind">牌阵类型，如 "single_mirror"</param>
+    /// <param name="spreadKind">牌阵类型，如 "mirror_card"</param>
     public ChatMessageData AddInteractionCard1Message(string content, string spreadKind)
     {
         ChatMessageData data = new ChatMessageData
@@ -758,9 +1087,10 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             roleType = DialogRoleType.AI,
             messageType = MsgType.InteractionCard1,
             content = content,
-            spreadKind = spreadKind ?? "single_mirror",
+            spreadKind = spreadKind ?? "mirror_card",
             options = GetTarotOptions(),
-            divinerType = CurrentDivinerType
+            divinerType = CurrentDivinerType,
+            contextAttachments = CloneContextAttachments(GetLatestUserContextSnapshot())
         };
         CaptureDivinationSnapshot(data);
         mChatMessageList.Add(data);
@@ -777,7 +1107,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     /// 添加五排牌阵互动卡片消息（AI 主动触发）
     /// </summary>
     /// <param name="content">AI 的引导文案</param>
-    /// <param name="spreadKind">牌阵类型，如 "five_choice_gate"</param>
+    /// <param name="spreadKind">牌阵类型，如 "choice_gate"</param>
     public ChatMessageData AddInteractionCard5Message(string content, string spreadKind)
     {
         ChatMessageData data = new ChatMessageData
@@ -786,9 +1116,10 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             roleType = DialogRoleType.AI,
             messageType = MsgType.InteractionCard5,
             content = content,
-            spreadKind = spreadKind ?? "five_choice_gate",
+            spreadKind = spreadKind ?? "choice_gate",
             options = GetTarotOptions(),
-            divinerType = CurrentDivinerType
+            divinerType = CurrentDivinerType,
+            contextAttachments = CloneContextAttachments(GetLatestUserContextSnapshot())
         };
         CaptureDivinationSnapshot(data);
         mChatMessageList.Add(data);
@@ -842,6 +1173,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             recentAssistantReplies.RemoveAt(0);
 
         data.spreadDrawResultAddedToHistory = true;
+        AddReadingContextFromMessage(data);
         SaveCloudDialogHistory();
     }
 
@@ -885,6 +1217,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         }
 
         CaptureDivinationSnapshot(target);
+        AddReadingContextFromMessage(target);
         SaveCloudDialogHistory();
         DivinationRecordFirestore.Instance?.SaveRecord(DivinationRecordBuilder.FromChatMessage(target));
     }
@@ -925,6 +1258,12 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         };
 
         DivinationEngine.Instance?.RestoreSession(session);
+        AddReadingChatContext(
+            record.readingId,
+            $"占卜：{FirstNonEmpty(record.question, record.spreadKind, "历史占卜")}",
+            FirstNonEmpty(record.shortVerdict, record.judgeContent),
+            BuildReadingRecordContextPayload(record),
+            "record");
         SaveCloudDialogHistory();
     }
 
@@ -1164,6 +1503,73 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         return $"[已锁定牌阵] readingId={data.readingId}，牌阵={spreadName}，抽牌结果：{string.Join("；", parts)}。";
     }
 
+    private void AddReadingContextFromMessage(ChatMessageData data)
+    {
+        if (data == null || !IsSpreadMessage(data)) return;
+        if (data.spreadDrawnCards == null || data.spreadDrawnCards.Count == 0) return;
+
+        string drawSummary = BuildSpreadDrawHistorySummary(data);
+        if (string.IsNullOrWhiteSpace(drawSummary)) return;
+
+        string title = FirstNonEmpty(data.divinationQuestion, data.spreadKind, "牌阵解读");
+        string preview = FirstNonEmpty(data.shortVerdict, data.judgeContent, drawSummary);
+        var payloadLines = new List<string>
+        {
+            drawSummary
+        };
+
+        if (!string.IsNullOrWhiteSpace(data.shortVerdict))
+            payloadLines.Add("短结论：" + data.shortVerdict.Trim());
+        if (!string.IsNullOrWhiteSpace(data.judgeContent))
+            payloadLines.Add("综合判断：" + data.judgeContent.Trim());
+        if (!string.IsNullOrWhiteSpace(data.adviceContent))
+            payloadLines.Add("行动建议：" + data.adviceContent.Trim());
+
+        AddReadingChatContext(
+            data.readingId,
+            $"占卜：{title}",
+            preview,
+            string.Join("\n", payloadLines),
+            "spread");
+    }
+
+    private string BuildReadingRecordContextPayload(DivinationRecordData record)
+    {
+        if (record == null) return "";
+
+        var lines = new List<string>
+        {
+            $"readingId={record.readingId}",
+            $"问题：{record.question}",
+            $"场景：{record.scene}",
+            $"牌阵：{record.spreadKind}"
+        };
+
+        if (record.lockedCards != null && record.lockedCards.Count > 0)
+        {
+            var cards = record.lockedCards
+                .Where(card => card != null)
+                .Select(card =>
+                {
+                    string orientation = card.orientation == "reversed" ? "逆位" : "正位";
+                    return $"{FirstNonEmpty(card.position, card.positionKey)}：{FirstNonEmpty(card.cardName, card.cardId)}（{orientation}）";
+                })
+                .Where(text => !string.IsNullOrWhiteSpace(text))
+                .ToList();
+            if (cards.Count > 0)
+                lines.Add("锁定牌面：" + string.Join("；", cards));
+        }
+
+        if (!string.IsNullOrWhiteSpace(record.shortVerdict))
+            lines.Add("短结论：" + record.shortVerdict.Trim());
+        if (!string.IsNullOrWhiteSpace(record.judgeContent))
+            lines.Add("综合判断：" + record.judgeContent.Trim());
+        if (!string.IsNullOrWhiteSpace(record.adviceContent))
+            lines.Add("行动建议：" + record.adviceContent.Trim());
+
+        return string.Join("\n", lines.Where(line => !string.IsNullOrWhiteSpace(line)));
+    }
+
     private static string FirstNonEmpty(params string[] values)
     {
         if (values == null) return "";
@@ -1277,7 +1683,8 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             activeReadingState = activeReadingState ?? "",
             activeActionKind = activeActionKind ?? "",
             activeRelationshipId = activeRelationshipId ?? "",
-            activeFriendContext = activeFriendContext ?? ""
+            activeFriendContext = activeFriendContext ?? "",
+            activeContextAttachments = CloneContextAttachments(activeContextAttachments)
         };
     }
 
@@ -1292,6 +1699,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         activeActionKind = snapshot.activeActionKind ?? "";
         activeRelationshipId = snapshot.activeRelationshipId ?? "";
         activeFriendContext = snapshot.activeFriendContext ?? "";
+        activeContextAttachments = CloneContextAttachments(snapshot.activeContextAttachments);
         mStreamingMessageIndex = -1;
 
         mMessageIdCounter = 0;
@@ -1426,15 +1834,54 @@ public class DialogSystem : MonoSingleton<DialogSystem>
                 "当前对话已 @ 好友。下面是仅供推理使用的好友上下文，请结合用户的问题自然回复，不要逐字复述这些资料。\n"
                 + activeFriendContext));
         }
+        AppendActiveChatContextSystemMessage(messages);
         messages.AddRange(mApiMessageHistory);
         return messages;
+    }
+
+    private void AppendActiveChatContextSystemMessage(List<DeepSeekAPI.Message> messages)
+    {
+        string contextBlock = BuildChatContextPromptBlock(GetPromptContextSnapshot());
+        if (string.IsNullOrWhiteSpace(contextBlock)) return;
+
+        messages.Add(new DeepSeekAPI.Message("system",
+            "【当前用户带入上下文】\n"
+            + "这些信息是本轮对话的背景，不是用户原文。请结合用户问题自然使用：短、直接、具体；不要机械复述标签；普通聊天不必每句都讲牌。\n"
+            + contextBlock));
+    }
+
+    private string BuildChatContextPromptBlock(List<ChatContextAttachment> contexts)
+    {
+        if (contexts == null || contexts.Count == 0) return "";
+
+        var lines = new List<string>();
+        foreach (var context in contexts)
+        {
+            if (context == null) continue;
+
+            string title = FirstNonEmpty(context.title, context.id, context.contextType.ToString());
+            string subtitle = context.subtitle ?? "";
+            string preview = context.preview ?? "";
+            string payload = context.payload ?? "";
+
+            lines.Add($"- 类型：{context.contextType}；标题：{title}");
+            if (!string.IsNullOrWhiteSpace(subtitle))
+                lines.Add($"  说明：{subtitle}");
+            if (!string.IsNullOrWhiteSpace(preview))
+                lines.Add($"  摘要：{preview}");
+            if (!string.IsNullOrWhiteSpace(payload))
+                lines.Add($"  资料：{ClipForContext(payload, MAX_CONTEXT_PAYLOAD_CHARS)}");
+        }
+
+        return string.Join("\n", lines);
     }
 
     /// <summary>
     /// 构建 ChatPayload 供 ContextAssembler 使用
     /// </summary>
-    private ChatPayload BuildChatPayload(string userMessage)
+    private ChatPayload BuildChatPayload(string userMessage, MemorySource promptMemorySource)
     {
+        promptMemorySource ??= new MemorySource();
         var payload = new ChatPayload
         {
             scene = "chat_companion_stream",
@@ -1445,6 +1892,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             activeReadingState = string.IsNullOrEmpty(activeReadingState)
                 ? (readingLock != null ? "cards_locked" : "")
                 : activeReadingState,
+            divinationPlan = activeDivinationPlan,
             isReturningFromHook = false,
             actionKind = activeActionKind ?? "",
             todayCard = todayCardPayload,
@@ -1461,13 +1909,13 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             user = new UserPayloadProfile
             {
                 userId = "",
-                preferredName = memorySource.stableProfile?.preferredName ?? UserName,
+                preferredName = promptMemorySource.stableProfile?.preferredName ?? UserName,
                 preferredTone = GetOracleVoiceId(),
                 locale = "zh-CN",
                 activeRelationships = string.IsNullOrEmpty(activeRelationshipId)
                     ? null
                     : new List<string> { activeRelationshipId },
-                recentThemes = memorySource.stableProfile?.recurringThemes
+                recentThemes = promptMemorySource.stableProfile?.recurringThemes
             }
         };
 
@@ -1480,13 +1928,14 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     /// </summary>
     private List<DeepSeekAPI.Message> GetOracleAssembledMessages(string userMessage)
     {
+        MemorySource promptMemorySource = GetMemorySourceForPrompt();
         // 构建 ChatPayload
-        var payload = BuildChatPayload(userMessage);
+        var payload = BuildChatPayload(userMessage, promptMemorySource);
 
         // 调用 ContextAssembler 生成 6 条消息
         // [0..4] = system, [5] = user payload
         var assemblyResult = ContextAssembler.AssembleStreamingChat(
-            payload, memorySource, readingLock);
+            payload, promptMemorySource, readingLock);
         lastAssemblyResult = assemblyResult;
 
         var messages = new List<DeepSeekAPI.Message>();
@@ -1497,6 +1946,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             {
                 messages.Add(new DeepSeekAPI.Message(cm.role, cm.content));
             }
+            AppendActiveChatContextSystemMessage(messages);
             AppendStructuredDivinationOutputContract(messages);
         }
         else
@@ -1516,22 +1966,27 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     {
         if (!ShouldRequestStructuredDivinationReply()) return;
 
-        messages.Add(new DeepSeekAPI.Message("system",
-            "本轮是在完成已锁定牌阵的完整解读。请只返回严格 JSON，不要 Markdown，不要代码块，不要额外解释。"
-            + "JSON 字段必须是："
-            + "{\"displayReply\":\"给聊天气泡显示的自然语言回复，短、直接、具体，不超过140字\","
+        string schema = PromptResources.LoadById(
+            "schemas.divination_verdict",
+            "prompts/output_schemas/divination_verdict.schema",
+            "{\"displayReply\":\"给聊天气泡显示的自然语言回复，短、直接、具体，不超过140字\","
             + "\"shortVerdict\":\"1到2句摘要\","
             + "\"judgeContent\":\"详情页综合判断，2到5句\","
             + "\"adviceContent\":\"详情页行动建议，2到4条，可用换行分隔\","
-            + "\"topics\":[\"适合继续追问的问题1？\",\"适合继续追问的问题2？\",\"适合继续追问的问题3？\"]}"));
+            + "\"topics\":[\"适合继续追问的问题1？\",\"适合继续追问的问题2？\",\"适合继续追问的问题3？\"]}");
+
+        messages.Add(new DeepSeekAPI.Message("system",
+            "本轮是在完成已锁定牌阵的完整解读。请只返回严格 JSON，不要 Markdown，不要代码块，不要额外解释。"
+            + "必须符合下面 JSON Schema：\n"
+            + schema));
     }
 
     private bool ShouldRequestStructuredDivinationReply()
     {
         if (readingLock == null) return false;
-        return activeReadingState == "cards_locked"
-            || activeActionKind == "complete_verdict"
-            || activeActionKind == "reveal_card";
+        return activeActionKind == "complete_verdict"
+            || activeReadingState == "generating_verdict"
+            || activeReadingState == "fallback_verdict";
     }
 
     private string BuildVisibleReplyFromStructuredOutput(string output)
@@ -1551,6 +2006,11 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     public PromptRecord GetLastPromptRecord()
     {
         return lastAssemblyResult?.promptRecord;
+    }
+
+    public RuntimePlan GetLastRuntimePlan()
+    {
+        return lastAssemblyResult?.oracleContext?.runtimePlan;
     }
 
     public IReadOnlyList<PromptRecord> GetPromptRecords()
@@ -1600,7 +2060,8 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             locale = "zh-CN",
             responseContract = ResponseContracts.GetFor(stage),
             readingLock = readingLock,
-            deckCardNames = deckCardNames
+            deckCardNames = deckCardNames,
+            currentCardId = string.IsNullOrWhiteSpace(currentRevealCardId) ? null : currentRevealCardId
         };
     }
 
@@ -1659,6 +2120,11 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             if (guardResult.issues.Contains("unlocked_card"))
             {
                 return "我不能引用还没有锁定的牌。先把这次 readingId 和牌面确认下来，再继续解读。";
+            }
+
+            if (guardResult.issues.Contains("non_current_card"))
+            {
+                return "这一轮我只解释当前翻开的这张牌；其他牌等翻开后再进入综合判断。";
             }
 
             var cleaned = CleanGuardedOutput(text, guardResult.issues, options);
@@ -1732,6 +2198,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         if (!ShouldSummarizeMemory(userInput, assistantReply)) return;
 
         var sourcePromptId = lastAssemblyResult?.promptRecord?.promptId;
+        TryRememberLightweightMemory(userInput, sourcePromptId);
         var summaryPayload = new ChatPayload
         {
             scene = "user_memory_summary",
@@ -1770,23 +2237,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
                 var summary = ExtractMemorySummary(response);
                 if (string.IsNullOrEmpty(summary)) return;
 
-                memorySource.candidates.Add(new MemoryCandidate
-                {
-                    id = System.Guid.NewGuid().ToString("N").Substring(0, 12),
-                    userId = "",
-                    type = "recurring_theme",
-                    text = summary,
-                    status = "pending",
-                    confidence = 0.7f,
-                    relationshipId = activeRelationshipId,
-                    sourceConversationId = "",
-                    sourceMessageId = sourcePromptId,
-                    createdAt = System.DateTime.UtcNow.ToString("o")
-                });
-
-                TrimMemoryCandidates();
-                FirestoreManager.Instance?.SaveMemorySource(memorySource);
-                Debug.Log($"[OracleRuntime] Memory candidate saved: {summary}");
+                AddMemoryCandidateIfNew(summary, InferMemoryCandidateType(summary), sourcePromptId, 0.7f);
             },
             (error) =>
             {
@@ -1799,6 +2250,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         var text = (userInput ?? "") + " " + (assistantReply ?? "");
         return text.Contains("关系")
             || text.Contains("喜欢")
+            || text.Contains("不喜欢")
             || text.Contains("前任")
             || text.Contains("朋友")
             || text.Contains("边界")
@@ -1809,6 +2261,86 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             || text.Contains("选择")
             || text.Contains("焦虑")
             || text.ToLowerInvariant().Contains("prefer");
+    }
+
+    private void TryRememberLightweightMemory(string userInput, string sourcePromptId)
+    {
+        string summary = BuildLightweightMemoryText(userInput);
+        if (string.IsNullOrEmpty(summary)) return;
+        AddMemoryCandidateIfNew(summary, InferMemoryCandidateType(summary), sourcePromptId, 0.52f);
+    }
+
+    private string BuildLightweightMemoryText(string userInput)
+    {
+        if (string.IsNullOrWhiteSpace(userInput)) return "";
+
+        string text = userInput.Trim();
+        string lower = text.ToLowerInvariant();
+
+        if (text.Contains("直接") || text.Contains("具体") || text.Contains("空话") ||
+            text.Contains("不要") || lower.Contains("prefer"))
+            return "用户偏好直接、具体、可执行的回应，避免泛泛安慰或空泛灵性话术。";
+
+        if (text.Contains("前任") || text.Contains("复合") || text.Contains("分手"))
+            return "用户近期围绕前任/复合议题寻求边界感和下一步行动判断。";
+
+        if (text.Contains("喜欢") || text.Contains("暧昧") || text.Contains("消息") ||
+            text.Contains("回应") || text.Contains("联系"))
+            return "用户在关系回应节奏上容易需要明确证据，适合给行为级边界建议。";
+
+        if (text.Contains("焦虑") || text.Contains("边界") || text.Contains("关系") || text.Contains("朋友"))
+            return "用户近期有关系或情绪张力，回应时应先命名张力，再给一个小而具体的行动。";
+
+        if (text.Contains("工作") || text.Contains("选择") || text.Contains("事业"))
+            return "用户近期关注工作/选择议题，适合用利弊、下一步实验和现实约束来回应。";
+
+        return "";
+    }
+
+    private string InferMemoryCandidateType(string text)
+    {
+        string value = text ?? "";
+        if (value.Contains("偏好") || value.Contains("喜欢") || value.Contains("不喜欢") || value.Contains("不要"))
+            return "preference";
+        if (value.Contains("情绪") || value.Contains("关系") || value.Contains("焦虑") || value.Contains("边界") || value.Contains("前任"))
+            return "emotion";
+        if (value.Contains("成长") || value.Contains("工作") || value.Contains("选择"))
+            return "growth";
+        return "topic";
+    }
+
+    private void AddMemoryCandidateIfNew(string text, string type, string sourcePromptId, float confidence)
+    {
+        if (memorySource == null)
+            memorySource = new MemorySource();
+        memorySource.candidates ??= new List<MemoryCandidate>();
+
+        string normalized = (text ?? "").Trim();
+        if (string.IsNullOrEmpty(normalized)) return;
+
+        bool exists = memorySource.candidates.Any(candidate =>
+            candidate != null &&
+            !string.IsNullOrEmpty(candidate.text) &&
+            string.Equals(candidate.text.Trim(), normalized, StringComparison.OrdinalIgnoreCase));
+        if (exists) return;
+
+        memorySource.candidates.Add(new MemoryCandidate
+        {
+            id = Guid.NewGuid().ToString("N").Substring(0, 12),
+            userId = UserDataManager.Instance != null ? UserDataManager.Instance.FirebaseUid : "",
+            type = string.IsNullOrEmpty(type) ? "topic" : type,
+            text = normalized,
+            status = MemoryPrivacySettings.RequireConfirmBeforeAdd ? "pending" : "promoted",
+            confidence = confidence,
+            relationshipId = activeRelationshipId,
+            sourceConversationId = "dialog",
+            sourceMessageId = sourcePromptId,
+            createdAt = DateTime.UtcNow.ToString("o")
+        });
+
+        TrimMemoryCandidates();
+        FirestoreManager.Instance?.SaveMemorySource(memorySource);
+        Debug.Log($"[OracleRuntime] Memory candidate saved: {normalized}");
     }
 
     private static string ExtractMemorySummary(string response)
@@ -1844,6 +2376,14 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     public MemorySource GetMemorySource()
     {
         return memorySource;
+    }
+
+    /// <summary>
+    /// 获取用于 AI Prompt 的记忆源；用户关闭记忆共享时返回空记忆，但不清除真实记忆。
+    /// </summary>
+    public MemorySource GetMemorySourceForPrompt()
+    {
+        return MemoryPrivacySettings.GetPromptMemorySource(memorySource);
     }
 
     /// <summary>
@@ -1898,6 +2438,23 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     }
 
     /// <summary>
+    /// 设置当前占卜规划（DivinationEngine 调用）
+    /// </summary>
+    public void SetActiveDivinationPlan(DivinationPlan plan)
+    {
+        activeDivinationPlan = plan;
+        SaveCloudDialogHistory();
+    }
+
+    /// <summary>
+    /// 设置当前逐张揭牌解读的牌。只有逐张 AI 解读时使用；完整牌阵解读应传空。
+    /// </summary>
+    public void SetCurrentRevealCardId(string cardId)
+    {
+        currentRevealCardId = cardId ?? "";
+    }
+
+    /// <summary>
     /// 设置当前 Reading ID（DivinationEngine 调用）
     /// </summary>
     public void SetActiveReadingId(string readingId)
@@ -1912,6 +2469,10 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     public void SetTodayCardPayload(TodayCardPayload payload)
     {
         todayCardPayload = payload;
+        if (payload == null)
+            RemoveActiveChatContext(ChatContextType.DailyOracle);
+        else
+            AddTodayCardChatContext(payload);
     }
 
     /// <summary>
@@ -1921,6 +2482,11 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     {
         readingLock = null;
         activeReadingId = null;
+        activeReadingState = "";
+        activeActionKind = "";
+        activeDivinationPlan = null;
+        currentRevealCardId = "";
+        SaveCloudDialogHistory();
     }
 
     /// <summary>
@@ -1932,6 +2498,9 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         mApiMessageHistory.Clear();
         recentUserMessages.Clear();
         recentAssistantReplies.Clear();
+        activeContextAttachments.Clear();
+        activeRelationshipId = "";
+        activeFriendContext = "";
         mMessageIdCounter = 0;
         SaveCloudDialogHistory();
     }
@@ -2049,7 +2618,8 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             messageType = MsgType.Str,
             content = "",
             options = null,
-            divinerType = CurrentDivinerType
+            divinerType = CurrentDivinerType,
+            contextAttachments = CloneContextAttachments(GetLatestUserContextSnapshot())
         };
         ApplyOracleRuntimeMetadata(data, lastAssemblyResult?.promptRecord);
         mChatMessageList.Add(data);
@@ -2095,6 +2665,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         if (recentAssistantReplies.Count > MAX_RECENT_MESSAGES)
             recentAssistantReplies.RemoveAt(0);
 
+        AppNotificationScheduler.Instance?.NotifyDialogueReplyReady(fullContent);
         if (mStreamingMessageIndex == messageIndex)
             mStreamingMessageIndex = -1;
     }

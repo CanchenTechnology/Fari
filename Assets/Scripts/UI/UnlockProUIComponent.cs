@@ -1,7 +1,7 @@
-/*---------------------------------
+﻿/*---------------------------------
  *Title:UI自动化组件生成代码生成工具
  *Author:GamerFrameWork-UIFrameWork
- *Date:6/11/2026 2:21:13 PM
+ *Date:6/22/2026 11:03:39 AM
  *Description:变量需要以[Text]括号加组件类型的格式进行声明，然后右键窗口物体—— 一键生成UI数据组件脚本即可
  *注意:以下文件是自动生成的，任何手动修改都会被下次生成覆盖,若手动修改后,尽量避免自动生成
 ---------------------------------*/
@@ -12,12 +12,13 @@ using UnityEngine;
 
 public class UnlockProUIComponent:MonoBehaviour
 {
-	public WindowLayer windowLayer = WindowLayer.MainUI;
+	public WindowLayer windowLayer = WindowLayer.Top;
 	public Button BackButtonButton;
-	public Text ValidityLabelText;
-	public Text ValidityValueText;
+	public Text CurrentPlanValueText;
 	public Button ManageSubscriptionBtnButton;
 	public Button RestorePurchaseBtnButton;
+	public Button RuntimeMonthlyPurchaseBtnButton;
+	public Button RuntimeYearlyPurchaseBtnButton;
 	public void InitComponent(WindowBase target)
 	{
 	    //组件事件绑定
@@ -27,5 +28,7 @@ public class UnlockProUIComponent:MonoBehaviour
 	    target.AddButtonClickListener(BackButtonButton,mWindow.OnBackButtonButtonClick);
 	    target.AddButtonClickListener(ManageSubscriptionBtnButton,mWindow.OnManageSubscriptionBtnButtonClick);
 	    target.AddButtonClickListener(RestorePurchaseBtnButton,mWindow.OnRestorePurchaseBtnButtonClick);
+	    target.AddButtonClickListener(RuntimeMonthlyPurchaseBtnButton,mWindow.OnRuntimeMonthlyPurchaseBtnButtonClick);
+	    target.AddButtonClickListener(RuntimeYearlyPurchaseBtnButton,mWindow.OnRuntimeYearlyPurchaseBtnButtonClick);
 	}
 }

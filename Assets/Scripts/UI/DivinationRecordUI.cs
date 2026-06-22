@@ -30,6 +30,7 @@ public class DivinationRecordUI : WindowBase
 	private string _pendingDeleteReadingId;
 	private float _deleteConfirmDeadline;
 	private const float DELETE_CONFIRM_SECONDS = 8f;
+	private bool _hasLoggedSaveButtonAutoEnable;
 
 	[Header("详情页样式配置")]
 	public float cardItemHeight = 60f;             // 每张牌的显示高度
@@ -57,6 +58,8 @@ public class DivinationRecordUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		EnsureSaveToDiaryButtonInteractable();
+		SetSaveToDiaryButtonState(true, "保存到历史");
 
 		// 从 HistoryUI 获取选中的记录
 		_currentRecord = HistoryUI.SelectedRecord;
@@ -410,6 +413,8 @@ public class DivinationRecordUI : WindowBase
 
 		Debug.Log($"[DivinationRecordUI] 继续追问: {_currentRecord.readingId}");
 
+		DialogSystem.Instance?.ActivateReadingFromRecord(_currentRecord, DivinationPhase.FollowUp);
+
 		// 恢复占卜会话上下文
 		if (DivinationEngine.Instance != null)
 		{
@@ -420,6 +425,10 @@ public class DivinationRecordUI : WindowBase
 				scene = _currentRecord.scene,
 				spreadKind = _currentRecord.spreadKind,
 				lockedCards = _currentRecord.lockedCards,
+				shortVerdict = _currentRecord.shortVerdict,
+				judgeContent = _currentRecord.judgeContent,
+				adviceContent = _currentRecord.adviceContent,
+				topics = _currentRecord.topics,
 				phase = DivinationPhase.FollowUp,
 				createdAt = System.DateTime.Now.ToString("o")
 			};
@@ -435,11 +444,14 @@ public class DivinationRecordUI : WindowBase
 	/// <summary>保存到日记</summary>
 	public void OnSaveToDiaryButtonClick()
 	{
-		if (_currentRecord == null) return;
+		if (_currentRecord == null)
+		{
+			SetSaveToDiaryButtonState(true, "保存到历史");
+			return;
+		}
 
 		Debug.Log($"[DivinationRecordUI] 保存到日记: {_currentRecord.readingId}");
 
-		// 将记录重新保存到 Firestore（确保云端有最新数据）
 		var firestore = DivinationRecordFirestore.Instance;
 		if (firestore == null)
 		{
@@ -453,19 +465,22 @@ public class DivinationRecordUI : WindowBase
 			{
 				if (success)
 				{
-					Debug.Log("[DivinationRecordUI] 已保存到日记");
-					ToastManager.ShowToast("已保存到占卜历史");
+					ToastManager.ShowToast("已保存到历史");
+					Debug.Log("[DivinationRecordUI] 已保存到云端历史");
 				}
 				else
 				{
-					Debug.LogWarning("[DivinationRecordUI] 云端保存失败，已保留本地历史缓存");
-					ToastManager.ShowToast("已保存到本地历史缓存");
+					ToastManager.ShowToast("保存失败，请稍后再试");
+					Debug.LogWarning("[DivinationRecordUI] 云端保存失败");
 				}
+				SetSaveToDiaryButtonState(true, "保存到历史");
 			});
 		}
 		else
 		{
-			ToastManager.ShowToast("历史服务未就绪");
+			ToastManager.ShowToast("历史服务暂不可用");
+			SetSaveToDiaryButtonState(true, "保存到历史");
+			Debug.LogWarning("[DivinationRecordUI] 历史服务未就绪，未保存记录");
 		}
 	}
 
@@ -519,18 +534,18 @@ public class DivinationRecordUI : WindowBase
 
 		if (firestore != null)
 		{
-			bool canDeleteCloud = firestore.IsReady && UserDataManager.Instance != null && !string.IsNullOrEmpty(UserDataManager.Instance.FirebaseUid);
 			firestore.DeleteRecord(readingId, success =>
 			{
 				_isDeleting = false;
 
-				if (success || !canDeleteCloud)
+				if (success)
 				{
 					Debug.Log($"[DivinationRecordUI] 已删除记录: {readingId}");
-					ToastManager.ShowToast(success ? "占卜记录已删除" : "已从本地历史缓存删除");
+					ToastManager.ShowToast("占卜记录已删除");
 					// 清除选中状态
 					HistoryUI.SelectedRecord = null;
-					// 返回上一页（HistoryUI 会刷新列表）
+					UIModule.Instance.GetWindow<HistoryUI>()?.RefreshList();
+					// 返回上一页
 					HideWindow();
 				}
 				else
@@ -551,6 +566,11 @@ public class DivinationRecordUI : WindowBase
 	#endregion
 
 	#region 分享功能
+
+	private void LateUpdate()
+	{
+		EnsureSaveToDiaryButtonInteractable();
+	}
 
 	/// <summary>
 	/// 构建分享文本
@@ -580,6 +600,37 @@ public class DivinationRecordUI : WindowBase
 		text += "\n\n—— Moonly 塔罗占卜";
 
 		return text;
+	}
+
+	private void SetSaveToDiaryButtonState(bool interactable, string label)
+	{
+		if (uiComponent?.SaveToDiaryButton == null)
+			return;
+
+		uiComponent.SaveToDiaryButton.interactable = interactable;
+		Text buttonText = uiComponent.SaveToDiaryButton.GetComponentInChildren<Text>(true);
+		if (buttonText != null)
+			buttonText.text = label ?? string.Empty;
+	}
+
+	private void EnsureSaveToDiaryButtonInteractable()
+	{
+		if (uiComponent?.SaveToDiaryButton == null)
+			return;
+
+		if (!uiComponent.SaveToDiaryButton.interactable)
+		{
+			uiComponent.SaveToDiaryButton.interactable = true;
+			Text buttonText = uiComponent.SaveToDiaryButton.GetComponentInChildren<Text>(true);
+			if (buttonText != null)
+				buttonText.text = "保存到历史";
+
+			if (!_hasLoggedSaveButtonAutoEnable)
+			{
+				_hasLoggedSaveButtonAutoEnable = true;
+				Debug.LogWarning("[DivinationRecordUI] SaveToDiaryButton 被置为不可交互，已自动恢复。");
+			}
+		}
 	}
 
 #if UNITY_IOS && !UNITY_EDITOR

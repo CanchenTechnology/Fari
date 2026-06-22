@@ -69,7 +69,7 @@ if [[ -n "$RELEASE_ENV_FILE" ]]; then
   fi
 
   if [[ ! -f "$RELEASE_ENV_FILE" ]]; then
-    fail "Release env file does not exist: $RELEASE_ENV_FILE"
+    fail "Release env file does not exist: $RELEASE_ENV_FILE; create it with ./scripts/init-release-env.sh"
   else
     set -a
     # shellcheck disable=SC1090

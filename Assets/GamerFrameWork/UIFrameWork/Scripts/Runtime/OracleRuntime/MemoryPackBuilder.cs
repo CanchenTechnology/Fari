@@ -32,20 +32,39 @@ namespace GamerFrameWork.OracleRuntime
 
         public static List<string> ToPromptLines(MemoryPack pack)
         {
-            var sections = new List<string>();
-            var keys = new[] { "stableProfile", "relationshipScope", "readingContinuity", "candidates", "tomorrowHooks" };
-            var values = new List<List<string>>
-            {
-                pack.stableProfile, pack.relationshipScope, pack.readingContinuity,
-                pack.candidates, pack.tomorrowHooks
-            };
+            var items = Flatten(pack, 5);
+            if (items.Count == 0)
+                return new List<string> { "No relevant memory selected." };
+            return items.Select(item => $"- {item}").ToList();
+        }
 
-            for (int i = 0; i < keys.Length; i++)
+        private static List<string> Flatten(MemoryPack pack, int maxItems)
+        {
+            pack ??= new MemoryPack();
+            var items = new List<string>();
+
+            AddItems(items, pack.relationshipScope, maxItems);
+            AddItems(items, pack.readingContinuity, maxItems);
+            AddItems(items, pack.tomorrowHooks, maxItems);
+            AddItems(items, pack.stableProfile, maxItems);
+            AddItems(items, pack.candidates, maxItems);
+
+            return items
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .Distinct()
+                .Take(maxItems)
+                .ToList();
+        }
+
+        private static void AddItems(List<string> target, List<string> source, int maxItems)
+        {
+            if (target.Count >= maxItems || source == null) return;
+            foreach (string item in source)
             {
-                var lines = values[i];
-                sections.Add($"{keys[i]}: {(lines.Count > 0 ? string.Join(" | ", lines) : "none")}");
+                if (target.Count >= maxItems) break;
+                if (!string.IsNullOrWhiteSpace(item))
+                    target.Add(item);
             }
-            return sections;
         }
 
         private static MemoryPackQuery NormalizeQuery(MemoryPackQuery query)
@@ -145,11 +164,17 @@ namespace GamerFrameWork.OracleRuntime
         private static List<string> PickCandidates(List<MemoryCandidate> candidates, int maxItems)
         {
             return candidates?
-                .Where(c => c.status == "pending")
+                .Where(c => c != null && IsCandidatePromoted(c.status))
                 .OrderByDescending(c => c.confidence)
                 .Take(maxItems)
                 .Select(c => $"Candidate {c.type}: {c.text}")
                 .ToList() ?? new List<string>();
+        }
+
+        private static bool IsCandidatePromoted(string status)
+        {
+            var value = (status ?? "").ToLowerInvariant();
+            return string.IsNullOrEmpty(value) || value == "promoted" || value == "accepted";
         }
 
         private static List<string> PickTomorrowHooks(List<TomorrowHook> hooks,

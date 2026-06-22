@@ -305,7 +305,7 @@ public class SpinRegionPicker : MonoBehaviour
 	private void MoveListToIndex(LoopListView2 listView, int index)
 	{
 		if (listView == null) return;
-		listView.MovePanelToItemIndex(index - 1, 0);
+		listView.MovePanelToItemIndex(index, 0);
 		listView.FinishSnapImmediately();
 	}
 

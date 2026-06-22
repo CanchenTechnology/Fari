@@ -507,10 +507,7 @@ public class EditFriendUI : WindowBase
 				return;
 			}
 
-			if (settings.ShouldPublishToFeed)
-				store.PublishTodaySummary(OnTodaySummarySyncUpdated);
-			else
-				store.DisableTodaySummary(OnTodaySummarySyncUpdated);
+			store.ApplySyncSettingsToPublishedSummaries(settings, 30, OnTodaySummarySyncUpdated);
 		});
 	}
 

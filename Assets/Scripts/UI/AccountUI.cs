@@ -12,6 +12,7 @@ using GamerFrameWork.UIFrameWork;
 public class AccountUI : WindowBase
 {
 	public AccountUIComponent uiComponent;
+	private bool _isDeletingAccount;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -99,9 +100,8 @@ public class AccountUI : WindowBase
 	/// </summary>
 	public void OnexitButtonClick()
 	{
-		FriendRuntimeDialog.ShowConfirm(
-			transform,
-			"退出登录",
+		ShowSelectWindow(
+			"退出账号",
 			"确定要退出当前账号吗？本地资料会保留，云端账号不会删除。",
 			"退出",
 			ConfirmLogout);
@@ -113,7 +113,7 @@ public class AccountUI : WindowBase
 		UserDataManager.Instance.Logout();
 		Debug.Log("[AccountUI] 用户已退出登录");
 
-		HideWindow();
+		ReturnToLogin();
 	}
 
 	/// <summary>
@@ -121,37 +121,101 @@ public class AccountUI : WindowBase
 	/// </summary>
 	public void OndeleteButtonClick()
 	{
-		FriendRuntimeDialog.ShowConfirm(
-			transform,
-			"删除账户",
-			"确定永久删除当前账户吗？云端资料、公开资料和本地账户数据会被清除，此操作不可恢复。",
+		ShowSelectWindow(
+			"删除账号",
+			"确定永久删除当前账号吗？后台账号、云端资料、公开资料、占卜记录、好友记录和本地账户数据都会被清除，此操作不可恢复。",
 			"永久删除",
 			ConfirmDeleteAccount);
 	}
 
 	private void ConfirmDeleteAccount()
 	{
+		if (_isDeletingAccount)
+		{
+			ToastManager.ShowToast("正在删除账号，请稍候");
+			return;
+		}
+
 		var authManager = FirebaseAuthManager.Instance;
 		if (authManager == null || !authManager.IsLoggedIn)
 		{
+			ClearDeletedAccountLocalCaches();
 			UserDataManager.Instance.ClearData();
 			ToastManager.ShowToast("本地账户数据已清除");
-			HideWindow();
+			ReturnToLogin();
 			return;
 		}
+
+		_isDeletingAccount = true;
+		SetAccountButtonsInteractable(false);
+		ToastManager.ShowToast("正在删除账号数据...");
 
 		authManager.DeleteUser(
 			() =>
 			{
+				_isDeletingAccount = false;
+				SetAccountButtonsInteractable(true);
+				ClearDeletedAccountLocalCaches();
 				UserDataManager.Instance.ClearData();
 				ToastManager.ShowToast("账户已删除");
-				HideWindow();
+				ReturnToLogin();
 			},
 			error =>
 			{
+				_isDeletingAccount = false;
+				SetAccountButtonsInteractable(true);
 				ToastManager.ShowToast("删除失败：" + error);
 				Debug.LogError("[AccountUI] 删除账户失败: " + error);
 			});
+	}
+
+	private void ShowSelectWindow(string title, string content, string sureText, System.Action onSure)
+	{
+		SelectWindow selectWindow = UIModule.Instance.PopUpWindow<SelectWindow>();
+		if (selectWindow == null)
+		{
+			ToastManager.ShowToast("确认窗口打开失败");
+			return;
+		}
+
+		selectWindow.InitViewState(
+			SelectType.Normal,
+			content,
+			onSure,
+			null,
+			sureText,
+			"取消",
+			title,
+			TextAnchor.MiddleCenter);
+	}
+
+	private void ReturnToLogin()
+	{
+		UIModule.Instance.DestroyAllWindows();
+		UIModule.Instance.PopUpWindow<LoginUI>();
+	}
+
+	private void ClearDeletedAccountLocalCaches()
+	{
+		HistoryUI.SelectedRecord = null;
+		DivinationHistoryUI.SelectedRecord = null;
+		DivinationInfoUI.SelectedRecord = null;
+		DivinationRecordFirestore.ClearLocalCacheForCurrentUser();
+		DailyOracleFirestore.ClearLocalCacheForCurrentUser();
+		DialogHistoryFirestore.ClearLocalDefault();
+		DailyOracleService.Instance?.ClearCache();
+		DivinationEngine.Instance?.ClearTodayCard();
+		DivinationEngine.Instance?.ClearSession();
+		UsageStatsManager.Instance?.ClearLocalUsageStats();
+	}
+
+	private void SetAccountButtonsInteractable(bool interactable)
+	{
+		if (uiComponent == null) return;
+		if (uiComponent.exitButton != null)
+			uiComponent.exitButton.interactable = interactable;
+		if (uiComponent.deleteButton != null)
+			uiComponent.deleteButton.interactable = interactable;
 	}
 	#endregion
 }

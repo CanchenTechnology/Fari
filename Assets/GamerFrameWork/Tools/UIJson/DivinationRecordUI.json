@@ -1,0 +1,1152 @@
+{
+  "screenName": "DivinationRecordUI",
+  "resolution": { "x": 1080, "y": 1920 },
+  "matchWidthOrHeight": 0,
+  "includeMask": false,
+  "defaultFont": "Assets/GamerFrameWork/I2/Localization/Examples/Resources/ARIAL.TTF",
+  "elements": [
+    {
+      "name": "Background",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 0 },
+      "color": { "r": 0.006, "g": 0.006, "b": 0.018, "a": 1 }
+    },
+    {
+      "name": "PurpleAmbient",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 0 },
+      "color": { "r": 0.038, "g": 0.022, "b": 0.070, "a": 0.58 }
+    },
+    {
+      "name": "TopAstrolabeDecor",
+      "type": "Text",
+      "raycastTarget": false,
+      "text": "◎\n\n       ╱╲\n  ◜──────────────◝",
+      "fontSize": 50,
+      "fontStyle": "Normal",
+      "textAlignment": "Center",
+      "textColor": { "r": 0.42, "g": 0.24, "b": 0.10, "a": 0.26 },
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -105 },
+      "size": { "x": 620, "y": 180 }
+    },
+    {
+      "name": "StatusBar",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 70 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        {
+          "name": "TimeText",
+          "type": "Text",
+          "text": "9:41",
+          "fontSize": 35,
+          "fontStyle": "Bold",
+          "textAlignment": "Left",
+          "textColor": { "r": 0.92, "g": 0.92, "b": 0.94, "a": 1 },
+          "anchorMin": { "x": 0, "y": 1 },
+          "anchorMax": { "x": 0, "y": 1 },
+          "pivot": { "x": 0, "y": 1 },
+          "position": { "x": 68, "y": -28 },
+          "size": { "x": 170, "y": 48 }
+        },
+        {
+          "name": "StatusIcons",
+          "type": "Text",
+          "text": "▮▮▮  ≋  ▭",
+          "fontSize": 31,
+          "fontStyle": "Bold",
+          "textAlignment": "Right",
+          "textColor": { "r": 0.92, "g": 0.92, "b": 0.94, "a": 1 },
+          "anchorMin": { "x": 1, "y": 1 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "pivot": { "x": 1, "y": 1 },
+          "position": { "x": -48, "y": -28 },
+          "size": { "x": 260, "y": 48 }
+        }
+      ]
+    },
+    {
+      "name": "BackButtonCircle",
+      "type": "Panel",
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 0, "y": 1 },
+      "position": { "x": 82, "y": -118 },
+      "size": { "x": 72, "y": 72 },
+      "color": { "r": 0.025, "g": 0.022, "b": 0.040, "a": 0.88 },
+      "children": [
+        {
+          "name": "BackIcon",
+          "type": "Text",
+          "text": "‹",
+          "fontSize": 66,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.90, "g": 0.70, "b": 0.45, "a": 1 },
+          "position": { "x": -2, "y": 2 },
+          "size": { "x": 68, "y": 68 }
+        },
+        {
+          "name": "[Button]Back",
+          "type": "Button",
+          "text": "",
+          "anchorMin": { "x": 0, "y": 0 },
+          "anchorMax": { "x": 1, "y": 1 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 0, "y": 0 },
+          "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+        }
+      ]
+    },
+    {
+      "name": "TitleGroup",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -78 },
+      "size": { "x": 0, "y": 118 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        {
+          "name": "TitleLineLeft",
+          "type": "Panel",
+          "raycastTarget": false,
+          "position": { "x": -285, "y": -45 },
+          "size": { "x": 175, "y": 1.5 },
+          "color": { "r": 0.78, "g": 0.52, "b": 0.28, "a": 0.45 }
+        },
+        {
+          "name": "TitleLineRight",
+          "type": "Panel",
+          "raycastTarget": false,
+          "position": { "x": 285, "y": -45 },
+          "size": { "x": 175, "y": 1.5 },
+          "color": { "r": 0.78, "g": 0.52, "b": 0.28, "a": 0.45 }
+        },
+        {
+          "name": "TitleStarLeft",
+          "type": "Text",
+          "text": "✦",
+          "fontSize": 40,
+          "fontStyle": "Bold",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.92, "g": 0.70, "b": 0.42, "a": 1 },
+          "position": { "x": -162, "y": -45 },
+          "size": { "x": 70, "y": 58 }
+        },
+        {
+          "name": "TitleStarRight",
+          "type": "Text",
+          "text": "✦",
+          "fontSize": 40,
+          "fontStyle": "Bold",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.92, "g": 0.70, "b": 0.42, "a": 1 },
+          "position": { "x": 162, "y": -45 },
+          "size": { "x": 70, "y": 58 }
+        },
+        {
+          "name": "TitleText",
+          "type": "Text",
+          "text": "占卜记录",
+          "fontSize": 56,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.94, "g": 0.73, "b": 0.46, "a": 1 },
+          "position": { "x": 0, "y": -45 },
+          "size": { "x": 330, "y": 74 }
+        }
+      ]
+    },
+    {
+      "name": "[ScrollRect]RecordScrollContainer",
+      "type": "ScrollRect",
+      "horizontalScroll": false,
+      "verticalScroll": true,
+      "scrollMovementType": "Clamped",
+      "scrollInertia": true,
+      "scrollSensitivity": 24,
+      "layoutType": "None",
+      "raycastTarget": true,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "position": { "x": 0, "y": 18 },
+      "size": { "x": -56, "y": -382 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        {
+          "name": "RecordContentMock",
+          "type": "Panel",
+          "raycastTarget": false,
+          "anchorMin": { "x": 0.5, "y": 1 },
+          "anchorMax": { "x": 0.5, "y": 1 },
+          "pivot": { "x": 0.5, "y": 1 },
+          "position": { "x": 0, "y": 0 },
+          "size": { "x": 1000, "y": 1290 },
+          "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+          "children": [
+            {
+              "name": "MetaCardBorder",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "pivot": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -4 },
+              "size": { "x": 1000, "y": 240 },
+              "color": { "r": 0.43, "g": 0.26, "b": 0.54, "a": 0.50 },
+              "children": [
+                {
+                  "name": "MetaCard",
+                  "type": "Panel",
+                  "raycastTarget": false,
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 992, "y": 232 },
+                  "color": { "r": 0.035, "g": 0.035, "b": 0.070, "a": 0.92 },
+                  "children": [
+                    {
+                      "name": "MetaDivider",
+                      "type": "Panel",
+                      "raycastTarget": false,
+                      "position": { "x": 0, "y": 0 },
+                      "size": { "x": 1.5, "y": 178 },
+                      "color": { "r": 0.56, "g": 0.47, "b": 0.60, "a": 0.38 }
+                    },
+                    {
+                      "name": "MetaTypeIcon",
+                      "type": "Text",
+                      "text": "♧",
+                      "fontSize": 34,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.76, "g": 0.45, "b": 0.95, "a": 1 },
+                      "position": { "x": -435, "y": 66 },
+                      "size": { "x": 48, "y": 48 }
+                    },
+                    {
+                      "name": "MetaTypeLabel",
+                      "type": "Text",
+                      "text": "占卜类型",
+                      "fontSize": 30,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.82, "g": 0.79, "b": 0.83, "a": 1 },
+                      "position": { "x": -338, "y": 66 },
+                      "size": { "x": 170, "y": 44 }
+                    },
+                    {
+                      "name": "MetaTypeValue",
+                      "type": "Text",
+                      "text": "关系牌阵",
+                      "fontSize": 30,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.90, "g": 0.88, "b": 0.91, "a": 1 },
+                      "position": { "x": -98, "y": 66 },
+                      "size": { "x": 200, "y": 44 }
+                    },
+                    {
+                      "name": "MetaTargetIcon",
+                      "type": "Text",
+                      "text": "♙",
+                      "fontSize": 36,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.76, "g": 0.45, "b": 0.95, "a": 1 },
+                      "position": { "x": -435, "y": 2 },
+                      "size": { "x": 48, "y": 48 }
+                    },
+                    {
+                      "name": "MetaTargetLabel",
+                      "type": "Text",
+                      "text": "参与对象",
+                      "fontSize": 30,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.82, "g": 0.79, "b": 0.83, "a": 1 },
+                      "position": { "x": -338, "y": 2 },
+                      "size": { "x": 170, "y": 44 }
+                    },
+                    {
+                      "name": "MetaTargetValue",
+                      "type": "Text",
+                      "text": "Alex",
+                      "fontSize": 30,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.90, "g": 0.88, "b": 0.91, "a": 1 },
+                      "position": { "x": -78, "y": 2 },
+                      "size": { "x": 150, "y": 44 }
+                    },
+                    {
+                      "name": "MetaOracleIcon",
+                      "type": "Text",
+                      "text": "☯",
+                      "fontSize": 34,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.76, "g": 0.45, "b": 0.95, "a": 1 },
+                      "position": { "x": -435, "y": -62 },
+                      "size": { "x": 48, "y": 48 }
+                    },
+                    {
+                      "name": "MetaOracleLabel",
+                      "type": "Text",
+                      "text": "神谕者",
+                      "fontSize": 30,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.82, "g": 0.79, "b": 0.83, "a": 1 },
+                      "position": { "x": -338, "y": -62 },
+                      "size": { "x": 170, "y": 44 }
+                    },
+                    {
+                      "name": "MetaOracleValue",
+                      "type": "Text",
+                      "text": "塔罗师",
+                      "fontSize": 30,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.90, "g": 0.88, "b": 0.91, "a": 1 },
+                      "position": { "x": -78, "y": -62 },
+                      "size": { "x": 150, "y": 44 }
+                    },
+                    {
+                      "name": "MetaTimeIcon",
+                      "type": "Text",
+                      "text": "◷",
+                      "fontSize": 38,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.76, "g": 0.45, "b": 0.95, "a": 1 },
+                      "position": { "x": 78, "y": 66 },
+                      "size": { "x": 48, "y": 48 }
+                    },
+                    {
+                      "name": "MetaTimeLabel",
+                      "type": "Text",
+                      "text": "时间",
+                      "fontSize": 30,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.82, "g": 0.79, "b": 0.83, "a": 1 },
+                      "position": { "x": 155, "y": 66 },
+                      "size": { "x": 110, "y": 44 }
+                    },
+                    {
+                      "name": "MetaTimeValue",
+                      "type": "Text",
+                      "text": "2026.05.29 21:40",
+                      "fontSize": 30,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Right",
+                      "textColor": { "r": 0.90, "g": 0.88, "b": 0.91, "a": 1 },
+                      "position": { "x": 320, "y": 66 },
+                      "size": { "x": 315, "y": 44 }
+                    },
+                    {
+                      "name": "MetaStatusIcon",
+                      "type": "Text",
+                      "text": "⊕",
+                      "fontSize": 38,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.76, "g": 0.45, "b": 0.95, "a": 1 },
+                      "position": { "x": 78, "y": 2 },
+                      "size": { "x": 48, "y": 48 }
+                    },
+                    {
+                      "name": "MetaStatusLabel",
+                      "type": "Text",
+                      "text": "状态",
+                      "fontSize": 30,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.82, "g": 0.79, "b": 0.83, "a": 1 },
+                      "position": { "x": 155, "y": 2 },
+                      "size": { "x": 110, "y": 44 }
+                    },
+                    {
+                      "name": "MetaStatusValue",
+                      "type": "Text",
+                      "text": "待回访",
+                      "fontSize": 30,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Right",
+                      "textColor": { "r": 0.96, "g": 0.72, "b": 0.35, "a": 1 },
+                      "position": { "x": 390, "y": 2 },
+                      "size": { "x": 170, "y": 44 }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "DrawnCardsBorder",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "pivot": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -262 },
+              "size": { "x": 1000, "y": 470 },
+              "color": { "r": 0.43, "g": 0.26, "b": 0.54, "a": 0.50 },
+              "children": [
+                {
+                  "name": "DrawnCardsPanel",
+                  "type": "Panel",
+                  "raycastTarget": false,
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 992, "y": 462 },
+                  "color": { "r": 0.035, "g": 0.035, "b": 0.070, "a": 0.92 },
+                  "children": [
+                    {
+                      "name": "CardsTitle",
+                      "type": "Text",
+                      "text": "✦  抽到的牌  ✦",
+                      "fontSize": 34,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.94, "g": 0.72, "b": 0.44, "a": 1 },
+                      "anchorMin": { "x": 0.5, "y": 1 },
+                      "anchorMax": { "x": 0.5, "y": 1 },
+                      "position": { "x": 0, "y": -34 },
+                      "size": { "x": 380, "y": 52 }
+                    },
+                    {
+                      "name": "CardOneSlot",
+                      "type": "Panel",
+                      "anchorMin": { "x": 0.5, "y": 1 },
+                      "anchorMax": { "x": 0.5, "y": 1 },
+                      "position": { "x": -315, "y": -205 },
+                      "size": { "x": 220, "y": 330 },
+                      "color": { "r": 0.82, "g": 0.55, "b": 0.30, "a": 0.95 },
+                      "children": [
+                        {
+                          "name": "CardOneFace",
+                          "type": "Panel",
+                          "raycastTarget": false,
+                          "position": { "x": 0, "y": 0 },
+                          "size": { "x": 208, "y": 318 },
+                          "color": { "r": 0.055, "g": 0.060, "b": 0.115, "a": 1 },
+                          "children": [
+                            {
+                              "name": "CardOneArtPlaceholder",
+                              "type": "Text",
+                              "text": "☾\n\n✦",
+                              "fontSize": 62,
+                              "fontStyle": "Normal",
+                              "textAlignment": "Center",
+                              "textColor": { "r": 0.92, "g": 0.70, "b": 0.42, "a": 1 },
+                              "position": { "x": 0, "y": 15 },
+                              "size": { "x": 178, "y": 210 }
+                            },
+                            {
+                              "name": "CardOneEngName",
+                              "type": "Text",
+                              "text": "THE MOON",
+                              "fontSize": 20,
+                              "fontStyle": "Normal",
+                              "textAlignment": "Center",
+                              "textColor": { "r": 0.92, "g": 0.70, "b": 0.42, "a": 1 },
+                              "anchorMin": { "x": 0.5, "y": 0 },
+                              "anchorMax": { "x": 0.5, "y": 0 },
+                              "position": { "x": 0, "y": 32 },
+                              "size": { "x": 170, "y": 28 }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "name": "CardOneName",
+                      "type": "Text",
+                      "text": "月亮",
+                      "fontSize": 31,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.96, "g": 0.74, "b": 0.42, "a": 1 },
+                      "anchorMin": { "x": 0.5, "y": 1 },
+                      "anchorMax": { "x": 0.5, "y": 1 },
+                      "position": { "x": -315, "y": -400 },
+                      "size": { "x": 220, "y": 46 }
+                    },
+                    {
+                      "name": "CardTwoSlot",
+                      "type": "Panel",
+                      "anchorMin": { "x": 0.5, "y": 1 },
+                      "anchorMax": { "x": 0.5, "y": 1 },
+                      "position": { "x": 0, "y": -205 },
+                      "size": { "x": 220, "y": 330 },
+                      "color": { "r": 0.82, "g": 0.55, "b": 0.30, "a": 0.95 },
+                      "children": [
+                        {
+                          "name": "CardTwoFace",
+                          "type": "Panel",
+                          "raycastTarget": false,
+                          "position": { "x": 0, "y": 0 },
+                          "size": { "x": 208, "y": 318 },
+                          "color": { "r": 0.035, "g": 0.030, "b": 0.055, "a": 1 },
+                          "children": [
+                            {
+                              "name": "CardTwoArtPlaceholder",
+                              "type": "Text",
+                              "text": "✦\n\n☍\n\n✦",
+                              "fontSize": 42,
+                              "fontStyle": "Normal",
+                              "textAlignment": "Center",
+                              "textColor": { "r": 0.65, "g": 0.46, "b": 0.30, "a": 0.92 },
+                              "position": { "x": 0, "y": 10 },
+                              "size": { "x": 178, "y": 230 }
+                            },
+                            {
+                              "name": "CardTwoEngName",
+                              "type": "Text",
+                              "text": "THE LOVERS",
+                              "fontSize": 19,
+                              "fontStyle": "Normal",
+                              "textAlignment": "Center",
+                              "textColor": { "r": 0.92, "g": 0.70, "b": 0.42, "a": 1 },
+                              "anchorMin": { "x": 0.5, "y": 1 },
+                              "anchorMax": { "x": 0.5, "y": 1 },
+                              "position": { "x": 0, "y": -30 },
+                              "size": { "x": 170, "y": 28 }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "name": "CardTwoName",
+                      "type": "Text",
+                      "text": "恋人逆位",
+                      "fontSize": 31,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.96, "g": 0.74, "b": 0.42, "a": 1 },
+                      "anchorMin": { "x": 0.5, "y": 1 },
+                      "anchorMax": { "x": 0.5, "y": 1 },
+                      "position": { "x": 0, "y": -400 },
+                      "size": { "x": 240, "y": 46 }
+                    },
+                    {
+                      "name": "CardThreeSlot",
+                      "type": "Panel",
+                      "anchorMin": { "x": 0.5, "y": 1 },
+                      "anchorMax": { "x": 0.5, "y": 1 },
+                      "position": { "x": 315, "y": -205 },
+                      "size": { "x": 220, "y": 330 },
+                      "color": { "r": 0.82, "g": 0.55, "b": 0.30, "a": 0.95 },
+                      "children": [
+                        {
+                          "name": "CardThreeFace",
+                          "type": "Panel",
+                          "raycastTarget": false,
+                          "position": { "x": 0, "y": 0 },
+                          "size": { "x": 208, "y": 318 },
+                          "color": { "r": 0.050, "g": 0.060, "b": 0.095, "a": 1 },
+                          "children": [
+                            {
+                              "name": "CardThreeArtPlaceholder",
+                              "type": "Text",
+                              "text": "☾\n\n╱╲\n╲╱",
+                              "fontSize": 42,
+                              "fontStyle": "Normal",
+                              "textAlignment": "Center",
+                              "textColor": { "r": 0.79, "g": 0.68, "b": 0.58, "a": 0.95 },
+                              "position": { "x": 0, "y": 12 },
+                              "size": { "x": 178, "y": 230 }
+                            },
+                            {
+                              "name": "CardThreeEngName",
+                              "type": "Text",
+                              "text": "TWO OF SWORDS",
+                              "fontSize": 18,
+                              "fontStyle": "Normal",
+                              "textAlignment": "Center",
+                              "textColor": { "r": 0.92, "g": 0.70, "b": 0.42, "a": 1 },
+                              "anchorMin": { "x": 0.5, "y": 0 },
+                              "anchorMax": { "x": 0.5, "y": 0 },
+                              "position": { "x": 0, "y": 32 },
+                              "size": { "x": 185, "y": 28 }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "name": "CardThreeName",
+                      "type": "Text",
+                      "text": "宝剑二",
+                      "fontSize": 31,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.96, "g": 0.74, "b": 0.42, "a": 1 },
+                      "anchorMin": { "x": 0.5, "y": 1 },
+                      "anchorMax": { "x": 0.5, "y": 1 },
+                      "position": { "x": 315, "y": -400 },
+                      "size": { "x": 220, "y": 46 }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "OracleVerdictBorder",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "pivot": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -754 },
+              "size": { "x": 1000, "y": 152 },
+              "color": { "r": 0.43, "g": 0.26, "b": 0.54, "a": 0.50 },
+              "children": [
+                {
+                  "name": "OracleVerdictPanel",
+                  "type": "Panel",
+                  "raycastTarget": false,
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 992, "y": 144 },
+                  "color": { "r": 0.033, "g": 0.032, "b": 0.066, "a": 0.94 },
+                  "children": [
+                    {
+                      "name": "OracleIconCircle",
+                      "type": "Panel",
+                      "raycastTarget": false,
+                      "anchorMin": { "x": 0, "y": 0.5 },
+                      "anchorMax": { "x": 0, "y": 0.5 },
+                      "position": { "x": 70, "y": 0 },
+                      "size": { "x": 74, "y": 74 },
+                      "color": { "r": 0.08, "g": 0.05, "b": 0.10, "a": 1 },
+                      "children": [
+                        {
+                          "name": "OracleIcon",
+                          "type": "Text",
+                          "text": "✦",
+                          "fontSize": 38,
+                          "fontStyle": "Bold",
+                          "textAlignment": "Center",
+                          "textColor": { "r": 0.95, "g": 0.72, "b": 0.43, "a": 1 },
+                          "position": { "x": 0, "y": 0 },
+                          "size": { "x": 70, "y": 70 }
+                        }
+                      ]
+                    },
+                    {
+                      "name": "OracleTitle",
+                      "type": "Text",
+                      "text": "神谕判词",
+                      "fontSize": 36,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.81, "g": 0.49, "b": 0.95, "a": 1 },
+                      "anchorMin": { "x": 0, "y": 1 },
+                      "anchorMax": { "x": 0, "y": 1 },
+                      "pivot": { "x": 0, "y": 1 },
+                      "position": { "x": 140, "y": -30 },
+                      "size": { "x": 240, "y": 48 }
+                    },
+                    {
+                      "name": "OracleText",
+                      "type": "Text",
+                      "text": "这段关系并非没有吸引，但目前缺少真正承担。",
+                      "fontSize": 31,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.88, "g": 0.85, "b": 0.88, "a": 1 },
+                      "anchorMin": { "x": 0, "y": 1 },
+                      "anchorMax": { "x": 0, "y": 1 },
+                      "pivot": { "x": 0, "y": 1 },
+                      "position": { "x": 140, "y": -82 },
+                      "size": { "x": 770, "y": 44 }
+                    },
+                    {
+                      "name": "OracleDivider",
+                      "type": "Text",
+                      "raycastTarget": false,
+                      "text": "✦  ✧  ✦",
+                      "fontSize": 23,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.86, "g": 0.55, "b": 0.32, "a": 0.9 },
+                      "anchorMin": { "x": 0.5, "y": 0 },
+                      "anchorMax": { "x": 0.5, "y": 0 },
+                      "position": { "x": 0, "y": 16 },
+                      "size": { "x": 220, "y": 28 }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "AdviceBorder",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "pivot": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -930 },
+              "size": { "x": 1000, "y": 244 },
+              "color": { "r": 0.43, "g": 0.26, "b": 0.54, "a": 0.50 },
+              "children": [
+                {
+                  "name": "AdvicePanel",
+                  "type": "Panel",
+                  "raycastTarget": false,
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 992, "y": 236 },
+                  "color": { "r": 0.033, "g": 0.032, "b": 0.066, "a": 0.94 },
+                  "children": [
+                    {
+                      "name": "AdviceTitleIcon",
+                      "type": "Text",
+                      "text": "♨",
+                      "fontSize": 38,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.80, "g": 0.49, "b": 0.95, "a": 1 },
+                      "anchorMin": { "x": 0, "y": 1 },
+                      "anchorMax": { "x": 0, "y": 1 },
+                      "pivot": { "x": 0, "y": 1 },
+                      "position": { "x": 42, "y": -28 },
+                      "size": { "x": 56, "y": 56 }
+                    },
+                    {
+                      "name": "AdviceTitle",
+                      "type": "Text",
+                      "text": "行动建议",
+                      "fontSize": 36,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.81, "g": 0.49, "b": 0.95, "a": 1 },
+                      "anchorMin": { "x": 0, "y": 1 },
+                      "anchorMax": { "x": 0, "y": 1 },
+                      "pivot": { "x": 0, "y": 1 },
+                      "position": { "x": 100, "y": -30 },
+                      "size": { "x": 240, "y": 50 }
+                    },
+                    {
+                      "name": "AdviceText",
+                      "type": "Text",
+                      "text": "☾  1. 先观察行动，不要追问解释。\n☾  2. 今晚不要反复翻看旧对话。\n☾  3. 三天后再回来记录变化。",
+                      "fontSize": 30,
+                      "fontStyle": "Normal",
+                      "textAlignment": "TopLeft",
+                      "textColor": { "r": 0.88, "g": 0.85, "b": 0.88, "a": 1 },
+                      "anchorMin": { "x": 0, "y": 1 },
+                      "anchorMax": { "x": 0, "y": 1 },
+                      "pivot": { "x": 0, "y": 1 },
+                      "position": { "x": 42, "y": -94 },
+                      "size": { "x": 620, "y": 130 }
+                    },
+                    {
+                      "name": "AdviceDecor",
+                      "type": "Text",
+                      "raycastTarget": false,
+                      "text": "◌\n☉\n╲╱",
+                      "fontSize": 52,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.54, "g": 0.25, "b": 0.63, "a": 0.45 },
+                      "anchorMin": { "x": 1, "y": 0.5 },
+                      "anchorMax": { "x": 1, "y": 0.5 },
+                      "position": { "x": -188, "y": 0 },
+                      "size": { "x": 260, "y": 190 }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "SummaryBorder",
+              "type": "Panel",
+              "anchorMin": { "x": 0.5, "y": 1 },
+              "anchorMax": { "x": 0.5, "y": 1 },
+              "pivot": { "x": 0.5, "y": 1 },
+              "position": { "x": 0, "y": -1196 },
+              "size": { "x": 1000, "y": 176 },
+              "color": { "r": 0.43, "g": 0.26, "b": 0.54, "a": 0.50 },
+              "children": [
+                {
+                  "name": "SummaryPanel",
+                  "type": "Panel",
+                  "raycastTarget": false,
+                  "position": { "x": 0, "y": 0 },
+                  "size": { "x": 992, "y": 168 },
+                  "color": { "r": 0.033, "g": 0.032, "b": 0.066, "a": 0.94 },
+                  "children": [
+                    {
+                      "name": "SummaryIcon",
+                      "type": "Text",
+                      "text": "♧",
+                      "fontSize": 42,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Center",
+                      "textColor": { "r": 0.80, "g": 0.49, "b": 0.95, "a": 1 },
+                      "anchorMin": { "x": 0, "y": 1 },
+                      "anchorMax": { "x": 0, "y": 1 },
+                      "pivot": { "x": 0, "y": 1 },
+                      "position": { "x": 42, "y": -26 },
+                      "size": { "x": 56, "y": 56 }
+                    },
+                    {
+                      "name": "SummaryTitle",
+                      "type": "Text",
+                      "text": "记录摘要",
+                      "fontSize": 36,
+                      "fontStyle": "Normal",
+                      "textAlignment": "Left",
+                      "textColor": { "r": 0.81, "g": 0.49, "b": 0.95, "a": 1 },
+                      "anchorMin": { "x": 0, "y": 1 },
+                      "anchorMax": { "x": 0, "y": 1 },
+                      "pivot": { "x": 0, "y": 1 },
+                      "position": { "x": 98, "y": -30 },
+                      "size": { "x": 240, "y": 50 }
+                    },
+                    {
+                      "name": "SummaryText",
+                      "type": "Text",
+                      "text": "你在关系中投入了很多情感与期待，但对方的回应较为被动，导致你感到不确定与焦虑。\n牌面提示你需要回到自我，先稳定内心，再决定是否继续等待。",
+                      "fontSize": 27,
+                      "fontStyle": "Normal",
+                      "textAlignment": "TopLeft",
+                      "textColor": { "r": 0.80, "g": 0.77, "b": 0.82, "a": 1 },
+                      "anchorMin": { "x": 0, "y": 1 },
+                      "anchorMax": { "x": 0, "y": 1 },
+                      "pivot": { "x": 0, "y": 1 },
+                      "position": { "x": 42, "y": -86 },
+                      "size": { "x": 910, "y": 82 }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ActionArea",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 0 },
+      "pivot": { "x": 0.5, "y": 0 },
+      "position": { "x": 0, "y": 158 },
+      "size": { "x": 0, "y": 238 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        {
+          "name": "ContinueAskButtonVisual",
+          "type": "Panel",
+          "position": { "x": -250, "y": 145 },
+          "size": { "x": 462, "y": 94 },
+          "color": { "r": 0.42, "g": 0.17, "b": 0.56, "a": 0.94 },
+          "children": [
+            {
+              "name": "ContinueAskIcon",
+              "type": "Text",
+              "text": "☁",
+              "fontSize": 42,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.91, "g": 0.70, "b": 1.00, "a": 1 },
+              "position": { "x": -128, "y": 0 },
+              "size": { "x": 76, "y": 66 }
+            },
+            {
+              "name": "ContinueAskText",
+              "type": "Text",
+              "text": "继续追问",
+              "fontSize": 36,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.91, "g": 0.70, "b": 1.00, "a": 1 },
+              "position": { "x": 42, "y": 0 },
+              "size": { "x": 230, "y": 58 }
+            },
+            {
+              "name": "[Button]ContinueAsk",
+              "type": "Button",
+              "text": "",
+              "anchorMin": { "x": 0, "y": 0 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": 0, "y": 0 },
+              "size": { "x": 0, "y": 0 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+            }
+          ]
+        },
+        {
+          "name": "SaveToDiaryButtonVisual",
+          "type": "Panel",
+          "position": { "x": 250, "y": 145 },
+          "size": { "x": 462, "y": 94 },
+          "color": { "r": 0.050, "g": 0.045, "b": 0.075, "a": 0.96 },
+          "children": [
+            {
+              "name": "SaveToDiaryIcon",
+              "type": "Text",
+              "text": "♧",
+              "fontSize": 42,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.96, "g": 0.75, "b": 0.43, "a": 1 },
+              "position": { "x": -130, "y": 0 },
+              "size": { "x": 76, "y": 66 }
+            },
+            {
+              "name": "SaveToDiaryText",
+              "type": "Text",
+              "text": "保存到日记",
+              "fontSize": 36,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.96, "g": 0.75, "b": 0.43, "a": 1 },
+              "position": { "x": 48, "y": 0 },
+              "size": { "x": 250, "y": 58 }
+            },
+            {
+              "name": "[Button]SaveToDiary",
+              "type": "Button",
+              "text": "",
+              "anchorMin": { "x": 0, "y": 0 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": 0, "y": 0 },
+              "size": { "x": 0, "y": 0 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+            }
+          ]
+        },
+        {
+          "name": "ShareResultButtonVisual",
+          "type": "Panel",
+          "position": { "x": -250, "y": 45 },
+          "size": { "x": 458, "y": 68 },
+          "color": { "r": 0.030, "g": 0.028, "b": 0.052, "a": 0.84 },
+          "children": [
+            {
+              "name": "ShareResultIcon",
+              "type": "Text",
+              "text": "↗",
+              "fontSize": 40,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.70, "g": 0.60, "b": 0.78, "a": 1 },
+              "position": { "x": -92, "y": 0 },
+              "size": { "x": 66, "y": 56 }
+            },
+            {
+              "name": "ShareResultText",
+              "type": "Text",
+              "text": "分享结果",
+              "fontSize": 30,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.70, "g": 0.66, "b": 0.74, "a": 1 },
+              "position": { "x": 68, "y": 0 },
+              "size": { "x": 200, "y": 50 }
+            },
+            {
+              "name": "[Button]ShareResult",
+              "type": "Button",
+              "text": "",
+              "anchorMin": { "x": 0, "y": 0 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": 0, "y": 0 },
+              "size": { "x": 0, "y": 0 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+            }
+          ]
+        },
+        {
+          "name": "DeleteRecordButtonVisual",
+          "type": "Panel",
+          "position": { "x": 250, "y": 45 },
+          "size": { "x": 458, "y": 68 },
+          "color": { "r": 0.030, "g": 0.028, "b": 0.052, "a": 0.84 },
+          "children": [
+            {
+              "name": "DeleteRecordIcon",
+              "type": "Text",
+              "text": "♙",
+              "fontSize": 38,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.62, "g": 0.58, "b": 0.64, "a": 1 },
+              "position": { "x": -90, "y": 0 },
+              "size": { "x": 66, "y": 56 }
+            },
+            {
+              "name": "DeleteRecordText",
+              "type": "Text",
+              "text": "删除记录",
+              "fontSize": 30,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.62, "g": 0.58, "b": 0.64, "a": 1 },
+              "position": { "x": 68, "y": 0 },
+              "size": { "x": 200, "y": 50 }
+            },
+            {
+              "name": "[Button]DeleteRecord",
+              "type": "Button",
+              "text": "",
+              "anchorMin": { "x": 0, "y": 0 },
+              "anchorMax": { "x": 1, "y": 1 },
+              "position": { "x": 0, "y": 0 },
+              "size": { "x": 0, "y": 0 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0 }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "BottomNav",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 0 },
+      "pivot": { "x": 0.5, "y": 0 },
+      "position": { "x": 0, "y": 0 },
+      "size": { "x": 0, "y": 146 },
+      "color": { "r": 0.025, "g": 0.026, "b": 0.045, "a": 0.94 },
+      "children": [
+        {
+          "name": "NavHomeIcon",
+          "type": "Text",
+          "text": "☾",
+          "fontSize": 46,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.76, "g": 0.56, "b": 0.32, "a": 1 },
+          "position": { "x": -430, "y": 35 },
+          "size": { "x": 86, "y": 62 }
+        },
+        {
+          "name": "NavHomeText",
+          "type": "Text",
+          "text": "首页",
+          "fontSize": 26,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.66, "g": 0.55, "b": 0.43, "a": 1 },
+          "position": { "x": -430, "y": -34 },
+          "size": { "x": 100, "y": 42 }
+        },
+        {
+          "name": "NavDialogIcon",
+          "type": "Text",
+          "text": "▢",
+          "fontSize": 42,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.76, "g": 0.56, "b": 0.32, "a": 1 },
+          "position": { "x": -215, "y": 35 },
+          "size": { "x": 86, "y": 62 }
+        },
+        {
+          "name": "NavDialogText",
+          "type": "Text",
+          "text": "对话",
+          "fontSize": 26,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.66, "g": 0.55, "b": 0.43, "a": 1 },
+          "position": { "x": -215, "y": -34 },
+          "size": { "x": 100, "y": 42 }
+        },
+        {
+          "name": "NavDiaryIcon",
+          "type": "Text",
+          "text": "♧",
+          "fontSize": 44,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.88, "g": 0.63, "b": 0.34, "a": 1 },
+          "position": { "x": 0, "y": 35 },
+          "size": { "x": 86, "y": 62 }
+        },
+        {
+          "name": "NavDiaryText",
+          "type": "Text",
+          "text": "日记",
+          "fontSize": 26,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.78, "g": 0.60, "b": 0.42, "a": 1 },
+          "position": { "x": 0, "y": -34 },
+          "size": { "x": 100, "y": 42 }
+        },
+        {
+          "name": "NavRitualIcon",
+          "type": "Text",
+          "text": "♨",
+          "fontSize": 44,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.76, "g": 0.56, "b": 0.32, "a": 1 },
+          "position": { "x": 215, "y": 35 },
+          "size": { "x": 86, "y": 62 }
+        },
+        {
+          "name": "NavRitualText",
+          "type": "Text",
+          "text": "仪式",
+          "fontSize": 26,
+          "fontStyle": "Normal",
+          "textAlignment": "Center",
+          "textColor": { "r": 0.66, "g": 0.55, "b": 0.43, "a": 1 },
+          "position": { "x": 215, "y": -34 },
+          "size": { "x": 100, "y": 42 }
+        },
+        {
+          "name": "NavMineSelected",
+          "type": "Panel",
+          "raycastTarget": false,
+          "position": { "x": 430, "y": 20 },
+          "size": { "x": 112, "y": 112 },
+          "color": { "r": 0.18, "g": 0.07, "b": 0.25, "a": 0.88 },
+          "children": [
+            {
+              "name": "NavMineIcon",
+              "type": "Text",
+              "text": "♙",
+              "fontSize": 44,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.88, "g": 0.55, "b": 1.00, "a": 1 },
+              "position": { "x": 0, "y": 22 },
+              "size": { "x": 86, "y": 58 }
+            },
+            {
+              "name": "NavMineText",
+              "type": "Text",
+              "text": "我的",
+              "fontSize": 26,
+              "fontStyle": "Normal",
+              "textAlignment": "Center",
+              "textColor": { "r": 0.88, "g": 0.55, "b": 1.00, "a": 1 },
+              "position": { "x": 0, "y": -34 },
+              "size": { "x": 90, "y": 38 }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reply", "suggest_three_card", "suggestion_text", "followup_questions"],
+  "properties": {
+    "reply": {
+      "type": "string",
+      "maxLength": 180
+    },
+    "suggest_three_card": {
+      "type": "boolean"
+    },
+    "suggestion_text": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "followup_questions": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "string",
+        "maxLength": 28
+      }
+    }
+  }
+}

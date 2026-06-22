@@ -142,6 +142,8 @@ has_file "scripts/check-release-blockers.sh"
 has_file "scripts/prepare-release.sh"
 has_file "scripts/finish-release.sh"
 has_file "scripts/check-release-env.sh"
+has_file "scripts/init-release-env.sh"
+has_file "scripts/init-public-config.sh"
 has_file "scripts/release.env.example"
 has_file "scripts/smoke-submit-iap-receipt.sh"
 has_file "scripts/smoke-functions-auth.sh"
@@ -317,6 +319,26 @@ else
   fail "scripts/check-release-env.sh is not executable"
 fi
 
+if [[ -x scripts/init-release-env.sh ]]; then
+  if bash -n scripts/init-release-env.sh >/tmp/moonly_readiness_init_release_env_syntax.log 2>&1; then
+    ok "release env init script syntax check passed"
+  else
+    fail "release env init script syntax check failed; see /tmp/moonly_readiness_init_release_env_syntax.log"
+  fi
+else
+  fail "scripts/init-release-env.sh is not executable"
+fi
+
+if [[ -x scripts/init-public-config.sh ]]; then
+  if bash -n scripts/init-public-config.sh >/tmp/moonly_readiness_init_public_config_syntax.log 2>&1; then
+    ok "public config init script syntax check passed"
+  else
+    fail "public config init script syntax check failed; see /tmp/moonly_readiness_init_public_config_syntax.log"
+  fi
+else
+  fail "scripts/init-public-config.sh is not executable"
+fi
+
 if [[ -x scripts/check-android-keystore.sh ]]; then
   if bash -n scripts/check-android-keystore.sh >/tmp/moonly_readiness_android_keystore_syntax.log 2>&1; then
     ok "Android keystore check script syntax check passed"
@@ -345,11 +367,47 @@ if grep_file "RUN_IAP_SECRET_SETUP=1" "scripts/finish-release.sh" \
   && grep_file "RUN_DEPLOY=1" "scripts/finish-release.sh" \
   && grep_file "RUN_BUILDS=1" "scripts/finish-release.sh" \
   && grep_file "CHECK_IAP_REAL_RECEIPT=1" "scripts/finish-release.sh" \
+  && grep_file "check-release-env.sh" "scripts/finish-release.sh" \
+  && grep_file "init-release-env.sh" "scripts/finish-release.sh" \
   && grep_file "--no-env-file" "scripts/finish-release.sh" \
   && grep_file "scripts/prepare-release.sh" "scripts/finish-release.sh"; then
-  ok "final release continuation script wires secret setup, deploy, builds, release gate, and env-free mode"
+  ok "final release continuation script validates inputs, wires secret setup, deploy, builds, release gate, and env-free mode"
 else
-  fail "final release continuation script missing required final release steps"
+  fail "final release continuation script missing input validation or required final release steps"
+fi
+
+if grep_file "scripts/release.env.example" "scripts/init-release-env.sh" \
+  && grep_file "chmod 600" "scripts/init-release-env.sh" \
+  && grep_file "init-public-config.sh" "scripts/init-release-env.sh" \
+  && grep_file "PUBLIC_CONFIG_PATH=functions/public-config.live.json" "scripts/init-release-env.sh" \
+  && grep_file "REQUIRE_REAL_SOCIAL_LINKS=1" "scripts/init-release-env.sh" \
+  && grep_file "check-release-env.sh" "scripts/init-release-env.sh" \
+  && grep_file "check-android-keystore.sh" "scripts/init-release-env.sh" \
+  && grep_file "prepare-release.sh" "scripts/init-release-env.sh" \
+  && grep_file "finish-release.sh" "scripts/init-release-env.sh"; then
+  ok "release env init script creates private local env and prints the validation / release path"
+else
+  fail "release env init script missing private env creation or release command guidance"
+fi
+
+if grep_file "functions/public-config.example.json" "scripts/init-public-config.sh" \
+  && grep_file "functions/public-config.live.json" "scripts/init-public-config.sh" \
+  && grep_file "--require-real-social-links" "scripts/init-public-config.sh" \
+  && grep_file "RUN_PUBLIC_CONFIG_UPDATE=1" "scripts/init-public-config.sh"; then
+  ok "public config init script creates live config and prints validation / release commands"
+else
+  fail "public config init script missing live config creation or release command guidance"
+fi
+
+if grep_file "init-release-env.sh" "scripts/check-release-env.sh" \
+  && grep_file "init-release-env.sh" "scripts/prepare-release.sh" \
+  && grep_file "init-release-env.sh" "scripts/check-release-blockers.sh" \
+  && grep_file "init-release-env.sh" "scripts/build-ios-xcode.sh" \
+  && grep_file "init-release-env.sh" "scripts/build-android-apk.sh" \
+  && grep_file "init-release-env.sh" "scripts/check-android-keystore.sh"; then
+  ok "release env missing-file guidance points to the initializer across release scripts"
+else
+  fail "release env missing-file guidance is not consistently wired to the initializer"
 fi
 
 if env \
@@ -358,7 +416,7 @@ if env \
   APPLE_SHARED_SECRET=readiness_apple_shared_secret \
   GOOGLE_PACKAGE_NAME=com.canchentechnology.fari \
   GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account","client_email":"readiness@fari-app-b2fd2.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\nREADINESS\n-----END PRIVATE KEY-----\n"}' \
-  IAP_RECEIPT=readiness_receipt \
+  IAP_RECEIPT=readiness_real_receipt_payload_for_format_check \
   IAP_STORE=AppleAppStore \
   IAP_PRODUCT_ID=moonly.pro.monthly \
   SKIP_ANDROID_KEYSTORE_VALIDATION=1 \
@@ -368,10 +426,51 @@ else
   fail "release env check script dry-run validation failed; see /tmp/moonly_readiness_release_env_check.log"
 fi
 
+if grep_file "ProjectSettings Android bundle id" "scripts/check-release-env.sh" \
+  && grep_file "GOOGLE_PACKAGE_NAME matches" "scripts/check-release-env.sh"; then
+  ok "release env check verifies Google package name against ProjectSettings Android bundle id"
+else
+  fail "release env check missing Google package name and Android bundle id consistency validation"
+fi
+
+if grep_file "APPLE_SHARED_SECRET format looks usable" "scripts/check-release-env.sh" \
+  && grep_file "real sandbox IAP receipt input format looks usable" "scripts/check-release-env.sh" \
+  && grep_file "moonly-smoke-receipt" "scripts/check-release-env.sh" \
+  && grep_file "BEGIN PRIVATE KEY" "scripts/check-release-env.sh"; then
+  ok "release env check validates Apple secret, service account PEM, and real receipt shape"
+else
+  fail "release env check missing Apple secret, service account PEM, or real receipt shape validation"
+fi
+
 if node functions/scripts/set-public-config.js --dry-run functions/public-config.example.json >/tmp/moonly_readiness_public_config.log 2>&1; then
   ok "public config validation dry-run passed"
 else
   fail "public config validation dry-run failed; see /tmp/moonly_readiness_public_config.log"
+fi
+
+if grep_file "--require-real-social-links" "functions/scripts/set-public-config.js" \
+  && grep_file "isPlaceholderSocialLink" "functions/scripts/set-public-config.js"; then
+  ok "public config setter can reject placeholder social links for release"
+else
+  fail "public config setter missing real social link validation"
+fi
+
+if grep_file "RUN_PUBLIC_CONFIG_UPDATE" "scripts/prepare-release.sh" \
+  && grep_file "validate_public_config_inputs" "scripts/prepare-release.sh" \
+  && grep_file "functions/scripts/set-public-config.js" "scripts/prepare-release.sh" \
+  && grep_file "selected public app config release validation" "scripts/check-release-blockers.sh" \
+  && grep_file "functions/public-config.live.json\" -prune" "scripts/check-release-blockers.sh" \
+  && grep_file "init-public-config.sh" "scripts/check-release-blockers.sh" \
+  && grep_file "RUN_PUBLIC_CONFIG_UPDATE=1 PUBLIC_CONFIG_PATH=functions/public-config.live.json" "scripts/check-release-blockers.sh" \
+  && grep_file "Copy Init Public Config Command" "Assets/Editor/AppReadinessDiagnosticsMenu.cs" \
+  && grep_file "Copy Public Config Release Command" "Assets/Editor/AppReadinessDiagnosticsMenu.cs" \
+  && grep_file "RUN_PUBLIC_CONFIG_UPDATE" "scripts/finish-release.sh" \
+  && grep_file "validate_public_config" "scripts/check-release-env.sh" \
+  && grep_file "PUBLIC_CONFIG_PATH" "scripts/release.env.example" \
+  && grep_file "REQUIRE_REAL_SOCIAL_LINKS" "scripts/release.env.example"; then
+  ok "release flow can validate and publish real public social/IAP config"
+else
+  fail "release flow missing public social/IAP config validation or update wiring"
 fi
 
 if grep_file "CommandLineBuild.BuildIOSProject" "scripts/build-ios-xcode.sh" \
@@ -380,6 +479,360 @@ if grep_file "CommandLineBuild.BuildIOSProject" "scripts/build-ios-xcode.sh" \
   ok "iOS Xcode export script builds and validates exported project"
 else
   fail "iOS Xcode export script is missing build target, build method, or validation step"
+fi
+
+if grep_file ".export-stamp" "scripts/build-ios-xcode.sh" \
+  && grep_file ".export-stamp" "scripts/check-release-blockers.sh"; then
+  ok "iOS Xcode export script writes a completion stamp and release gate uses it for freshness"
+else
+  fail "iOS Xcode export freshness stamp is not wired through build and release gate scripts"
+fi
+
+if node <<'NODE' >/tmp/moonly_readiness_window_config.log 2>&1
+const fs = require("fs");
+const path = require("path");
+
+const configPath = "Assets/Resources/WindowConfig.asset";
+const lines = fs.readFileSync(configPath, "utf8").split(/\r?\n/);
+const entries = [];
+for (let i = 0; i < lines.length; i += 1) {
+  const nameMatch = lines[i].match(/^  - name: (.+)$/);
+  if (!nameMatch) continue;
+  const pathMatch = (lines[i + 1] || "").match(/^    path: (.+)$/);
+  entries.push({ name: nameMatch[1], path: pathMatch ? pathMatch[1] : "" });
+}
+
+const byName = new Map();
+const duplicates = [];
+const missing = [];
+for (const entry of entries) {
+  if (byName.has(entry.name)) duplicates.push(entry.name);
+  byName.set(entry.name, entry);
+
+  if (!entry.path) {
+    missing.push(`${entry.name}: <empty>`);
+  } else if (entry.path.startsWith("Assets/")) {
+    if (!fs.existsSync(`${entry.path}.prefab`)) missing.push(`${entry.name}: ${entry.path}`);
+  } else if (!resourcePrefabExists(entry.path)) {
+    missing.push(`${entry.name}: ${entry.path}`);
+  }
+}
+
+const myWindows = [
+  "AccountUI",
+  "FeedbackUI",
+  "FollowusUI",
+  "HistoryUI",
+  "MemoryManagementUI",
+  "MyUI",
+  "NotionUI",
+  "PersonalProfileUI",
+  "UnlockProUI",
+];
+const misplacedMyWindows = myWindows.filter((name) => {
+  const entry = byName.get(name);
+  return !entry || !entry.path.startsWith("Assets/GameData/UI/Main/My/");
+});
+
+if (duplicates.length > 0 || missing.length > 0 || misplacedMyWindows.length > 0) {
+  if (duplicates.length > 0) console.error(`duplicate window names: ${[...new Set(duplicates)].join(", ")}`);
+  if (missing.length > 0) console.error(`missing prefab paths: ${missing.join(", ")}`);
+  if (misplacedMyWindows.length > 0) console.error(`my windows not under Main/My: ${misplacedMyWindows.join(", ")}`);
+  process.exit(1);
+}
+
+function resourcePrefabExists(resourcePath) {
+  const suffix = path.join("Resources", `${resourcePath}.prefab`);
+  const stack = ["Assets"];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const child of fs.readdirSync(current, { withFileTypes: true })) {
+      const childPath = path.join(current, child.name);
+      if (child.isDirectory()) {
+        stack.push(childPath);
+      } else if (child.isFile() && childPath.endsWith(suffix)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+NODE
+then
+  ok "WindowConfig has unique window names and valid prefab paths"
+else
+  fail "WindowConfig has duplicate names, missing prefab paths, or misplaced My windows; see /tmp/moonly_readiness_window_config.log"
+fi
+
+if node <<'NODE' >/tmp/moonly_readiness_ui_bindings.log 2>&1
+const fs = require("fs");
+const path = require("path");
+
+const uiTypes = new Set([
+  "Button",
+  "Text",
+  "Image",
+  "InputField",
+  "ScrollRect",
+  "Toggle",
+  "ToggleGroup",
+  "Transform",
+  "RectTransform",
+]);
+const componentPrefabs = [
+  ["Assets/Scripts/UI/MyUIComponent.cs", "Assets/GameData/UI/Main/My/MyUI.prefab"],
+  ["Assets/Scripts/UI/PersonalProfileUIComponent.cs", "Assets/GameData/UI/Main/My/PersonalProfileUI.prefab"],
+  ["Assets/Scripts/UI/MemoryManagementUIComponent.cs", "Assets/GameData/UI/Main/My/MemoryManagementUI.prefab"],
+  ["Assets/Scripts/UI/AccountUIComponent.cs", "Assets/GameData/UI/Main/My/AccountUI.prefab"],
+  ["Assets/Scripts/UI/NotionUIComponent.cs", "Assets/GameData/UI/Main/My/NotionUI.prefab"],
+  ["Assets/Scripts/UI/FeedbackUIComponent.cs", "Assets/GameData/UI/Main/My/FeedbackUI.prefab"],
+  ["Assets/Scripts/UI/FollowusUIComponent.cs", "Assets/GameData/UI/Main/My/FollowusUI.prefab"],
+  ["Assets/Scripts/UI/UnlockProUIComponent.cs", "Assets/GameData/UI/Main/My/UnlockProUI.prefab"],
+  ["Assets/Scripts/UI/HistoryUIComponent.cs", "Assets/GameData/UI/Main/My/HistoryUI.prefab"],
+  ["Assets/Scripts/UI/DivinationRecordUIComponent.cs", "Assets/GameData/UI/Main/TodayDivination/DivinationRecordUI.prefab"],
+];
+
+const failures = [];
+for (const [scriptPath, prefabPath] of componentPrefabs) {
+  const script = fs.readFileSync(scriptPath, "utf8");
+  const meta = fs.readFileSync(`${scriptPath}.meta`, "utf8");
+  const guid = meta.match(/guid:\s*([a-fA-F0-9]+)/)?.[1];
+  if (!guid) {
+    failures.push(`${scriptPath}: missing script guid`);
+    continue;
+  }
+
+  const fields = [...script.matchAll(/^\s*public\s+([A-Za-z0-9_<>.\[\]]+)\s+([A-Za-z0-9_]+)\s*;/gm)]
+    .filter((match) => uiTypes.has(match[1].replace(/\[\]$/, "")))
+    .map((match) => match[2]);
+  const prefab = fs.readFileSync(prefabPath, "utf8");
+  const blocks = prefab
+    .split(/\n(?=--- !u!)/g)
+    .filter((block) => block.includes("MonoBehaviour:") && block.includes(`guid: ${guid}`));
+
+  if (blocks.length === 0) {
+    failures.push(`${prefabPath}: missing component ${path.basename(scriptPath)}`);
+    continue;
+  }
+
+  for (let blockIndex = 0; blockIndex < blocks.length; blockIndex += 1) {
+    for (const field of fields) {
+      const value = blocks[blockIndex].match(new RegExp(`^\\s*${field}:\\s*\\{fileID:\\s*([^,}]+)`, "m"))?.[1];
+      if (!value) {
+        failures.push(`${prefabPath}: component ${path.basename(scriptPath)} block ${blockIndex + 1} missing field ${field}`);
+      } else if (value.trim() === "0") {
+        failures.push(`${prefabPath}: component ${path.basename(scriptPath)} block ${blockIndex + 1} has unbound field ${field}`);
+      }
+    }
+  }
+}
+
+if (failures.length > 0) {
+  console.error(failures.join("\n"));
+  process.exit(1);
+}
+NODE
+then
+  ok "My/History UIComponent prefab bindings are present and non-zero"
+else
+  fail "My/History UIComponent prefab binding check failed; see /tmp/moonly_readiness_ui_bindings.log"
+fi
+
+if ! grep_file "viewButton" "Assets/Scripts/UI/HistoryUIComponent.cs" \
+  && ! grep_file "OnviewButtonClick" "Assets/Scripts/UI/HistoryUI.cs" \
+  && ! grep_file "viewButton: {fileID: 0}" "Assets/GameData/UI/Main/My/HistoryUI.prefab"; then
+  ok "History UI no longer carries stale unbound viewButton wiring"
+else
+  fail "History UI still contains stale viewButton wiring"
+fi
+
+if node <<'NODE' >/tmp/moonly_readiness_my_feature_guards.log 2>&1
+const fs = require("fs");
+const myUI = fs.readFileSync("Assets/Scripts/UI/MyUI.cs", "utf8");
+const myUIPrefab = fs.readFileSync("Assets/GameData/UI/Main/My/MyUI.prefab", "utf8");
+const history = fs.readFileSync("Assets/Scripts/UI/HistoryUI.cs", "utf8");
+const feedback = fs.readFileSync("Assets/Scripts/UI/FeedbackUI.cs", "utf8");
+const firestore = fs.readFileSync("Assets/Scripts/Platform/FireBase/FirestoreManager.cs", "utf8");
+
+const myDashboardUsesReadingQuota = /tatTodayCardValueText\.text = stats\.GetReadingDisplay\(_isPro\)/.test(myUI)
+  && /m_Text: "\\u4ECA\\u65E5\\u5360\\u535C"/.test(myUIPrefab);
+
+const historySafeStore = /LoadFromFirestore\(GetRecordStore\(\)\)/.test(history)
+  && /private DivinationRecordFirestore GetRecordStore\(\)/.test(history)
+  && /历史服务暂不可用/.test(history);
+
+const feedbackMigratesLocalPending = /MergeLocalPendingFeedbackEntries\(\)/.test(feedback)
+  && /LoadCachedFeedbackEntriesForUid\("local", localEntries, clearTarget: true\)/.test(feedback)
+  && /SaveFeedbackEntriesToCacheForUid\("local", remainingLocal\)/.test(feedback);
+
+const feedbackHandlesCloudEmptyAndFailure = /if \(entries != null\)[\s\S]*?_feedbackEntries\.Clear\(\)/.test(feedback)
+  && /public void LoadFeedback\(Action<List<CloudFeedbackEntry>> onComplete, int limit = 30\)[\s\S]*?加载反馈失败[\s\S]*?onComplete\?\.Invoke\(null\)/.test(firestore);
+
+if (!myDashboardUsesReadingQuota || !historySafeStore || !feedbackMigratesLocalPending || !feedbackHandlesCloudEmptyAndFailure) {
+  console.error(JSON.stringify({
+    myDashboardUsesReadingQuota,
+    historySafeStore,
+    feedbackMigratesLocalPending,
+    feedbackHandlesCloudEmptyAndFailure,
+  }, null, 2));
+  process.exit(1);
+}
+NODE
+then
+  ok "My feature guards cover dashboard quota, history fallback, and feedback pending-cache migration"
+else
+  fail "My feature guard check failed; see /tmp/moonly_readiness_my_feature_guards.log"
+fi
+
+if node <<'NODE' >/tmp/moonly_readiness_my_module_requirements.log 2>&1
+const fs = require("fs");
+
+const read = (path) => fs.readFileSync(path, "utf8");
+const files = {
+  my: read("Assets/Scripts/UI/MyUI.cs"),
+  history: read("Assets/Scripts/UI/HistoryUI.cs"),
+  detail: read("Assets/Scripts/UI/DivinationRecordUI.cs"),
+  profile: read("Assets/Scripts/UI/PersonalProfileUI.cs"),
+  memory: read("Assets/Scripts/UI/MemoryManagementUI.cs"),
+  account: read("Assets/Scripts/UI/AccountUI.cs"),
+  notion: read("Assets/Scripts/UI/NotionUI.cs"),
+  notifManager: read("Assets/Scripts/GameManager/NotificationSettingsManager.cs"),
+  notifScheduler: read("Assets/Scripts/GameManager/AppNotificationScheduler.cs"),
+  notifUnread: read("Assets/Scripts/GameManager/NotificationUnreadState.cs"),
+  dialogSystem: read("Assets/Scripts/Dialog/Data/DialogSystem.cs"),
+  addFriend: read("Assets/Scripts/UI/AddFriendUI.cs"),
+  contactsInvite: read("Assets/Scripts/UI/ContactsInviteUI.cs"),
+  facebookInvite: read("Assets/Scripts/UI/FacebookInviteUI.cs"),
+  userSearch: read("Assets/Scripts/UI/UserSearchUI.cs"),
+  createFriendSuccess: read("Assets/Scripts/UI/CreateFriendSuccessUI.cs"),
+  feedback: read("Assets/Scripts/UI/FeedbackUI.cs"),
+  follow: read("Assets/Scripts/UI/FollowusUI.cs"),
+  unlock: read("Assets/Scripts/UI/UnlockProUI.cs"),
+  firestore: read("Assets/Scripts/Platform/FireBase/FirestoreManager.cs"),
+};
+
+const checks = {
+  myHome:
+    /RefreshDashboard\(\)/.test(files.my)
+    && /GetReadingDisplay\(_isPro\)/.test(files.my)
+    && /GetDialogDisplay\(_isPro\)/.test(files.my)
+    && /LoadLatestDivination\(requestId\)/.test(files.my)
+    && /OnLatestRecordEntryClick\(\)[\s\S]*?PopUpWindow<DivinationRecordUI>/.test(files.my)
+    && /PopUpWindow<HistoryUI>/.test(files.my)
+    && /PopUpWindow<PersonalProfileUI>/.test(files.my)
+    && /PopUpWindow<MemoryManagementUI>/.test(files.my)
+    && /PopUpWindow<UnlockProUI>/.test(files.my)
+    && /PopUpWindow<AccountUI>/.test(files.my)
+    && /PopUpWindow<NotionUI>/.test(files.my)
+    && /PopUpWindow<FeedbackUI>/.test(files.my)
+    && /PopUpWindow<FollowusUI>/.test(files.my),
+  history:
+    /LoadFromFirestore\(GetRecordStore\(\)\)/.test(files.history)
+    && /LoadAllRecords/.test(files.history)
+    && /ValidateSelectedRecord\(\)/.test(files.history)
+    && /SelectedRecord = record/.test(files.history)
+    && /PopUpWindow<DivinationHistoryUI>/.test(files.history)
+    && /ShowEmptyState/.test(files.history),
+  divinationDetail:
+    /ActivateReadingFromRecord\(_currentRecord, DivinationPhase\.FollowUp\)/.test(files.detail)
+    && /DivinationRecordFirestore\.SaveRecordLocal\(_currentRecord\)/.test(files.detail)
+    && /firestore\.SaveRecord\(_currentRecord/.test(files.detail)
+    && /OnDeleteRecordButtonClick\(\)[\s\S]*?DeleteRecord/.test(files.detail)
+    && /BuildShareText\(\)/.test(files.detail)
+    && /EnsureSaveToDiaryButtonInteractable\(\)/.test(files.detail),
+  personalProfile:
+    /EnsureBioInputField\(\)/.test(files.profile)
+    && /AvatarUploadManager\.Instance\.PickAndUploadAvatar/.test(files.profile)
+    && /TryNormalizeBirthday/.test(files.profile)
+    && /TryNormalizeBirthTime/.test(files.profile)
+    && /SetProfileBio\(bio\)/.test(files.profile)
+    && /SaveUserData/.test(files.profile),
+  memory:
+    /LoadMemorySource/.test(files.memory)
+    && /SetMemorySource/.test(files.memory)
+    && /SaveMemorySource/.test(files.memory)
+    && /DeleteMemorySource/.test(files.memory)
+    && /MemoryPrivacySettings\.ShareAllMemoryEnabled/.test(files.memory)
+    && /GetMemorySourceForPrompt/.test(files.dialogSystem)
+    && /GetMemorySourceForPrompt/.test(read("Assets/Scripts/Dialog/Data/DailyOracleService.cs"))
+    && /GetPromptMemorySource/.test(read("Assets/Scripts/GameManager/MemoryPrivacySettings.cs"))
+    && /CLEAR_CONFIRM_SECONDS = 8f/.test(files.memory)
+    && /个人偏好/.test(files.memory)
+    && /关系记忆/.test(files.memory)
+    && /占卜连续性/.test(files.memory)
+    && /最近 Prompt/.test(files.memory),
+  account:
+    /GetLoginTypeDisplayText/.test(files.account)
+    && /GetFormattedRegTime/.test(files.account)
+    && /FriendRuntimeDialog\.ShowConfirm/.test(files.account)
+    && /SignOut/.test(files.account)
+    && /DeleteUser/.test(files.account)
+    && /ClearData/.test(files.account),
+  notification:
+    /LoadNotificationSettings/.test(files.notion)
+    && /SaveNotificationSettings/.test(files.notion)
+    && /SetDailyOracle/.test(files.notion)
+    && /SetDialogueReply/.test(files.notion)
+    && /SetDivinationReturn/.test(files.notion)
+    && /SetFriendInteraction/.test(files.notion)
+    && /SetActivitySystem/.test(files.notion)
+    && /ToggleReminderTime/.test(files.notion)
+    && /RescheduleNotifications/.test(files.notifManager)
+    && /NotifyDialogueReplyReady/.test(files.notifScheduler)
+    && /NotificationUnreadState\.MarkUnread\(payload\)/.test(files.notifScheduler)
+    && /NotificationUnreadState\.ClearUnread\(\)/.test(files.notion)
+    && /NotificationUnreadBadge\.Attach\(uiComponent\.noticeButton\)/.test(files.my)
+    && /NotificationUnreadBadge\.Attach\(uiComponent\.NotificationButton\)/.test(files.addFriend)
+    && /NotificationUnreadBadge\.Attach\(uiComponent\.NotificationsButton\)/.test(files.contactsInvite)
+    && /NotificationUnreadBadge\.Attach\(uiComponent\.NotificationsButton\)/.test(files.facebookInvite)
+    && /NotificationUnreadBadge\.Attach\(uiComponent\.NotificationsButton\)/.test(files.userSearch)
+    && /NotificationUnreadBadge\.Attach\(uiComponent\.NotificationButton\)/.test(files.createFriendSuccess)
+    && /public static bool HasUnread/.test(files.notifUnread)
+    && /class NotificationUnreadBadgeBinder/.test(files.notifUnread)
+    && /NotifyDialogueReplyReady\(content\)/.test(files.dialogSystem)
+    && /NotifyDialogueReplyReady\(fullContent\)/.test(files.dialogSystem),
+  feedback:
+    /SubmitFeedback\("community"/.test(files.feedback)
+    && /SubmitFeedback\("chat"/.test(files.feedback)
+    && /MergeLocalPendingFeedbackEntries/.test(files.feedback)
+    && /SyncPendingFeedbackEntries/.test(files.feedback)
+    && /SaveFeedbackEntriesToCache/.test(files.feedback)
+    && /MirrorFeedbackForBackend/.test(files.firestore)
+    && /public void LoadFeedback/.test(files.firestore)
+    && /onComplete\?\.Invoke\(null\)/.test(files.firestore),
+  followUs:
+    /LoadPublicAppConfig/.test(files.follow)
+    && /MergeWithDefaults/.test(files.follow)
+    && /IsConfiguredSocialLink/.test(files.follow)
+    && /Instagram/.test(files.follow)
+    && /Facebook/.test(files.follow)
+    && /TikTok/.test(files.follow)
+    && /Pinterest/.test(files.follow)
+    && /https:\/\/x\.com/.test(files.follow),
+  unlockPro:
+    /GetMembershipStatus/.test(files.unlock)
+    && /LoadPublicAppConfig/.test(files.unlock)
+    && /ConfigureProducts/.test(files.unlock)
+    && /PurchaseSubscription/.test(files.unlock)
+    && /RestorePurchases/.test(files.unlock)
+    && /OpenSubscriptionManagement/.test(files.unlock)
+    && /BuildProductButtonText/.test(files.unlock)
+    && /interactable = !isCurrentPro/.test(files.unlock),
+};
+
+const failed = Object.entries(checks)
+  .filter(([, ok]) => !ok)
+  .map(([name]) => name);
+
+if (failed.length > 0) {
+  console.error(`Missing My module requirement evidence: ${failed.join(", ")}`);
+  process.exit(1);
+}
+NODE
+then
+  ok "My module requirement guard covers home, history/detail, profile, memory, account, notification, feedback, social links, and Pro"
+else
+  fail "My module requirement guard failed; see /tmp/moonly_readiness_my_module_requirements.log"
 fi
 
 if grep_file "RELEASE_ENV_FILE" "scripts/build-ios-xcode.sh" \
@@ -396,6 +849,13 @@ if grep_file "CommandLineBuild.BuildAndroidApk" "scripts/build-android-apk.sh" \
   ok "Android APK build script builds and validates APK"
 else
   fail "Android APK build script is missing build target, build method, keystore check, or validation step"
+fi
+
+if grep_file ".build-stamp" "scripts/build-android-apk.sh" \
+  && grep_file ".build-stamp" "scripts/check-release-blockers.sh"; then
+  ok "Android APK build script writes a completion stamp and release gate uses it for freshness"
+else
+  fail "Android APK build freshness stamp is not wired through build and release gate scripts"
 fi
 
 if grep_file "RELEASE_ENV_FILE" "scripts/build-android-apk.sh" \
@@ -450,6 +910,22 @@ if grep_file "REQUIRE_GOOGLE_PLAY_GAMES" "scripts/check-release-blockers.sh" \
   ok "release blockers script treats Google Play Games APP_ID as optional unless explicitly required"
 else
   fail "release blockers script should not require Google Play Games APP_ID by default"
+fi
+
+if grep_file "Assets/GameData" "scripts/check-release-blockers.sh" \
+  && grep_file "Assets/Resources" "scripts/check-release-blockers.sh" \
+  && grep_file "Assets/GamerFrameWork" "scripts/check-release-blockers.sh"; then
+  ok "release blockers freshness check includes UI prefabs, Resources, and framework runtime assets"
+else
+  fail "release blockers freshness check is missing UI prefab, Resources, or framework runtime asset paths"
+fi
+
+if grep_file "window == null" "Assets/GamerFrameWork/UIFrameWork/Scripts/Runtime/Code/UIModule.cs" \
+  && grep_file "LoadWindow2Res] path is null" "Assets/GamerFrameWork/UIFrameWork/Scripts/Runtime/Code/UIModule.cs" \
+  && grep_file "LoadWindow2Res] load failed" "Assets/GamerFrameWork/UIFrameWork/Scripts/Runtime/Code/UIModule.cs"; then
+  ok "UI module guards against missing WindowConfig entries and unloaded prefabs"
+else
+  fail "UI module missing null guards for failed window prefab loads"
 fi
 
 if grep_file "check_android_signing_env" "scripts/check-release-blockers.sh" \
@@ -544,6 +1020,12 @@ if grep_file "Copy Prepare Release Env Command" "Assets/Editor/AppReadinessDiagn
   ok "Editor menu can copy prepare release env command"
 else
   fail "Editor menu missing prepare release env command"
+fi
+
+if grep_file "Copy Init Release Env Command" "Assets/Editor/AppReadinessDiagnosticsMenu.cs"; then
+  ok "Editor menu can copy release env init command"
+else
+  fail "Editor menu missing release env init command"
 fi
 
 if grep_file "Copy Check Release Env Command" "Assets/Editor/AppReadinessDiagnosticsMenu.cs"; then
@@ -646,10 +1128,59 @@ if grep_file "NotifyFriendRequestCount" "Assets/Scripts/UI/FriendUI.cs" \
   && grep_file "NotifyRelationshipInviteCount" "Assets/Scripts/UI/FriendUI.cs" \
   && grep_file "NotifyFriendDailyOracleCount" "Assets/Scripts/UI/FriendUI.cs" \
   && grep_file "NotifyTomorrowHookCount" "Assets/Scripts/UI/TodayOracleUI.cs" \
-  && grep_file "ScheduleTomorrowHookReminder" "Assets/Scripts/UI/DialogUI.cs"; then
-  ok "friend, relationship, daily-oracle feed, and Tomorrow Hook notification triggers are wired"
+  && grep_file "ScheduleTomorrowHookReminder" "Assets/Scripts/UI/DialogUI.cs" \
+  && grep_file "NotifyDialogueReplyReady" "Assets/Scripts/GameManager/AppNotificationScheduler.cs" \
+  && grep_file "dialogue={settings.DialogueReplyEnabled}" "Assets/Scripts/GameManager/AppReadinessDiagnostics.cs" \
+  && grep_file "NotifyDialogueReplyReady(content)" "Assets/Scripts/Dialog/Data/DialogSystem.cs" \
+  && grep_file "NotifyDialogueReplyReady(fullContent)" "Assets/Scripts/Dialog/Data/DialogSystem.cs"; then
+  ok "dialogue reply, friend, relationship, daily-oracle feed, and Tomorrow Hook notification triggers are wired"
 else
   fail "one or more notification trigger call sites are missing"
+fi
+
+if node <<'NODE' >/tmp/moonly_readiness_virtual_relationship.log 2>&1
+const fs = require("fs");
+const helper = fs.readFileSync("Assets/Scripts/Friend/CreatedFriendRelationshipDivinationLocalFlow.cs", "utf8");
+const createInfo = fs.readFileSync("Assets/Scripts/UI/CreateFriendInfoUI.cs", "utf8");
+const friendMove = fs.readFileSync("Assets/Scripts/UI/FriendMoveUI.cs", "utf8");
+const friendRuntime = fs.readFileSync("Assets/Scripts/Friend/FriendRuntimeUI.cs", "utf8");
+const inviteConfirm = fs.readFileSync("Assets/Scripts/UI/TwoPersonDivinationInviteConfirmFlowUI.cs", "utf8");
+
+const helperCreatesLocalRecord = /public static bool TryStart\(FriendDataManager\.FriendData friend\)[\s\S]*?RelationshipDivinationFlow\.ShowRecord\(record, friend\)/.test(helper)
+  && /status = RelationshipDivinationStatus\.Completed/.test(helper)
+  && /isLocalOnly = true/.test(helper)
+  && /TarotDeck\.DrawMultiple\(3\)/.test(helper);
+const createInfoEntry = /RelationshipDivinationButtonName = "RelationshipDivinationButton"/.test(createInfo)
+  && /RefreshRelationshipDivinationButton\(\)/.test(createInfo)
+  && /CreatedFriendRelationshipDivinationLocalFlow\.TryStart\(currentFriend\)/.test(createInfo);
+const friendMoveLocalEntry = /OnSendOracleRelatonButtonClick[\s\S]*?CreatedFriendRelationshipDivinationLocalFlow\.CanHandle\(currentFriend\)[\s\S]*?CreatedFriendRelationshipDivinationLocalFlow\.TryStart\(capturedLocal\)/.test(friendMove)
+  && /canUseRelationshipDivination[\s\S]*?CreatedFriendRelationshipDivinationLocalFlow\.CanHandle\(currentFriend\)/.test(friendMove);
+const overlayLocalEntry = /StartForFriend[\s\S]*?CreatedFriendRelationshipDivinationLocalFlow\.TryStart\(friend\)/.test(friendRuntime);
+const confirmLocalEntry = /private void CreateInvite\(\)[\s\S]*?CreatedFriendRelationshipDivinationLocalFlow\.TryStart\(currentFriend\)/.test(inviteConfirm);
+
+if (!helperCreatesLocalRecord || !createInfoEntry || !friendMoveLocalEntry || !overlayLocalEntry || !confirmLocalEntry) {
+  console.error(JSON.stringify({ helperCreatesLocalRecord, createInfoEntry, friendMoveLocalEntry, overlayLocalEntry, confirmLocalEntry }, null, 2));
+  process.exit(1);
+}
+NODE
+then
+  ok "created-friend relationship divination is wired as a local completed reading"
+else
+  fail "created-friend local relationship divination flow is missing or disabled; see /tmp/moonly_readiness_virtual_relationship.log"
+fi
+
+if grep_file "ApplySyncSettingsToPublishedSummaries" "Assets/Scripts/Platform/FireBase/DailyOracleFirestore.cs" \
+  && grep_file "UpdateExistingSummarySettingsByDate" "Assets/Scripts/Platform/FireBase/DailyOracleFirestore.cs" \
+  && grep_file "PublishSummaryByDate" "Assets/Scripts/Platform/FireBase/DailyOracleFirestore.cs" \
+  && grep_file "ApplySyncSettingsToPublishedSummaries(settings, 30" "Assets/Scripts/UI/DailyDivinationSyncSettingsUI.cs" \
+  && grep_file "ApplySyncSettingsToPublishedSummaries(settings, 30" "Assets/Scripts/UI/FriendProfileUI.cs" \
+  && grep_file "ApplySyncSettingsToPublishedSummaries(settings, 30" "Assets/Scripts/UI/CreateFriendInfoUI.cs" \
+  && grep_file "ApplySyncSettingsToPublishedSummaries(settings, 30" "Assets/Scripts/UI/EditFriendUI.cs" \
+  && grep_file "canReadDailyOracleSummary" "firestore.rules" \
+  && grep_file "isAcceptedFriend(data.ownerUid)" "firestore.rules"; then
+  ok "daily oracle sync settings refresh existing summaries and keep Firestore friend-only read rules"
+else
+  fail "daily oracle sync settings are missing existing-summary refresh wiring or friend-only read rules"
 fi
 
 if [[ "${CHECK_IOS_EXPORT:-0}" == "1" ]]; then
@@ -857,25 +1388,23 @@ else
 fi
 
 if [[ "${CHECK_BUILD:-0}" == "1" ]]; then
-  if dotnet build Assembly-CSharp.csproj >/tmp/moonly_readiness_build.log 2>&1 \
-    && dotnet build Assembly-CSharp-Editor.csproj >>/tmp/moonly_readiness_build.log 2>&1; then
+  if dotnet build --no-restore Assembly-CSharp.csproj -p:UseSharedCompilation=false \
+    && dotnet build --no-restore Assembly-CSharp-Editor.csproj -p:UseSharedCompilation=false; then
     ok "C# build checks passed"
   else
-    fail "C# build checks failed; see /tmp/moonly_readiness_build.log"
+    fail "C# build checks failed; see command output above"
   fi
 
   iap_defines="$(sed -n 's:.*<DefineConstants>\(.*\)</DefineConstants>.*:\1:p' Assembly-CSharp.csproj | head -n 1)"
   if [[ -n "$iap_defines" ]]; then
     case ";$iap_defines;" in
-      *";UNITY_PURCHASING;"*) ;;
-      *) iap_defines="$iap_defines;UNITY_PURCHASING" ;;
+      *";UNITY_PURCHASING;"*)
+        ok "Unity IAP bridge compile define is present and covered by C# build checks"
+        ;;
+      *)
+        fail "Assembly-CSharp.csproj missing UNITY_PURCHASING define for IAP bridge compile coverage"
+        ;;
     esac
-    iap_defines_escaped="${iap_defines//;/%3B}"
-    if dotnet build Assembly-CSharp.csproj -p:DefineConstants="$iap_defines_escaped" >/tmp/moonly_readiness_iap_build.log 2>&1; then
-      ok "Unity IAP bridge compile check passed"
-    else
-      fail "Unity IAP bridge compile check failed; see /tmp/moonly_readiness_iap_build.log"
-    fi
   else
     warn "could not inspect Assembly-CSharp.csproj DefineConstants for IAP bridge compile check"
   fi

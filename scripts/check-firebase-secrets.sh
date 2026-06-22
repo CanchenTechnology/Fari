@@ -53,8 +53,30 @@ require_command() {
   fi
 }
 
-require_command firebase
 require_command node
+
+run_with_timeout() {
+  local seconds="$1"
+  shift
+
+  "$@" &
+  local command_pid=$!
+  (
+    sleep "$seconds"
+    kill "$command_pid" >/dev/null 2>&1 || true
+  ) &
+  local watchdog_pid=$!
+
+  set +e
+  wait "$command_pid"
+  local status=$?
+  set -e
+
+  kill "$watchdog_pid" >/dev/null 2>&1 || true
+  wait "$watchdog_pid" >/dev/null 2>&1 || true
+
+  return "$status"
+}
 
 fetch_readiness_status() {
   if [[ "$READINESS_STATE" != "unfetched" ]]; then
@@ -66,7 +88,15 @@ fetch_readiness_status() {
     return
   fi
 
-  if ! curl -fsS --max-time "${READINESS_TIMEOUT_SECONDS:-20}" "$READINESS_URL" >"$READINESS_JSON" 2>"$TMP_DIR/readiness.err"; then
+  local readiness_timeout="${READINESS_TIMEOUT_SECONDS:-30}"
+  local readiness_connect_timeout="${READINESS_CONNECT_TIMEOUT_SECONDS:-10}"
+  if ! curl \
+    -fsS \
+    --connect-timeout "$readiness_connect_timeout" \
+    --max-time "$readiness_timeout" \
+    "$READINESS_URL" \
+    >"$READINESS_JSON" \
+    2>"$TMP_DIR/readiness.err"; then
     return
   fi
 
@@ -110,39 +140,77 @@ if (value === true) {
 NODE
 }
 
-if ! firebase login:list --json >/tmp/moonly_secrets_login.json 2>/tmp/moonly_secrets_login.err; then
-  fail "Firebase CLI is not logged in; run firebase login --reauth"
-  exit 2
-fi
+ensure_firebase_cli_ready() {
+  require_command firebase
 
-if ! node -e 'const fs=require("fs"); const data=JSON.parse(fs.readFileSync("/tmp/moonly_secrets_login.json","utf8")); process.exit(Array.isArray(data.result)&&data.result.length>0?0:1);' >/dev/null 2>&1; then
-  fail "Firebase CLI has no active login; run firebase login --reauth"
-  exit 2
-fi
+  if ! firebase login:list --json >"$TMP_DIR/firebase-login.json" 2>"$TMP_DIR/firebase-login.err"; then
+    fail "Firebase CLI is not logged in; run firebase login --reauth"
+    return 1
+  fi
 
-if ! firebase use --json >/tmp/moonly_secrets_use.json 2>/tmp/moonly_secrets_use.err; then
-  fail "Firebase project is not selected; run firebase use $PROJECT_ID"
-  exit 2
-fi
+  if ! node - "$TMP_DIR/firebase-login.json" <<'NODE' >/dev/null 2>&1
+const fs = require("fs");
+const data = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+process.exit(Array.isArray(data.result) && data.result.length > 0 ? 0 : 1);
+NODE
+  then
+    fail "Firebase CLI has no active login; run firebase login --reauth"
+    return 1
+  fi
 
-if ! node - "$PROJECT_ID" <<'NODE' >/dev/null 2>&1
+  if ! firebase use --json >"$TMP_DIR/firebase-use.json" 2>"$TMP_DIR/firebase-use.err"; then
+    fail "Firebase project is not selected; run firebase use $PROJECT_ID"
+    return 1
+  fi
+
+  if ! node - "$PROJECT_ID" "$TMP_DIR/firebase-use.json" <<'NODE' >/dev/null 2>&1
 const fs = require("fs");
 const expectedProject = process.argv[2];
-const data = JSON.parse(fs.readFileSync("/tmp/moonly_secrets_use.json", "utf8"));
+const data = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
 process.exit(data.result === expectedProject ? 0 : 1);
 NODE
-then
-  fail "Firebase active project is not $PROJECT_ID; run firebase use $PROJECT_ID"
-  exit 2
-fi
+  then
+    fail "Firebase active project is not $PROJECT_ID; run firebase use $PROJECT_ID"
+    return 1
+  fi
+}
 
 check_secret() {
   local key="$1"
   local required="$2"
   local output="$TMP_DIR/$key.value"
   local stderr="$TMP_DIR/$key.err"
+  local readiness_state
 
-  if firebase functions:secrets:access "$key" --project "$PROJECT_ID" >"$output" 2>"$stderr"; then
+  readiness_state="$(readiness_secret_state "$key")"
+  case "$readiness_state" in
+    present)
+      ok "$key exists according to readinessStatus"
+      return 0
+      ;;
+    missing)
+      if [[ "$required" == "1" ]]; then
+        fail "$key is missing according to readinessStatus"
+        return 1
+      fi
+
+      warn "$key is missing according to readinessStatus"
+      return 0
+      ;;
+  esac
+
+  if ! ensure_firebase_cli_ready; then
+    if [[ "$required" == "1" ]]; then
+      fail "$key cannot be verified because readinessStatus and Firebase CLI access are unavailable"
+      return 1
+    fi
+
+    warn "$key cannot be verified because readinessStatus and Firebase CLI access are unavailable"
+    return 0
+  fi
+
+  if run_with_timeout "${FIREBASE_SECRET_ACCESS_TIMEOUT_SECONDS:-12}" \
+    firebase functions:secrets:access "$key" --project "$PROJECT_ID" >"$output" 2>"$stderr"; then
     if [[ ! -s "$output" ]]; then
       if [[ "$required" == "1" ]]; then
         fail "$key exists but is empty"
@@ -167,24 +235,6 @@ check_secret() {
     return 0
   fi
 
-  local readiness_state
-  readiness_state="$(readiness_secret_state "$key")"
-  case "$readiness_state" in
-    present)
-      ok "$key exists according to readinessStatus (Firebase CLI could not directly access Secret Manager)"
-      return 0
-      ;;
-    missing)
-      if [[ "$required" == "1" ]]; then
-        fail "$key is missing according to readinessStatus"
-        return 1
-      fi
-
-      warn "$key is missing according to readinessStatus"
-      return 0
-      ;;
-  esac
-
   if [[ "$required" == "1" ]]; then
     fail "$key is missing or inaccessible"
     return 1
@@ -198,12 +248,25 @@ echo "Firebase Functions Secrets check"
 echo "Project: $PROJECT_ID"
 echo
 
+fetch_readiness_status
+if [[ "$READINESS_STATE" == "available" ]]; then
+  ok "readinessStatus secret diagnostics available"
+else
+  warn "readinessStatus secret diagnostics unavailable; falling back to Firebase CLI Secret Manager access"
+fi
+
 failures=0
 for key in "${REQUIRED_SECRETS[@]}"; do
   if ! check_secret "$key" "1"; then
     failures=$((failures + 1))
   fi
 done
+
+if [[ "$failures" -gt 0 ]]; then
+  echo
+  echo "Summary: $failures missing/invalid required secret(s)"
+  exit 1
+fi
 
 if [[ "${REQUIRE_PAYMENT_WEBHOOK:-0}" == "1" ]]; then
   if ! check_secret PAYMENT_WEBHOOK_SECRET "1"; then

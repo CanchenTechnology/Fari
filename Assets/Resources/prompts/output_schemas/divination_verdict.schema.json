@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["displayReply", "shortVerdict", "judgeContent", "adviceContent", "topics"],
+  "properties": {
+    "displayReply": {
+      "type": "string",
+      "maxLength": 140
+    },
+    "shortVerdict": {
+      "type": "string"
+    },
+    "judgeContent": {
+      "type": "string"
+    },
+    "adviceContent": {
+      "type": "string"
+    },
+    "topics": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

@@ -15,6 +15,7 @@ public class TwoPersonDivinationResultFlowUI : WindowBase
 	private RelationshipDivinationRecord currentRecord;
 	private FriendDataManager.FriendData currentFriend;
 	private DivinationRecordData currentRecordData;
+	private bool hasLoggedSaveButtonAutoEnable;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -34,6 +35,7 @@ public class TwoPersonDivinationResultFlowUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		EnsureSaveButtonInteractable();
 		RefreshFromFlow();
 	}
 	// 物体隐藏时执行
@@ -84,25 +86,37 @@ public class TwoPersonDivinationResultFlowUI : WindowBase
 	{
 		if (currentRecord == null)
 		{
+			SetSaveButtonState(true, "保存到历史");
 			ToastManager.ShowToast("暂无可保存的双人占卜结果");
 			return;
 		}
 
 		currentRecordData ??= RelationshipDivinationFlow.BuildDivinationRecord(currentRecord);
-		DivinationRecordFirestore store = DivinationRecordFirestore.Instance;
+
+		DivinationRecordFirestore store = RelationshipDivinationFlow.GetOrCreateHistoryService();
 		if (store == null)
 		{
-			RelationshipDivinationFlow.SaveResultToHistory(currentRecord);
-			ToastManager.ShowToast("已保存到本地历史");
+			SetSaveButtonState(true, "保存到历史");
+			ToastManager.ShowToast("历史服务暂不可用");
 			return;
 		}
 
 		store.SaveRecord(currentRecordData, success =>
 		{
-			ToastManager.ShowToast(success ? "已保存到占卜历史" : "已保存到本地历史，云端稍后同步");
+			SetSaveButtonState(true, "保存到历史");
+			ToastManager.ShowToast(success ? "已保存到历史" : "保存失败，请稍后再试");
+			if (success)
+				Debug.Log("[TwoPersonDivinationResultFlowUI] 双人占卜历史已保存");
+			else
+				Debug.LogWarning("[TwoPersonDivinationResultFlowUI] 云端历史保存失败");
 		});
 	}
-	#endregion
+		#endregion
+
+	private void LateUpdate()
+	{
+		EnsureSaveButtonInteractable();
+	}
 
 	private void Render()
 	{
@@ -111,6 +125,7 @@ public class TwoPersonDivinationResultFlowUI : WindowBase
 
 		if (currentRecord == null)
 		{
+			SetSaveButtonState(true, "保存到历史");
 			ToastManager.ShowToast("占卜结果不存在");
 			return;
 		}
@@ -131,6 +146,34 @@ public class TwoPersonDivinationResultFlowUI : WindowBase
 			uiComponent.Card3DescText.text = BuildCardDescription(sharedCard, "关系走向");
 		if (uiComponent.SummaryDescText != null)
 			uiComponent.SummaryDescText.text = BuildSummaryText(myCard, friendCard, sharedCard);
+
+		SetSaveButtonState(true, "保存到历史");
+	}
+
+	private void SetSaveButtonState(bool interactable, string label)
+	{
+		if (uiComponent?.SaveHistoryButton == null)
+			return;
+
+		uiComponent.SaveHistoryButton.interactable = interactable;
+		RelationshipDivinationFlow.SetButtonText(uiComponent.SaveHistoryButton, label);
+	}
+
+	private void EnsureSaveButtonInteractable()
+	{
+		if (uiComponent?.SaveHistoryButton == null)
+			return;
+
+		if (!uiComponent.SaveHistoryButton.interactable)
+		{
+			uiComponent.SaveHistoryButton.interactable = true;
+			RelationshipDivinationFlow.SetButtonText(uiComponent.SaveHistoryButton, "保存到历史");
+			if (!hasLoggedSaveButtonAutoEnable)
+			{
+				hasLoggedSaveButtonAutoEnable = true;
+				Debug.LogWarning("[TwoPersonDivinationResultFlowUI] SaveHistoryButton 被置为不可交互，已自动恢复。");
+			}
+		}
 	}
 
 	private void ApplyCardSprite(Image target, RelationshipDivinationCard card)

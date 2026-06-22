@@ -10,6 +10,7 @@ public class UsageStatsManager : MonoSingleton<UsageStatsManager>
 {
     private const string KEY_DATE = "UsageStats_Date";
     private const string KEY_DAILY_ORACLE = "UsageStats_DailyOracle";
+    private const string KEY_DAILY_ORACLE_READING_CREDITED = "UsageStats_DailyOracleReadingCredited";
     private const string KEY_DIALOG_MESSAGES = "UsageStats_DialogMessages";
     private const string KEY_SPREAD_READINGS = "UsageStats_SpreadReadings";
 
@@ -31,7 +32,14 @@ public class UsageStatsManager : MonoSingleton<UsageStatsManager>
     {
         LoadToday();
         DailyOracleCount = Math.Max(DailyOracleCount, 1);
+        CreditDailyOracleReadingIfNeeded();
         Save();
+    }
+
+    public bool HasUsedDailyOracleToday()
+    {
+        LoadToday();
+        return DailyOracleCount > 0;
     }
 
     public void TrackDialogMessage()
@@ -63,6 +71,19 @@ public class UsageStatsManager : MonoSingleton<UsageStatsManager>
         return isPro ? $"{SpreadReadingCount}/∞" : $"{SpreadReadingCount}/{FreeReadingLimit}";
     }
 
+    public void ClearLocalUsageStats()
+    {
+        DailyOracleCount = 0;
+        DialogMessageCount = 0;
+        SpreadReadingCount = 0;
+        UnityEngine.PlayerPrefs.DeleteKey(KEY_DATE);
+        UnityEngine.PlayerPrefs.DeleteKey(KEY_DAILY_ORACLE);
+        UnityEngine.PlayerPrefs.DeleteKey(KEY_DAILY_ORACLE_READING_CREDITED);
+        UnityEngine.PlayerPrefs.DeleteKey(KEY_DIALOG_MESSAGES);
+        UnityEngine.PlayerPrefs.DeleteKey(KEY_SPREAD_READINGS);
+        UnityEngine.PlayerPrefs.Save();
+    }
+
     private void LoadToday()
     {
         string today = DateTime.Now.ToString("yyyy-MM-dd");
@@ -73,6 +94,7 @@ public class UsageStatsManager : MonoSingleton<UsageStatsManager>
             DialogMessageCount = 0;
             SpreadReadingCount = 0;
             UnityEngine.PlayerPrefs.SetString(KEY_DATE, today);
+            UnityEngine.PlayerPrefs.SetInt(KEY_DAILY_ORACLE_READING_CREDITED, 0);
             Save();
             return;
         }
@@ -80,6 +102,10 @@ public class UsageStatsManager : MonoSingleton<UsageStatsManager>
         DailyOracleCount = UnityEngine.PlayerPrefs.GetInt(KEY_DAILY_ORACLE, 0);
         DialogMessageCount = UnityEngine.PlayerPrefs.GetInt(KEY_DIALOG_MESSAGES, 0);
         SpreadReadingCount = UnityEngine.PlayerPrefs.GetInt(KEY_SPREAD_READINGS, 0);
+        if (CreditDailyOracleReadingIfNeeded())
+        {
+            Save();
+        }
     }
 
     private void Save()
@@ -88,6 +114,20 @@ public class UsageStatsManager : MonoSingleton<UsageStatsManager>
         UnityEngine.PlayerPrefs.SetInt(KEY_DIALOG_MESSAGES, DialogMessageCount);
         UnityEngine.PlayerPrefs.SetInt(KEY_SPREAD_READINGS, SpreadReadingCount);
         UnityEngine.PlayerPrefs.Save();
+    }
+
+    private bool CreditDailyOracleReadingIfNeeded()
+    {
+        if (DailyOracleCount <= 0)
+            return false;
+
+        bool hasCreditedDailyOracleReading = UnityEngine.PlayerPrefs.GetInt(KEY_DAILY_ORACLE_READING_CREDITED, 0) > 0;
+        if (hasCreditedDailyOracleReading)
+            return false;
+
+        SpreadReadingCount++;
+        UnityEngine.PlayerPrefs.SetInt(KEY_DAILY_ORACLE_READING_CREDITED, 1);
+        return true;
     }
 }
 

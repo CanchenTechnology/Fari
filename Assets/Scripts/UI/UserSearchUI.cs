@@ -44,6 +44,7 @@ public class UserSearchUI : WindowBase
 		RefreshResultViews();
 
 		base.OnAwake();
+		NotificationUnreadBadge.Attach(uiComponent.NotificationsButton);
 	}
 	// 物体显示时执行
 	public override void OnShow()
@@ -55,6 +56,7 @@ public class UserSearchUI : WindowBase
 		LoadPendingSentRequests();
 		LoadBlockedUsers();
 		RefreshResultViews();
+		NotificationUnreadBadge.Attach(uiComponent.NotificationsButton);
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -122,6 +124,7 @@ public class UserSearchUI : WindowBase
 			currentResults.Clear();
 
 			bool hasSelfMatch = false;
+			int rawResultCount = results?.Count ?? 0;
 			if (results != null)
 			{
 				foreach (var result in results)
@@ -134,13 +137,13 @@ public class UserSearchUI : WindowBase
 					if (result.isSelf)
 					{
 						hasSelfMatch = true;
-						continue;
 					}
 
 					currentResults.Add(result);
 				}
 			}
 
+			Debug.Log($"[UserSearchUI] 搜索完成 keyword={keyword}, raw={rawResultCount}, shown={currentResults.Count}, hasSelf={hasSelfMatch}");
 			RefreshResultViews();
 			ShowSearchResultToast(hasSelfMatch);
 		}, SearchResultLimit);
@@ -294,26 +297,27 @@ public class UserSearchUI : WindowBase
 			return;
 		}
 
-		bool hasResult = index >= 0 && index < currentResults.Count;
-		FirestoreManager.UserSearchResult result = hasResult ? currentResults[index] : null;
-		bool alreadyFriend = IsResultAlreadyFriend(result);
-		bool alreadyRequested = IsResultAlreadyRequested(result);
-		bool blocked = IsResultBlocked(result);
+			bool hasResult = index >= 0 && index < currentResults.Count;
+			FirestoreManager.UserSearchResult result = hasResult ? currentResults[index] : null;
+			bool isSelf = result != null && result.isSelf;
+			bool alreadyFriend = IsResultAlreadyFriend(result);
+			bool alreadyRequested = IsResultAlreadyRequested(result);
+			bool blocked = IsResultBlocked(result);
 
-		button.interactable = hasResult && !alreadyFriend;
-		button.onClick.RemoveAllListeners();
+			button.interactable = hasResult && !isSelf && !alreadyFriend;
+			button.onClick.RemoveAllListeners();
 
-		Text buttonText = button.GetComponentInChildren<Text>(true);
-		if (buttonText != null)
-		{
-			buttonText.text = !hasResult ? string.Empty : alreadyFriend ? "已添加" : blocked ? "解除" : alreadyRequested ? "取消" : "添加";
-		}
-
-		if (hasResult && !alreadyFriend)
-		{
-			int capturedIndex = index;
-			button.onClick.AddListener(() =>
+			Text buttonText = button.GetComponentInChildren<Text>(true);
+			if (buttonText != null)
 			{
+				buttonText.text = !hasResult ? string.Empty : isSelf ? "自己" : alreadyFriend ? "已添加" : blocked ? "解除" : alreadyRequested ? "取消" : "添加";
+			}
+
+			if (hasResult && !isSelf && !alreadyFriend)
+			{
+				int capturedIndex = index;
+				button.onClick.AddListener(() =>
+				{
 				if (capturedIndex < 0 || capturedIndex >= currentResults.Count)
 				{
 					ToastManager.ShowToast("搜索结果已刷新，请重新选择");

@@ -44,10 +44,20 @@ namespace GamerFrameWork.OracleRuntime
             "celtic_inspired_deep_cross"
         };
 
+        public static readonly string[] SPREAD_COMPLEXITIES = { "light", "standard", "deep" };
+
         public static readonly string[] RISK_FLAGS =
         {
             "self_harm", "medical", "legal",
             "minor_safety", "privacy_sensitive", "third_party_claim"
+        };
+
+        public static readonly string[] ORACLE_ACTION_KINDS =
+        {
+            "draw_one_card", "start_three_card", "ask_about_person",
+            "save_tomorrow_hook", "dive_deeper", "play_voice_summary",
+            "share_result_card", "continue_chat", "plan_spread",
+            "start_spread", "reveal_card"
         };
 
         public static readonly string[] READING_STATES =
@@ -207,6 +217,7 @@ namespace GamerFrameWork.OracleRuntime
         public string sourceConversationId;
         public string sourceMessageId;
         public string createdAt;
+        public bool important;
     }
 
     [Serializable]

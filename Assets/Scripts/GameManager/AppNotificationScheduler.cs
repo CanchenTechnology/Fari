@@ -22,6 +22,7 @@ public class AppNotificationScheduler : MonoSingleton<AppNotificationScheduler>
     private const int DailyOracleNotificationId = 910001;
     private const int DivinationReturnNotificationId = 910002;
     private const int ActivitySystemNotificationId = 910003;
+    private const int DialogueReplyNotificationId = 910004;
     private const int FriendRequestNotificationId = 910101;
     private const int RelationshipInviteNotificationId = 910102;
     private const int FriendDailyOracleNotificationId = 910103;
@@ -34,6 +35,7 @@ public class AppNotificationScheduler : MonoSingleton<AppNotificationScheduler>
         DailyOracleNotificationId,
         DivinationReturnNotificationId,
         ActivitySystemNotificationId,
+        DialogueReplyNotificationId,
         FriendRequestNotificationId,
         RelationshipInviteNotificationId,
         FriendDailyOracleNotificationId,
@@ -98,6 +100,7 @@ public class AppNotificationScheduler : MonoSingleton<AppNotificationScheduler>
 
         List<string> scheduled = new List<string>();
         bool hasAnyEnabled = settings.DailyOracleEnabled
+            || settings.DialogueReplyEnabled
             || settings.DivinationReturnEnabled
             || settings.FriendInteractionEnabled
             || settings.ActivitySystemEnabled;
@@ -151,6 +154,23 @@ public class AppNotificationScheduler : MonoSingleton<AppNotificationScheduler>
         PlayerPrefs.SetString(LastSyncSummaryKey, summary);
         PlayerPrefs.Save();
         Debug.Log($"[AppNotificationScheduler] {summary}");
+    }
+
+    public void NotifyDialogueReplyReady(string preview)
+    {
+        if (!IsDialogueReplyEnabled()) return;
+
+        if (Application.isFocused)
+            return;
+
+        string text = string.IsNullOrWhiteSpace(preview)
+            ? "神谕师有新的回复，回来继续这段对话。"
+            : TrimForNotification(preview, 80);
+        string key = BuildSeenKey("dialogue_reply", string.IsNullOrEmpty(text) ? 0 : text.GetHashCode());
+        if (HasSeenToday(key)) return;
+
+        MarkSeen(key);
+        ScheduleImmediate(DialogueReplyNotificationId, "神谕师回复了你", text, "dialogue_reply");
     }
 
     public void NotifyFriendRequestCount(int count)
@@ -233,6 +253,7 @@ public class AppNotificationScheduler : MonoSingleton<AppNotificationScheduler>
 
     private void ScheduleImmediate(int id, string title, string text, string payload)
     {
+        NotificationUnreadState.MarkUnread(payload);
         ScheduleNotification(id, title, text, DateTime.Now.AddSeconds(5), false, payload);
         TryEditorToast(text);
     }
@@ -241,6 +262,12 @@ public class AppNotificationScheduler : MonoSingleton<AppNotificationScheduler>
     {
         NotificationSettingsManager settings = NotificationSettingsManager.Instance;
         return settings != null && settings.FriendInteractionEnabled;
+    }
+
+    private bool IsDialogueReplyEnabled()
+    {
+        NotificationSettingsManager settings = NotificationSettingsManager.Instance;
+        return settings != null && settings.DialogueReplyEnabled;
     }
 
     private bool ScheduleNotification(int id, string title, string text, DateTime fireTime, bool repeatDaily, string payload)

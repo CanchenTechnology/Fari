@@ -87,7 +87,7 @@ public class SpreadInteractionCard1 : MonoBehaviour
     /// <summary>
     /// 初始化牌阵面板
     /// </summary>
-    /// <param name="spreadDef">牌阵定义（如 single_mirror）</param>
+    /// <param name="spreadDef">牌阵定义（如 mirror_card）</param>
     public void Setup(SpreadDefinition spreadDef)
     {
         Setup(spreadDef, null);
@@ -405,7 +405,7 @@ public class SpreadInteractionCard1 : MonoBehaviour
         if (_drawnCards == null || _drawnCards.Count == 0) return;
 
         // 构建 LockedCard 列表
-        var spreadKind = _currentSpread?.kind ?? "single_mirror";
+        var spreadKind = _currentSpread?.kind ?? "mirror_card";
         var lockedList = new List<LockedCard>();
 
         for (int i = 0; i < _drawnCards.Count; i++)
@@ -430,6 +430,7 @@ public class SpreadInteractionCard1 : MonoBehaviour
 
         session.lockedCards = lockedList;
         session.spreadKind = spreadKind;
+        session.divinationPlan = DivinationEngine.Instance.BuildActiveDivinationPlan(spreadKind);
         session.phase = DivinationPhase.CardsLocked;
 
         // 创建 ReadingLock
@@ -449,6 +450,7 @@ public class SpreadInteractionCard1 : MonoBehaviour
             dialogSystem.SetActiveReadingState("cards_locked");
             dialogSystem.SetActiveActionKind("reveal_card");
             dialogSystem.SetActiveReadingId(session.readingId);
+            dialogSystem.SetActiveDivinationPlan(session.divinationPlan);
         }
 
         Debug.Log($"[SpreadInteractionCard1] 已同步 {lockedList.Count} 张牌到 DivinationEngine, spreadKind={spreadKind}");

@@ -1,0 +1,99 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reading_type", "summary", "cards", "synthesis", "advice", "followup_questions", "ui"],
+  "properties": {
+    "reading_type": {
+      "type": "string",
+      "const": "friend_divination"
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "text"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 8
+        },
+        "text": {
+          "type": "string",
+          "minLength": 40,
+          "maxLength": 70
+        }
+      }
+    },
+    "cards": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["position", "card_name", "orientation", "display_name", "meaning", "deep_interpretation"],
+        "properties": {
+          "position": {
+            "type": "string"
+          },
+          "card_name": {
+            "type": "string"
+          },
+          "orientation": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "meaning": {
+            "type": "string",
+            "minLength": 35,
+            "maxLength": 60
+          },
+          "deep_interpretation": {
+            "type": "string",
+            "minLength": 90,
+            "maxLength": 140
+          }
+        }
+      }
+    },
+    "synthesis": {
+      "type": "string",
+      "minLength": 120,
+      "maxLength": 180
+    },
+    "advice": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "string",
+        "maxLength": 40
+      }
+    },
+    "followup_questions": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "string",
+        "maxLength": 32
+      }
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primary_cta", "result_card_title"],
+      "properties": {
+        "primary_cta": {
+          "type": "string",
+          "maxLength": 12
+        },
+        "result_card_title": {
+          "type": "string",
+          "maxLength": 12
+        }
+      }
+    }
+  }
+}

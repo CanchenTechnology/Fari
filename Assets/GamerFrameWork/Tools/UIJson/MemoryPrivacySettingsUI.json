@@ -1,0 +1,118 @@
+{
+  "screenName": "MemoryPrivacySettingsUI",
+  "resolution": { "x": 1080, "y": 1920 },
+  "matchWidthOrHeight": 0,
+  "includeMask": false,
+  "defaultFont": "Assets/GamerFrameWork/I2/Localization/Examples/Resources/ARIAL.TTF",
+  "elements": [
+    { "name": "Background", "type": "Panel", "raycastTarget": false, "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 0.006, "g": 0.006, "b": 0.018, "a": 1 } },
+    { "name": "PurpleAmbient", "type": "Panel", "raycastTarget": false, "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 0.035, "g": 0.022, "b": 0.070, "a": 0.65 } },
+    {
+      "name": "StatusBar",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "size": { "x": 0, "y": 72 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        { "name": "TimeText", "type": "Text", "text": "9:41", "fontSize": 35, "fontStyle": "Bold", "textAlignment": "Left", "textColor": { "r": 0.92, "g": 0.92, "b": 0.94, "a": 1 }, "anchorMin": { "x": 0, "y": 1 }, "anchorMax": { "x": 0, "y": 1 }, "pivot": { "x": 0, "y": 1 }, "position": { "x": 64, "y": -28 }, "size": { "x": 160, "y": 48 } },
+        { "name": "StatusIcons", "type": "Text", "text": "▮▮▮  ≋  ▭", "fontSize": 31, "fontStyle": "Bold", "textAlignment": "Right", "textColor": { "r": 0.92, "g": 0.92, "b": 0.94, "a": 1 }, "anchorMin": { "x": 1, "y": 1 }, "anchorMax": { "x": 1, "y": 1 }, "pivot": { "x": 1, "y": 1 }, "position": { "x": -48, "y": -28 }, "size": { "x": 260, "y": 48 } }
+      ]
+    },
+    {
+      "name": "BackButtonCircle",
+      "type": "Panel",
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 0, "y": 1 },
+      "position": { "x": 82, "y": -124 },
+      "size": { "x": 72, "y": 72 },
+      "color": { "r": 0.025, "g": 0.022, "b": 0.040, "a": 0.88 },
+      "children": [
+        { "name": "BackIcon", "type": "Text", "text": "‹", "fontSize": 66, "textAlignment": "Center", "textColor": { "r": 0.90, "g": 0.70, "b": 0.45, "a": 1 }, "position": { "x": -2, "y": 2 }, "size": { "x": 68, "y": 68 } },
+        { "name": "[Button]Back", "type": "Button", "text": "", "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 1, "g": 1, "b": 1, "a": 0 } }
+      ]
+    },
+    {
+      "name": "TitleGroup",
+      "type": "Panel",
+      "raycastTarget": false,
+      "anchorMin": { "x": 0, "y": 1 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -88 },
+      "size": { "x": 0, "y": 118 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0 },
+      "children": [
+        { "name": "TitleLineLeft", "type": "Panel", "raycastTarget": false, "position": { "x": -330, "y": -48 }, "size": { "x": 140, "y": 1.5 }, "color": { "r": 0.78, "g": 0.52, "b": 0.28, "a": 0.42 } },
+        { "name": "TitleLineRight", "type": "Panel", "raycastTarget": false, "position": { "x": 330, "y": -48 }, "size": { "x": 140, "y": 1.5 }, "color": { "r": 0.78, "g": 0.52, "b": 0.28, "a": 0.42 } },
+        { "name": "TitleText", "type": "Text", "text": "隐私设置", "fontSize": 56, "textAlignment": "Center", "textColor": { "r": 0.94, "g": 0.73, "b": 0.46, "a": 1 }, "position": { "x": 0, "y": -48 }, "size": { "x": 360, "y": 76 } }
+      ]
+    },
+    {
+      "name": "SettingsCard",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -240 },
+      "size": { "x": 980, "y": 690 },
+      "color": { "r": 0.040, "g": 0.038, "b": 0.073, "a": 0.94 },
+      "children": [
+        { "name": "SettingTitle", "type": "Text", "text": "自动记忆范围", "fontSize": 40, "fontStyle": "Bold", "textAlignment": "Left", "textColor": { "r": 0.92, "g": 0.90, "b": 0.92, "a": 1 }, "position": { "x": -325, "y": 270 }, "size": { "x": 330, "y": 58 } },
+        { "name": "AutoTopicLabel", "type": "Text", "text": "自动记录对话主题", "fontSize": 33, "textAlignment": "Left", "textColor": { "r": 0.86, "g": 0.83, "b": 0.90, "a": 1 }, "position": { "x": -250, "y": 180 }, "size": { "x": 420, "y": 52 } },
+        { "name": "AutoTopicSwitch", "type": "Panel", "position": { "x": 335, "y": 180 }, "size": { "x": 150, "y": 62 }, "color": { "r": 0.34, "g": 0.18, "b": 0.64, "a": 0.94 }, "children": [ { "name": "AutoTopicSwitchText", "type": "Text", "text": "开", "fontSize": 28, "textAlignment": "Center", "textColor": { "r": 0.92, "g": 0.88, "b": 0.95, "a": 1 }, "size": { "x": 120, "y": 52 } }, { "name": "[Button]ToggleAutoTopic", "type": "Button", "text": "", "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 1, "g": 1, "b": 1, "a": 0 } } ] },
+        { "name": "AutoPreferenceLabel", "type": "Text", "text": "自动记录个人偏好", "fontSize": 33, "textAlignment": "Left", "textColor": { "r": 0.86, "g": 0.83, "b": 0.90, "a": 1 }, "position": { "x": -250, "y": 88 }, "size": { "x": 420, "y": 52 } },
+        { "name": "AutoPreferenceSwitch", "type": "Panel", "position": { "x": 335, "y": 88 }, "size": { "x": 150, "y": 62 }, "color": { "r": 0.34, "g": 0.18, "b": 0.64, "a": 0.94 }, "children": [ { "name": "AutoPreferenceSwitchText", "type": "Text", "text": "开", "fontSize": 28, "textAlignment": "Center", "textColor": { "r": 0.92, "g": 0.88, "b": 0.95, "a": 1 }, "size": { "x": 120, "y": 52 } }, { "name": "[Button]ToggleAutoPreference", "type": "Button", "text": "", "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 1, "g": 1, "b": 1, "a": 0 } } ] },
+        { "name": "EmotionLabel", "type": "Text", "text": "记录情感模式", "fontSize": 33, "textAlignment": "Left", "textColor": { "r": 0.86, "g": 0.83, "b": 0.90, "a": 1 }, "position": { "x": -250, "y": -4 }, "size": { "x": 420, "y": 52 } },
+        { "name": "EmotionSwitch", "type": "Panel", "position": { "x": 335, "y": -4 }, "size": { "x": 150, "y": 62 }, "color": { "r": 0.34, "g": 0.18, "b": 0.64, "a": 0.94 }, "children": [ { "name": "EmotionSwitchText", "type": "Text", "text": "开", "fontSize": 28, "textAlignment": "Center", "textColor": { "r": 0.92, "g": 0.88, "b": 0.95, "a": 1 }, "size": { "x": 120, "y": 52 } }, { "name": "[Button]ToggleEmotionPattern", "type": "Button", "text": "", "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 1, "g": 1, "b": 1, "a": 0 } } ] },
+        { "name": "GrowthLabel", "type": "Text", "text": "记录成长轨迹", "fontSize": 33, "textAlignment": "Left", "textColor": { "r": 0.86, "g": 0.83, "b": 0.90, "a": 1 }, "position": { "x": -250, "y": -96 }, "size": { "x": 420, "y": 52 } },
+        { "name": "GrowthSwitch", "type": "Panel", "position": { "x": 335, "y": -96 }, "size": { "x": 150, "y": 62 }, "color": { "r": 0.080, "g": 0.060, "b": 0.095, "a": 0.92 }, "children": [ { "name": "GrowthSwitchText", "type": "Text", "text": "关", "fontSize": 28, "textAlignment": "Center", "textColor": { "r": 0.66, "g": 0.63, "b": 0.70, "a": 1 }, "size": { "x": 120, "y": 52 } }, { "name": "[Button]ToggleGrowthTrace", "type": "Button", "text": "", "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 1, "g": 1, "b": 1, "a": 0 } } ] },
+        { "name": "ConfirmLabel", "type": "Text", "text": "新增记忆前需要确认", "fontSize": 33, "textAlignment": "Left", "textColor": { "r": 0.86, "g": 0.83, "b": 0.90, "a": 1 }, "position": { "x": -250, "y": -210 }, "size": { "x": 420, "y": 52 } },
+        { "name": "ConfirmSwitch", "type": "Panel", "position": { "x": 335, "y": -210 }, "size": { "x": 150, "y": 62 }, "color": { "r": 0.34, "g": 0.18, "b": 0.64, "a": 0.94 }, "children": [ { "name": "ConfirmSwitchText", "type": "Text", "text": "开", "fontSize": 28, "textAlignment": "Center", "textColor": { "r": 0.92, "g": 0.88, "b": 0.95, "a": 1 }, "size": { "x": 120, "y": 52 } }, { "name": "[Button]ToggleRequireConfirm", "type": "Button", "text": "", "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 1, "g": 1, "b": 1, "a": 0 } } ] }
+      ]
+    },
+    {
+      "name": "ClearAllButtonBg",
+      "type": "Panel",
+      "anchorMin": { "x": 0.5, "y": 1 },
+      "anchorMax": { "x": 0.5, "y": 1 },
+      "pivot": { "x": 0.5, "y": 1 },
+      "position": { "x": 0, "y": -976 },
+      "size": { "x": 980, "y": 118 },
+      "color": { "r": 0.070, "g": 0.050, "b": 0.090, "a": 0.90 },
+      "children": [
+        { "name": "ClearAllText", "type": "Text", "text": "⌫  清除全部记忆", "fontSize": 40, "fontStyle": "Bold", "textAlignment": "Center", "textColor": { "r": 0.93, "g": 0.42, "b": 0.34, "a": 1 }, "size": { "x": 500, "y": 66 } },
+        { "name": "[Button]ShowClearConfirm", "type": "Button", "text": "", "anchorMin": { "x": 0, "y": 0 }, "anchorMax": { "x": 1, "y": 1 }, "size": { "x": 0, "y": 0 }, "color": { "r": 1, "g": 1, "b": 1, "a": 0 } }
+      ]
+    },
+    { "name": "PrivacyNote", "type": "Text", "text": "◇ 关闭某类记忆后，AI 将不再主动使用该类信息。", "fontSize": 28, "textAlignment": "Center", "textColor": { "r": 0.59, "g": 0.57, "b": 0.65, "a": 1 }, "anchorMin": { "x": 0.5, "y": 1 }, "anchorMax": { "x": 0.5, "y": 1 }, "pivot": { "x": 0.5, "y": 1 }, "position": { "x": 0, "y": -1140 }, "size": { "x": 900, "y": 48 } },
+    {
+      "name": "[Panel]ClearConfirmModal",
+      "type": "Panel",
+      "anchorMin": { "x": 0, "y": 0 },
+      "anchorMax": { "x": 1, "y": 1 },
+      "size": { "x": 0, "y": 0 },
+      "color": { "r": 0, "g": 0, "b": 0, "a": 0.48 },
+      "children": [
+        {
+          "name": "ConfirmSheet",
+          "type": "Panel",
+          "anchorMin": { "x": 0.5, "y": 0 },
+          "anchorMax": { "x": 0.5, "y": 0 },
+          "pivot": { "x": 0.5, "y": 0 },
+          "position": { "x": 0, "y": 68 },
+          "size": { "x": 980, "y": 410 },
+          "color": { "r": 0.045, "g": 0.040, "b": 0.075, "a": 0.98 },
+          "children": [
+            { "name": "ConfirmTitle", "type": "Text", "text": "清除全部记忆？", "fontSize": 44, "fontStyle": "Bold", "textAlignment": "Center", "textColor": { "r": 0.93, "g": 0.42, "b": 0.34, "a": 1 }, "position": { "x": 0, "y": 112 }, "size": { "x": 620, "y": 68 } },
+            { "name": "ConfirmDesc", "type": "Text", "text": "此操作不可恢复，但不会删除聊天记录。", "fontSize": 31, "textAlignment": "Center", "textColor": { "r": 0.72, "g": 0.69, "b": 0.76, "a": 1 }, "position": { "x": 0, "y": 34 }, "size": { "x": 760, "y": 50 } },
+            { "name": "[Button]CancelClear", "type": "Button", "text": "取消", "fontSize": 34, "textColor": { "r": 0.88, "g": 0.84, "b": 0.90, "a": 1 }, "position": { "x": -245, "y": -102 }, "size": { "x": 390, "y": 92 }, "color": { "r": 0.080, "g": 0.060, "b": 0.095, "a": 0.94 } },
+            { "name": "[Button]ConfirmClear", "type": "Button", "text": "确认清除", "fontSize": 34, "textColor": { "r": 0.92, "g": 0.88, "b": 0.95, "a": 1 }, "position": { "x": 245, "y": -102 }, "size": { "x": 390, "y": 92 }, "color": { "r": 0.62, "g": 0.18, "b": 0.18, "a": 0.94 } }
+          ]
+        }
+      ]
+    }
+  ]
+}

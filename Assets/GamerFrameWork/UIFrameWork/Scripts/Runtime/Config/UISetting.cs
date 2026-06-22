@@ -78,6 +78,7 @@ namespace GamerFrameWork.UIFrameWork
                 "GamerFrameWork.UIFrameWork",
                 "UnityEngine.UI",
                 "UnityEngine",
+                "SuperScrollView",
             };
 
 

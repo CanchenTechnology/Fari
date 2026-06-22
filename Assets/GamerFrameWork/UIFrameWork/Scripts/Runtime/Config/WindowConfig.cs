@@ -23,6 +23,7 @@ namespace GamerFrameWork.UIFrameWork
         public void GeneratorWindowConfig()
         {
             string[] windowRootArr = UISetting.Instance.WindowPrefabFolderPathArr;
+            Dictionary<string, string> generatedWindowPaths = new Dictionary<string, string>();
             //检测预制体路径或名称没有改变，如果没有就不需要生成配置
             bool needUpdate = false;
             foreach (var windowRootName in windowRootArr)
@@ -31,17 +32,25 @@ namespace GamerFrameWork.UIFrameWork
                 foreach (var path in filePathArr)
                 {
                     if (path.EndsWith(".meta")) continue;
-                    WindowData windowData = GetWindowData(Path.GetFileNameWithoutExtension(path), false);
+                    string fileName = Path.GetFileNameWithoutExtension(path);
+                    string generatedPath = BuildWindowLoadPath(path);
+                    if (!generatedWindowPaths.ContainsKey(fileName))
+                        generatedWindowPaths.Add(fileName, generatedPath);
+
+                    WindowData windowData = GetWindowData(fileName, false);
 
                     string windowPath = windowData == null ? string.Empty : windowData.path;
                     //路径不存在或路径不一致
-                    if (string.IsNullOrEmpty(windowPath) || (!string.IsNullOrEmpty(windowPath) && windowPath.GetHashCode() != path.GetHashCode()))
+                    if (string.IsNullOrEmpty(windowPath) || (!string.IsNullOrEmpty(windowPath) && windowPath != generatedPath))
                     {
                         needUpdate = true;
                         break;
                     }
                 }
             }
+            if (!needUpdate && windowDataList.Count != generatedWindowPaths.Count)
+                needUpdate = true;
+
             if (!needUpdate)
             {
                 Debug.Log("预制体个数没有发生改变，不生成窗口配置");
@@ -63,23 +72,10 @@ namespace GamerFrameWork.UIFrameWork
                     }
                     //获取预制体名字
                     string fileName = Path.GetFileNameWithoutExtension(path);
+                    if (GetWindowData(fileName, false) != null)
+                        continue;
 
-                    //计算文件读取路径 
-                    string tempPath = windowRootName + "/" + fileName;
-
-                    // 如果包含 Resources，则去掉 Resources 及之前的部分
-                    int index = tempPath.IndexOf("Resources", StringComparison.OrdinalIgnoreCase);
-                    if (index >= 0)
-                    {
-                        tempPath = tempPath.Substring(index + "Resources".Length);
-                        // 去掉开头的 / 
-                        if (tempPath.StartsWith("/"))
-                        {
-                            tempPath = tempPath.Substring(1);
-                        }
-                    }
-
-                    WindowData data = new WindowData { name = fileName, path = tempPath };
+                    WindowData data = new WindowData { name = fileName, path = BuildWindowLoadPath(path) };
                     windowDataList.Add(data);
                 }
             }
@@ -88,6 +84,28 @@ namespace GamerFrameWork.UIFrameWork
             EditorUtility.SetDirty(this);
             AssetDatabase.SaveAssetIfDirty(this);
 #endif
+        }
+
+        private static string BuildWindowLoadPath(string absolutePrefabPath)
+        {
+            string projectRoot = Application.dataPath.Replace("Assets", string.Empty).Replace("\\", "/");
+            string tempPath = absolutePrefabPath.Replace("\\", "/");
+
+            if (tempPath.StartsWith(projectRoot, StringComparison.OrdinalIgnoreCase))
+                tempPath = tempPath.Substring(projectRoot.Length);
+
+            if (tempPath.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
+                tempPath = tempPath.Substring(0, tempPath.Length - ".prefab".Length);
+
+            int index = tempPath.IndexOf("Resources", StringComparison.OrdinalIgnoreCase);
+            if (index >= 0)
+            {
+                tempPath = tempPath.Substring(index + "Resources".Length);
+                if (tempPath.StartsWith("/"))
+                    tempPath = tempPath.Substring(1);
+            }
+
+            return tempPath;
         }
 #endif
         /// <summary>
@@ -117,4 +135,3 @@ namespace GamerFrameWork.UIFrameWork
         public string path;
     }
 }
-

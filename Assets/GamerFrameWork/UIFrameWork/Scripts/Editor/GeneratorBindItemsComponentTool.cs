@@ -56,7 +56,6 @@ namespace GamerFrameWork.UIFrameWork
             _mMethodDic.Clear();
             StringBuilder sb = new StringBuilder();
 
-            string nameSpaceName = "GamerFrameWork.UIFrameWork";
             //添加引用
             sb.AppendLine("/*---------------------------------");
             sb.AppendLine(" *Title:UI自动化组件生成代码生成工具");

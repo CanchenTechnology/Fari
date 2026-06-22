@@ -457,6 +457,7 @@ public class SpreadInteractionCard3 : MonoBehaviour
 
         session.lockedCards = lockedList;
         session.spreadKind = spreadKind;
+        session.divinationPlan = DivinationEngine.Instance.BuildActiveDivinationPlan(spreadKind);
         session.phase = DivinationPhase.CardsLocked;
 
         // 创建 ReadingLock
@@ -476,6 +477,7 @@ public class SpreadInteractionCard3 : MonoBehaviour
             dialogSystem.SetActiveReadingState("cards_locked");
             dialogSystem.SetActiveActionKind("reveal_card");
             dialogSystem.SetActiveReadingId(session.readingId);
+            dialogSystem.SetActiveDivinationPlan(session.divinationPlan);
         }
 
         Debug.Log($"[SpreadInteractionCard3] 已同步 {lockedList.Count} 张牌到 DivinationEngine, spreadKind={spreadKind}");

@@ -10,7 +10,13 @@ if [[ -n "$RELEASE_ENV_FILE" ]]; then
   fi
 
   if [[ ! -f "$RELEASE_ENV_FILE" ]]; then
-    echo "Release env file does not exist: $RELEASE_ENV_FILE" >&2
+    cat >&2 <<EOF
+Release env file does not exist: $RELEASE_ENV_FILE
+
+Create it, fill the real local values, then rerun:
+  ./scripts/init-release-env.sh
+  RELEASE_ENV_FILE=scripts/release.env REPORT_ONLY=1 ./scripts/prepare-release.sh
+EOF
     exit 3
   fi
 
@@ -27,6 +33,9 @@ REPORT_ONLY="${REPORT_ONLY:-0}"
 RUN_CONFIGURE_GOOGLE_PLAY_GAMES="${RUN_CONFIGURE_GOOGLE_PLAY_GAMES:-auto}"
 RUN_ALL_SECRET_SETUP="${RUN_ALL_SECRET_SETUP:-0}"
 RUN_IAP_SECRET_SETUP="${RUN_IAP_SECRET_SETUP:-0}"
+RUN_PUBLIC_CONFIG_UPDATE="${RUN_PUBLIC_CONFIG_UPDATE:-0}"
+PUBLIC_CONFIG_PATH="${PUBLIC_CONFIG_PATH:-functions/public-config.example.json}"
+REQUIRE_REAL_SOCIAL_LINKS="${REQUIRE_REAL_SOCIAL_LINKS:-1}"
 RUN_DEPLOY="${RUN_DEPLOY:-0}"
 RUN_BUILDS="${RUN_BUILDS:-0}"
 RUN_IOS_BUILD="${RUN_IOS_BUILD:-$RUN_BUILDS}"
@@ -60,15 +69,18 @@ Safe defaults:
   - Does not rebuild iOS/Android artifacts.
 
 Useful modes:
+  ./scripts/init-release-env.sh
   REPORT_ONLY=1 ./scripts/prepare-release.sh
   RELEASE_ENV_FILE=scripts/release.env REPORT_ONLY=1 ./scripts/prepare-release.sh
   DRY_RUN=1 RUN_IAP_SECRET_SETUP=1 RUN_DEPLOY=1 RUN_BUILDS=1 ./scripts/prepare-release.sh
   RUN_IAP_SECRET_SETUP=1 RUN_DEPLOY=1 ./scripts/prepare-release.sh
+  RUN_PUBLIC_CONFIG_UPDATE=1 PUBLIC_CONFIG_PATH=functions/public-config.live.json ./scripts/prepare-release.sh
   RUN_BUILDS=1 ./scripts/prepare-release.sh
   WAIT_FOR_UNITY_CLOSE=1 RUN_BUILDS=1 ./scripts/prepare-release.sh
 
 External values used when enabled:
   GOOGLE_PLAY_GAMES_APP_ID
+  PUBLIC_CONFIG_PATH with real social links / IAP display values when RUN_PUBLIC_CONFIG_UPDATE=1
   APPLE_SHARED_SECRET
   GOOGLE_PACKAGE_NAME
   GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_JSON_FILE
@@ -107,6 +119,15 @@ script_exists() {
     ok "$path is executable"
   else
     block "$path is missing or not executable"
+  fi
+}
+
+file_exists() {
+  local path="$1"
+  if [[ -f "$ROOT_DIR/$path" ]]; then
+    ok "$path exists"
+  else
+    block "$path is missing"
   fi
 }
 
@@ -174,6 +195,22 @@ validate_real_iap_receipt_inputs() {
       block "IAP_STORE must be AppleAppStore or GooglePlay for real receipt verification: $store"
       ;;
   esac
+}
+
+validate_public_config_inputs() {
+  local args=(functions/scripts/set-public-config.js --dry-run --project "$PROJECT_ID")
+
+  if truthy "$REQUIRE_REAL_SOCIAL_LINKS"; then
+    args+=(--require-real-social-links)
+  fi
+
+  args+=("$PUBLIC_CONFIG_PATH")
+
+  if node "${args[@]}" >/tmp/moonly_prepare_public_config_dry_run.log 2>&1; then
+    ok "public app config is valid"
+  else
+    block "public app config validation failed; see /tmp/moonly_prepare_public_config_dry_run.log"
+  fi
 }
 
 unity_is_open() {
@@ -251,6 +288,7 @@ script_exists "scripts/check-release-blockers.sh"
 script_exists "scripts/configure-google-play-games.sh"
 script_exists "scripts/setup-firebase-secrets.sh"
 script_exists "scripts/deploy-firebase.sh"
+file_exists "functions/scripts/set-public-config.js"
 script_exists "scripts/build-ios-xcode.sh"
 script_exists "scripts/build-android-apk.sh"
 echo
@@ -283,6 +321,10 @@ elif truthy "$RUN_IAP_SECRET_SETUP"; then
   require_env GOOGLE_PACKAGE_NAME
   require_google_service_account
   validate_iap_secret_inputs
+fi
+
+if truthy "$RUN_PUBLIC_CONFIG_UPDATE"; then
+  validate_public_config_inputs
 fi
 
 if truthy "$RUN_IOS_BUILD" || truthy "$RUN_ANDROID_BUILD"; then
@@ -325,6 +367,15 @@ fi
 
 if truthy "$RUN_DEPLOY"; then
   run_step "Deploy Firebase with all secret bindings" env MOONLY_BIND_ALL_SECRETS=1 ./scripts/deploy-firebase.sh
+fi
+
+if truthy "$RUN_PUBLIC_CONFIG_UPDATE"; then
+  public_config_cmd=(node functions/scripts/set-public-config.js --project "$PROJECT_ID")
+  if truthy "$REQUIRE_REAL_SOCIAL_LINKS"; then
+    public_config_cmd+=(--require-real-social-links)
+  fi
+  public_config_cmd+=("$PUBLIC_CONFIG_PATH")
+  run_step "Update public app config" "${public_config_cmd[@]}"
 fi
 
 if truthy "$RUN_IOS_BUILD"; then

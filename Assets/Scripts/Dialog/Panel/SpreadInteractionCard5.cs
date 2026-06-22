@@ -102,7 +102,7 @@ public class SpreadInteractionCard5 : MonoBehaviour
     /// <summary>
     /// 初始化牌阵面板
     /// </summary>
-    /// <param name="spreadDef">牌阵定义（如 five_choice_gate）</param>
+    /// <param name="spreadDef">牌阵定义（如 choice_gate）</param>
     public void Setup(SpreadDefinition spreadDef)
     {
         Setup(spreadDef, null);
@@ -466,7 +466,7 @@ public class SpreadInteractionCard5 : MonoBehaviour
         if (_drawnCards == null || _drawnCards.Count == 0) return;
 
         // 构建 LockedCard 列表
-        var spreadKind = _currentSpread?.kind ?? "five_choice_gate";
+        var spreadKind = _currentSpread?.kind ?? "choice_gate";
         var lockedList = new List<LockedCard>();
 
         for (int i = 0; i < _drawnCards.Count; i++)
@@ -491,6 +491,7 @@ public class SpreadInteractionCard5 : MonoBehaviour
 
         session.lockedCards = lockedList;
         session.spreadKind = spreadKind;
+        session.divinationPlan = DivinationEngine.Instance.BuildActiveDivinationPlan(spreadKind);
         session.phase = DivinationPhase.CardsLocked;
 
         // 创建 ReadingLock
@@ -510,6 +511,7 @@ public class SpreadInteractionCard5 : MonoBehaviour
             dialogSystem.SetActiveReadingState("cards_locked");
             dialogSystem.SetActiveActionKind("reveal_card");
             dialogSystem.SetActiveReadingId(session.readingId);
+            dialogSystem.SetActiveDivinationPlan(session.divinationPlan);
         }
 
         Debug.Log($"[SpreadInteractionCard5] 已同步 {lockedList.Count} 张牌到 DivinationEngine, spreadKind={spreadKind}");

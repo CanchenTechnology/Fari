@@ -349,6 +349,9 @@ public static class RelationshipDivinationOverlay
 {
     public static void StartForFriend(Transform anchor, FriendDataManager.FriendData friend)
     {
+        if (CreatedFriendRelationshipDivinationLocalFlow.TryStart(friend))
+            return;
+
         RelationshipDivinationFlow.ShowInviteConfirm(friend);
     }
 
@@ -494,9 +497,7 @@ public static class RelationshipDivinationOverlay
 
     private static string GetCurrentUid()
     {
-        if (UserDataManager.Instance != null && !string.IsNullOrWhiteSpace(UserDataManager.Instance.FirebaseUid))
-            return UserDataManager.Instance.FirebaseUid;
-        return Firebase.Auth.FirebaseAuth.DefaultInstance?.CurrentUser?.UserId ?? "";
+        return RelationshipDivinationFlow.GetCurrentUid();
     }
 
     private static Transform ResolveOverlayParent(Transform anchor)

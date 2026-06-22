@@ -16,7 +16,6 @@ public class MemoryManagementUI : WindowBase
 	public MemoryManagementUIComponent uiComponent;
 	private readonly List<GameObject> _renderedItems = new List<GameObject>();
 	private RectTransform _contentRect;
-	private const string KEY_SHARE_ALL_MEMORY = "MemoryManagement_ShareAll";
 	private const float CLEAR_CONFIRM_SECONDS = 8f;
 	private Text _clearTitleText;
 	private Text _clearDescText;
@@ -46,7 +45,7 @@ public class MemoryManagementUI : WindowBase
 		BindClearTexts();
 		ResetClearConfirmation();
 		if (uiComponent.ShareAllToggle != null)
-			uiComponent.ShareAllToggle.isOn = PlayerPrefs.GetInt(KEY_SHARE_ALL_MEMORY, 1) == 1;
+			uiComponent.ShareAllToggle.isOn = MemoryPrivacySettings.ShareAllMemoryEnabled;
 		LoadCloudMemoryThenRender();
 	}
 	// 物体隐藏时执行
@@ -162,7 +161,7 @@ public class MemoryManagementUI : WindowBase
 		foreach (var candidate in candidates)
 		{
 			if (candidate == null || string.IsNullOrEmpty(candidate.text)) continue;
-			string status = string.IsNullOrEmpty(candidate.status) ? "pending" : candidate.status;
+			string status = string.IsNullOrEmpty(candidate.status) ? "promoted" : candidate.status;
 			lines.Add($"[{status}] {candidate.text}");
 		}
 		return lines;
@@ -329,8 +328,8 @@ public class MemoryManagementUI : WindowBase
 	}
 	public void OnShareAllToggleChange(bool state, Toggle toggle)
 	{
-		PlayerPrefs.SetInt(KEY_SHARE_ALL_MEMORY, state ? 1 : 0);
-		PlayerPrefs.Save();
+		MemoryPrivacySettings.ShareAllMemoryEnabled = state;
+		ToastManager.ShowToast(state ? "AI 记忆共享已开启" : "AI 记忆共享已关闭");
 	}
 	public void OnSyncMemoryButtonClick()
 	{

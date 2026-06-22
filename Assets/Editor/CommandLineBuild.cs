@@ -22,6 +22,7 @@ public static class CommandLineBuild
         Directory.CreateDirectory(outputPath);
 
         EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.iOS, BuildTarget.iOS);
+        ValidateRelationshipDivinationLocalFlow();
 
         var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
         {
@@ -47,6 +48,7 @@ public static class CommandLineBuild
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
 
         EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Android, BuildTarget.Android);
+        ValidateRelationshipDivinationLocalFlow();
         var oldBuildAppBundle = EditorUserBuildSettings.buildAppBundle;
         var oldExportAndroidProject = EditorUserBuildSettings.exportAsGoogleAndroidProject;
 
@@ -306,6 +308,57 @@ public static class CommandLineBuild
         }
 
         return scenes;
+    }
+
+    private static void ValidateRelationshipDivinationLocalFlow()
+    {
+        var root = Directory.GetCurrentDirectory();
+        var helper = ReadProjectText(root, "Assets/Scripts/Friend/CreatedFriendRelationshipDivinationLocalFlow.cs");
+        var createInfo = ReadProjectText(root, "Assets/Scripts/UI/CreateFriendInfoUI.cs");
+        var friendMove = ReadProjectText(root, "Assets/Scripts/UI/FriendMoveUI.cs");
+        var friendRuntime = ReadProjectText(root, "Assets/Scripts/Friend/FriendRuntimeUI.cs");
+        var inviteConfirm = ReadProjectText(root, "Assets/Scripts/UI/TwoPersonDivinationInviteConfirmFlowUI.cs");
+
+        bool helperCreatesLocalRecord = helper.Contains("RelationshipDivinationFlow.ShowRecord(record, friend)") &&
+                                        helper.Contains("status = RelationshipDivinationStatus.Completed") &&
+                                        helper.Contains("isLocalOnly = true") &&
+                                        helper.Contains("TarotDeck.DrawMultiple(3)");
+        bool createInfoEntry = createInfo.Contains("RelationshipDivinationButtonName = \"RelationshipDivinationButton\"") &&
+                               createInfo.Contains("RefreshRelationshipDivinationButton()") &&
+                               createInfo.Contains("CreatedFriendRelationshipDivinationLocalFlow.TryStart(currentFriend)");
+        bool friendMoveLocalEntry = friendMove.Contains("CreatedFriendRelationshipDivinationLocalFlow.CanHandle(currentFriend)") &&
+                                    friendMove.Contains("CreatedFriendRelationshipDivinationLocalFlow.TryStart(capturedLocal)");
+        bool overlayLocalEntry = friendRuntime.Contains("CreatedFriendRelationshipDivinationLocalFlow.TryStart(friend)");
+        bool confirmLocalEntry = inviteConfirm.Contains("CreatedFriendRelationshipDivinationLocalFlow.TryStart(currentFriend)");
+
+        if (helperCreatesLocalRecord && createInfoEntry && friendMoveLocalEntry && overlayLocalEntry && confirmLocalEntry)
+            return;
+
+        throw new InvalidOperationException(
+            "Relationship divination local created-friend flow is missing before build. " +
+            $"helperCreatesLocalRecord={helperCreatesLocalRecord}, createInfoEntry={createInfoEntry}, " +
+            $"friendMoveLocalEntry={friendMoveLocalEntry}, overlayLocalEntry={overlayLocalEntry}, " +
+            $"confirmLocalEntry={confirmLocalEntry}");
+    }
+
+    private static string ReadProjectText(string root, string relativePath)
+    {
+        var fullPath = Path.Combine(root, relativePath);
+        if (!File.Exists(fullPath))
+            throw new FileNotFoundException("Required project source file is missing.", fullPath);
+
+        return File.ReadAllText(fullPath);
+    }
+
+    private static string SliceBetween(string text, string start, string end)
+    {
+        int startIndex = text.IndexOf(start, StringComparison.Ordinal);
+        if (startIndex < 0) return string.Empty;
+
+        int endIndex = text.IndexOf(end, startIndex + start.Length, StringComparison.Ordinal);
+        if (endIndex < 0) return text.Substring(startIndex);
+
+        return text.Substring(startIndex, endIndex - startIndex);
     }
 
     private static string GetArg(string name, string defaultValue = null)

@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["short_interpretation"],
+  "properties": {
+    "short_interpretation": {
+      "type": "string",
+      "minLength": 38,
+      "maxLength": 80
+    }
+  }
+}
