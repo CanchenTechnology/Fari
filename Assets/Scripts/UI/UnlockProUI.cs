@@ -157,9 +157,9 @@ public class UnlockProUI : WindowBase
 
 			ToastManager.ShowToast(string.IsNullOrEmpty(message) ? "购买失败，请稍后重试" : message);
 			if (!manager.IsUnityIapAvailable)
-				SetPurchaseHint("当前未安装 Unity IAP 包，暂不能发起真实购买。", true);
+				SetPurchaseHint("Unity IAP 包未解析，暂不能发起真实购买。", true);
 			else
-				RefreshPurchaseControls();
+				SetPurchaseHint(string.IsNullOrEmpty(message) ? "购买失败，请稍后重试。" : message, true);
 		});
 	}
 
@@ -280,7 +280,7 @@ public class UnlockProUI : WindowBase
 			? "当前账号已是 Pro。续订、取消或更换方案请使用订阅管理。"
 			: manager.IsUnityIapAvailable
 			? "购买完成后会自动刷新 Pro 状态，也可以手动恢复购买。"
-			: "当前未安装 Unity IAP 包，购买按钮会显示降级提示。");
+			: "Unity IAP 包未解析，购买按钮会显示降级提示。");
 	}
 
 	private void SetPurchaseButtonsInteractable(bool interactable)
@@ -365,7 +365,9 @@ public class UnlockProUI : WindowBase
 				ToastManager.ShowToast(message);
 
 			if (!success && !manager.IsUnityIapAvailable)
-				SetPurchaseHint("当前未安装 Unity IAP 包，暂不能从商店恢复购买。", true);
+				SetPurchaseHint("Unity IAP 包未解析，暂不能从商店恢复购买。", true);
+			else if (!success)
+				SetPurchaseHint(string.IsNullOrEmpty(message) ? "恢复购买失败，请稍后重试。" : message, true);
 
 			RefreshMembershipStatus(true);
 		});

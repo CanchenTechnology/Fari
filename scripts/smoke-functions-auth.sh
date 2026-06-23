@@ -224,8 +224,8 @@ if (name === "publicConfig") {
   if (!data.socialLinks || !data.iapProducts) fail("missing socialLinks or iapProducts");
   const monthly = data.iapProducts.proMonthly || {};
   const yearly = data.iapProducts.proYearly || {};
-  if (monthly.productId !== "moonly.pro.monthly") fail(`unexpected monthly productId: ${monthly.productId || ""}`);
-  if (yearly.productId !== "moonly.pro.yearly") fail(`unexpected yearly productId: ${yearly.productId || ""}`);
+  if (monthly.productId !== "fair.pro.monthly") fail(`unexpected monthly productId: ${monthly.productId || ""}`);
+  if (yearly.productId !== "fair.pro.yearly") fail(`unexpected yearly productId: ${yearly.productId || ""}`);
   if (monthly.type !== "subscription" || yearly.type !== "subscription") fail("expected subscription IAP products");
 } else if (name === "membershipStatus") {
   if (httpStatus !== "200") fail(`expected HTTP 200, got ${httpStatus}`);

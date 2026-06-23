@@ -6,30 +6,57 @@
  * 注意: 以下文件是自动生成的，再次生成不会覆盖原有的代码，会在原有的代码上进行新增，可放心使用
 ---------------------------------*/
 using System.Collections.Generic;
+using System;
 using UnityEngine;
 using UnityEngine.UI;
 using GamerFrameWork.UIFrameWork;
 using SuperScrollView;
 using TMPro;
+using DG.Tweening;
 
 public class UserSearchUI : WindowBase
 {
 	private const string SearchItemPrefabName = "InviteItem";
 	private const int SearchResultLimit = 20;
+	private const int SearchHistoryLimit = 5;
+	private const int RecommendationLimit = 3;
+	private const string SearchHistoryPrefsKey = "UserSearchUI_SearchHistory_v1";
 
 	public UserSearchUIComponent uiComponent;
 
 	private string currentSearchText = string.Empty;
 	private readonly List<FirestoreManager.UserSearchResult> currentResults = new List<FirestoreManager.UserSearchResult>();
+	private readonly List<FirestoreManager.UserSearchResult> recommendedResults = new List<FirestoreManager.UserSearchResult>();
+	private readonly List<string> searchHistory = new List<string>();
 	private readonly HashSet<string> requestedUserIds = new HashSet<string>();
 
 	private LoopListView2 searchFriendListView;
 	private bool searchFriendListViewInited;
 	private int searchRequestVersion;
+	private int recommendationRequestVersion;
 
 	private TMP_Text[] fallbackResultNameTexts;
 	private TMP_Text[] fallbackResultHandleTexts;
 	private Button[] fallbackInviteButtons;
+	private InviteItem[] recommendationItems;
+	private SearchHistoryItem[] searchHistoryItems;
+	private GameObject friendRecommendRoot;
+	private GameObject historyRecordRoot;
+	private Button refreshRecommendationsButton;
+	private GameObject mainCenterRoot;
+	private GameObject searchResultRoot;
+	private bool isShowingSearchResults;
+	private Tween refreshRecommendationsTween;
+	private bool isLoadingRecommendations;
+	private bool refreshRecommendationsButtonPreviousInteractable = true;
+	private bool hasRefreshRecommendationsButtonInitialEuler;
+	private Vector3 refreshRecommendationsButtonInitialEuler;
+
+	[Serializable]
+	private class SearchHistoryStore
+	{
+		public List<string> keywords = new List<string>();
+	}
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -39,25 +66,41 @@ public class UserSearchUI : WindowBase
 		uiComponent.InitComponent(this);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 
-		ResolveSearchFriendListView();
-		InitSearchFriendListView();
-		CacheFallbackResultRefs();
-		RefreshResultViews();
+			ResolveSearchModeViews();
+			ResolveSearchFriendListView();
+			InitSearchFriendListView();
+			SetSearchResultMode(false);
+			ResolveRecommendationViews();
+			ResolveSearchHistoryViews();
+			BindRefreshRecommendationsButton();
+			LoadSearchHistory();
+			RefreshSearchHistoryViews();
+			RefreshRecommendationViews();
+			RefreshResultViews();
 
-		base.OnAwake();
-		NotificationUnreadBadge.Attach(uiComponent.NotificationsButton);
+			base.OnAwake();
+			NotificationUnreadBadge.Attach(uiComponent.NotificationsButton);
 	}
 	// 物体显示时执行
 	public override void OnShow()
 	{
 		base.OnShow();
 		currentSearchText = uiComponent.SearchInputInputField != null ? uiComponent.SearchInputInputField.text : string.Empty;
-		ResolveSearchFriendListView();
-		InitSearchFriendListView();
-		LoadPendingSentRequests();
-		LoadBlockedUsers();
-		RefreshResultViews();
-		NotificationUnreadBadge.Attach(uiComponent.NotificationsButton);
+			ResolveSearchModeViews();
+			ResolveSearchFriendListView();
+			InitSearchFriendListView();
+			currentResults.Clear();
+			SetSearchResultMode(false);
+			ResolveRecommendationViews();
+			ResolveSearchHistoryViews();
+			BindRefreshRecommendationsButton();
+			LoadSearchHistory();
+			RefreshSearchHistoryViews();
+			LoadPendingSentRequests();
+			LoadBlockedUsers();
+			LoadFriendRecommendations();
+			RefreshResultViews();
+			NotificationUnreadBadge.Attach(uiComponent.NotificationsButton);
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -65,11 +108,15 @@ public class UserSearchUI : WindowBase
 		base.OnHide();
 	}
 	// 物体销毁时执行
-	public override void OnDestroy()
-	{
-		searchRequestVersion++;
-		base.OnDestroy();
-	}
+		public override void OnDestroy()
+		{
+			searchRequestVersion++;
+			recommendationRequestVersion++;
+			if (refreshRecommendationsButton != null)
+				refreshRecommendationsButton.onClick.RemoveListener(OnRefreshRecommendationsButtonClick);
+			StopRefreshRecommendationsAnimation(false);
+			base.OnDestroy();
+		}
 	#endregion
 
 	#region API Function
@@ -79,6 +126,14 @@ public class UserSearchUI : WindowBase
 	#region UI组件事件
 	public void OnBackButtonClick()
 	{
+		if (isShowingSearchResults)
+		{
+			currentResults.Clear();
+			RefreshResultViews();
+			SetSearchResultMode(false);
+			return;
+		}
+
 		HideWindow();
 	}
 	public void OnNotificationsButtonClick()
@@ -108,12 +163,15 @@ public class UserSearchUI : WindowBase
 			return;
 		}
 
-		int requestVersion = ++searchRequestVersion;
-		SetSearchButtonInteractable(false);
-		currentResults.Clear();
-		RefreshResultViews();
+			int requestVersion = ++searchRequestVersion;
+			SetSearchButtonInteractable(false);
+			SetSearchResultMode(true);
+			currentResults.Clear();
+			RefreshResultViews();
+			SaveSearchHistory(keyword);
+			RefreshSearchHistoryViews();
 
-		ToastManager.ShowToast($"正在搜索：{keyword}");
+			ToastManager.ShowToast($"正在搜索：{keyword}");
 		FirestoreManager.Instance.SearchUsersByName(keyword, results =>
 		{
 			if (requestVersion != searchRequestVersion)
@@ -145,6 +203,7 @@ public class UserSearchUI : WindowBase
 			}
 
 			Debug.Log($"[UserSearchUI] 搜索完成 keyword={keyword}, raw={rawResultCount}, shown={currentResults.Count}, hasSelf={hasSelfMatch}");
+			SetSearchResultMode(true);
 			RefreshResultViews();
 			ShowSearchResultToast(hasSelfMatch);
 		}, SearchResultLimit);
@@ -160,6 +219,10 @@ public class UserSearchUI : WindowBase
 	public void OnInvite3ButtonClick()
 	{
 		InviteSearchResult(2);
+	}
+	public void OnRefreshRecommendationsButtonClick()
+	{
+		LoadFriendRecommendations(true);
 	}
 	#endregion
 
@@ -195,7 +258,8 @@ public class UserSearchUI : WindowBase
 			LoopListView2[] listViews = gameObject.GetComponentsInChildren<LoopListView2>(true);
 			foreach (LoopListView2 listView in listViews)
 			{
-				if (listView.transform.name.Contains("SearchFriendScrollView"))
+				string listName = listView.transform.name;
+				if (listName.Contains("UserSearchScrollView") || listName.Contains("SearchFriendScrollView"))
 				{
 					searchFriendListView = listView;
 					break;
@@ -211,6 +275,49 @@ public class UserSearchUI : WindowBase
 		if (uiComponent.SearchFriendScrollViewLoopListView2 == null)
 		{
 			uiComponent.SearchFriendScrollViewLoopListView2 = searchFriendListView;
+		}
+	}
+
+	private void ResolveSearchModeViews()
+	{
+		if (mainCenterRoot == null)
+		{
+			if (uiComponent.mainCenterBody != null)
+				mainCenterRoot = uiComponent.mainCenterBody;
+			else
+			{
+				Transform root = FindTransformByName(gameObject.transform, "MainCenterBody", "MainCenter");
+				mainCenterRoot = root != null ? root.gameObject : null;
+			}
+		}
+
+		if (searchResultRoot == null)
+		{
+			if (uiComponent.searchCenterBody != null)
+				searchResultRoot = uiComponent.searchCenterBody.gameObject;
+			else
+			{
+				Transform root = FindTransformByName(gameObject.transform, "SearchCenterBody", "UserSearchScrollView");
+				searchResultRoot = root != null ? root.gameObject : null;
+			}
+		}
+	}
+
+	private void SetSearchResultMode(bool showResults)
+	{
+		ResolveSearchModeViews();
+		isShowingSearchResults = showResults;
+
+		if (mainCenterRoot != null)
+			mainCenterRoot.SetActive(!showResults);
+
+		if (searchResultRoot != null)
+			searchResultRoot.SetActive(showResults);
+
+		if (showResults)
+		{
+			ResolveSearchFriendListView();
+			InitSearchFriendListView();
 		}
 	}
 
@@ -291,15 +398,17 @@ public class UserSearchUI : WindowBase
 		BindInviteButton(inviteButton, index);
 	}
 
-	private void BindInviteButton(Button button, int index)
-	{
-		if (button == null)
+		private void BindInviteButton(Button button, int index)
 		{
-			return;
+			FirestoreManager.UserSearchResult result = index >= 0 && index < currentResults.Count ? currentResults[index] : null;
+			ConfigureUserActionButton(button, result, RefreshResultViews);
 		}
 
-			bool hasResult = index >= 0 && index < currentResults.Count;
-			FirestoreManager.UserSearchResult result = hasResult ? currentResults[index] : null;
+		private void ConfigureUserActionButton(Button button, FirestoreManager.UserSearchResult result, Action onRefresh)
+		{
+			if (button == null) return;
+
+			bool hasResult = result != null && !string.IsNullOrEmpty(result.uid);
 			bool isSelf = result != null && result.isSelf;
 			bool alreadyFriend = IsResultAlreadyFriend(result);
 			bool alreadyRequested = IsResultAlreadyRequested(result);
@@ -311,75 +420,25 @@ public class UserSearchUI : WindowBase
 			TMP_Text buttonText = button.GetComponentInChildren<TMP_Text>(true);
 			if (buttonText != null)
 			{
-				buttonText.text = !hasResult ? string.Empty : isSelf ? "自己" : alreadyFriend ? "已添加" : blocked ? "解除" : alreadyRequested ? "取消" : "添加";
+				buttonText.text = !hasResult ? string.Empty : isSelf ? "自己" : alreadyFriend ? "已添加" : blocked ? "解除" : alreadyRequested ? "取消" : "邀请";
 			}
 
-			if (hasResult && !isSelf && !alreadyFriend)
+			if (button.interactable)
 			{
-				int capturedIndex = index;
-				button.onClick.AddListener(() =>
-				{
-				if (capturedIndex < 0 || capturedIndex >= currentResults.Count)
-				{
-					ToastManager.ShowToast("搜索结果已刷新，请重新选择");
-					return;
-				}
-
-				if (IsResultBlocked(currentResults[capturedIndex]))
-					UnblockSearchResult(capturedIndex);
-				else if (IsResultAlreadyRequested(currentResults[capturedIndex]))
-					CancelSearchResultRequest(capturedIndex);
-				else
-					InviteSearchResult(capturedIndex);
-			});
+				button.onClick.AddListener(() => HandleUserAction(result, onRefresh));
+			}
 		}
-	}
 
-	private void InviteSearchResult(int index)
-	{
-		if (index < 0 || index >= currentResults.Count)
+		private void InviteSearchResult(int index)
+		{
+			if (index < 0 || index >= currentResults.Count)
 		{
 			ToastManager.ShowToast("请先搜索用户");
-			return;
-		}
-
-		if (FirestoreManager.Instance == null)
-		{
-			ToastManager.ShowToast("好友请求服务未初始化");
-			return;
-		}
-
-		FirestoreManager.UserSearchResult user = currentResults[index];
-		if (user == null || string.IsNullOrEmpty(user.uid))
-		{
-			ToastManager.ShowToast("用户信息不完整");
-			return;
-		}
-
-		if (IsResultAlreadyRequested(user))
-		{
-			CancelSearchResultRequest(index);
-			return;
-		}
-
-		if (IsResultBlocked(user))
-		{
-			UnblockSearchResult(index);
-			return;
-		}
-
-		ToastManager.ShowToast($"正在发送给 {GetDisplayName(user)}");
-		FirestoreManager.Instance.SendFriendRequest(user, success =>
-		{
-			if (success)
-			{
-				requestedUserIds.Add(user.uid);
-				RefreshResultViews();
+				return;
 			}
 
-			ToastManager.ShowToast(success ? $"已发送给 {GetDisplayName(user)}" : "发送失败，请稍后再试");
-		});
-	}
+			HandleUserAction(currentResults[index], RefreshResultViews);
+		}
 
 	private void CancelSearchResultRequest(int index)
 	{
@@ -396,24 +455,105 @@ public class UserSearchUI : WindowBase
 			return;
 		}
 
-		if (FirestoreManager.Instance == null)
-		{
-			ToastManager.ShowToast("好友请求服务未初始化");
-			return;
+			CancelUserRequest(user, RefreshResultViews);
 		}
 
-		ToastManager.ShowToast($"正在取消给 {GetDisplayName(user)} 的请求");
-		FirestoreManager.Instance.CancelSentFriendRequest(user.uid, success =>
+		private void HandleUserAction(FirestoreManager.UserSearchResult user, Action onRefresh)
 		{
-			if (success)
+			if (user == null || string.IsNullOrEmpty(user.uid))
 			{
-				requestedUserIds.Remove(user.uid);
-				RefreshResultViews();
+				ToastManager.ShowToast("用户信息不完整");
+				return;
 			}
 
-			ToastManager.ShowToast(success ? "已取消好友请求" : "取消失败，请稍后再试");
-		});
-	}
+			if (user.isSelf)
+			{
+				ToastManager.ShowToast("这是你自己，不能添加自己");
+				return;
+			}
+
+			if (IsResultAlreadyFriend(user))
+			{
+				ToastManager.ShowToast("已经是好友");
+				return;
+			}
+
+			if (IsResultBlocked(user))
+			{
+				UnblockUser(user, onRefresh);
+				return;
+			}
+
+			if (IsResultAlreadyRequested(user))
+			{
+				CancelUserRequest(user, onRefresh);
+				return;
+			}
+
+			SendFriendRequest(user, onRefresh);
+		}
+
+		private void SendFriendRequest(FirestoreManager.UserSearchResult user, Action onRefresh)
+		{
+			if (FirestoreManager.Instance == null)
+			{
+				ToastManager.ShowToast("好友请求服务未初始化");
+				return;
+			}
+
+			ToastManager.ShowToast($"正在发送给 {GetDisplayName(user)}");
+			FirestoreManager.Instance.SendFriendRequest(user, success =>
+			{
+				if (success)
+				{
+					requestedUserIds.Add(user.uid);
+					RemoveRecommendedUser(user.uid);
+					onRefresh?.Invoke();
+					RefreshRecommendationViews();
+				}
+
+				ToastManager.ShowToast(success ? $"已发送给 {GetDisplayName(user)}" : "发送失败，请稍后再试");
+			});
+		}
+
+		private void CancelUserRequest(FirestoreManager.UserSearchResult user, Action onRefresh)
+		{
+			if (FirestoreManager.Instance == null)
+			{
+				ToastManager.ShowToast("好友请求服务未初始化");
+				return;
+			}
+
+			ToastManager.ShowToast($"正在取消给 {GetDisplayName(user)} 的请求");
+			FirestoreManager.Instance.CancelSentFriendRequest(user.uid, success =>
+			{
+				if (success)
+				{
+					requestedUserIds.Remove(user.uid);
+					onRefresh?.Invoke();
+					RefreshRecommendationViews();
+				}
+
+				ToastManager.ShowToast(success ? "已取消好友请求" : "取消失败，请稍后再试");
+			});
+		}
+
+		private void UnblockUser(FirestoreManager.UserSearchResult user, Action onRefresh)
+		{
+			if (FirestoreManager.Instance == null)
+			{
+				ToastManager.ShowToast("好友服务未初始化");
+				return;
+			}
+
+			ToastManager.ShowToast($"正在解除屏蔽 {GetDisplayName(user)}");
+			FirestoreManager.Instance.UnblockUser(user.uid, success =>
+			{
+				onRefresh?.Invoke();
+				RefreshRecommendationViews();
+				ToastManager.ShowToast(success ? "已解除屏蔽，可以重新添加好友" : "解除屏蔽失败，请稍后再试");
+			});
+		}
 
 	private bool IsResultAlreadyRequested(FirestoreManager.UserSearchResult result)
 	{
@@ -455,9 +595,10 @@ public class UserSearchUI : WindowBase
 				}
 			}
 
-			RefreshResultViews();
-		});
-	}
+				RefreshResultViews();
+				RefreshRecommendationViews();
+			});
+		}
 
 	private void LoadBlockedUsers()
 	{
@@ -466,14 +607,18 @@ public class UserSearchUI : WindowBase
 			return;
 		}
 
-		FirestoreManager.Instance.LoadBlockedUsers(_ => RefreshResultViews());
+			FirestoreManager.Instance.LoadBlockedUsers(_ =>
+			{
+				RefreshResultViews();
+				RefreshRecommendationViews();
+			});
 	}
 
-	private void UnblockSearchResult(int index)
-	{
-		if (index < 0 || index >= currentResults.Count)
+		private void UnblockSearchResult(int index)
 		{
-			ToastManager.ShowToast("请先搜索用户");
+			if (index < 0 || index >= currentResults.Count)
+			{
+				ToastManager.ShowToast("请先搜索用户");
 			return;
 		}
 
@@ -484,23 +629,337 @@ public class UserSearchUI : WindowBase
 			return;
 		}
 
-		if (FirestoreManager.Instance == null)
-		{
-			ToastManager.ShowToast("好友服务未初始化");
-			return;
+			UnblockUser(user, RefreshResultViews);
 		}
 
-		ToastManager.ShowToast($"正在解除屏蔽 {GetDisplayName(user)}");
-		FirestoreManager.Instance.UnblockUser(user.uid, success =>
+		private void ResolveRecommendationViews()
 		{
-			RefreshResultViews();
-			ToastManager.ShowToast(success ? "已解除屏蔽，可以重新添加好友" : "解除屏蔽失败，请稍后再试");
-		});
-	}
+			recommendationItems = new[]
+			{
+				uiComponent.item1,
+				uiComponent.item2,
+				uiComponent.item3
+			};
 
-	private static string GetDisplayName(FirestoreManager.UserSearchResult result)
-	{
-		if (result == null)
+			if (friendRecommendRoot == null)
+			{
+				Transform root = FindTransformByName(gameObject.transform, "friendRecommend");
+				if (root == null && uiComponent.item1 != null && uiComponent.item1.transform.parent != null)
+					root = uiComponent.item1.transform.parent.parent;
+				friendRecommendRoot = root != null ? root.gameObject : null;
+			}
+
+			if (refreshRecommendationsButton == null)
+				refreshRecommendationsButton = uiComponent.refreshBtn != null
+					? uiComponent.refreshBtn
+					: FindButtonByName(gameObject.transform, "[Button]refreshBtn", "refreshBtn");
+		}
+
+		private void BindRefreshRecommendationsButton()
+		{
+			if (refreshRecommendationsButton == null) return;
+
+			refreshRecommendationsButton.onClick.RemoveListener(OnRefreshRecommendationsButtonClick);
+			refreshRecommendationsButton.onClick.AddListener(OnRefreshRecommendationsButtonClick);
+		}
+
+		private void LoadFriendRecommendations()
+		{
+			LoadFriendRecommendations(false);
+		}
+
+		private void LoadFriendRecommendations(bool showRefreshAnimation)
+		{
+			ResolveRecommendationViews();
+			int requestVersion = ++recommendationRequestVersion;
+			isLoadingRecommendations = true;
+			RefreshSearchHistoryViews();
+
+			if (showRefreshAnimation)
+				StartRefreshRecommendationsAnimation();
+			else
+			{
+				recommendedResults.Clear();
+				RefreshRecommendationViews();
+			}
+
+			if (FirestoreManager.Instance == null)
+			{
+				isLoadingRecommendations = false;
+				RefreshSearchHistoryViews();
+				StopRefreshRecommendationsAnimation(true);
+				return;
+			}
+
+			FirestoreManager.Instance.LoadRecommendedUsers(results =>
+			{
+				if (requestVersion != recommendationRequestVersion)
+					return;
+
+				isLoadingRecommendations = false;
+				recommendedResults.Clear();
+				if (results != null)
+				{
+					foreach (FirestoreManager.UserSearchResult result in results)
+					{
+						if (IsRecommendableUser(result) && !recommendedResults.Exists(item => item.uid == result.uid))
+							recommendedResults.Add(result);
+					}
+				}
+
+				RefreshRecommendationViews();
+				RefreshSearchHistoryViews();
+				StopRefreshRecommendationsAnimation(true);
+			}, RecommendationLimit * 3);
+		}
+
+		private void StartRefreshRecommendationsAnimation()
+		{
+			if (refreshRecommendationsButton == null)
+				return;
+
+			Transform buttonTransform = refreshRecommendationsButton.transform;
+			if (!hasRefreshRecommendationsButtonInitialEuler)
+			{
+				refreshRecommendationsButtonInitialEuler = buttonTransform.localEulerAngles;
+				hasRefreshRecommendationsButtonInitialEuler = true;
+			}
+
+			StopRefreshRecommendationsAnimation(false);
+			refreshRecommendationsButtonPreviousInteractable = refreshRecommendationsButton.interactable;
+			refreshRecommendationsButton.interactable = false;
+
+			buttonTransform.localEulerAngles = refreshRecommendationsButtonInitialEuler;
+			refreshRecommendationsTween = buttonTransform
+				.DOLocalRotate(refreshRecommendationsButtonInitialEuler + new Vector3(0f, 0f, -360f), 0.7f, RotateMode.FastBeyond360)
+				.SetEase(Ease.Linear)
+				.SetLoops(-1, LoopType.Restart)
+				.SetUpdate(true);
+		}
+
+		private void StopRefreshRecommendationsAnimation(bool snapBack)
+		{
+			if (refreshRecommendationsTween != null)
+			{
+				refreshRecommendationsTween.Kill();
+				refreshRecommendationsTween = null;
+			}
+
+			if (refreshRecommendationsButton == null)
+				return;
+
+			refreshRecommendationsButton.transform.DOKill();
+			refreshRecommendationsButton.interactable = refreshRecommendationsButtonPreviousInteractable;
+
+			if (!hasRefreshRecommendationsButtonInitialEuler)
+				return;
+
+			Transform buttonTransform = refreshRecommendationsButton.transform;
+			if (snapBack)
+				buttonTransform.DOLocalRotate(refreshRecommendationsButtonInitialEuler, 0.16f).SetEase(Ease.OutQuad).SetUpdate(true);
+			else
+				buttonTransform.localEulerAngles = refreshRecommendationsButtonInitialEuler;
+		}
+
+		private void RefreshRecommendationViews()
+		{
+			ResolveRecommendationViews();
+			List<FirestoreManager.UserSearchResult> visibleUsers = GetVisibleRecommendations();
+			bool hasRecommendation = visibleUsers.Count > 0;
+
+			if (friendRecommendRoot != null)
+				friendRecommendRoot.SetActive(hasRecommendation);
+
+			if (recommendationItems == null) return;
+
+			for (int i = 0; i < recommendationItems.Length; i++)
+			{
+				InviteItem item = recommendationItems[i];
+				if (item == null) continue;
+
+				bool hasUser = i < visibleUsers.Count;
+				item.gameObject.SetActive(hasUser);
+				if (hasUser)
+					BindRecommendationItem(item, visibleUsers[i]);
+			}
+		}
+
+		private List<FirestoreManager.UserSearchResult> GetVisibleRecommendations()
+		{
+			List<FirestoreManager.UserSearchResult> visible = new List<FirestoreManager.UserSearchResult>();
+			foreach (FirestoreManager.UserSearchResult result in recommendedResults)
+			{
+				if (!IsRecommendableUser(result)) continue;
+				visible.Add(result);
+				if (visible.Count >= RecommendationLimit) break;
+			}
+
+			return visible;
+		}
+
+		private bool IsRecommendableUser(FirestoreManager.UserSearchResult result)
+		{
+			return result != null
+				&& !string.IsNullOrEmpty(result.uid)
+				&& !result.isSelf
+				&& !IsResultAlreadyFriend(result)
+				&& !IsResultAlreadyRequested(result)
+				&& !IsResultBlocked(result);
+		}
+
+		private void BindRecommendationItem(InviteItem item, FirestoreManager.UserSearchResult result)
+		{
+			if (item == null || result == null) return;
+
+			if (item.nameText != null)
+				item.nameText.text = GetDisplayName(result);
+
+			if (item.infoText != null)
+				item.infoText.text = result.Handle;
+
+			if (item.rejectBtn != null)
+				item.rejectBtn.gameObject.SetActive(false);
+
+			ConfigureUserActionButton(item.infoBtn, result, RefreshRecommendationViews);
+		}
+
+		private void RemoveRecommendedUser(string uid)
+		{
+			if (string.IsNullOrEmpty(uid)) return;
+			recommendedResults.RemoveAll(item => item != null && item.uid == uid);
+		}
+
+		private void ResolveSearchHistoryViews()
+		{
+			if (historyRecordRoot == null)
+			{
+				Transform root = FindTransformByName(gameObject.transform, "HistoryRecord");
+				if (root == null && uiComponent.recordSearchContent != null)
+					root = uiComponent.recordSearchContent.parent;
+				historyRecordRoot = root != null ? root.gameObject : null;
+			}
+
+			if (uiComponent.recordSearchContent == null)
+				return;
+
+			List<SearchHistoryItem> items = new List<SearchHistoryItem>(uiComponent.recordSearchContent.GetComponentsInChildren<SearchHistoryItem>(true));
+			items.Sort((left, right) => left.transform.GetSiblingIndex().CompareTo(right.transform.GetSiblingIndex()));
+
+			SearchHistoryItem template = items.Count > 0 ? items[0] : null;
+			while (template != null && items.Count < SearchHistoryLimit)
+			{
+				GameObject cloneObject = UnityEngine.Object.Instantiate(template.gameObject, uiComponent.recordSearchContent);
+				SearchHistoryItem clone = cloneObject.GetComponent<SearchHistoryItem>();
+				clone.name = $"searchHistoryItem_{items.Count + 1}";
+				items.Add(clone);
+			}
+
+			searchHistoryItems = items.ToArray();
+		}
+
+		private void LoadSearchHistory()
+		{
+			searchHistory.Clear();
+			string json = PlayerPrefs.GetString(SearchHistoryPrefsKey, string.Empty);
+			if (!string.IsNullOrWhiteSpace(json))
+			{
+				try
+				{
+					SearchHistoryStore store = JsonUtility.FromJson<SearchHistoryStore>(json);
+					if (store?.keywords != null)
+					{
+						foreach (string keyword in store.keywords)
+							AddSearchHistoryKeyword(keyword, false);
+					}
+				}
+				catch (Exception ex)
+				{
+					Debug.LogWarning($"[UserSearchUI] 搜索历史读取失败，已重置: {ex.Message}");
+				}
+			}
+
+			TrimSearchHistory();
+		}
+
+		private void SaveSearchHistory(string keyword)
+		{
+			if (!AddSearchHistoryKeyword(keyword, true)) return;
+
+			SearchHistoryStore store = new SearchHistoryStore { keywords = new List<string>(searchHistory) };
+			PlayerPrefs.SetString(SearchHistoryPrefsKey, JsonUtility.ToJson(store));
+			PlayerPrefs.Save();
+		}
+
+		private bool AddSearchHistoryKeyword(string keyword, bool newestFirst)
+		{
+			keyword = (keyword ?? string.Empty).Trim();
+			if (string.IsNullOrEmpty(keyword)) return false;
+
+			searchHistory.RemoveAll(item => string.Equals(item, keyword, StringComparison.OrdinalIgnoreCase));
+			if (newestFirst)
+				searchHistory.Insert(0, keyword);
+			else
+				searchHistory.Add(keyword);
+
+			TrimSearchHistory();
+			return true;
+		}
+
+		private void TrimSearchHistory()
+		{
+			while (searchHistory.Count > SearchHistoryLimit)
+				searchHistory.RemoveAt(searchHistory.Count - 1);
+		}
+
+		private void RemoveSearchHistoryKeyword(string keyword)
+		{
+			keyword = (keyword ?? string.Empty).Trim();
+			if (string.IsNullOrEmpty(keyword)) return;
+
+			searchHistory.RemoveAll(item => string.Equals(item, keyword, StringComparison.OrdinalIgnoreCase));
+			SearchHistoryStore store = new SearchHistoryStore { keywords = new List<string>(searchHistory) };
+			PlayerPrefs.SetString(SearchHistoryPrefsKey, JsonUtility.ToJson(store));
+			PlayerPrefs.Save();
+			RefreshSearchHistoryViews();
+		}
+
+		private void RefreshSearchHistoryViews()
+		{
+			ResolveSearchHistoryViews();
+			bool hasHistory = searchHistory.Count > 0 && !isLoadingRecommendations;
+
+			if (historyRecordRoot != null)
+				historyRecordRoot.SetActive(hasHistory);
+
+			if (searchHistoryItems == null) return;
+
+			for (int i = 0; i < searchHistoryItems.Length; i++)
+			{
+				SearchHistoryItem item = searchHistoryItems[i];
+				if (item == null) continue;
+
+				bool hasKeyword = i < searchHistory.Count;
+				item.gameObject.SetActive(hasHistory && hasKeyword);
+				if (hasKeyword)
+					item.Bind(searchHistory[i], OnSearchHistorySelected, RemoveSearchHistoryKeyword);
+			}
+		}
+
+		private void OnSearchHistorySelected(string keyword)
+		{
+			keyword = (keyword ?? string.Empty).Trim();
+			if (string.IsNullOrEmpty(keyword)) return;
+
+			currentSearchText = keyword;
+			if (uiComponent.SearchInputInputField != null)
+				uiComponent.SearchInputInputField.SetTextWithoutNotify(keyword);
+
+			OnSearchFriendsButtonClick();
+		}
+
+		private static string GetDisplayName(FirestoreManager.UserSearchResult result)
+		{
+			if (result == null)
 		{
 			return "未命名用户";
 		}
@@ -533,30 +992,14 @@ public class UserSearchUI : WindowBase
 		RefreshFallbackResultViews();
 	}
 
-	private void CacheFallbackResultRefs()
-	{
-		fallbackResultNameTexts = new[]
-		{
-			FindTextByName(gameObject.transform, "NameText1"),
-			FindTextByName(gameObject.transform, "NameText2"),
-			FindTextByName(gameObject.transform, "NameText3")
-		};
-		fallbackResultHandleTexts = new[]
-		{
-			FindTextByName(gameObject.transform, "HandleText1"),
-			FindTextByName(gameObject.transform, "HandleText2"),
-			FindTextByName(gameObject.transform, "HandleText3")
-		};
-		fallbackInviteButtons = new[]
-		{
-			uiComponent.Invite1Button,
-			FindButtonByName(gameObject.transform, "[Button]Invite2"),
-			FindButtonByName(gameObject.transform, "[Button]Invite3")
-		};
-	}
 
 	private void RefreshFallbackResultViews()
 	{
+		if (fallbackInviteButtons == null)
+		{
+			return;
+		}
+
 		for (int i = 0; i < fallbackInviteButtons.Length; i++)
 		{
 			bool hasResult = i < currentResults.Count;
@@ -596,11 +1039,11 @@ public class UserSearchUI : WindowBase
 		return null;
 	}
 
-	private static Button FindButtonByName(Transform root, params string[] targetNames)
-	{
-		if (root == null)
+		private static Button FindButtonByName(Transform root, params string[] targetNames)
 		{
-			return null;
+			if (root == null)
+			{
+				return null;
 		}
 
 		Button[] buttons = root.GetComponentsInChildren<Button>(true);
@@ -615,6 +1058,24 @@ public class UserSearchUI : WindowBase
 			}
 		}
 
-		return null;
+			return null;
+		}
+
+		private static Transform FindTransformByName(Transform root, params string[] targetNames)
+		{
+			if (root == null)
+				return null;
+
+			Transform[] transforms = root.GetComponentsInChildren<Transform>(true);
+			foreach (Transform transform in transforms)
+			{
+				foreach (string targetName in targetNames)
+				{
+					if (transform.name == targetName)
+						return transform;
+				}
+			}
+
+			return null;
+		}
 	}
-}

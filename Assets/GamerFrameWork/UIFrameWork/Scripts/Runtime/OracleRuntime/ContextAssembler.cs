@@ -1536,6 +1536,7 @@ reading_type, summary(title+text), cards(position, card_name, orientation, short
                 lines.Add("Use only cards in Reading Lock.");
             if (runtimePlan?.suggestedActions != null && runtimePlan.suggestedActions.Count > 0)
                 lines.Add("Suggested actions: " + string.Join(" | ", runtimePlan.suggestedActions.Select(action => $"{action.kind}:{action.label}")));
+            lines.Add("Client action boundary: UI actions are optional and must be requested only through the hidden <client_action>{...}</client_action> block described in Chat Turn Instruction.");
 
             return new OutputContract
             {
@@ -1951,6 +1952,16 @@ reading_type, summary(title+text), cards(position, card_name, orientation, short
             // Respond to "why do you say that?"
             lines.Add("If user asks 为什么这么说, answer with evidence from user's own words and observed patterns.");
             lines.Add("Do NOT restate the previous conclusion as if it were new.");
+
+            lines.Add("");
+            lines.Add("## Client action API");
+            lines.Add("You may ask the Unity client to open a divination UI only by appending exactly one hidden block at the very end of your reply.");
+            lines.Add("Format: <client_action>{\"action\":\"show_spread\",\"spreadKind\":\"self_repair\",\"cardCount\":3,\"question\":\"用户真正要看的问题\",\"reason\":\"为什么这个牌阵适合\"}</client_action>");
+            lines.Add("Allowed actions: show_spread, start_spread, show_relationship_divination.");
+            lines.Add("Use show_spread/start_spread only when the user clearly asks for占卜/抽牌/牌阵, or the conversation has become stuck enough that a spread would be genuinely helpful and the visible reply explains why.");
+            lines.Add("Use show_relationship_divination only when the user has @ a friend and is asking to看/占卜/抽牌/牌阵 that relationship.");
+            lines.Add("Do not output client_action for ordinary chat, safety/crisis topics, or follow-up on an already locked reading.");
+            lines.Add("Never mention the hidden block to the user. If no UI action is needed, output no client_action block.");
 
             return string.Join("\n", lines);
         }

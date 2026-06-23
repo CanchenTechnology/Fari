@@ -45,6 +45,8 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     #region 状态
 
     private const string PUBLIC_APP_CONFIG_CACHE_KEY = "PublicAppConfigCache_v1";
+    private const string LEGACY_IAP_MONTHLY_PRODUCT_ID = "moonly.pro.monthly";
+    private const string LEGACY_IAP_YEARLY_PRODUCT_ID = "moonly.pro.yearly";
     private const string PENDING_REAL_FRIEND_DELETE_KEY_PREFIX = "PendingRealFriendDeletes_";
     private const string PENDING_REAL_FRIEND_BLOCK_KEY_PREFIX = "PendingRealFriendBlocks_";
     private const int FIRESTORE_DELETE_BATCH_LIMIT = 450;
@@ -465,6 +467,79 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                     return;
                 }
 #endif
+                onComplete?.Invoke(results);
+            });
+    }
+
+    /// <summary>
+    /// 加载好友推荐：从公开资料索引中取一批候选，排除自己、已有好友和已屏蔽用户。
+    /// </summary>
+    public void LoadRecommendedUsers(Action<List<UserSearchResult>> onComplete, int limit = 3)
+    {
+        if (!IsUserSearchStoreReady())
+        {
+            InitFirestore();
+            StartCoroutine(WaitForRecommendationStoreReadyThenLoad(onComplete, limit));
+            return;
+        }
+
+        LoadRecommendedUsersReady(onComplete, limit);
+    }
+
+    private IEnumerator WaitForRecommendationStoreReadyThenLoad(Action<List<UserSearchResult>> onComplete, int limit)
+    {
+        float deadline = Time.realtimeSinceStartup + USER_SEARCH_STORE_READY_TIMEOUT_SECONDS;
+
+        while (Time.realtimeSinceStartup < deadline)
+        {
+            if (IsUserSearchStoreReady())
+            {
+                LoadRecommendedUsersReady(onComplete, limit);
+                yield break;
+            }
+
+            if (!_isInitialized || _db == null)
+                InitFirestore();
+
+            yield return new WaitForSecondsRealtime(USER_SEARCH_STORE_READY_POLL_SECONDS);
+        }
+
+#if UNITY_EDITOR
+        LoadRecommendedUsersViaRestInEditor(onComplete, limit);
+#else
+        onComplete?.Invoke(new List<UserSearchResult>());
+#endif
+    }
+
+    private void LoadRecommendedUsersReady(Action<List<UserSearchResult>> onComplete, int limit)
+    {
+        if (!CheckReady(_ => onComplete?.Invoke(new List<UserSearchResult>()))) return;
+
+        string currentUid = GetCurrentUserSearchUid();
+        int resultLimit = Math.Max(1, limit);
+        int fetchLimit = GetUserRecommendationFetchLimit(resultLimit);
+
+        _db.Collection("public_profiles")
+            .OrderBy("displayNameLower")
+            .Limit(fetchLimit)
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                List<UserSearchResult> results = new List<UserSearchResult>();
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogWarning($"[FirestoreManager] 加载好友推荐失败: {GetTaskError(task.Exception)}");
+#if UNITY_EDITOR
+                    LoadRecommendedUsersViaRestInEditor(onComplete, limit);
+#else
+                    onComplete?.Invoke(results);
+#endif
+                    return;
+                }
+
+                AddUserSearchResults(results, task.Result.Documents, currentUid);
+                results = BuildRecommendedUsers(results, currentUid, resultLimit);
+                Debug.Log($"[FirestoreManager] 好友推荐加载完成: {results.Count}");
                 onComplete?.Invoke(results);
             });
     }
@@ -2397,7 +2472,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     /// </summary>
     public void LoadPublicAppConfig(Action<PublicAppConfig> onComplete)
     {
-        PublicAppConfig fallback = LoadCachedPublicAppConfig() ?? PublicAppConfig.Default;
+        PublicAppConfig fallback = NormalizePublicAppConfig(LoadCachedPublicAppConfig() ?? PublicAppConfig.Default);
         if (!_isInitialized || _db == null)
         {
             onComplete?.Invoke(fallback);
@@ -2416,6 +2491,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 }
 
                 PublicAppConfig config = DeserializePublicAppConfig(task.Result.ToDictionary());
+                config = NormalizePublicAppConfig(config);
                 SavePublicAppConfigCache(config);
                 onComplete?.Invoke(config);
             });
@@ -2574,10 +2650,10 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
 
         var ud = UserDataManager.Instance;
 
-        // === 基础信息策略：本地为空才用云端的 ===
-        // 这样做的原因是：如果玩家在无网时改了名字（存在本地），连网时这里不会拿云端的旧名字去冲掉玩家刚改的新名字
+        // === 基础信息策略：本地为空才用云端的；已知错误默认名不再覆盖社交账号名 ===
+        // 这样做的原因是：如果玩家在无网时改了名字（存在本地），连网时这里不会拿云端的旧名字去冲掉玩家刚改的新名字。
         // TryGetValue 是一种安全的取值方式，如果云端没有该字段，不会报错，只会返回 false
-        if (string.IsNullOrWhiteSpace(ud.UserName) && snapshot.TryGetValue("displayName", out string cloudName))
+        if (snapshot.TryGetValue("displayName", out string cloudName) && ShouldApplyCloudDisplayName(cloudName, ud.UserName))
             ud.SetUserName(cloudName);
 
         if (string.IsNullOrWhiteSpace(ud.Birthday) && snapshot.TryGetValue("birthday", out string cloudBirthday))
@@ -2616,6 +2692,58 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         ud.SaveData();
 
         Debug.Log("[FirestoreManager] 云端数据已应用到本地");
+    }
+
+    private static bool ShouldApplyCloudDisplayName(string cloudName, string localName)
+    {
+        string normalizedCloudName = (cloudName ?? string.Empty).Trim();
+        string normalizedLocalName = (localName ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(normalizedCloudName))
+            return false;
+
+        if (UserDataManager.IsKnownGeneratedDisplayName(normalizedCloudName))
+            return false;
+
+        if (string.IsNullOrWhiteSpace(normalizedLocalName))
+            return true;
+
+        if (UserDataManager.IsKnownGeneratedDisplayName(normalizedLocalName))
+            return true;
+
+        string providerName = GetCurrentProviderDisplayName();
+        return !string.IsNullOrWhiteSpace(providerName)
+            && normalizedLocalName == providerName.Trim()
+            && normalizedCloudName != normalizedLocalName;
+    }
+
+    private static string GetCurrentProviderDisplayName()
+    {
+        var user = Firebase.Auth.FirebaseAuth.DefaultInstance?.CurrentUser;
+        if (user == null) return string.Empty;
+
+        string preferredProviderId = UserDataManager.Instance != null
+            ? UserDataManager.Instance.CurrentLoginType switch
+            {
+                LoginType.Google => "google.com",
+                LoginType.Apple => "apple.com",
+                LoginType.Facebook => "facebook.com",
+                LoginType.GameCenter => Firebase.Auth.GameCenterAuthProvider.ProviderId,
+                _ => string.Empty,
+            }
+            : string.Empty;
+
+        foreach (var provider in user.ProviderData)
+        {
+            if (!string.IsNullOrWhiteSpace(preferredProviderId) && provider.ProviderId != preferredProviderId)
+                continue;
+
+            if (!string.IsNullOrWhiteSpace(provider.DisplayName))
+                return provider.DisplayName.Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(user.DisplayName)
+            ? string.Empty
+            : user.DisplayName.Trim();
     }
 
     /// <summary>
@@ -2723,6 +2851,12 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         return Math.Min(Math.Max(resultLimit * 3, resultLimit + 3), 20);
     }
 
+    private static int GetUserRecommendationFetchLimit(int resultLimit)
+    {
+        resultLimit = Math.Max(1, resultLimit);
+        return Math.Min(Math.Max(resultLimit * 20, 60), 120);
+    }
+
     private static int GetUserSearchScanLimit(int resultLimit)
     {
         resultLimit = Math.Max(1, resultLimit);
@@ -2742,6 +2876,44 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         }
 
         return count;
+    }
+
+    private static List<UserSearchResult> BuildRecommendedUsers(List<UserSearchResult> candidates, string currentUid, int resultLimit)
+    {
+        List<UserSearchResult> recommended = new List<UserSearchResult>();
+        if (candidates == null) return recommended;
+
+        ShuffleUserSearchResults(candidates);
+        foreach (UserSearchResult result in candidates)
+        {
+            if (result == null || string.IsNullOrEmpty(result.uid)) continue;
+            if (!string.IsNullOrEmpty(currentUid) && result.uid == currentUid) continue;
+            if (FriendDataManager.Instance != null)
+            {
+                if (FriendDataManager.Instance.FindRealFriendByFirebaseUid(result.uid) != null) continue;
+                if (FriendDataManager.Instance.IsUserBlocked(result.uid)) continue;
+            }
+
+            if (recommended.Exists(item => item.uid == result.uid)) continue;
+            recommended.Add(result);
+            if (recommended.Count >= resultLimit) break;
+        }
+
+        return recommended;
+    }
+
+    private static void ShuffleUserSearchResults(List<UserSearchResult> results)
+    {
+        if (results == null || results.Count <= 1) return;
+
+        System.Random random = new System.Random(Environment.TickCount);
+        for (int i = results.Count - 1; i > 0; i--)
+        {
+            int swapIndex = random.Next(i + 1);
+            UserSearchResult temp = results[i];
+            results[i] = results[swapIndex];
+            results[swapIndex] = temp;
+        }
     }
 
     private static List<string> BuildSearchKeywords(string displayName, string email)
@@ -2874,6 +3046,37 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             });
     }
 
+    private void LoadRecommendedUsersViaRestInEditor(Action<List<UserSearchResult>> onComplete, int limit)
+    {
+        string projectId = GetFirebaseProjectIdForRest();
+        string currentUid = GetCurrentUserSearchUid();
+        int resultLimit = Math.Max(1, limit);
+        int fetchLimit = GetUserRecommendationFetchLimit(resultLimit);
+
+        Task.Run(() => LoadRecommendedUsersViaRest(projectId, currentUid, fetchLimit))
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogWarning($"[FirestoreManager] Editor REST 好友推荐失败: {GetTaskError(task.Exception)}");
+                    onComplete?.Invoke(new List<UserSearchResult>());
+                    return;
+                }
+
+                EditorRestSearchResult result = task.Result;
+                if (!string.IsNullOrEmpty(result.error))
+                {
+                    Debug.LogWarning($"[FirestoreManager] {result.error}");
+                    onComplete?.Invoke(new List<UserSearchResult>());
+                    return;
+                }
+
+                List<UserSearchResult> users = BuildRecommendedUsers(result.users, currentUid, resultLimit);
+                Debug.Log($"[FirestoreManager] Editor REST 好友推荐成功，来源={result.proxyLabel}，数量={users.Count}");
+                onComplete?.Invoke(users);
+            });
+    }
+
     private static EditorRestSearchResult SearchUsersByNameViaRest(
         string projectId,
         string keyword,
@@ -2942,6 +3145,42 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         finalResult.error = string.IsNullOrEmpty(lastError)
             ? "Editor REST 搜索失败：没有可用网络通道"
             : $"Editor REST 搜索失败，最后错误：{lastError}";
+        return finalResult;
+    }
+
+    private static EditorRestSearchResult LoadRecommendedUsersViaRest(string projectId, string currentUid, int fetchLimit)
+    {
+        EditorRestSearchResult finalResult = new EditorRestSearchResult();
+        if (string.IsNullOrEmpty(projectId))
+        {
+            finalResult.error = "Editor REST 好友推荐失败：Firebase ProjectId 为空";
+            return finalResult;
+        }
+
+        string endpoint = $"https://firestore.googleapis.com/v1/projects/{projectId}/databases/(default)/documents:runQuery";
+        string scanBody = BuildScanUserSearchBody(fetchLimit);
+        string lastError = string.Empty;
+
+        foreach (string proxyUrl in GetEditorFirestoreProxyCandidates())
+        {
+            try
+            {
+                List<UserSearchResult> users = new List<UserSearchResult>();
+                string json = PostFirestoreRestJson(endpoint, scanBody, proxyUrl);
+                AddUserSearchResultsFromRestJson(users, json, currentUid);
+                finalResult.users = users;
+                finalResult.proxyLabel = DescribeProxy(proxyUrl);
+                return finalResult;
+            }
+            catch (Exception e)
+            {
+                lastError = $"{DescribeProxy(proxyUrl)}: {e.Message}";
+            }
+        }
+
+        finalResult.error = string.IsNullOrEmpty(lastError)
+            ? "Editor REST 好友推荐失败：没有可用网络通道"
+            : $"Editor REST 好友推荐失败，最后错误：{lastError}";
         return finalResult;
     }
 
@@ -3599,7 +3838,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             GetMap(iapProducts, "proYearly"),
             config.iapProducts.proYearly);
 
-        return config;
+        return NormalizePublicAppConfig(config);
     }
 
     private static IapProductConfig DeserializeIapProduct(Dictionary<string, object> data, IapProductConfig fallback)
@@ -3615,6 +3854,40 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         };
     }
 
+    private static PublicAppConfig NormalizePublicAppConfig(PublicAppConfig config)
+    {
+        if (config == null)
+            return PublicAppConfig.Default;
+
+        config.iapProducts ??= IapProductsConfig.Default;
+        config.iapProducts.proMonthly = NormalizeIapProduct(
+            config.iapProducts.proMonthly,
+            IapProductConfig.MonthlyDefault,
+            LEGACY_IAP_MONTHLY_PRODUCT_ID);
+        config.iapProducts.proYearly = NormalizeIapProduct(
+            config.iapProducts.proYearly,
+            IapProductConfig.YearlyDefault,
+            LEGACY_IAP_YEARLY_PRODUCT_ID);
+        return config;
+    }
+
+    private static IapProductConfig NormalizeIapProduct(
+        IapProductConfig product,
+        IapProductConfig fallback,
+        string legacyProductId)
+    {
+        product ??= fallback;
+        if (string.IsNullOrWhiteSpace(product.productId) || product.productId == legacyProductId)
+            product.productId = fallback.productId;
+        if (string.IsNullOrWhiteSpace(product.type))
+            product.type = fallback.type;
+        if (string.IsNullOrWhiteSpace(product.store))
+            product.store = fallback.store;
+        if (string.IsNullOrWhiteSpace(product.displayName))
+            product.displayName = fallback.displayName;
+        return product;
+    }
+
     private static PublicAppConfig LoadCachedPublicAppConfig()
     {
         string json = PlayerPrefs.GetString(PUBLIC_APP_CONFIG_CACHE_KEY, string.Empty);
@@ -3622,7 +3895,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
 
         try
         {
-            return JsonUtility.FromJson<PublicAppConfig>(json);
+            return NormalizePublicAppConfig(JsonUtility.FromJson<PublicAppConfig>(json));
         }
         catch (Exception e)
         {
@@ -3860,7 +4133,7 @@ public class IapProductConfig
 
     public static IapProductConfig MonthlyDefault => new IapProductConfig
     {
-        productId = "moonly.pro.monthly",
+        productId = "fair.pro.monthly",
         type = "subscription",
         store = "app_store_google_play",
         displayName = "Moonly Pro Monthly",
@@ -3869,7 +4142,7 @@ public class IapProductConfig
 
     public static IapProductConfig YearlyDefault => new IapProductConfig
     {
-        productId = "moonly.pro.yearly",
+        productId = "fair.pro.yearly",
         type = "subscription",
         store = "app_store_google_play",
         displayName = "Moonly Pro Yearly",

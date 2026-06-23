@@ -57,6 +57,9 @@ public class ChatItem : MonoBehaviour
     public GameObject ttsLoadingIcon;   // 加载中旋转图标（可选）
     public TMP_Text ttsTimeText;  //记录语音的时常
 
+    [Header("列表底部安全距离")]
+    public float lastMessageBottomPadding = 110f;
+
     /// <summary>TTS 播放回调（由 DialogUI 绑定）</summary>
     public System.Action<ChatItem> onTTSPlayClicked;
 
@@ -258,6 +261,16 @@ public class ChatItem : MonoBehaviour
         return data?.content ?? "";
     }
 
+    private float ApplyLastMessageBottomPadding(float height)
+    {
+        if (lastMessageBottomPadding <= 0f || DialogSystem.Instance == null)
+            return height;
+
+        int messageCount = DialogSystem.Instance.GetMessageCount();
+        bool isLastMessage = messageCount > 0 && mItemIndex == messageCount - 1;
+        return isLastMessage ? height + lastMessageBottomPadding : height;
+    }
+
     private void ApplyTextBubbleLayout(bool reserveVoiceSpace, string layoutText = null)
     {
         if (mMsgText == null || mItemBg == null) return;
@@ -303,6 +316,7 @@ public class ChatItem : MonoBehaviour
         {
             y = headImage.GetComponent<RectTransform>().sizeDelta.y+40;
         }
+        y = ApplyLastMessageBottomPadding(y);
         tf.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, y);
 
         if (layoutText != null)
@@ -410,14 +424,18 @@ public class ChatItem : MonoBehaviour
         {
             y = headImage.GetComponent<RectTransform>().sizeDelta.y+10;
         }
+        y = ApplyLastMessageBottomPadding(y);
         tf.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, y);
     }
 
     private void SetContentSizeMessage(Transform targetTrans)
     {
+        if (targetTrans == null) return;
+
         Vector2 size = Vector2.zero;
         size.x = this.GetComponent<RectTransform>().sizeDelta.x;
         size.y = targetTrans.GetComponent<RectTransform>().sizeDelta.y;
+        size.y = ApplyLastMessageBottomPadding(size.y);
         this.GetComponent<RectTransform>().sizeDelta = size;
     }
     private void SetDailyCardMessage()

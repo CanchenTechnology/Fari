@@ -1,0 +1,1146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Moonly Data Admin</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f5f2;
+      --panel: #ffffff;
+      --panel-soft: #fbfaf7;
+      --line: #d9d5cc;
+      --text: #1f2328;
+      --muted: #687076;
+      --primary: #176b87;
+      --primary-dark: #0f5268;
+      --accent: #9b5d1f;
+      --danger: #b3261e;
+      --ok: #287a52;
+      --focus: rgba(23, 107, 135, 0.16);
+      --shadow: 0 12px 28px rgba(31, 35, 40, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      min-height: 38px;
+      border: 0;
+      border-radius: 6px;
+      padding: 0 13px;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 720;
+      cursor: pointer;
+    }
+
+    button:hover { background: var(--primary-dark); }
+    button.secondary { background: #e7e3da; color: var(--text); }
+    button.secondary:hover { background: #dbd5ca; }
+    button.ghost { background: transparent; color: var(--primary); border: 1px solid var(--line); }
+    button.ghost:hover { background: #eef4f4; }
+    button.danger { background: var(--danger); }
+    button.danger:hover { background: #8c1d18; }
+    button:disabled { cursor: not-allowed; opacity: 0.55; }
+
+    a.button-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 13px;
+      background: transparent;
+      color: var(--primary);
+      font-weight: 720;
+      text-decoration: none;
+    }
+
+    a.button-link:hover { background: #eef4f4; }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 9px 10px;
+      outline: none;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--focus);
+    }
+
+    textarea {
+      min-height: 480px;
+      resize: vertical;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      tab-size: 2;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 70px;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 21px;
+      font-weight: 780;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      flex-wrap: wrap;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 320px minmax(360px, 1fr) 460px;
+      min-height: calc(100vh - 70px);
+    }
+
+    aside,
+    .list-pane,
+    .editor-pane {
+      min-width: 0;
+      padding: 18px;
+    }
+
+    aside {
+      border-right: 1px solid var(--line);
+      background: var(--panel-soft);
+    }
+
+    .list-pane {
+      border-right: 1px solid var(--line);
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 11px;
+    }
+
+    .two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+    }
+
+    .three {
+      display: grid;
+      grid-template-columns: 1fr 92px 1fr;
+      gap: 8px;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .doc-list {
+      display: grid;
+      gap: 9px;
+    }
+
+    .doc-row {
+      width: 100%;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 12px;
+      color: var(--text);
+      text-align: left;
+      box-shadow: none;
+    }
+
+    .doc-row:hover,
+    .doc-row.active {
+      border-color: var(--primary);
+      background: #f4fbfb;
+    }
+
+    .doc-id {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 13px;
+      font-weight: 760;
+      overflow-wrap: anywhere;
+    }
+
+    .doc-summary {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border-radius: 999px;
+      padding: 0 9px;
+      background: #ece8df;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 720;
+      white-space: nowrap;
+    }
+
+    .guide-card {
+      display: grid;
+      gap: 9px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .guide-title {
+      color: var(--text);
+      font-weight: 780;
+      line-height: 1.3;
+    }
+
+    .meta-row {
+      display: grid;
+      gap: 3px;
+      border-top: 1px solid #ece8df;
+      padding-top: 8px;
+    }
+
+    .meta-label {
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .danger-note {
+      border-left: 3px solid var(--accent);
+      background: #fff8ec;
+      color: #714412;
+      padding: 8px 10px;
+      border-radius: 6px;
+    }
+
+    .chip-list,
+    .template-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .chip-list button,
+    .template-actions button {
+      min-height: 32px;
+      padding: 0 10px;
+      background: #e7e3da;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 720;
+    }
+
+    .chip-list button:hover,
+    .template-actions button:hover {
+      background: #dbd5ca;
+    }
+
+    .path {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #f9f8f5;
+      padding: 8px 10px;
+      color: var(--muted);
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+    }
+
+    .empty {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 26px;
+      color: var(--muted);
+      text-align: center;
+      background: rgba(255, 255, 255, 0.58);
+    }
+
+    .switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .switch input {
+      width: auto;
+      accent-color: var(--primary);
+    }
+
+    .ok { color: var(--ok); }
+    .warn { color: var(--accent); }
+
+    @media (max-width: 1180px) {
+      .layout { grid-template-columns: 300px minmax(0, 1fr); }
+      .editor-pane { grid-column: 1 / -1; border-top: 1px solid var(--line); }
+    }
+
+    @media (max-width: 760px) {
+      header { align-items: flex-start; flex-direction: column; }
+      .layout { grid-template-columns: 1fr; }
+      aside,
+      .list-pane {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .two,
+      .three { grid-template-columns: 1fr; }
+      textarea { min-height: 360px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Moonly 数据管理</h1>
+    <div class="row">
+      <span id="accountLabel" class="status">未登录</span>
+      <a class="button-link" href="moonly-firebase-data-admin-guide.md">管理手册</a>
+      <button id="signOutButton" class="ghost" type="button">退出</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside>
+      <div class="panel">
+        <h2>管理员登录</h2>
+        <div class="field">
+          <label for="emailInput">邮箱</label>
+          <input id="emailInput" type="email" autocomplete="username" placeholder="admin@example.com">
+        </div>
+        <div class="field">
+          <label for="passwordInput">密码</label>
+          <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Firebase Auth 密码">
+        </div>
+        <button id="signInButton" type="button">登录</button>
+      </div>
+
+      <div class="panel">
+        <h2>数据源</h2>
+        <div class="field">
+          <label for="collectionSelect">集合</label>
+          <select id="collectionSelect"></select>
+        </div>
+        <div id="parentUidField" class="field" style="display: none;">
+          <label for="parentUidInput">用户 UID</label>
+          <input id="parentUidInput" spellcheck="false" placeholder="users/{uid}">
+        </div>
+        <div class="field">
+          <label for="customPathInput">自定义集合路径</label>
+          <input id="customPathInput" spellcheck="false" placeholder="users/{uid}/settings">
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>功能说明</h2>
+        <div id="guidePanel" class="guide-card"></div>
+        <div id="quickActions" class="chip-list"></div>
+      </div>
+
+      <div class="panel">
+        <h2>查询</h2>
+        <div class="field">
+          <label for="docIdFilterInput">文档 ID</label>
+          <input id="docIdFilterInput" spellcheck="false" placeholder="精确查找">
+        </div>
+        <div class="three">
+          <div class="field">
+            <label for="whereFieldInput">字段</label>
+            <input id="whereFieldInput" spellcheck="false" placeholder="status">
+          </div>
+          <div class="field">
+            <label for="whereOpSelect">条件</label>
+            <select id="whereOpSelect">
+              <option value="==">==</option>
+              <option value="!=">!=</option>
+              <option value=">">&gt;</option>
+              <option value=">=">&gt;=</option>
+              <option value="<">&lt;</option>
+              <option value="<=">&lt;=</option>
+              <option value="array-contains">包含</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="whereValueInput">值</label>
+            <input id="whereValueInput" spellcheck="false" placeholder="new">
+          </div>
+        </div>
+        <div class="two">
+          <div class="field">
+            <label for="orderByInput">排序字段</label>
+            <input id="orderByInput" spellcheck="false" placeholder="updatedAt">
+          </div>
+          <div class="field">
+            <label for="orderDirectionSelect">方向</label>
+            <select id="orderDirectionSelect">
+              <option value="desc">降序</option>
+              <option value="asc">升序</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="limitSelect">数量</label>
+          <select id="limitSelect">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+        <div class="row">
+          <button id="refreshButton" type="button">刷新</button>
+          <button id="newButton" class="secondary" type="button">新增</button>
+        </div>
+      </div>
+
+      <div id="messageBox" class="status"></div>
+    </aside>
+
+    <section class="list-pane">
+      <div class="toolbar">
+        <div>
+          <div id="collectionTitle" class="doc-id">等待选择集合</div>
+          <div id="collectionPathLabel" class="status"></div>
+        </div>
+        <button id="exportButton" class="ghost" type="button">导出 JSON</button>
+      </div>
+      <div id="docList" class="doc-list">
+        <div class="empty">登录管理员账号后加载数据。</div>
+      </div>
+    </section>
+
+    <section class="editor-pane">
+      <div class="toolbar">
+        <div>
+          <div id="editorTitle" class="doc-id">未选择文档</div>
+          <div id="editorMeta" class="status"></div>
+        </div>
+        <span id="saveState" class="status"></span>
+      </div>
+
+      <div class="field">
+        <label for="editorPath">路径</label>
+        <div id="editorPath" class="path"></div>
+      </div>
+
+      <div class="two">
+        <div class="field">
+          <label for="docIdInput">文档 ID</label>
+          <input id="docIdInput" spellcheck="false" placeholder="留空自动生成">
+        </div>
+        <div class="field">
+          <label>写入方式</label>
+          <label class="switch">
+            <input id="mergeToggle" type="checkbox" checked>
+            合并字段
+          </label>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>文档模板</h2>
+        <div id="templateActions" class="template-actions"></div>
+        <div id="templateHint" class="status"></div>
+      </div>
+
+      <div class="field">
+        <label for="jsonEditor">JSON</label>
+        <textarea id="jsonEditor" spellcheck="false">{}</textarea>
+      </div>
+
+      <div class="row">
+        <button id="saveButton" type="button">保存</button>
+        <button id="formatButton" class="secondary" type="button">格式化</button>
+        <button id="copyPathButton" class="ghost" type="button">复制路径</button>
+        <button id="deleteButton" class="danger" type="button">删除</button>
+        <label class="switch">
+          <input id="recursiveDeleteToggle" type="checkbox">
+          连带子集合
+        </label>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import {
+      getAuth,
+      onAuthStateChanged,
+      signInWithEmailAndPassword,
+      signOut
+    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyD8wysQincWAGA0Ee7-BffRrf_PA-hlUEs",
+      authDomain: "fari-app-b2fd2.firebaseapp.com",
+      projectId: "fari-app-b2fd2",
+      storageBucket: "fari-app-b2fd2.firebasestorage.app",
+      messagingSenderId: "963943083905",
+      appId: "1:963943083905:android:0dcb83384ddcf394158280"
+    };
+
+    const functionsBaseUrl = "https://us-central1-fari-app-b2fd2.cloudfunctions.net";
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    let idToken = "";
+    let collections = [];
+    let items = [];
+    let selectedDoc = null;
+
+    const $ = (id) => document.getElementById(id);
+    const collectionSelect = $("collectionSelect");
+    const parentUidField = $("parentUidField");
+    const parentUidInput = $("parentUidInput");
+    const customPathInput = $("customPathInput");
+    const docList = $("docList");
+    const messageBox = $("messageBox");
+    const accountLabel = $("accountLabel");
+    const collectionTitle = $("collectionTitle");
+    const collectionPathLabel = $("collectionPathLabel");
+    const editorTitle = $("editorTitle");
+    const editorMeta = $("editorMeta");
+    const editorPath = $("editorPath");
+    const docIdInput = $("docIdInput");
+    const jsonEditor = $("jsonEditor");
+    const mergeToggle = $("mergeToggle");
+    const saveState = $("saveState");
+    const guidePanel = $("guidePanel");
+    const quickActions = $("quickActions");
+    const templateActions = $("templateActions");
+    const templateHint = $("templateHint");
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        idToken = "";
+        accountLabel.textContent = "未登录";
+        renderCollections();
+        renderGuideTools();
+        renderList();
+        return;
+      }
+
+      idToken = await user.getIdToken(true);
+      accountLabel.textContent = user.email || user.uid;
+      await loadCollections();
+      await loadDocuments();
+    });
+
+    $("signInButton").addEventListener("click", async () => {
+      setMessage("登录中...");
+      try {
+        await signInWithEmailAndPassword(auth, $("emailInput").value.trim(), $("passwordInput").value);
+        $("passwordInput").value = "";
+        setMessage("已登录", "ok");
+      } catch (error) {
+        setMessage(error.message, "warn");
+      }
+    });
+
+    $("signOutButton").addEventListener("click", async () => {
+      await signOut(auth);
+      idToken = "";
+      items = [];
+      selectedDoc = null;
+      renderList();
+      renderEditor();
+      setMessage("已退出");
+    });
+
+    collectionSelect.addEventListener("change", () => {
+      const selected = getSelectedCollection();
+      if (selected) {
+        $("orderByInput").value = selected.orderBy || "__name__";
+        $("orderDirectionSelect").value = selected.orderDirection || "desc";
+      }
+      selectedDoc = null;
+      customPathInput.value = "";
+      updateCollectionUi();
+      loadDocuments();
+    });
+
+    customPathInput.addEventListener("change", () => {
+      selectedDoc = null;
+      updateCollectionUi();
+      loadDocuments();
+    });
+
+    $("refreshButton").addEventListener("click", loadDocuments);
+    $("newButton").addEventListener("click", startNewDocument);
+    $("saveButton").addEventListener("click", saveDocument);
+    $("deleteButton").addEventListener("click", deleteDocument);
+    $("formatButton").addEventListener("click", formatEditorJson);
+    $("copyPathButton").addEventListener("click", copyCurrentPath);
+    $("exportButton").addEventListener("click", exportJson);
+
+    async function loadCollections() {
+      if (!idToken) return;
+      setMessage("加载集合...");
+      try {
+        const data = await callFunction("/adminDataCollections", { method: "GET" });
+        collections = Array.isArray(data.items) ? data.items : [];
+      renderCollections();
+      applySelectedCollectionDefaults();
+      updateCollectionUi();
+      renderGuideTools();
+      setMessage(`已加载 ${collections.length} 个集合`, "ok");
+      } catch (error) {
+        setMessage(error.message, "warn");
+      }
+    }
+
+    async function loadDocuments() {
+      if (!idToken) {
+        renderList();
+        setMessage("请先登录");
+        return;
+      }
+
+      const payload = buildCollectionPayload();
+      if (!payload) return;
+
+      setMessage("读取文档...");
+      const params = new URLSearchParams({
+        limit: $("limitSelect").value,
+        orderBy: $("orderByInput").value.trim() || "__name__",
+        orderDirection: $("orderDirectionSelect").value
+      });
+      for (const [key, value] of Object.entries(payload)) {
+        if (value) params.set(key, value);
+      }
+      const docId = $("docIdFilterInput").value.trim();
+      if (docId) params.set("docId", docId);
+      const whereField = $("whereFieldInput").value.trim();
+      if (whereField) {
+        params.set("whereField", whereField);
+        params.set("whereOp", $("whereOpSelect").value);
+        params.set("whereValue", $("whereValueInput").value.trim());
+      }
+
+      try {
+        const data = await callFunction(`/adminDataList?${params.toString()}`, { method: "GET" });
+        items = Array.isArray(data.items) ? data.items : [];
+        renderList();
+        setMessage(`已读取 ${items.length} 条`, "ok");
+      } catch (error) {
+        setMessage(error.message, "warn");
+      }
+    }
+
+    async function saveDocument() {
+      if (!idToken) {
+        setMessage("请先登录", "warn");
+        return;
+      }
+
+      let data;
+      try {
+        data = JSON.parse(jsonEditor.value);
+      } catch (error) {
+        setMessage(`JSON 格式错误: ${error.message}`, "warn");
+        return;
+      }
+
+      const payload = {
+        data,
+        merge: mergeToggle.checked
+      };
+
+      if (selectedDoc?.path) {
+        payload.documentPath = selectedDoc.path;
+      } else {
+        Object.assign(payload, buildCollectionPayload());
+        const docId = docIdInput.value.trim();
+        if (docId) payload.docId = docId;
+      }
+
+      if (!payload.documentPath && !payload.collectionKey && !payload.collectionPath) return;
+
+      setSaveState("保存中...");
+      try {
+        const result = await callFunction("/adminDataUpsert", {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+        selectedDoc = result.doc || null;
+        renderEditor();
+        await loadDocuments();
+        setSaveState("已保存", "ok");
+        setMessage("保存成功", "ok");
+      } catch (error) {
+        setSaveState(error.message, "warn");
+        setMessage(error.message, "warn");
+      }
+    }
+
+    async function deleteDocument() {
+      if (!selectedDoc?.path) {
+        setMessage("没有选中文档", "warn");
+        return;
+      }
+
+      const recursive = $("recursiveDeleteToggle").checked;
+      const confirmed = window.confirm(`删除 ${selectedDoc.path}${recursive ? " 及其子集合" : ""}？`);
+      if (!confirmed) return;
+
+      setSaveState("删除中...");
+      try {
+        await callFunction("/adminDataDelete", {
+          method: "POST",
+          body: JSON.stringify({
+            documentPath: selectedDoc.path,
+            recursive
+          })
+        });
+        selectedDoc = null;
+        renderEditor();
+        await loadDocuments();
+        setSaveState("已删除", "ok");
+      } catch (error) {
+        setSaveState(error.message, "warn");
+        setMessage(error.message, "warn");
+      }
+    }
+
+    async function callFunction(path, options) {
+      const response = await fetch(functionsBaseUrl + path, {
+        ...options,
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          "Content-Type": "application/json",
+          ...(options.headers || {})
+        }
+      });
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+      return data;
+    }
+
+    function renderCollections() {
+      collectionSelect.innerHTML = "";
+      if (!collections.length) {
+        collectionSelect.innerHTML = `<option value="">暂无集合</option>`;
+        return;
+      }
+
+      const rootGroup = document.createElement("optgroup");
+      rootGroup.label = "根集合";
+      const userGroup = document.createElement("optgroup");
+      userGroup.label = "用户子集合";
+      const customGroup = document.createElement("optgroup");
+      customGroup.label = "已发现";
+
+      for (const item of collections) {
+        const option = document.createElement("option");
+        option.value = item.key;
+        option.textContent = item.exists === false ? `${item.label} (未发现)` : item.label;
+        if (item.scope === "user") {
+          userGroup.appendChild(option);
+        } else if (item.custom) {
+          customGroup.appendChild(option);
+        } else {
+          rootGroup.appendChild(option);
+        }
+      }
+
+      collectionSelect.appendChild(rootGroup);
+      collectionSelect.appendChild(userGroup);
+      if (customGroup.children.length) collectionSelect.appendChild(customGroup);
+      renderGuideTools();
+    }
+
+    function applySelectedCollectionDefaults() {
+      const selected = getSelectedCollection();
+      if (!selected) return;
+      $("orderByInput").value = selected.orderBy || "__name__";
+      $("orderDirectionSelect").value = selected.orderDirection || "desc";
+    }
+
+    function renderList() {
+      const selected = getSelectedCollection();
+      const collectionPath = customPathInput.value.trim() || resolveSelectedCollectionPath();
+      collectionTitle.textContent = selected?.label || "自定义集合";
+      collectionPathLabel.textContent = collectionPath || "";
+
+      if (!idToken) {
+        docList.innerHTML = `<div class="empty">登录管理员账号后加载数据。</div>`;
+        return;
+      }
+      if (!items.length) {
+        docList.innerHTML = `<div class="empty">没有文档。</div>`;
+        return;
+      }
+
+      docList.innerHTML = "";
+      for (const item of items) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `doc-row ${selectedDoc?.path === item.path ? "active" : ""}`;
+        button.innerHTML = `
+          <div>
+            <div class="doc-id">${escapeHtml(item.id)}</div>
+            <div class="doc-summary">${escapeHtml(item.summary || summarizeData(item.data))}</div>
+            <div class="doc-summary">${escapeHtml(item.path || "")}</div>
+          </div>
+          <span class="pill">${escapeHtml(formatDate(item.updateTime) || "no time")}</span>
+        `;
+        button.addEventListener("click", () => {
+          selectedDoc = item;
+          if (item.parentPath === "users") {
+            parentUidInput.value = item.id;
+          }
+          renderList();
+          renderEditor();
+        });
+        docList.appendChild(button);
+      }
+    }
+
+    function renderEditor() {
+      if (!selectedDoc) {
+        editorTitle.textContent = "新增文档";
+        editorMeta.textContent = "";
+        editorPath.textContent = resolveSelectedCollectionPath();
+        docIdInput.disabled = false;
+        $("deleteButton").disabled = true;
+        return;
+      }
+
+      editorTitle.textContent = selectedDoc.id;
+      editorMeta.textContent = `updated ${formatDate(selectedDoc.updateTime) || ""}`;
+      editorPath.textContent = selectedDoc.path || "";
+      docIdInput.value = selectedDoc.id || "";
+      docIdInput.disabled = true;
+      jsonEditor.value = JSON.stringify(selectedDoc.data || {}, null, 2);
+      $("deleteButton").disabled = false;
+    }
+
+    function startNewDocument() {
+      selectedDoc = null;
+      docIdInput.value = "";
+      jsonEditor.value = "{}";
+      mergeToggle.checked = true;
+      renderList();
+      renderEditor();
+      setSaveState("");
+    }
+
+    function updateCollectionUi() {
+      const selected = getSelectedCollection();
+      parentUidField.style.display = selected?.scope === "user" ? "grid" : "none";
+      renderEditor();
+      renderGuideTools();
+    }
+
+    function renderGuideTools() {
+      const selected = getSelectedCollection();
+      const customPath = customPathInput.value.trim();
+      const title = selected?.label || (customPath ? "自定义集合" : "等待选择集合");
+      const guidePage = selected?.guidePage ? `第 ${selected.guidePage} 页` : "自定义路径";
+      const description = selected?.description || (customPath
+        ? "手动输入 Firestore 集合路径后，可以使用同一套读取、新增、修改、删除能力。"
+        : "登录后选择集合，后台会按手册显示对应的数据管理功能。");
+      const readable = selected?.readable || "按集合路径读取文档列表或精确文档 ID。";
+      const writable = selected?.writable || "以 JSON 形式新增、合并更新、覆盖更新或删除文档。";
+      const risk = selected?.risk || "自定义路径没有手册约束，保存或删除前请先确认路径。";
+      const pathText = customPath || resolveSelectedCollectionPath() || selected?.collectionPath || "";
+
+      guidePanel.innerHTML = `
+        <div class="guide-title">${escapeHtml(title)} · ${escapeHtml(guidePage)}</div>
+        <div>${escapeHtml(description)}</div>
+        <div class="meta-row">
+          <span class="meta-label">路径</span>
+          <span>${escapeHtml(pathText || "未选择")}</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">可获取</span>
+          <span>${escapeHtml(readable)}</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">可修改</span>
+          <span>${escapeHtml(writable)}</span>
+        </div>
+        <div class="danger-note">${escapeHtml(risk)}</div>
+      `;
+
+      quickActions.innerHTML = "";
+      const presets = Array.isArray(selected?.presets) ? selected.presets : [];
+      for (const preset of presets) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = preset.label || "快捷查询";
+        button.addEventListener("click", () => applyPreset(preset));
+        quickActions.appendChild(button);
+      }
+      if (!presets.length) {
+        quickActions.innerHTML = `<span class="status">可使用文档 ID、where 条件和排序字段自由查询。</span>`;
+      }
+
+      renderTemplateActions();
+    }
+
+    function renderTemplateActions() {
+      const selected = getSelectedCollection();
+      const templates = Array.isArray(selected?.templates) ? selected.templates : [];
+      templateActions.innerHTML = "";
+
+      for (const template of templates) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = template.label || "模板";
+        button.addEventListener("click", () => applyTemplate(template));
+        templateActions.appendChild(button);
+      }
+
+      if (!templates.length) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "更新时间模板";
+        button.addEventListener("click", () => applyTemplate({
+          label: "更新时间模板",
+          merge: true,
+          data: {
+            updatedAt: { __type: "serverTimestamp" }
+          }
+        }));
+        templateActions.appendChild(button);
+      }
+
+      templateHint.textContent = selectedDoc
+        ? "套用模板会替换编辑器内容，保存时合并到当前选中文档。"
+        : "未选中文档时，模板用于新增文档；可填写文档 ID 后保存。";
+    }
+
+    function applyPreset(preset) {
+      if (Object.prototype.hasOwnProperty.call(preset, "docId")) {
+        $("docIdFilterInput").value = preset.docId || "";
+      } else {
+        $("docIdFilterInput").value = "";
+      }
+
+      if (Object.prototype.hasOwnProperty.call(preset, "whereField")) {
+        $("whereFieldInput").value = preset.whereField || "";
+        $("whereOpSelect").value = preset.whereOp || "==";
+        $("whereValueInput").value = preset.whereValue ?? "";
+      } else {
+        $("whereFieldInput").value = "";
+        $("whereValueInput").value = "";
+      }
+
+      if (preset.orderBy) $("orderByInput").value = preset.orderBy;
+      if (preset.orderDirection) $("orderDirectionSelect").value = preset.orderDirection;
+      if (preset.limit) $("limitSelect").value = String(preset.limit);
+
+      selectedDoc = null;
+      renderList();
+      renderEditor();
+      setMessage(`已应用快捷查询：${preset.label || "未命名"}`, "ok");
+      if (idToken) loadDocuments();
+    }
+
+    function applyTemplate(template) {
+      if (!selectedDoc) {
+        startNewDocument();
+        if (template.docId) docIdInput.value = template.docId;
+      }
+      mergeToggle.checked = template.merge !== false;
+      jsonEditor.value = JSON.stringify(template.data || {}, null, 2);
+      setSaveState(`已套用模板：${template.label || "未命名"}`, "ok");
+      renderTemplateActions();
+    }
+
+    function buildCollectionPayload() {
+      const customPath = customPathInput.value.trim();
+      if (customPath) {
+        return { collectionPath: customPath };
+      }
+
+      const selected = getSelectedCollection();
+      if (!selected?.key) {
+        setMessage("请选择集合", "warn");
+        return null;
+      }
+
+      if (selected.custom) {
+        return { collectionPath: selected.collectionPath };
+      }
+
+      const payload = { collectionKey: selected.key };
+      if (selected.scope === "user") {
+        const parentUid = parentUidInput.value.trim();
+        if (!parentUid) {
+          setMessage("请填写用户 UID", "warn");
+          return null;
+        }
+        payload.parentUid = parentUid;
+      }
+      return payload;
+    }
+
+    function resolveSelectedCollectionPath() {
+      const customPath = customPathInput.value.trim();
+      if (customPath) return customPath;
+      const selected = getSelectedCollection();
+      if (!selected) return "";
+      if (selected.scope === "user") {
+        return parentUidInput.value.trim()
+          ? `users/${parentUidInput.value.trim()}/${selected.collectionId}`
+          : `users/{uid}/${selected.collectionId}`;
+      }
+      return selected.collectionPath || "";
+    }
+
+    function getSelectedCollection() {
+      const key = collectionSelect.value;
+      return collections.find((item) => item.key === key) || null;
+    }
+
+    function formatEditorJson() {
+      try {
+        jsonEditor.value = JSON.stringify(JSON.parse(jsonEditor.value), null, 2);
+        setSaveState("已格式化", "ok");
+      } catch (error) {
+        setSaveState(error.message, "warn");
+      }
+    }
+
+    async function copyCurrentPath() {
+      const path = selectedDoc?.path || editorPath.textContent || "";
+      if (!path) return;
+      await navigator.clipboard.writeText(path);
+      setSaveState("已复制", "ok");
+    }
+
+    function exportJson() {
+      if (!items.length) {
+        setMessage("没有可导出的数据", "warn");
+        return;
+      }
+      const blob = new Blob([JSON.stringify(items, null, 2)], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `moonly-data-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function summarizeData(data) {
+      const keys = Object.keys(data || {});
+      return keys.slice(0, 6).join(", ");
+    }
+
+    function formatDate(value) {
+      if (!value) return "";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+    }
+
+    function setMessage(message, tone = "") {
+      messageBox.textContent = message || "";
+      messageBox.className = `status ${tone}`;
+    }
+
+    function setSaveState(message, tone = "") {
+      saveState.textContent = message || "";
+      saveState.className = `status ${tone}`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    renderCollections();
+    renderEditor();
+  </script>
+</body>
+</html>

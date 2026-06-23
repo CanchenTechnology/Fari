@@ -190,6 +190,7 @@ public class GoogleSignInHelper : MonoSingleton<GoogleSignInHelper>
                 "com.google.android.gms.auth.api.signin.GoogleSignInOptions$Builder");
             optionsBuilder.Call<AndroidJavaObject>("requestIdToken", WebClientId);
             optionsBuilder.Call<AndroidJavaObject>("requestEmail");
+            optionsBuilder.Call<AndroidJavaObject>("requestProfile");
             var options = optionsBuilder.Call<AndroidJavaObject>("build");
 
             var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");

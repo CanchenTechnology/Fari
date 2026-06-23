@@ -1,6 +1,7 @@
 #if UNITY_PURCHASING
 using System;
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 using UnityEngine.Purchasing;
 using UnityEngine.Purchasing.Extension;
@@ -103,13 +104,15 @@ public class UnityIapPurchaseBridge : MonoBehaviour, IDetailedStoreListener
         Product storeProduct = storeController.products.WithID(product.productId);
         if (storeProduct == null)
         {
-            CompletePurchase(false, $"商店未返回商品：{product.productId}");
+            LogStoreProductDiagnostics(product.productId, "商店未返回商品");
+            CompletePurchase(false, $"商店没有返回商品：{product.productId}。请检查商店后台商品 ID、包名和测试账号。");
             return;
         }
 
         if (!storeProduct.availableToPurchase)
         {
-            CompletePurchase(false, $"商品暂不可购买：{product.productId}");
+            LogStoreProductDiagnostics(product.productId, "商品暂不可购买");
+            CompletePurchase(false, $"商品暂不可购买：{product.productId}。请确认商品已创建、可销售，并使用沙盒/测试账号。");
             return;
         }
 
@@ -185,13 +188,15 @@ public class UnityIapPurchaseBridge : MonoBehaviour, IDetailedStoreListener
     public void OnInitializeFailed(InitializationFailureReason error)
     {
         isInitializing = false;
-        CompletePurchase(false, $"IAP 初始化失败：{error}");
+        LogStoreProductDiagnostics(pendingProduct?.productId, $"IAP 初始化失败：{error}");
+        CompletePurchase(false, BuildInitializeFailureMessage(error, string.Empty));
     }
 
     public void OnInitializeFailed(InitializationFailureReason error, string message)
     {
         isInitializing = false;
-        CompletePurchase(false, $"IAP 初始化失败：{error} {message}");
+        LogStoreProductDiagnostics(pendingProduct?.productId, $"IAP 初始化失败：{error} {message}");
+        CompletePurchase(false, BuildInitializeFailureMessage(error, message));
     }
 
     public PurchaseProcessingResult ProcessPurchase(PurchaseEventArgs args)
@@ -232,6 +237,60 @@ public class UnityIapPurchaseBridge : MonoBehaviour, IDetailedStoreListener
         pendingProduct = null;
         pendingRestore = false;
         callback?.Invoke(success, message);
+    }
+
+    private static string BuildInitializeFailureMessage(InitializationFailureReason error, string detail)
+    {
+        string baseMessage = error == InitializationFailureReason.NoProductsAvailable
+            ? "商店没有返回任何商品。请检查商品 ID、Bundle ID/包名、商品可销售状态和沙盒/测试账号。"
+            : $"IAP 初始化失败：{error}";
+
+        return string.IsNullOrWhiteSpace(detail)
+            ? baseMessage
+            : $"{baseMessage} {detail}";
+    }
+
+    private void LogStoreProductDiagnostics(string requestedProductId, string reason)
+    {
+        StringBuilder builder = new StringBuilder();
+        builder.Append("[UnityIapPurchaseBridge] ").Append(reason);
+        builder.Append(" | requested=").Append(string.IsNullOrEmpty(requestedProductId) ? "(none)" : requestedProductId);
+        builder.Append(" | appId=").Append(Application.identifier);
+        builder.Append(" | platform=").Append(Application.platform);
+        builder.Append(" | registered=").Append(BuildRegisteredProductsSummary());
+        builder.Append(" | storeProducts=").Append(BuildStoreProductsSummary());
+        Debug.LogWarning(builder.ToString());
+    }
+
+    private string BuildRegisteredProductsSummary()
+    {
+        if (productsById.Count == 0)
+            return "(none)";
+
+        return string.Join(",", productsById.Keys);
+    }
+
+    private string BuildStoreProductsSummary()
+    {
+        if (storeController?.products?.all == null || storeController.products.all.Length == 0)
+            return "(none)";
+
+        List<string> summaries = new List<string>();
+        foreach (Product product in storeController.products.all)
+        {
+            if (product == null)
+                continue;
+
+            string id = product.definition?.id ?? "(null)";
+            string storeId = product.definition?.storeSpecificId ?? string.Empty;
+            string available = product.availableToPurchase ? "available" : "unavailable";
+            string price = product.metadata?.localizedPriceString ?? string.Empty;
+            summaries.Add(string.IsNullOrEmpty(storeId) || storeId == id
+                ? $"{id}:{available}:{price}"
+                : $"{id}/{storeId}:{available}:{price}");
+        }
+
+        return summaries.Count == 0 ? "(none)" : string.Join(",", summaries);
     }
 }
 #endif

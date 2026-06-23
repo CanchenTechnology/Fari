@@ -51,9 +51,14 @@ public static class AppReadinessDiagnostics
 
     public static bool IsUnityIapPackageResolved()
     {
+#if UNITY_PURCHASING
+        return true;
+#else
         return HasAnyType(
+            "UnityEngine.Purchasing.StandardPurchasingModule, UnityEngine.Purchasing.Stores",
             "UnityEngine.Purchasing.StandardPurchasingModule, UnityEngine.Purchasing",
             "UnityEngine.Purchasing.StandardPurchasingModule, Unity.Purchasing");
+#endif
     }
 
     public static bool IsMobileNotificationsApiResolved()

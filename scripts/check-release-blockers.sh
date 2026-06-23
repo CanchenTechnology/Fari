@@ -260,7 +260,7 @@ check_local_secret_env() {
 check_real_iap_receipt_input() {
   local receipt="${IAP_RECEIPT:-${REAL_IAP_RECEIPT:-}}"
   local store="${IAP_STORE:-AppleAppStore}"
-  local product_id="${IAP_PRODUCT_ID:-moonly.pro.monthly}"
+  local product_id="${IAP_PRODUCT_ID:-fair.pro.monthly}"
 
   if [[ -z "$receipt" ]]; then
     block "real sandbox IAP receipt input is missing; set IAP_RECEIPT or REAL_IAP_RECEIPT"

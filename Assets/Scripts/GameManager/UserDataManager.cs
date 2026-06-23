@@ -187,6 +187,50 @@ public class UserDataManager : MonoSingleton<UserDataManager>
         UserName = name ?? string.Empty;
     }
 
+    public static bool IsKnownGeneratedDisplayName(string name)
+    {
+        string normalized = (name ?? string.Empty).Trim();
+        return normalized == "土豆炖母牛";
+    }
+
+    private bool ShouldApplyAuthDisplayName(string displayName, string incomingUid)
+    {
+        string normalizedName = (displayName ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(normalizedName))
+            return false;
+
+        if (string.IsNullOrWhiteSpace(UserName))
+            return true;
+
+        if (IsKnownGeneratedDisplayName(UserName))
+            return true;
+
+        bool hasIncomingUid = !string.IsNullOrWhiteSpace(incomingUid);
+        bool hasCurrentUid = !string.IsNullOrWhiteSpace(FirebaseUid);
+        if (hasIncomingUid && hasCurrentUid && FirebaseUid != incomingUid)
+            return true;
+
+        if (hasIncomingUid && !hasCurrentUid && !IsFirebaseAuthenticated)
+            return true;
+
+        return false;
+    }
+
+    private static string BuildAuthDisplayName(string displayName, string email)
+    {
+        if (!string.IsNullOrWhiteSpace(displayName))
+            return displayName.Trim();
+
+        if (string.IsNullOrWhiteSpace(email))
+            return string.Empty;
+
+        string normalizedEmail = email.Trim();
+        int atIndex = normalizedEmail.IndexOf('@');
+        return atIndex > 0
+            ? normalizedEmail.Substring(0, atIndex)
+            : normalizedEmail;
+    }
+
     /// <summary>设置生日</summary>
     public void SetBirthday(string birthday)
     {
@@ -624,14 +668,18 @@ public class UserDataManager : MonoSingleton<UserDataManager>
     {
         if (userInfo == null) return;
 
+        string incomingUid = userInfo.uid ?? string.Empty;
+        string authDisplayName = BuildAuthDisplayName(userInfo.displayName, userInfo.email);
+        bool shouldApplyDisplayName = ShouldApplyAuthDisplayName(authDisplayName, incomingUid);
+
         // Firebase UID
-        SetFirebaseUid(userInfo.uid);
+        SetFirebaseUid(incomingUid);
         // 邮箱
         if (!string.IsNullOrEmpty(userInfo.email))
             SetEmail(userInfo.email);
-        // 用户名（不覆盖用户已填写的本地名称）
-        if (!string.IsNullOrEmpty(userInfo.displayName) && string.IsNullOrWhiteSpace(UserName))
-            SetUserName(userInfo.displayName);
+        // 用户名：同账号已手动填写时保留；换账号/默认随机名时优先用登录提供方名称。
+        if (shouldApplyDisplayName)
+            SetUserName(authDisplayName);
         // 头像 URL
         if (!string.IsNullOrEmpty(userInfo.photoUrl))
             SetPhotoUrl(userInfo.photoUrl);
@@ -674,20 +722,23 @@ public class UserDataManager : MonoSingleton<UserDataManager>
     {
         if (googleInfo == null) return;
         Debug.Log($"google用户登录信息:{googleInfo.ToString()}");
+        string incomingUid = googleInfo.firebaseUid ?? string.Empty;
+        string authDisplayName = BuildAuthDisplayName(googleInfo.displayName, googleInfo.email);
+        bool shouldApplyDisplayName = ShouldApplyAuthDisplayName(authDisplayName, incomingUid);
         // UID（确保一致）
-        if (!string.IsNullOrEmpty(googleInfo.firebaseUid))
+        if (!string.IsNullOrEmpty(incomingUid))
         {
-            SetFirebaseUid(googleInfo.firebaseUid);
-            SetUserId(googleInfo.firebaseUid);
+            SetFirebaseUid(incomingUid);
+            SetUserId(incomingUid);
         }
 
         // 邮箱
         if (!string.IsNullOrEmpty(googleInfo.email))
             SetEmail(googleInfo.email);
 
-        // 用户名（不覆盖已填写的本地名）
-        if (!string.IsNullOrEmpty(googleInfo.displayName) && string.IsNullOrWhiteSpace(UserName))
-            SetUserName(googleInfo.displayName);
+        // 用户名：新账号或旧随机名要用 Google 名；同账号手动改名则保留。
+        if (shouldApplyDisplayName)
+            SetUserName(authDisplayName);
 
         // 头像 URL
         if (!string.IsNullOrEmpty(googleInfo.photoUrl))
@@ -727,21 +778,24 @@ public class UserDataManager : MonoSingleton<UserDataManager>
     {
         if (appleInfo == null) return;
         Debug.Log($"apple用户登录信息:{appleInfo.ToString()}");
+        string incomingUid = appleInfo.firebaseUid ?? string.Empty;
+        string authDisplayName = BuildAuthDisplayName(appleInfo.displayName, appleInfo.email);
+        bool shouldApplyDisplayName = ShouldApplyAuthDisplayName(authDisplayName, incomingUid);
 
         // UID
-        if (!string.IsNullOrEmpty(appleInfo.firebaseUid))
+        if (!string.IsNullOrEmpty(incomingUid))
         {
-            SetFirebaseUid(appleInfo.firebaseUid);
-            SetUserId(appleInfo.firebaseUid);
+            SetFirebaseUid(incomingUid);
+            SetUserId(incomingUid);
         }
 
         // 邮箱（Apple 首次登录有，后续可能为空，不覆盖已存的值）
         if (!string.IsNullOrEmpty(appleInfo.email))
             SetEmail(appleInfo.email);
 
-        // 用户名（不覆盖已填写的本地名；Apple 后续登录 displayName 为空是正常的）
-        if (!string.IsNullOrEmpty(appleInfo.displayName) && string.IsNullOrWhiteSpace(UserName))
-            SetUserName(appleInfo.displayName);
+        // 用户名（Apple 后续登录 displayName 为空是正常的）
+        if (shouldApplyDisplayName)
+            SetUserName(authDisplayName);
 
         // 头像 URL（Apple 通常不提供头像）
         if (!string.IsNullOrEmpty(appleInfo.photoUrl))
@@ -780,21 +834,24 @@ public class UserDataManager : MonoSingleton<UserDataManager>
     {
         if (facebookInfo == null) return;
         Debug.Log($"facebook用户登录信息:{facebookInfo.ToString()}");
+        string incomingUid = facebookInfo.firebaseUid ?? string.Empty;
+        string authDisplayName = BuildAuthDisplayName(facebookInfo.displayName, facebookInfo.email);
+        bool shouldApplyDisplayName = ShouldApplyAuthDisplayName(authDisplayName, incomingUid);
 
         // UID
-        if (!string.IsNullOrEmpty(facebookInfo.firebaseUid))
+        if (!string.IsNullOrEmpty(incomingUid))
         {
-            SetFirebaseUid(facebookInfo.firebaseUid);
-            SetUserId(facebookInfo.firebaseUid);
+            SetFirebaseUid(incomingUid);
+            SetUserId(incomingUid);
         }
 
         // 邮箱
         if (!string.IsNullOrEmpty(facebookInfo.email))
             SetEmail(facebookInfo.email);
 
-        // 用户名（不覆盖已填写的本地名）
-        if (!string.IsNullOrEmpty(facebookInfo.displayName) && string.IsNullOrWhiteSpace(UserName))
-            SetUserName(facebookInfo.displayName);
+        // 用户名：新账号或旧随机名要用 Facebook 名；同账号手动改名则保留。
+        if (shouldApplyDisplayName)
+            SetUserName(authDisplayName);
 
         // 头像 URL（Facebook 通常提供方形头像）
         if (!string.IsNullOrEmpty(facebookInfo.photoUrl))

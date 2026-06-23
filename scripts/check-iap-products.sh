@@ -10,12 +10,12 @@ const fs = require("fs");
 
 const EXPECTED = {
   proMonthly: {
-    productId: process.env.IAP_MONTHLY_PRODUCT_ID || "moonly.pro.monthly",
+    productId: process.env.IAP_MONTHLY_PRODUCT_ID || "fair.pro.monthly",
     type: "subscription",
     store: "app_store_google_play",
   },
   proYearly: {
-    productId: process.env.IAP_YEARLY_PRODUCT_ID || "moonly.pro.yearly",
+    productId: process.env.IAP_YEARLY_PRODUCT_ID || "fair.pro.yearly",
     type: "subscription",
     store: "app_store_google_play",
   },
@@ -110,7 +110,7 @@ if (publicConfigSetter.includes('collection("app_config").doc("public").set')) {
 }
 
 const unlockPro = read("Assets/Scripts/UI/UnlockProUI.cs");
-for (const needle of ["LoadPublicAppConfig", "ConfigureProducts", "OnPurchaseMonthlyButtonClick", "OnPurchaseYearlyButtonClick"]) {
+for (const needle of ["LoadPublicAppConfig", "ConfigureProducts", "OnRuntimeMonthlyPurchaseBtnButtonClick", "OnRuntimeYearlyPurchaseBtnButtonClick"]) {
   if (unlockPro.includes(needle)) ok(`UnlockProUI contains ${needle}`);
   else fail(`UnlockProUI missing ${needle}`);
 }
@@ -119,6 +119,13 @@ const iapBridge = read("Assets/Scripts/Platform/IAP/UnityIapPurchaseBridge.cs");
 for (const needle of ["ProductType.Subscription", "IapProductConfig.MonthlyDefault", "IapProductConfig.YearlyDefault", "SubmitPurchaseReceipt"]) {
   if (iapBridge.includes(needle)) ok(`Unity IAP bridge contains ${needle}`);
   else fail(`Unity IAP bridge missing ${needle}`);
+}
+
+const iapManager = read("Assets/Scripts/Platform/IAP/IapPurchaseManager.cs");
+if (iapManager.includes("UnityEngine.Purchasing.StandardPurchasingModule, UnityEngine.Purchasing.Stores")) {
+  ok("IapPurchaseManager detects Unity IAP 4.x Stores assembly");
+} else {
+  fail("IapPurchaseManager missing Unity IAP 4.x Stores assembly detection");
 }
 
 console.log();

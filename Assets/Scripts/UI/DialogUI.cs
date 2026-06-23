@@ -48,7 +48,6 @@ public class DialogUI : WindowBase
     private Coroutine _cloudDialogLoadCoroutine;
     private readonly Dictionary<int, PreparedTTSAudio> _preparedTTSByMessageId = new Dictionary<int, PreparedTTSAudio>();
     private readonly Queue<System.Action> _pendingAIRequests = new Queue<System.Action>();
-    private bool _forceNextAIMessageAsInteractionCard;
     private FriendDataManager.FriendData _activeAtFriend;
     private const float CLOUD_DIALOG_LOAD_RETRY_SECONDS = 8f;
     private const float CLOUD_DIALOG_LOAD_RETRY_INTERVAL = 0.5f;
@@ -336,12 +335,6 @@ public class DialogUI : WindowBase
 
                 if (mIsFirstChunk)
                 {
-                    if (_forceNextAIMessageAsInteractionCard && ShouldTriggerInteractionCard())
-                    {
-                        ConvertMessageToInteractionCard(streamingMessageIndex, "");
-                        _forceNextAIMessageAsInteractionCard = false;
-                    }
-
                     // 首个 chunk：列表需要刷新以显示新条目
                     mIsFirstChunk = false;
                     int msgCount = dialogSystem.GetMessageCount();
@@ -378,22 +371,9 @@ public class DialogUI : WindowBase
                     dialogSystem.ApplyDivinationReplyToActiveSpread(fullContent);
                 }
 
-                // ---- 检查是否需要由 AI 决定打开好友双人占卜 ----
-                if (TryOpenRelationshipDivinationFromAIPlan(streamingMessageIndex, fullContent))
+                // ---- 执行 AI 显式请求的客户端动作（例如展示牌阵）----
+                if (TryExecuteClientAction(streamingMessageIndex, fullContent))
                 {
-                    _forceNextAIMessageAsInteractionCard = false;
-                    ProcessNextQueuedAIRequest();
-                    return;
-                }
-
-                // ---- 检查是否需要展示 InteractionCard ----
-                ApplyRuntimePlanForInteractionCard();
-                if (ShouldTriggerInteractionCard())
-                {
-                    HideLoadingIndicator();
-                    ConvertMessageToInteractionCard(streamingMessageIndex, fullContent);
-                    _forceNextAIMessageAsInteractionCard = false;
-                    RefreshChatAfterAIMessage(streamingMessageIndex);
                     ProcessNextQueuedAIRequest();
                     return;
                 }
@@ -417,7 +397,6 @@ public class DialogUI : WindowBase
             (error) =>
             {
                 HideLoadingIndicator();
-                _forceNextAIMessageAsInteractionCard = false;
 
                 Debug.LogError("AI响应错误: " + error);
                 ToastManager.ShowToast("AI响应失败，请稍后重试。");
@@ -658,10 +637,11 @@ public class DialogUI : WindowBase
     }
     private void UpdateChatScrollView()
     {
-         // 更新列表 - 移除 RefreshAllShownItem，让 ScrollView 自动处理
+        // 更新列表后刷新已显示项，避免上一条“最后消息”继续保留底部安全距离。
         int msgCount = dialogSystem.GetMessageCount();
         Debug.Log($"发送用户消息后，当前消息数量：{msgCount}");
         chatListView.SetListItemCount(msgCount, false);
+        chatListView.RefreshAllShownItem();
 
         // 滚动到最后一条
         chatListView.MovePanelToItemIndex(
@@ -889,7 +869,10 @@ public class DialogUI : WindowBase
     {
         if (chatListView == null || dialogSystem == null) return;
         int msgCount = dialogSystem.GetMessageCount();
+        if (msgCount <= 0) return;
+
         chatListView.SetListItemCount(msgCount, false);
+        chatListView.RefreshAllShownItem();
         chatListView.MovePanelToItemIndex(msgCount - 1, 0);
     }
 
@@ -1536,6 +1519,132 @@ public class DialogUI : WindowBase
         var phase = divinationEngine.CurrentPhase;
         // ChoosingSpread 阶段 → AI 已给出牌阵计划，展示交互卡
         return phase == DivinationPhase.ChoosingSpread;
+    }
+
+    private bool TryExecuteClientAction(int streamingMessageIndex, string aiResponse)
+    {
+        if (dialogSystem == null) return false;
+
+        var action = dialogSystem.GetLastClientActionRequest();
+        if (action == null) return false;
+
+        string actionName = FirstNonEmpty(action.action, action.kind).Trim().ToLowerInvariant();
+        switch (actionName)
+        {
+            case "show_spread":
+            case "start_spread":
+                return TryShowSpreadFromClientAction(streamingMessageIndex, aiResponse, action);
+            case "show_relationship_divination":
+                return TryShowRelationshipDivinationFromClientAction(streamingMessageIndex);
+            default:
+                Debug.LogWarning($"[DialogUI] 未支持的 client_action: {actionName}");
+                return false;
+        }
+    }
+
+    private bool TryShowSpreadFromClientAction(
+        int streamingMessageIndex,
+        string aiResponse,
+        OracleClientActionRequest action)
+    {
+        if (divinationEngine == null || action == null) return false;
+
+        if (divinationEngine.CurrentPhase == DivinationPhase.CardsLocked
+            || divinationEngine.CurrentPhase == DivinationPhase.Revealing
+            || divinationEngine.CurrentPhase == DivinationPhase.GeneratingVerdict)
+        {
+            Debug.Log("[DialogUI] 已有占卜正在进行，忽略 show_spread client_action");
+            return false;
+        }
+
+        SpreadDefinition spreadDef = ResolveSpreadDefinition(action);
+        if (spreadDef == null)
+        {
+            Debug.LogWarning($"[DialogUI] show_spread 找不到牌阵: spreadKind={action.spreadKind}, cardCount={action.cardCount}");
+            return false;
+        }
+
+        var plan = BuildClientActionDivinationPlan(action, spreadDef);
+        divinationEngine.ApplyRuntimeDivinationPlan(plan);
+
+        HideLoadingIndicator();
+        ConvertMessageToInteractionCard(streamingMessageIndex, aiResponse, spreadDef.cardCount);
+        RefreshChatAfterAIMessage(streamingMessageIndex);
+        return true;
+    }
+
+    private bool TryShowRelationshipDivinationFromClientAction(int streamingMessageIndex)
+    {
+        if (_activeAtFriend == null) return false;
+
+        bool canOpenLocal = CreatedFriendRelationshipDivinationLocalFlow.CanHandle(_activeAtFriend);
+        bool canOpenRemote = RelationshipDivinationFlow.CanUseTwoPersonDivination(_activeAtFriend, false);
+        if (!canOpenLocal && !canOpenRemote)
+        {
+            Debug.Log("[DialogUI] 当前 @ 好友不满足双人占卜条件，忽略 show_relationship_divination");
+            return false;
+        }
+
+        HideLoadingIndicator();
+        RefreshChatAfterAIMessage(streamingMessageIndex);
+        PrepareTTSForCompletedAIMessage(streamingMessageIndex);
+        RelationshipDivinationOverlay.StartForFriend(transform, _activeAtFriend);
+        return true;
+    }
+
+    private SpreadDefinition ResolveSpreadDefinition(OracleClientActionRequest action)
+    {
+        if (divinationEngine == null) return null;
+
+        string spreadKind = action?.spreadKind;
+        if (!string.IsNullOrWhiteSpace(spreadKind))
+        {
+            var byKind = divinationEngine.GetSpreadDefinition(spreadKind);
+            if (byKind != null) return byKind;
+        }
+
+        int cardCount = action != null && action.cardCount > 0 ? action.cardCount : 3;
+        string fallbackKind = FindSpreadKindByCardCount(cardCount);
+        return divinationEngine.GetSpreadDefinition(fallbackKind);
+    }
+
+    private DivinationPlan BuildClientActionDivinationPlan(
+        OracleClientActionRequest action,
+        SpreadDefinition spreadDef)
+    {
+        var runtimePlan = dialogSystem?.GetLastRuntimePlan()?.divinationPlan;
+        if (runtimePlan != null && runtimePlan.spreadKind == spreadDef.kind)
+            return runtimePlan;
+
+        return new DivinationPlan
+        {
+            planId = System.Guid.NewGuid().ToString("N").Substring(0, 12),
+            userId = "",
+            conversationId = "dialog",
+            question = FirstNonEmpty(action?.question, runtimePlan?.question, GetLatestUserMessageText()),
+            scene = FirstNonEmpty(action?.scene, runtimePlan?.scene, dialogSystem?.GetLastRuntimePlan()?.scene, "general_chat"),
+            spreadKind = spreadDef.kind,
+            cardCount = spreadDef.cardCount,
+            complexity = spreadDef.cardCount <= 1 ? "light" : spreadDef.cardCount >= 5 ? "deep" : "standard",
+            positions = spreadDef.positions != null
+                ? new List<SpreadPosition>(spreadDef.positions)
+                : new List<SpreadPosition>(),
+            reasonForSpread = FirstNonEmpty(action?.reason, runtimePlan?.reasonForSpread, "AI 判断这件事适合拆成牌位来看。"),
+            professionalFrame = new List<string> { "牌是镜子，不是绝对预测", "客户端只执行 AI 明确请求的白名单牌阵动作" },
+            requiresProForFullReading = spreadDef.cardCount >= 5,
+            createdAt = System.DateTime.Now.ToString("o")
+        };
+    }
+
+    private string FirstNonEmpty(params string[] values)
+    {
+        if (values == null) return "";
+        foreach (string value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value.Trim();
+        }
+        return "";
     }
 
     private bool TryOpenRelationshipDivinationFromAIPlan(int streamingMessageIndex, string aiResponse)

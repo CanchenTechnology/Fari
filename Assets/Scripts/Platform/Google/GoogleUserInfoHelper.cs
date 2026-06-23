@@ -112,9 +112,9 @@ public static class GoogleUserInfoHelper
                 return new GoogleUserInfo
                 {
                     firebaseUid      = user.UserId ?? string.Empty,   // 主 user 才有 Firebase UID
-                    email            = userInfo.Email ?? string.Empty,
-                    displayName      = userInfo.DisplayName ?? string.Empty,
-                    photoUrl         = userInfo.PhotoUrl?.ToString() ?? string.Empty,
+                    email            = string.IsNullOrWhiteSpace(userInfo.Email) ? user.Email ?? string.Empty : userInfo.Email,
+                    displayName      = string.IsNullOrWhiteSpace(userInfo.DisplayName) ? user.DisplayName ?? string.Empty : userInfo.DisplayName,
+                    photoUrl         = userInfo.PhotoUrl?.ToString() ?? user.PhotoUrl?.ToString() ?? string.Empty,
                     providerId       = userInfo.ProviderId,
                     creationTimestamp   = (long)(user.Metadata?.CreationTimestamp   ?? 0),
                     lastSignInTimestamp = (long)(user.Metadata?.LastSignInTimestamp ?? 0),

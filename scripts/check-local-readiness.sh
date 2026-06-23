@@ -418,7 +418,7 @@ if env \
   GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account","client_email":"readiness@fari-app-b2fd2.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\nREADINESS\n-----END PRIVATE KEY-----\n"}' \
   IAP_RECEIPT=readiness_real_receipt_payload_for_format_check \
   IAP_STORE=AppleAppStore \
-  IAP_PRODUCT_ID=moonly.pro.monthly \
+  IAP_PRODUCT_ID=fair.pro.monthly \
   SKIP_ANDROID_KEYSTORE_VALIDATION=1 \
   ./scripts/check-release-env.sh --no-env-file >/tmp/moonly_readiness_release_env_check.log 2>&1; then
   ok "release env check script validates complete release inputs without printing secrets"

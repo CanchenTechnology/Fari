@@ -192,7 +192,7 @@ NODE
 validate_receipt_inputs() {
   local receipt="${IAP_RECEIPT:-${REAL_IAP_RECEIPT:-}}"
   local store="${IAP_STORE:-AppleAppStore}"
-  local product_id="${IAP_PRODUCT_ID:-moonly.pro.monthly}"
+  local product_id="${IAP_PRODUCT_ID:-fair.pro.monthly}"
 
   if is_placeholder "$receipt"; then
     fail "IAP_RECEIPT or REAL_IAP_RECEIPT is missing or still a placeholder"

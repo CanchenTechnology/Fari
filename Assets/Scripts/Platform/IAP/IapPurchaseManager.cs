@@ -7,16 +7,24 @@ using UnityEngine.Networking;
 using XFGameFrameWork;
 
 /// <summary>
-/// IAP 购买入口。
-/// 当前工程尚未安装 Unity IAP 包，因此这里提供安全降级和统一入口。
+/// IAP 购买入口。Unity IAP 可用时发起真实购买，不可用时提供安全降级。
 /// </summary>
 public class IapPurchaseManager : MonoSingleton<IapPurchaseManager>
 {
     public const string SubmitReceiptFunctionUrl = "https://us-central1-fari-app-b2fd2.cloudfunctions.net/submitIapReceipt";
     private IapProductsConfig configuredProducts = IapProductsConfig.Default;
 
-    public bool IsUnityIapAvailable => HasType("UnityEngine.Purchasing.StandardPurchasingModule, UnityEngine.Purchasing")
-        || HasType("UnityEngine.Purchasing.StandardPurchasingModule, Unity.Purchasing");
+    public bool IsUnityIapAvailable
+    {
+        get
+        {
+#if UNITY_PURCHASING
+            return true;
+#else
+            return HasUnityIapRuntimeType();
+#endif
+        }
+    }
 
     public void ConfigureProducts(IapProductsConfig products)
     {
@@ -38,7 +46,7 @@ public class IapPurchaseManager : MonoSingleton<IapPurchaseManager>
 #else
         if (!IsUnityIapAvailable)
         {
-            string message = $"Unity IAP 包未安装，暂不能发起购买：{product.productId}";
+            string message = $"Unity IAP 包未解析，暂不能发起购买：{product.productId}";
             Debug.LogWarning("[IapPurchaseManager] " + message);
             onComplete?.Invoke(false, message);
             return;
@@ -56,7 +64,7 @@ public class IapPurchaseManager : MonoSingleton<IapPurchaseManager>
 #if UNITY_PURCHASING
         GetUnityIapBridge().RestorePurchases(configuredProducts, this, onComplete);
 #else
-        onComplete?.Invoke(false, "Unity IAP 包未安装，暂不能从商店恢复购买");
+        onComplete?.Invoke(false, "Unity IAP 包未解析，暂不能从商店恢复购买");
 #endif
     }
 
@@ -182,6 +190,13 @@ public class IapPurchaseManager : MonoSingleton<IapPurchaseManager>
             .Replace("\n", "\\n")
             .Replace("\r", "\\r")
             .Replace("\t", "\\t");
+    }
+
+    private static bool HasUnityIapRuntimeType()
+    {
+        return HasType("UnityEngine.Purchasing.StandardPurchasingModule, UnityEngine.Purchasing.Stores")
+            || HasType("UnityEngine.Purchasing.StandardPurchasingModule, UnityEngine.Purchasing")
+            || HasType("UnityEngine.Purchasing.StandardPurchasingModule, Unity.Purchasing");
     }
 
     private static bool HasType(string typeName)

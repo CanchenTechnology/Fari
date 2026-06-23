@@ -18,8 +18,16 @@ public class UserSearchUIComponent:MonoBehaviour
 	public Button NotificationsButton;
 	public TMP_InputField SearchInputInputField;
 	public Button SearchFriendsButton;
+
+	public Button refreshBtn;
+
+	public InviteItem item1;
+	public InviteItem item2;
+	public InviteItem item3;
 	public LoopListView2 SearchFriendScrollViewLoopListView2;
-	public Button Invite1Button;
+	public GameObject mainCenterBody;
+	public Transform searchCenterBody;
+	public Transform recordSearchContent;
 	public void InitComponent(WindowBase target)
 	{
 	    //组件事件绑定
@@ -30,6 +38,6 @@ public class UserSearchUIComponent:MonoBehaviour
 	    target.AddButtonClickListener(NotificationsButton,mWindow.OnNotificationsButtonClick);
 	    target.AddInputFieldListener(SearchInputInputField,mWindow.OnSearchInputInputChange,mWindow.OnSearchInputInputEnd);
 	    target.AddButtonClickListener(SearchFriendsButton,mWindow.OnSearchFriendsButtonClick);
-	    target.AddButtonClickListener(Invite1Button,mWindow.OnInvite1ButtonClick);
+	    target.AddButtonClickListener(refreshBtn,mWindow.OnRefreshRecommendationsButtonClick);
 	}
 }

@@ -229,7 +229,7 @@ MOONLY_ALL_PROXY=socks5://127.0.0.1:10808 ./scripts/smoke-submit-iap-receipt.sh
 ```bash
 MOONLY_ALL_PROXY=socks5://127.0.0.1:10808 \
 IAP_SMOKE_MODE=real \
-IAP_PRODUCT_ID=moonly.pro.monthly \
+IAP_PRODUCT_ID=fair.pro.monthly \
 IAP_STORE=AppleAppStore \
 IAP_RECEIPT='<App Store sandbox receipt or Unity receipt JSON>' \
 ./scripts/smoke-submit-iap-receipt.sh
@@ -258,8 +258,8 @@ IAP 商品配置一致性可以单独检查：
 当前默认商品 ID：
 
 ```text
-moonly.pro.monthly
-moonly.pro.yearly
+fair.pro.monthly
+fair.pro.yearly
 ```
 
 如果 App Store Connect / Google Play Console 最终商品 ID 需要改名，要同时改 `functions/public-config.example.json`、客户端默认值和相关 smoke 示例，再运行 `./scripts/check-iap-products.sh` 和完整 readiness。

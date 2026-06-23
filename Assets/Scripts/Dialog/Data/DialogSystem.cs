@@ -126,6 +126,23 @@ public class ChatContextAttachment
 }
 
 /// <summary>
+/// AI 在回复末尾请求客户端执行的白名单动作。
+/// 注意：这不是用户可见文本，DialogSystem 会从气泡内容中剥离。
+/// </summary>
+[System.Serializable]
+public class OracleClientActionRequest
+{
+    public string action;
+    public string kind;
+    public string spreadKind;
+    public int cardCount;
+    public string question;
+    public string reason;
+    public string scene;
+    public string displayText;
+}
+
+/// <summary>
 /// 对话系统
 /// 管理对话数据、占卜师类型、消息历史等
 /// </summary>
@@ -186,6 +203,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
 
     /// <summary>最近一次 OracleRuntime 组装结果（用于输出守卫和调试）</summary>
     private AssemblyResult lastAssemblyResult;
+    private OracleClientActionRequest lastClientActionRequest;
 
     /// <summary>最近的 OracleRuntime prompt 调试记录</summary>
     private List<PromptRecord> promptRecords = new List<PromptRecord>();
@@ -227,6 +245,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     private bool _cloudHistoryLoaded;
     private bool _isRestoringCloudHistory;
     private Coroutine _cloudSaveCoroutine;
+    private int streamingClientActionMessageIndex = -1;
 
     private const int MAX_SAVED_CHAT_MESSAGES = 80;
     private const int MAX_SAVED_API_MESSAGES = 120;
@@ -2003,6 +2022,73 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         return string.IsNullOrWhiteSpace(display) ? output : display.Trim();
     }
 
+    public OracleClientActionRequest GetLastClientActionRequest()
+    {
+        return lastClientActionRequest;
+    }
+
+    private string ExtractClientActionFromOutput(string output)
+    {
+        lastClientActionRequest = null;
+        if (string.IsNullOrWhiteSpace(output)) return output ?? "";
+
+        string visible = output;
+        const string openTag = "<client_action>";
+        const string closeTag = "</client_action>";
+        int openIndex = visible.IndexOf(openTag, StringComparison.OrdinalIgnoreCase);
+        if (openIndex < 0) return visible;
+
+        int jsonStart = openIndex + openTag.Length;
+        int closeIndex = visible.IndexOf(closeTag, jsonStart, StringComparison.OrdinalIgnoreCase);
+        if (closeIndex < jsonStart)
+        {
+            visible = visible.Substring(0, openIndex).TrimEnd();
+            return string.IsNullOrWhiteSpace(visible) ? "我先把这件事拆成一个适合抽牌的问题。" : visible;
+        }
+
+        string json = visible.Substring(jsonStart, closeIndex - jsonStart).Trim();
+        string after = visible.Substring(closeIndex + closeTag.Length);
+        visible = (visible.Substring(0, openIndex) + after).Trim();
+
+        try
+        {
+            var action = JsonUtility.FromJson<OracleClientActionRequest>(json);
+            if (IsAllowedClientAction(action))
+            {
+                lastClientActionRequest = action;
+                if (string.IsNullOrWhiteSpace(visible))
+                    visible = FirstNonEmpty(action.displayText, action.reason, "我先给你放一个适合这件事的牌阵。");
+            }
+            else
+            {
+                Debug.LogWarning($"[DialogSystem] 忽略非法 client_action: {json}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[DialogSystem] client_action 解析失败: {ex.Message}");
+        }
+
+        return string.IsNullOrWhiteSpace(visible) ? "我先陪你把问题说清楚一点。" : visible;
+    }
+
+    private bool IsAllowedClientAction(OracleClientActionRequest action)
+    {
+        if (action == null) return false;
+        string name = FirstNonEmpty(action.action, action.kind).Trim().ToLowerInvariant();
+        return name == "show_spread"
+            || name == "start_spread"
+            || name == "show_relationship_divination";
+    }
+
+    private string StripClientActionForStreamingDisplay(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return text ?? "";
+
+        int openIndex = text.IndexOf("<client_action>", StringComparison.OrdinalIgnoreCase);
+        return openIndex < 0 ? text : text.Substring(0, openIndex).TrimEnd();
+    }
+
     public PromptRecord GetLastPromptRecord()
     {
         return lastAssemblyResult?.promptRecord;
@@ -2555,6 +2641,8 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         System.Action<string> onComplete,
         System.Action<string> onError)
     {
+        lastClientActionRequest = null;
+        streamingClientActionMessageIndex = -1;
         List<DeepSeekAPI.Message> messages;
 
         if (useOracleRuntime)
@@ -2582,13 +2670,14 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             (fullContent) =>
             {
                 var guardedOutput = ApplyOutputGuard(fullContent);
-                string displayOutput = BuildVisibleReplyFromStructuredOutput(guardedOutput);
+                string cleanedOutput = ExtractClientActionFromOutput(guardedOutput);
+                string displayOutput = BuildVisibleReplyFromStructuredOutput(cleanedOutput);
                 FinalizeStreamingMessage(streamingMessageIndex, displayOutput);
                 StorePromptRecord(guardedOutput);
                 QueueMemorySummary(lastAssemblyResult?.promptRecord?.userInput, displayOutput);
                 SaveCloudDialogHistory();
 
-                onComplete?.Invoke(guardedOutput);
+                onComplete?.Invoke(displayOutput);
             },
             (error) =>
             {
@@ -2599,6 +2688,8 @@ public class DialogSystem : MonoSingleton<DialogSystem>
                 }
                 if (mStreamingMessageIndex == streamingMessageIndex)
                     mStreamingMessageIndex = -1;
+                if (streamingClientActionMessageIndex == streamingMessageIndex)
+                    streamingClientActionMessageIndex = -1;
                 onError?.Invoke(error);
             }
         );
@@ -2638,7 +2729,18 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     private void AppendToStreamingMessage(int messageIndex, string chunk)
     {
         if (messageIndex < 0 || messageIndex >= mChatMessageList.Count) return;
-        mChatMessageList[messageIndex].content += chunk;
+        if (streamingClientActionMessageIndex == messageIndex) return;
+
+        string nextContent = (mChatMessageList[messageIndex].content ?? "") + (chunk ?? "");
+        int openIndex = nextContent.IndexOf("<client_action>", StringComparison.OrdinalIgnoreCase);
+        if (openIndex >= 0)
+        {
+            streamingClientActionMessageIndex = messageIndex;
+            mChatMessageList[messageIndex].content = nextContent.Substring(0, openIndex).TrimEnd();
+            return;
+        }
+
+        mChatMessageList[messageIndex].content = nextContent;
     }
 
     /// <summary>
@@ -2668,6 +2770,8 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         AppNotificationScheduler.Instance?.NotifyDialogueReplyReady(fullContent);
         if (mStreamingMessageIndex == messageIndex)
             mStreamingMessageIndex = -1;
+        if (streamingClientActionMessageIndex == messageIndex)
+            streamingClientActionMessageIndex = -1;
     }
 
     public void SetAIMessageTTSInfo(int messageIndex, float durationSeconds, bool audioReady)
