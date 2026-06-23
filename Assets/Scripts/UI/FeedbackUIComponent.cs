@@ -18,7 +18,7 @@ public class FeedbackUIComponent:MonoBehaviour
 	public Toggle TabCommunityToggle;
 	public Toggle TabChatToggle;
 	public Transform CommunityViewTransform;
-	public InputField SearchInputInputField;
+	public TMP_InputField SearchInputInputField;
 	public Button PublishFeedbackButton;
 	public ScrollRect CommunityScrollScrollRect;
 	public Transform ChatViewTransform;
@@ -27,8 +27,8 @@ public class FeedbackUIComponent:MonoBehaviour
 	public Button TagFeatureButton;
 	public Button TagRoleButton;
 	public Button TagVIPButton;
-	public InputField ChatInputInputField;
-	public InputField ChatInputInputCaretInputField;
+	public TMP_InputField ChatInputInputField;
+	public TMP_InputField ChatInputInputCaretInputField;
 	public Button SendMessageButton;
 	public void InitComponent(WindowBase target)
 	{

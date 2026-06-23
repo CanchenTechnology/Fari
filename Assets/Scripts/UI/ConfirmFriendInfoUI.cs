@@ -9,6 +9,7 @@ using System;
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
+using TMPro;
 
 public class ConfirmFriendInfoUI : WindowBase
 {
@@ -130,7 +131,7 @@ public class ConfirmFriendInfoUI : WindowBase
 		return string.IsNullOrWhiteSpace(value) ? "未填写" : value.Trim();
 	}
 
-	private void SetText(Text text, string value)
+	private void SetText(TMP_Text text, string value)
 	{
 		if (text != null)
 		{

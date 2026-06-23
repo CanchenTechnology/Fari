@@ -14,7 +14,7 @@ public class UnlockProUIComponent:MonoBehaviour
 {
 	public WindowLayer windowLayer = WindowLayer.Top;
 	public Button BackButtonButton;
-	public Text CurrentPlanValueText;
+	public TMP_Text CurrentPlanValueText;
 	public Button ManageSubscriptionBtnButton;
 	public Button RestorePurchaseBtnButton;
 	public Button RuntimeMonthlyPurchaseBtnButton;

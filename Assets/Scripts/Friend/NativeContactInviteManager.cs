@@ -3,12 +3,14 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using GamerFrameWork.UIFrameWork;
+using TMPro;
 
 #if UNITY_IOS && !UNITY_EDITOR
 using System.Runtime.InteropServices;
 #endif
 #if UNITY_ANDROID && !UNITY_EDITOR
 using UnityEngine.Android;
+using TMPro;
 #endif
 
 public class NativeContactInviteRecord
@@ -228,14 +230,14 @@ public static class NativeContactInviteOverlay
         RectTransform root = overlay.GetComponent<RectTransform>();
         GameObject panel = CreatePanel(root);
 
-        Text title = CreateText(panel.transform, "通讯录邀请", 28, FontStyle.Bold, new Color(1f, 0.78f, 0.45f, 1f));
+        TMP_Text title = CreateText(panel.transform, "通讯录邀请", 28, FontStyles.Bold, new Color(1f, 0.78f, 0.45f, 1f));
         RectTransform titleRect = title.GetComponent<RectTransform>();
         titleRect.anchorMin = new Vector2(0f, 1f);
         titleRect.anchorMax = new Vector2(1f, 1f);
         titleRect.pivot = new Vector2(0.5f, 1f);
         titleRect.anchoredPosition = new Vector2(0f, -22f);
         titleRect.sizeDelta = new Vector2(-120f, 48f);
-        title.alignment = TextAnchor.MiddleCenter;
+        title.alignment = TextAlignmentOptions.Center;
 
         Button closeButton = CreateSmallButton(panel.transform, "×");
         RectTransform closeRect = closeButton.GetComponent<RectTransform>();
@@ -245,14 +247,14 @@ public static class NativeContactInviteOverlay
         closeRect.anchoredPosition = new Vector2(-24f, -22f);
         closeButton.onClick.AddListener(() => UnityEngine.Object.Destroy(overlay));
 
-        Text hint = CreateText(panel.transform, "选择联系人后会打开短信应用，邀请文案会自动带入。", 18, FontStyle.Normal, new Color(0.84f, 0.80f, 0.90f, 1f));
+        TMP_Text hint = CreateText(panel.transform, "选择联系人后会打开短信应用，邀请文案会自动带入。", 18, FontStyles.Normal, new Color(0.84f, 0.80f, 0.90f, 1f));
         RectTransform hintRect = hint.GetComponent<RectTransform>();
         hintRect.anchorMin = new Vector2(0f, 1f);
         hintRect.anchorMax = new Vector2(1f, 1f);
         hintRect.pivot = new Vector2(0.5f, 1f);
         hintRect.anchoredPosition = new Vector2(0f, -72f);
         hintRect.sizeDelta = new Vector2(-60f, 42f);
-        hint.alignment = TextAnchor.MiddleCenter;
+        hint.alignment = TextAlignmentOptions.Center;
 
         ScrollRect scroll = CreateScroll(panel.transform);
         RectTransform scrollRt = scroll.GetComponent<RectTransform>();
@@ -363,23 +365,23 @@ public static class NativeContactInviteOverlay
         Image bg = row.GetComponent<Image>();
         bg.color = new Color(0.16f, 0.12f, 0.22f, 0.95f);
 
-        Text name = CreateText(row.transform, contact.name, 20, FontStyle.Bold, new Color(1f, 0.84f, 0.55f, 1f));
+        TMP_Text name = CreateText(row.transform, contact.name, 20, FontStyles.Bold, new Color(1f, 0.84f, 0.55f, 1f));
         RectTransform nameRt = name.GetComponent<RectTransform>();
         nameRt.anchorMin = new Vector2(0f, 0.5f);
         nameRt.anchorMax = new Vector2(1f, 0.5f);
         nameRt.pivot = new Vector2(0f, 0.5f);
         nameRt.offsetMin = new Vector2(18f, -10f);
         nameRt.offsetMax = new Vector2(-126f, 30f);
-        name.alignment = TextAnchor.MiddleLeft;
+        name.alignment = TextAlignmentOptions.Left;
 
-        Text phone = CreateText(row.transform, contact.phone, 16, FontStyle.Normal, new Color(0.82f, 0.78f, 0.88f, 1f));
+        TMP_Text phone = CreateText(row.transform, contact.phone, 16, FontStyles.Normal, new Color(0.82f, 0.78f, 0.88f, 1f));
         RectTransform phoneRt = phone.GetComponent<RectTransform>();
         phoneRt.anchorMin = new Vector2(0f, 0.5f);
         phoneRt.anchorMax = new Vector2(1f, 0.5f);
         phoneRt.pivot = new Vector2(0f, 0.5f);
         phoneRt.offsetMin = new Vector2(18f, -32f);
         phoneRt.offsetMax = new Vector2(-126f, 8f);
-        phone.alignment = TextAnchor.MiddleLeft;
+        phone.alignment = TextAlignmentOptions.Left;
 
         Button button = CreateSmallButton(row.transform, "邀请");
         RectTransform buttonRt = button.GetComponent<RectTransform>();
@@ -395,18 +397,18 @@ public static class NativeContactInviteOverlay
         });
     }
 
-    private static Text CreateText(Transform parent, string value, int size, FontStyle style, Color color)
+    private static TMP_Text CreateText(Transform parent, string value, int size, FontStyles style, Color color)
     {
-        GameObject go = new GameObject("Text", typeof(RectTransform), typeof(Text));
+        GameObject go = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
         go.transform.SetParent(parent, false);
-        Text text = go.GetComponent<Text>();
-        text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        TMP_Text text = go.GetComponent<TMP_Text>();
+        text.font = TMP_Settings.defaultFontAsset;
         text.fontSize = size;
         text.fontStyle = style;
         text.color = color;
         text.text = value ?? string.Empty;
-        text.horizontalOverflow = HorizontalWrapMode.Wrap;
-        text.verticalOverflow = VerticalWrapMode.Overflow;
+        text.enableWordWrapping = true;
+        text.overflowMode = TextOverflowModes.Overflow;
         RectTransform rect = go.GetComponent<RectTransform>();
         rect.sizeDelta = new Vector2(0f, Mathf.Max(size * 2.1f, 36f));
         return text;
@@ -422,8 +424,8 @@ public static class NativeContactInviteOverlay
         image.color = new Color(0.34f, 0.11f, 0.52f, 1f);
         Button button = go.GetComponent<Button>();
         button.targetGraphic = image;
-        Text text = CreateText(go.transform, label, label.Length > 2 ? 18 : 24, FontStyle.Bold, Color.white);
-        text.alignment = TextAnchor.MiddleCenter;
+        TMP_Text text = CreateText(go.transform, label, label.Length > 2 ? 18 : 24, FontStyles.Bold, Color.white);
+        text.alignment = TextAlignmentOptions.Center;
         RectTransform textRt = text.GetComponent<RectTransform>();
         textRt.anchorMin = Vector2.zero;
         textRt.anchorMax = Vector2.one;

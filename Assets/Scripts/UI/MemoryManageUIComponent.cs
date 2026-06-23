@@ -15,13 +15,13 @@ public class MemoryManageUIComponent:MonoBehaviour
 	public WindowLayer windowLayer = WindowLayer.Top;
 	public Button backButton;
 	public Button OpenPrivacySettingsButton;
-	public Text TopicCountText;
+	public TMP_Text TopicCountText;
 	public Button TopicMetricButton;
-	public Text PreferenceCountText;
+	public TMP_Text PreferenceCountText;
 	public Button PreferenceMetricButton;
-	public Text EmotionCountText;
+	public TMP_Text EmotionCountText;
 	public Button EmotionMetricButton;
-	public Text GrowthCountText;
+	public TMP_Text GrowthCountText;
 	public Button GrowthMetricButton;
 	public Button viewAllButton;
 	public ScrollRect MemoryOverviewScrollScrollRect;

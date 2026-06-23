@@ -12,6 +12,7 @@ using SuperScrollView;
 using UnityEngine;
 using UnityEngine.UI;
 using XFGameFrameWork;
+using TMPro;
 
 public class HistoryUI : WindowBase
 {
@@ -31,6 +32,7 @@ public class HistoryUI : WindowBase
 	private LoopListView2 _historyListView;
 	private bool _listInitialized;
 	private GameObject _emptyStateObject;
+	private int _loadRequestId;
 
 	[Header("列表配置")]
 	public Color itemBgColor = new Color(0.08f, 0.11f, 0.24f, 0.86f);
@@ -61,6 +63,7 @@ public class HistoryUI : WindowBase
 
 	public override void OnHide()
 	{
+		_loadRequestId++;
 		SetLoadingVisible(false);
 		base.OnHide();
 	}
@@ -80,123 +83,48 @@ public class HistoryUI : WindowBase
 	/// </summary>
 	public void RefreshList()
 	{
-		if (_isLoading)
-		{
-			SetLoadingVisible(true);
-			return;
-		}
+		int requestId = ++_loadRequestId;
+		DivinationHistoryCacheService cache = GetHistoryCache();
+		List<DivinationRecordData> cachedRecords = cache.GetSnapshot();
+		bool hasWarmCache = cache.HasLoadedOnce || cachedRecords.Count > 0;
 
-		LoadFromFirestore(GetRecordStore());
-	}
-
-	/// <summary>
-	/// 从 Firestore 加载并渲染列表。
-	/// </summary>
-	private void LoadFromFirestore(DivinationRecordFirestore firestore)
-	{
-		if (firestore == null)
+		if (hasWarmCache)
 		{
 			_isLoading = false;
 			SetLoadingVisible(false);
-			_records = new List<DivinationRecordData>();
-			ValidateSelectedRecord();
-			RenderList();
-			ToastManager.ShowToast("历史服务暂不可用");
-			return;
+			ApplyRecords(cachedRecords);
+		}
+		else
+		{
+			_isLoading = true;
+			SetLoadingVisible(true);
+			HideEmptyState();
 		}
 
-		_isLoading = true;
-		SetLoadingVisible(true);
-		HideEmptyState();
-
-		firestore.LoadAllRecords(records =>
+		cache.Refresh(false, (records, success) =>
 		{
-			if (records == null) records = new List<DivinationRecordData>();
-			MergeRecentDailyOracleCloudRecords(records, firestore, mergedRecords =>
-			{
-				_isLoading = false;
-				SetLoadingVisible(false);
-				_records = mergedRecords ?? new List<DivinationRecordData>();
-				ValidateSelectedRecord();
-				RenderList();
+			if (requestId != _loadRequestId) return;
 
-				Debug.Log($"[HistoryUI] 渲染了 {_records.Count} 条记录");
-				if (!firestore.IsReady)
-					ToastManager.ShowToast("历史服务暂不可用");
-			});
+			_isLoading = false;
+			SetLoadingVisible(false);
+			ApplyRecords(records);
+
+			if (!success && (_records == null || _records.Count == 0))
+				ToastManager.ShowToast("历史服务暂不可用");
 		});
 	}
 
-	private DivinationRecordFirestore GetRecordStore()
+	private DivinationHistoryCacheService GetHistoryCache()
 	{
-		var firestore = DivinationRecordFirestore.Instance;
-		if (firestore != null)
-			return firestore;
-
-		var go = new GameObject("DivinationRecordFirestore");
-		return go.AddComponent<DivinationRecordFirestore>();
+		return DivinationHistoryCacheService.Instance;
 	}
 
-	private DailyOracleFirestore GetDailyOracleStore()
+	private void ApplyRecords(List<DivinationRecordData> records)
 	{
-		var store = DailyOracleFirestore.Instance;
-		if (store != null)
-			return store;
-
-		var go = new GameObject("DailyOracleFirestore");
-		return go.AddComponent<DailyOracleFirestore>();
-	}
-
-	private void MergeRecentDailyOracleCloudRecords(
-		List<DivinationRecordData> records,
-		DivinationRecordFirestore historyStore,
-		Action<List<DivinationRecordData>> onComplete)
-	{
-		records ??= new List<DivinationRecordData>();
-
-		DailyOracleFirestore dailyStore = GetDailyOracleStore();
-		if (dailyStore == null || !dailyStore.IsReady)
-		{
-			SortRecordsDescending(records);
-			onComplete?.Invoke(records);
-			return;
-		}
-
-		dailyStore.LoadRecent(30, dailyRecords =>
-		{
-			if (dailyRecords != null)
-			{
-				foreach (DailyOracleCloudRecord dailyRecord in dailyRecords)
-				{
-					DivinationRecordData record = DailyOracleHistoryBridge.BuildRecord(dailyRecord);
-					if (record == null || string.IsNullOrEmpty(record.readingId))
-						continue;
-
-					bool existed = records.Exists(item => item != null && item.readingId == record.readingId);
-					AddOrReplaceRecord(records, record);
-					if (!existed)
-						historyStore?.SaveRecord(record);
-				}
-			}
-
-			SortRecordsDescending(records);
-			onComplete?.Invoke(records);
-		});
-	}
-
-	private void AddOrReplaceRecord(List<DivinationRecordData> records, DivinationRecordData record)
-	{
-		if (records == null || record == null || string.IsNullOrEmpty(record.readingId))
-			return;
-
-		records.RemoveAll(item => item == null || item.readingId == record.readingId);
-		records.Add(record);
-	}
-
-	private void SortRecordsDescending(List<DivinationRecordData> records)
-	{
-		if (records == null) return;
-		records.Sort((left, right) => ParseRecordTime(right).CompareTo(ParseRecordTime(left)));
+		_records = records ?? new List<DivinationRecordData>();
+		ValidateSelectedRecord();
+		RenderList();
+		Debug.Log($"[HistoryUI] 渲染了 {_records.Count} 条记录");
 	}
 
 	/// <summary>
@@ -280,11 +208,11 @@ public class HistoryUI : WindowBase
 			return;
 
 		OracleHistoryItem historyItem = itemObject.GetComponent<OracleHistoryItem>();
-		Text questionText = historyItem?.contentText ?? FindText(itemObject.transform, "contentText");
-		Text timeText = historyItem?.timeText ?? FindText(itemObject.transform, "timeText");
-		Text stateText = historyItem?.stateText ?? FindText(itemObject.transform, "stateText");
-		Text scopeText = historyItem?.tag1Text ?? FindTagText(itemObject.transform, "Tag1");
-		Text typeText = historyItem?.tag2Text ?? FindTagText(itemObject.transform, "Tag1_1");
+		TMP_Text questionText = historyItem?.contentText ?? FindText(itemObject.transform, "contentText");
+		TMP_Text timeText = historyItem?.timeText ?? FindText(itemObject.transform, "timeText");
+		TMP_Text stateText = historyItem?.stateText ?? FindText(itemObject.transform, "stateText");
+		TMP_Text scopeText = historyItem?.tag1Text ?? FindTagText(itemObject.transform, "Tag1");
+		TMP_Text typeText = historyItem?.tag2Text ?? FindTagText(itemObject.transform, "Tag1_1");
 
 		SetText(questionText, BuildQuestionText(record));
 		SetText(timeText, BuildDisplayTime(record));
@@ -300,11 +228,11 @@ public class HistoryUI : WindowBase
 
 	private void ApplyItemVisuals(
 		GameObject itemObject,
-		Text questionText,
-		Text timeText,
-		Text scopeText,
-		Text typeText,
-		Text stateText,
+		TMP_Text questionText,
+		TMP_Text timeText,
+		TMP_Text scopeText,
+		TMP_Text typeText,
+		TMP_Text stateText,
 		bool isComplete)
 	{
 		Image bg = itemObject.GetComponent<Image>();
@@ -317,11 +245,11 @@ public class HistoryUI : WindowBase
 		if (questionText != null)
 		{
 			questionText.color = itemTextColor;
-			questionText.resizeTextForBestFit = true;
-			questionText.resizeTextMinSize = 24;
-			questionText.resizeTextMaxSize = Mathf.Max(questionText.fontSize, 36);
-			questionText.horizontalOverflow = HorizontalWrapMode.Wrap;
-			questionText.verticalOverflow = VerticalWrapMode.Truncate;
+			questionText.enableAutoSizing = true;
+			questionText.fontSizeMin = 24;
+			questionText.fontSizeMax = Mathf.Max(questionText.fontSize, 36);
+			questionText.enableWordWrapping = true;
+			questionText.overflowMode = TextOverflowModes.Truncate;
 		}
 
 		if (timeText != null)
@@ -342,16 +270,16 @@ public class HistoryUI : WindowBase
 		}
 	}
 
-	private void ApplyTagTextStyle(Text text)
+	private void ApplyTagTextStyle(TMP_Text text)
 	{
 		if (text == null) return;
 
 		text.color = itemAccentColor;
-		text.resizeTextForBestFit = true;
-		text.resizeTextMinSize = 18;
-		text.resizeTextMaxSize = Mathf.Max(text.fontSize, 30);
-		text.horizontalOverflow = HorizontalWrapMode.Wrap;
-		text.verticalOverflow = VerticalWrapMode.Truncate;
+		text.enableAutoSizing = true;
+		text.fontSizeMin = 18;
+		text.fontSizeMax = Mathf.Max(text.fontSize, 30);
+		text.enableWordWrapping = true;
+		text.overflowMode = TextOverflowModes.Truncate;
 	}
 
 	private void BindItemClick(GameObject itemObject, DivinationRecordData record, Button viewButton)
@@ -527,16 +455,16 @@ public class HistoryUI : WindowBase
 
 	#region 辅助方法
 
-	private Text FindText(Transform root, string name)
+	private TMP_Text FindText(Transform root, string name)
 	{
 		Transform target = FindDeepChild(root, name);
-		return target != null ? target.GetComponent<Text>() : null;
+		return target != null ? target.GetComponent<TMP_Text>() : null;
 	}
 
-	private Text FindTagText(Transform root, string tagRootName)
+	private TMP_Text FindTagText(Transform root, string tagRootName)
 	{
 		Transform tagRoot = FindDeepChild(root, tagRootName);
-		return tagRoot != null ? tagRoot.GetComponentInChildren<Text>(true) : null;
+		return tagRoot != null ? tagRoot.GetComponentInChildren<TMP_Text>(true) : null;
 	}
 
 	private Transform FindDeepChild(Transform parent, string name)
@@ -557,7 +485,7 @@ public class HistoryUI : WindowBase
 		return null;
 	}
 
-	private void SetText(Text text, string value)
+	private void SetText(TMP_Text text, string value)
 	{
 		if (text != null)
 			text.text = value ?? "";
@@ -592,7 +520,7 @@ public class HistoryUI : WindowBase
 		Transform parent = _historyListView != null ? _historyListView.transform : uiComponent?.transform;
 		if (parent == null) return null;
 
-		GameObject emptyGo = new GameObject("EmptyState", typeof(RectTransform), typeof(Text));
+		GameObject emptyGo = new GameObject("EmptyState", typeof(RectTransform), typeof(TextMeshProUGUI));
 		emptyGo.transform.SetParent(parent, false);
 
 		RectTransform rect = emptyGo.GetComponent<RectTransform>();
@@ -602,15 +530,15 @@ public class HistoryUI : WindowBase
 		rect.anchoredPosition = Vector2.zero;
 		rect.sizeDelta = new Vector2(-80f, 120f);
 
-		Text emptyText = emptyGo.GetComponent<Text>();
+		TMP_Text emptyText = emptyGo.GetComponent<TMP_Text>();
 		emptyText.text = "暂无占卜记录\n完成一次占卜后会自动保存到这里";
-		emptyText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+		emptyText.font = TMP_Settings.defaultFontAsset;
 		emptyText.fontSize = 28;
-		emptyText.alignment = TextAnchor.MiddleCenter;
+		emptyText.alignment = TextAlignmentOptions.Center;
 		emptyText.color = itemSubTextColor;
 		emptyText.raycastTarget = false;
-		emptyText.horizontalOverflow = HorizontalWrapMode.Wrap;
-		emptyText.verticalOverflow = VerticalWrapMode.Truncate;
+		emptyText.enableWordWrapping = true;
+		emptyText.overflowMode = TextOverflowModes.Truncate;
 
 		return emptyGo;
 	}

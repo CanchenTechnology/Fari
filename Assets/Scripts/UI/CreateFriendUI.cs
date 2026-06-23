@@ -9,6 +9,7 @@ using System.IO;
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
+using TMPro;
 
 public class CreateFriendUI : WindowBase
 {
@@ -28,9 +29,9 @@ public class CreateFriendUI : WindowBase
 	private bool hasUserSelectedAvatar;
 	private bool formInitialized;
 	private int avatarLoadVersion;
-	private InputField birthdayDateInputField;
-	private InputField birthdayTimeInputField;
-	private InputField birthdayCountryInputField;
+	private TMP_InputField birthdayDateInputField;
+	private TMP_InputField birthdayTimeInputField;
+	private TMP_InputField birthdayCountryInputField;
 	private string username = string.Empty;
 	private string birthday = string.Empty;
 	private string birthTime = string.Empty;
@@ -488,24 +489,24 @@ public class CreateFriendUI : WindowBase
 		birthdayCountryInputField = FindSelectionInputField(uiComponent.Field_birthdayCountryButton, uiComponent.birthdayCountryText);
 	}
 
-	private InputField FindSelectionInputField(Button button, Text text)
+	private TMP_InputField FindSelectionInputField(Button button, TMP_Text text)
 	{
 		if (text != null)
 		{
-			InputField input = text.GetComponentInParent<InputField>();
+			TMP_InputField input = text.GetComponentInParent<TMP_InputField>();
 			if (input != null) return input;
 		}
 
-		return button != null ? button.GetComponentInChildren<InputField>(true) : null;
+		return button != null ? button.GetComponentInChildren<TMP_InputField>(true) : null;
 	}
 
-	private string ReadSelectedInput(InputField input, Text text, string placeholder, string fallback)
+	private string ReadSelectedInput(TMP_InputField input, TMP_Text text, string placeholder, string fallback)
 	{
 		string value = input != null ? input.text : text != null ? text.text : fallback;
 		return string.IsNullOrWhiteSpace(value) || value == placeholder ? string.Empty : value;
 	}
 
-	private void SetSelectionValue(InputField input, Text text, string value, string placeholder)
+	private void SetSelectionValue(TMP_InputField input, TMP_Text text, string value, string placeholder)
 	{
 		if (input != null)
 		{
@@ -516,7 +517,7 @@ public class CreateFriendUI : WindowBase
 		SetText(text, string.IsNullOrWhiteSpace(value) ? placeholder : value);
 	}
 
-	private void SetText(Text text, string value)
+	private void SetText(TMP_Text text, string value)
 	{
 		if (text != null)
 		{
@@ -524,7 +525,7 @@ public class CreateFriendUI : WindowBase
 		}
 	}
 
-	private void FocusInput(InputField input)
+	private void FocusInput(TMP_InputField input)
 	{
 		if (input == null) return;
 		input.Select();

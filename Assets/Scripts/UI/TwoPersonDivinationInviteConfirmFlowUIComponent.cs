@@ -16,8 +16,8 @@ public class TwoPersonDivinationInviteConfirmFlowUIComponent:MonoBehaviour
 	public Button BackButton;
 	public Image YouAvatarImage;
 	public Image FriendAvatarImage;
-	public Text PairNameText;
-	public Text DailyPairLimitText;
+	public TMP_Text PairNameText;
+	public TMP_Text DailyPairLimitText;
 	public Button MyCardButton;
 	public Button SendInviteButton;
 	public void InitComponent(WindowBase target)

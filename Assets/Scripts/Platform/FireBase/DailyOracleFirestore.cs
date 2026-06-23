@@ -723,11 +723,21 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
 
     private static string GetCurrentUid()
     {
-        if (UserDataManager.Instance != null && !string.IsNullOrEmpty(UserDataManager.Instance.FirebaseUid))
-            return UserDataManager.Instance.FirebaseUid;
-
         var auth = Firebase.Auth.FirebaseAuth.DefaultInstance;
-        return auth?.CurrentUser?.UserId ?? "";
+        string authUid = auth?.CurrentUser?.UserId ?? "";
+        if (string.IsNullOrWhiteSpace(authUid))
+        {
+            Debug.LogWarning("[DailyOracleFirestore] FirebaseAuth 当前用户为空，跳过云端每日神谕操作");
+            return "";
+        }
+
+        string cachedUid = UserDataManager.Instance?.FirebaseUid ?? "";
+        if (!string.IsNullOrWhiteSpace(cachedUid) && cachedUid != authUid)
+        {
+            Debug.LogWarning($"[DailyOracleFirestore] 本地 FirebaseUid({cachedUid}) 与 AuthUid({authUid}) 不一致，已使用 AuthUid");
+        }
+
+        return authUid;
     }
 
     private static string GetCurrentOracleId()

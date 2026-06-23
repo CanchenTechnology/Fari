@@ -3,6 +3,7 @@ using GamerFrameWork.UIFrameWork;
 using UnityEngine;
 using UnityEngine.UI;
 using XFGameFrameWork;
+using TMPro;
 
 /// <summary>
 /// 用户聊天项
@@ -13,13 +14,13 @@ public class ChatItem : MonoBehaviour
     //头像
     public Image headImage;
     //说话人的名字
-    public Text speakerName;
+    public TMP_Text speakerName;
 
     public Transform msgTrans;
 
     [Header("发送文本信息")]
     // 文本消息
-    public Text mMsgText;
+    public TMP_Text mMsgText;
 
     // 消息背景框:聊天气泡
 
@@ -54,13 +55,14 @@ public class ChatItem : MonoBehaviour
     [Header("TTS 语音播放")]
     public Button ttsPlayButton;        // 播放按钮（手动拖拽绑定或代码查找）
     public GameObject ttsLoadingIcon;   // 加载中旋转图标（可选）
-    public Text ttsTimeText;  //记录语音的时常
+    public TMP_Text ttsTimeText;  //记录语音的时常
 
     /// <summary>TTS 播放回调（由 DialogUI 绑定）</summary>
     public System.Action<ChatItem> onTTSPlayClicked;
 
     // 当前Item索引
     int mItemIndex = -1;
+    private int avatarRequestVersion;
 
 
     /// <summary>
@@ -149,6 +151,7 @@ public class ChatItem : MonoBehaviour
     private void SetSpeakerInfo(ChatMessageData data)
     {
         if (data == null) return;
+        avatarRequestVersion++;
 
         if (data.roleType == DialogRoleType.User)
         {
@@ -157,7 +160,7 @@ public class ChatItem : MonoBehaviour
                     ? DialogSystem.Instance.UserName
                     : "我";
 
-            SetUserAvatarFromCurrentConfig();
+            SetUserAvatarFromCurrentConfig(avatarRequestVersion);
             return;
         }
 
@@ -179,17 +182,29 @@ public class ChatItem : MonoBehaviour
             : dialogSystem.AstrologyDivinerName;
     }
 
-    private void SetUserAvatarFromCurrentConfig()
+    private void SetUserAvatarFromCurrentConfig(int requestVersion)
     {
         var iconName = DialogSystem.Instance != null ? DialogSystem.Instance.UserHeadIcon : "";
         if (!string.IsNullOrEmpty(iconName))
             SetAvatarByResourceName(iconName, false);
+
+        if (isActiveAndEnabled)
+            StartCoroutine(FriendAvatarImageUtility.LoadCurrentUserAvatarCoroutine((sprite, _) =>
+            {
+                if (requestVersion != avatarRequestVersion || sprite == null || headImage == null)
+                    return;
+
+                headImage.sprite = sprite;
+                headImage.preserveAspect = true;
+                headImage.enabled = true;
+            }));
     }
 
     public void SetAIAvatar(Sprite avatarSprite)
     {
         if (avatarSprite == null || headImage == null) return;
         headImage.sprite = avatarSprite;
+        headImage.preserveAspect = true;
         headImage.enabled = true;
     }
 
@@ -202,6 +217,7 @@ public class ChatItem : MonoBehaviour
     {
         if (avatarSprite == null || headImage == null) return;
         headImage.sprite = avatarSprite;
+        headImage.preserveAspect = true;
         headImage.enabled = true;
     }
 
@@ -239,17 +255,7 @@ public class ChatItem : MonoBehaviour
 
     private string BuildDisplayText(ChatMessageData data)
     {
-        if (data == null) return "";
-
-        string content = data.content ?? "";
-        if (data.roleType != DialogRoleType.User)
-            return content;
-
-        string contextPreview = DialogSystem.FormatContextPreview(data.contextAttachments);
-        if (string.IsNullOrWhiteSpace(contextPreview))
-            return content;
-
-        return $"<color=#D9B56E>{contextPreview}</color>\n{content}";
+        return data?.content ?? "";
     }
 
     private void ApplyTextBubbleLayout(bool reserveVoiceSpace, string layoutText = null)
@@ -266,7 +272,7 @@ public class ChatItem : MonoBehaviour
 
         // 2. 设定一个最大宽度，防止长文本不换行超出屏幕边界
         // 你可以根据你实际的游戏 UI 比例修改这个值
-        float maxTextWidth = Mathf.Max(120f, Screen.width - 500);
+        float maxTextWidth = Mathf.Max(120f, Screen.width - 400);
 
         // 3. 取两者较小值：短文本自动缩框，长文本触达极限宽度以备换行
         float targetTextWidth = Mathf.Clamp(preferredWidth, 40f, maxTextWidth);
@@ -462,7 +468,7 @@ public class ChatItem : MonoBehaviour
     {
         if (data != null && friendContentTrans != null)
         {
-            var texts = friendContentTrans.GetComponentsInChildren<Text>(true);
+            var texts = friendContentTrans.GetComponentsInChildren<TMP_Text>(true);
             string title = string.IsNullOrWhiteSpace(data.friendName) ? "@好友" : $"@{data.friendName}";
             string detail = string.IsNullOrWhiteSpace(data.friendContext) ? data.content : data.friendContext;
 
@@ -596,6 +602,7 @@ public class ChatItem : MonoBehaviour
         if (sprite != null)
         {
             headImage.sprite = sprite;
+            headImage.preserveAspect = true;
             headImage.enabled = true;
         }
         else if (logMissing)

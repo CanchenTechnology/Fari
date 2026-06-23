@@ -14,10 +14,10 @@ public class JumpToDialogUIComponent:MonoBehaviour
 {
 	public WindowLayer windowLayer = WindowLayer.MainUI;
 	public Image FriendAvatarImage;
-	public Text FriendNameText;
-	public Text SelectedFriendNameText;
+	public TMP_Text FriendNameText;
+	public TMP_Text SelectedFriendNameText;
 	public Button RemoveSelectedFriendButton;
-	public InputField QuestionInputInputField;
+	public TMP_InputField QuestionInputInputField;
 	public Button SendQuestionButton;
 	public Button EnterDialogButton;
 	public Button PromptRecentStatusButton;

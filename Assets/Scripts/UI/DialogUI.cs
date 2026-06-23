@@ -50,23 +50,8 @@ public class DialogUI : WindowBase
     private readonly Queue<System.Action> _pendingAIRequests = new Queue<System.Action>();
     private bool _forceNextAIMessageAsInteractionCard;
     private FriendDataManager.FriendData _activeAtFriend;
-    private RectTransform _inputTextRect;
-    private RectTransform _inputPlaceholderRect;
-    private RectTransform _cancelAtRect;
-    private Vector2 _inputTextOriginalOffsetMin;
-    private Vector2 _inputTextOriginalOffsetMax;
-    private Vector2 _inputPlaceholderOriginalOffsetMin;
-    private Vector2 _inputPlaceholderOriginalOffsetMax;
-    private float _atFriendOriginalLeftEdge;
-    private bool _atFriendLayoutCached;
     private const float CLOUD_DIALOG_LOAD_RETRY_SECONDS = 8f;
     private const float CLOUD_DIALOG_LOAD_RETRY_INTERVAL = 0.5f;
-    private const float AT_FRIEND_MIN_WIDTH = 160f;
-    private const float AT_FRIEND_MAX_WIDTH = 360f;
-    private const float AT_FRIEND_LEFT_PADDING = 18f;
-    private const float AT_FRIEND_RIGHT_PADDING = 12f;
-    private const float AT_FRIEND_TEXT_CANCEL_GAP = 8f;
-    private const float AT_FRIEND_INPUT_GAP = 12f;
 
     private class PreparedTTSAudio
     {
@@ -107,7 +92,6 @@ public class DialogUI : WindowBase
         EventSystem.AddEventListener<string>(GameDataStr.CardTopicSelected, OnCardTopicSelected);
 
         UpdateDivinerInfo();
-        CacheAtFriendLayout();
         RefreshAtFriendBox();
     }
     // 物体显示时执行
@@ -392,6 +376,14 @@ public class DialogUI : WindowBase
                 {
                     divinationEngine.CompleteDivination(fullContent);
                     dialogSystem.ApplyDivinationReplyToActiveSpread(fullContent);
+                }
+
+                // ---- 检查是否需要由 AI 决定打开好友双人占卜 ----
+                if (TryOpenRelationshipDivinationFromAIPlan(streamingMessageIndex, fullContent))
+                {
+                    _forceNextAIMessageAsInteractionCard = false;
+                    ProcessNextQueuedAIRequest();
+                    return;
                 }
 
                 // ---- 检查是否需要展示 InteractionCard ----
@@ -731,7 +723,7 @@ public class DialogUI : WindowBase
             uiComponent.artFriendNameText.text = label;
         }
 
-        ApplyAtFriendDynamicLayout(hasFriend || hasContextPreview, label);
+        // @ 好友框已经独立放到输入框上方，输入框布局完全交给 prefab 控制。
     }
 
     private string GetAtFriendDisplayName(FriendDataManager.FriendData friend)
@@ -742,153 +734,6 @@ public class DialogUI : WindowBase
         }
 
         return friend.name.Trim();
-    }
-
-    private void CacheAtFriendLayout()
-    {
-        if (_atFriendLayoutCached) return;
-
-        if (uiComponent?.questionInputField != null)
-        {
-            if (uiComponent.questionInputField.textComponent != null)
-            {
-                _inputTextRect = uiComponent.questionInputField.textComponent.rectTransform;
-                _inputTextOriginalOffsetMin = _inputTextRect.offsetMin;
-                _inputTextOriginalOffsetMax = _inputTextRect.offsetMax;
-            }
-
-            if (uiComponent.questionInputField.placeholder is Graphic placeholderGraphic)
-            {
-                _inputPlaceholderRect = placeholderGraphic.rectTransform;
-                _inputPlaceholderOriginalOffsetMin = _inputPlaceholderRect.offsetMin;
-                _inputPlaceholderOriginalOffsetMax = _inputPlaceholderRect.offsetMax;
-            }
-        }
-
-        if (uiComponent?.cancelArtButton != null)
-        {
-            _cancelAtRect = uiComponent.cancelArtButton.GetComponent<RectTransform>();
-        }
-
-        if (uiComponent?.artFriendRectTransfrom != null)
-        {
-            var rect = uiComponent.artFriendRectTransfrom;
-            _atFriendOriginalLeftEdge = rect.anchoredPosition.x - rect.sizeDelta.x * rect.pivot.x;
-        }
-
-        _atFriendLayoutCached = true;
-    }
-
-    private void ApplyAtFriendDynamicLayout(bool hasFriend, string label)
-    {
-        CacheAtFriendLayout();
-
-        if (!hasFriend)
-        {
-            RestoreInputTextArea();
-            return;
-        }
-
-        if (uiComponent?.artFriendRectTransfrom == null || uiComponent.artFriendNameText == null)
-            return;
-
-        Canvas.ForceUpdateCanvases();
-
-        float cancelWidth = GetRectWidth(_cancelAtRect, 34f);
-        float preferredTextWidth = Mathf.Ceil(uiComponent.artFriendNameText.preferredWidth);
-        float desiredWidth = preferredTextWidth
-            + cancelWidth
-            + AT_FRIEND_LEFT_PADDING
-            + AT_FRIEND_RIGHT_PADDING
-            + AT_FRIEND_TEXT_CANCEL_GAP;
-        float maxWidth = GetMaxAtFriendWidth();
-        float tagWidth = Mathf.Clamp(desiredWidth, AT_FRIEND_MIN_WIDTH, maxWidth);
-
-        ResizeAtFriendTag(tagWidth, cancelWidth);
-        ApplyInputTextInset(_atFriendOriginalLeftEdge + tagWidth + AT_FRIEND_INPUT_GAP);
-    }
-
-    private float GetMaxAtFriendWidth()
-    {
-        float maxWidth = AT_FRIEND_MAX_WIDTH;
-        var inputRect = uiComponent?.questionInputField != null
-            ? uiComponent.questionInputField.GetComponent<RectTransform>()
-            : null;
-
-        if (inputRect != null && inputRect.rect.width > 0f)
-        {
-            maxWidth = Mathf.Min(maxWidth, Mathf.Max(AT_FRIEND_MIN_WIDTH, inputRect.rect.width - 170f));
-        }
-
-        return Mathf.Max(AT_FRIEND_MIN_WIDTH, maxWidth);
-    }
-
-    private void ResizeAtFriendTag(float tagWidth, float cancelWidth)
-    {
-        var tagRect = uiComponent.artFriendRectTransfrom;
-        tagRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, tagWidth);
-        tagRect.anchoredPosition = new Vector2(
-            _atFriendOriginalLeftEdge + tagWidth * tagRect.pivot.x,
-            tagRect.anchoredPosition.y);
-
-        var nameRect = uiComponent.artFriendNameText.rectTransform;
-        float textWidth = Mathf.Max(24f,
-            tagWidth - AT_FRIEND_LEFT_PADDING - AT_FRIEND_RIGHT_PADDING - AT_FRIEND_TEXT_CANCEL_GAP - cancelWidth);
-        nameRect.anchorMin = new Vector2(0f, 0f);
-        nameRect.anchorMax = new Vector2(0f, 1f);
-        nameRect.pivot = new Vector2(0f, 0.5f);
-        nameRect.anchoredPosition = new Vector2(AT_FRIEND_LEFT_PADDING, 0f);
-        nameRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, textWidth);
-
-        if (_cancelAtRect != null)
-        {
-            _cancelAtRect.anchorMin = new Vector2(1f, 0.5f);
-            _cancelAtRect.anchorMax = new Vector2(1f, 0.5f);
-            _cancelAtRect.pivot = new Vector2(1f, 0.5f);
-            _cancelAtRect.anchoredPosition = new Vector2(-AT_FRIEND_RIGHT_PADDING, 0f);
-            _cancelAtRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, cancelWidth);
-        }
-    }
-
-    private void ApplyInputTextInset(float leftInset)
-    {
-        if (_inputTextRect != null)
-        {
-            var offsetMin = _inputTextOriginalOffsetMin;
-            offsetMin.x = Mathf.Max(_inputTextOriginalOffsetMin.x, leftInset);
-            _inputTextRect.offsetMin = offsetMin;
-            _inputTextRect.offsetMax = _inputTextOriginalOffsetMax;
-        }
-
-        if (_inputPlaceholderRect != null)
-        {
-            var offsetMin = _inputPlaceholderOriginalOffsetMin;
-            offsetMin.x = Mathf.Max(_inputPlaceholderOriginalOffsetMin.x, leftInset);
-            _inputPlaceholderRect.offsetMin = offsetMin;
-            _inputPlaceholderRect.offsetMax = _inputPlaceholderOriginalOffsetMax;
-        }
-    }
-
-    private void RestoreInputTextArea()
-    {
-        if (_inputTextRect != null)
-        {
-            _inputTextRect.offsetMin = _inputTextOriginalOffsetMin;
-            _inputTextRect.offsetMax = _inputTextOriginalOffsetMax;
-        }
-
-        if (_inputPlaceholderRect != null)
-        {
-            _inputPlaceholderRect.offsetMin = _inputPlaceholderOriginalOffsetMin;
-            _inputPlaceholderRect.offsetMax = _inputPlaceholderOriginalOffsetMax;
-        }
-    }
-
-    private static float GetRectWidth(RectTransform rect, float fallback)
-    {
-        if (rect == null) return fallback;
-        if (rect.rect.width > 0f) return rect.rect.width;
-        return rect.sizeDelta.x > 0f ? rect.sizeDelta.x : fallback;
     }
 
 
@@ -1061,27 +906,9 @@ public class DialogUI : WindowBase
             return;
         }
 
-        // 启动占卜引擎
-        if (divinationEngine != null)
-        {
-            var session = divinationEngine.StartQuickDivination(question);
-            Debug.Log($"[DialogUI] 占卜已启动 [{session.readingId}], phase={session.phase}");
-
-            // 如果携带今日牌，同步到 DialogSystem
-            if (divinationEngine.TodayCard.HasValue)
-            {
-                dialogSystem.SetTodayCardPayload(divinationEngine.GetTodayCardPayload());
-            }
-        }
-
-        // 添加用户消息
-        dialogSystem.AddUserMessage(question);
-        _forceNextAIMessageAsInteractionCard = true;
-
-        UpdateChatScrollView();
-
-        // 发送到 AI（此时 DialogSystem 已携带 readingState/actionKing，OracleRuntime 会走 plan_spread scene）
-        SendMessageToAI();
+        // 快速问题只负责把玩家的问题发给 AI。
+        // 是否进入牌阵、进入哪种牌阵，由 Oracle Runtime 的 scene/stage/plan 决定。
+        SendUserMessage(question);
     }
 
     /// <summary>
@@ -1244,10 +1071,6 @@ public class DialogUI : WindowBase
     /// </summary>
     private void HandleRelationshipCycle()
     {
-        if (divinationEngine != null)
-        {
-            divinationEngine.StartQuickDivination("请分析这段关系的周期和走向");
-        }
         SendUserMessage("分析这段关系的周期");
     }
 
@@ -1713,6 +1536,51 @@ public class DialogUI : WindowBase
         var phase = divinationEngine.CurrentPhase;
         // ChoosingSpread 阶段 → AI 已给出牌阵计划，展示交互卡
         return phase == DivinationPhase.ChoosingSpread;
+    }
+
+    private bool TryOpenRelationshipDivinationFromAIPlan(int streamingMessageIndex, string aiResponse)
+    {
+        if (_activeAtFriend == null || dialogSystem == null) return false;
+
+        var runtimePlan = dialogSystem.GetLastRuntimePlan();
+        if (runtimePlan == null || runtimePlan.stage != "before_draw") return false;
+        if (!IsRelationshipDivinationRequest(runtimePlan, aiResponse)) return false;
+
+        bool canOpenLocal = CreatedFriendRelationshipDivinationLocalFlow.CanHandle(_activeAtFriend);
+        bool canOpenRemote = RelationshipDivinationFlow.CanUseTwoPersonDivination(_activeAtFriend, false);
+        if (!canOpenLocal && !canOpenRemote)
+            return false;
+
+        HideLoadingIndicator();
+        RefreshChatAfterAIMessage(streamingMessageIndex);
+        PrepareTTSForCompletedAIMessage(streamingMessageIndex);
+        RelationshipDivinationOverlay.StartForFriend(transform, _activeAtFriend);
+        return true;
+    }
+
+    private bool IsRelationshipDivinationRequest(RuntimePlan runtimePlan, string aiResponse)
+    {
+        string latestUserText = GetLatestUserMessageText();
+        string planQuestion = runtimePlan?.divinationPlan?.question ?? "";
+        string combined = $"{latestUserText}\n{planQuestion}\n{aiResponse}";
+
+        return System.Text.RegularExpressions.Regex.IsMatch(combined,
+            @"((双人|关系|感情|喜欢|暧昧|复合|联系|好友|朋友|对方|他|她|ta|TA|我们|跟|和).*(占卜|塔罗|抽牌|牌阵|看牌|神谕|reading|tarot|spread|oracle))|((占卜|塔罗|抽牌|牌阵|看牌|神谕|reading|tarot|spread|oracle).*(双人|关系|感情|喜欢|暧昧|复合|联系|好友|朋友|对方|他|她|ta|TA|我们|跟|和))",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    }
+
+    private string GetLatestUserMessageText()
+    {
+        if (dialogSystem == null) return "";
+
+        for (int i = dialogSystem.GetMessageCount() - 1; i >= 0; i--)
+        {
+            var message = dialogSystem.GetMessageByIndex(i);
+            if (message == null || message.roleType != DialogRoleType.User) continue;
+            return message.content ?? "";
+        }
+
+        return "";
     }
 
     private void ApplyRuntimePlanForInteractionCard()

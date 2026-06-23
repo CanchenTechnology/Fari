@@ -12,6 +12,7 @@ using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 using SuperScrollView;
+using TMPro;
 
 public class EditFriendUI : WindowBase
 {
@@ -528,13 +529,13 @@ public class EditFriendUI : WindowBase
 		return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
 	}
 
-	private void SetText(Text text, string value)
+	private void SetText(TMP_Text text, string value)
 	{
 		if (text != null)
 			text.text = value ?? string.Empty;
 	}
 
-	private void FocusInput(InputField input)
+	private void FocusInput(TMP_InputField input)
 	{
 		if (input == null) return;
 		input.Select();

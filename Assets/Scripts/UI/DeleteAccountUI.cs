@@ -201,7 +201,7 @@ public class DeleteAccountUI : WindowBase
 	private void SetToggleLabel(string value)
 	{
 		if (uiComponent?.confirmToggle == null) return;
-		foreach (Text text in uiComponent.confirmToggle.GetComponentsInChildren<Text>(true))
+		foreach (TMP_Text text in uiComponent.confirmToggle.GetComponentsInChildren<TMP_Text>(true))
 		{
 			if (text != null && text.gameObject.name == "Label")
 			{
@@ -223,7 +223,7 @@ public class DeleteAccountUI : WindowBase
 	private void SetText(GameObject target, string value)
 	{
 		if (target == null) return;
-		Text text = target.GetComponent<Text>();
+		TMP_Text text = target.GetComponent<TMP_Text>();
 		if (text != null)
 		{
 			text.text = value ?? string.Empty;

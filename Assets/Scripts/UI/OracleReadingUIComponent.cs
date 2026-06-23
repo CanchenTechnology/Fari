@@ -15,9 +15,9 @@ public class OracleReadingUIComponent:MonoBehaviour
 	public WindowLayer windowLayer = WindowLayer.MainUI;
 	public Button SwitchOracleButton;
 	public Image CardImageImage;
-	public Text CardNameTextText;
-	public Text MessageTitleText;
-	public Text MessageContentText;
+	public TMP_Text CardNameTextText;
+	public TMP_Text MessageTitleText;
+	public TMP_Text MessageContentText;
 	public Button anyWhereBtnButton;
 	public void InitComponent(WindowBase target)
 	{

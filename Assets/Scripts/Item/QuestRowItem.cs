@@ -3,12 +3,13 @@ using System.Collections.Generic;
 using System;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 /// <summary>
 /// 今日占卡界面，TodayCardUI里的QuestRow用的
 /// </summary>
 public class QuestRowItem : MonoBehaviour
 {
-    public Text desText;
+    public TMP_Text desText;
     public Button btn;
     private Button _selfButton;
 

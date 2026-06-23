@@ -19,8 +19,8 @@ public class DivinationInfoUIComponent:MonoBehaviour
 	public DivinationInfoItem Item1DivinationInfoItemDivinationInfoItem;
 	public DivinationInfoItem Item2DivinationInfoItemDivinationInfoItem;
 	public DivinationInfoItem Item3DivinationInfoItemDivinationInfoItem;
-	public Text JudgeContentText;
-	public Text AdviceContentText;
+	public TMP_Text JudgeContentText;
+	public TMP_Text AdviceContentText;
 	public QuestRowItem Question1QuestRowItem;
 	public QuestRowItem Question2QuestRowItem;
 	public QuestRowItem Question3QuestRowItem;

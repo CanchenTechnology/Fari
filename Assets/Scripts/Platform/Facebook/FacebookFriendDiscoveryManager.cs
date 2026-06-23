@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
 using GamerFrameWork.UIFrameWork;
+using TMPro;
 
 public static class FacebookFriendDiscoveryManager
 {
@@ -152,14 +153,14 @@ public static class FacebookFriendDiscoveryOverlay
         RectTransform root = overlay.GetComponent<RectTransform>();
         GameObject panel = CreatePanel(root);
 
-        Text title = CreateText(panel.transform, "Facebook 好友", 28, FontStyle.Bold, new Color(1f, 0.78f, 0.45f, 1f));
+        TMP_Text title = CreateText(panel.transform, "Facebook 好友", 28, FontStyles.Bold, new Color(1f, 0.78f, 0.45f, 1f));
         RectTransform titleRect = title.GetComponent<RectTransform>();
         titleRect.anchorMin = new Vector2(0f, 1f);
         titleRect.anchorMax = new Vector2(1f, 1f);
         titleRect.pivot = new Vector2(0.5f, 1f);
         titleRect.anchoredPosition = new Vector2(0f, -22f);
         titleRect.sizeDelta = new Vector2(-120f, 48f);
-        title.alignment = TextAnchor.MiddleCenter;
+        title.alignment = TextAlignmentOptions.Center;
 
         Button closeButton = CreateSmallButton(panel.transform, "×");
         RectTransform closeRect = closeButton.GetComponent<RectTransform>();
@@ -169,14 +170,14 @@ public static class FacebookFriendDiscoveryOverlay
         closeRect.anchoredPosition = new Vector2(-24f, -22f);
         closeButton.onClick.AddListener(() => UnityEngine.Object.Destroy(overlay));
 
-        Text hint = CreateText(panel.transform, "这些好友已授权本应用，可以直接发送 Firebase 好友请求。", 18, FontStyle.Normal, new Color(0.84f, 0.80f, 0.90f, 1f));
+        TMP_Text hint = CreateText(panel.transform, "这些好友已授权本应用，可以直接发送 Firebase 好友请求。", 18, FontStyles.Normal, new Color(0.84f, 0.80f, 0.90f, 1f));
         RectTransform hintRect = hint.GetComponent<RectTransform>();
         hintRect.anchorMin = new Vector2(0f, 1f);
         hintRect.anchorMax = new Vector2(1f, 1f);
         hintRect.pivot = new Vector2(0.5f, 1f);
         hintRect.anchoredPosition = new Vector2(0f, -72f);
         hintRect.sizeDelta = new Vector2(-60f, 42f);
-        hint.alignment = TextAnchor.MiddleCenter;
+        hint.alignment = TextAlignmentOptions.Center;
 
         ScrollRect scroll = CreateScroll(panel.transform);
         RectTransform scrollRt = scroll.GetComponent<RectTransform>();
@@ -282,23 +283,23 @@ public static class FacebookFriendDiscoveryOverlay
         row.GetComponent<LayoutElement>().preferredHeight = 76f;
         row.GetComponent<Image>().color = new Color(0.16f, 0.12f, 0.22f, 0.95f);
 
-        Text name = CreateText(row.transform, string.IsNullOrWhiteSpace(user.displayName) ? "未命名用户" : user.displayName, 20, FontStyle.Bold, new Color(1f, 0.84f, 0.55f, 1f));
+        TMP_Text name = CreateText(row.transform, string.IsNullOrWhiteSpace(user.displayName) ? "未命名用户" : user.displayName, 20, FontStyles.Bold, new Color(1f, 0.84f, 0.55f, 1f));
         RectTransform nameRt = name.GetComponent<RectTransform>();
         nameRt.anchorMin = new Vector2(0f, 0.5f);
         nameRt.anchorMax = new Vector2(1f, 0.5f);
         nameRt.pivot = new Vector2(0f, 0.5f);
         nameRt.offsetMin = new Vector2(18f, -8f);
         nameRt.offsetMax = new Vector2(-132f, 32f);
-        name.alignment = TextAnchor.MiddleLeft;
+        name.alignment = TextAlignmentOptions.Left;
 
-        Text info = CreateText(row.transform, user.Info, 16, FontStyle.Normal, new Color(0.82f, 0.78f, 0.88f, 1f));
+        TMP_Text info = CreateText(row.transform, user.Info, 16, FontStyles.Normal, new Color(0.82f, 0.78f, 0.88f, 1f));
         RectTransform infoRt = info.GetComponent<RectTransform>();
         infoRt.anchorMin = new Vector2(0f, 0.5f);
         infoRt.anchorMax = new Vector2(1f, 0.5f);
         infoRt.pivot = new Vector2(0f, 0.5f);
         infoRt.offsetMin = new Vector2(18f, -32f);
         infoRt.offsetMax = new Vector2(-132f, 8f);
-        info.alignment = TextAnchor.MiddleLeft;
+        info.alignment = TextAlignmentOptions.Left;
 
         Button button = CreateSmallButton(row.transform, GetButtonLabel(user));
         RectTransform buttonRt = button.GetComponent<RectTransform>();
@@ -341,18 +342,18 @@ public static class FacebookFriendDiscoveryOverlay
         return FirestoreManager.Instance != null && FirestoreManager.Instance.IsInitialized;
     }
 
-    private static Text CreateText(Transform parent, string value, int size, FontStyle style, Color color)
+    private static TMP_Text CreateText(Transform parent, string value, int size, FontStyles style, Color color)
     {
-        GameObject go = new GameObject("Text", typeof(RectTransform), typeof(Text));
+        GameObject go = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
         go.transform.SetParent(parent, false);
-        Text text = go.GetComponent<Text>();
-        text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        TMP_Text text = go.GetComponent<TMP_Text>();
+        text.font = TMP_Settings.defaultFontAsset;
         text.fontSize = size;
         text.fontStyle = style;
         text.color = color;
         text.text = value ?? string.Empty;
-        text.horizontalOverflow = HorizontalWrapMode.Wrap;
-        text.verticalOverflow = VerticalWrapMode.Overflow;
+        text.enableWordWrapping = true;
+        text.overflowMode = TextOverflowModes.Overflow;
         return text;
     }
 
@@ -364,8 +365,8 @@ public static class FacebookFriendDiscoveryOverlay
         image.color = new Color(0.34f, 0.11f, 0.52f, 1f);
         Button button = go.GetComponent<Button>();
         button.targetGraphic = image;
-        Text text = CreateText(go.transform, label, label.Length > 2 ? 17 : 24, FontStyle.Bold, Color.white);
-        text.alignment = TextAnchor.MiddleCenter;
+        TMP_Text text = CreateText(go.transform, label, label.Length > 2 ? 17 : 24, FontStyles.Bold, Color.white);
+        text.alignment = TextAlignmentOptions.Center;
         RectTransform textRt = text.GetComponent<RectTransform>();
         textRt.anchorMin = Vector2.zero;
         textRt.anchorMax = Vector2.one;
@@ -376,7 +377,7 @@ public static class FacebookFriendDiscoveryOverlay
 
     private static void SetButtonText(Button button, string value)
     {
-        Text text = button != null ? button.GetComponentInChildren<Text>() : null;
+        TMP_Text text = button != null ? button.GetComponentInChildren<TMP_Text>() : null;
         if (text != null) text.text = value;
     }
 }

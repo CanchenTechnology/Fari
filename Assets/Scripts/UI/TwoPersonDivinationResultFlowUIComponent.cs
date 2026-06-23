@@ -17,10 +17,10 @@ public class TwoPersonDivinationResultFlowUIComponent:MonoBehaviour
 	public Image MyCardImage;
 	public Image FriendCardImage;
 	public Image relationCardImage;
-	public Text Card1DescText;
-	public Text Card2DescText;
-	public Text Card3DescText;
-	public Text SummaryDescText;
+	public TMP_Text Card1DescText;
+	public TMP_Text Card2DescText;
+	public TMP_Text Card3DescText;
+	public TMP_Text SummaryDescText;
 	public Button ContinueChatButton;
 	public Button SaveHistoryButton;
 	public void InitComponent(WindowBase target)

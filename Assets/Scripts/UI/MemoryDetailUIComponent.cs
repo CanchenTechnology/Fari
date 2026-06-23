@@ -15,10 +15,10 @@ public class MemoryDetailUIComponent:MonoBehaviour
 {
 	public WindowLayer windowLayer = WindowLayer.Top;
 	public Button BackButton;
-	public Text TypePillText;
-	public Text MemoryDateTextText;
-	public Text MemorySourceTextText;
-	public Text MemoryContentTextText;
+	public TMP_Text TypePillText;
+	public TMP_Text MemoryDateTextText;
+	public TMP_Text MemorySourceTextText;
+	public TMP_Text MemoryContentTextText;
 	public Button EditMemoryButton;
 	public Button DeleteMemoryButton;
 	public Switch MemorySwitchSwitch;

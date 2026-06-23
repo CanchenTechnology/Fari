@@ -4,11 +4,12 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UltimateClean;
+using TMPro;
 public class MemoryItem : MonoBehaviour
 {
-    public Text memoryTag;
-    public Text memoryContent;
-    public Text memoryMeta;
+    public TMP_Text memoryTag;
+    public TMP_Text memoryContent;
+    public TMP_Text memoryMeta;
 
     public Switch switchToggle;
 

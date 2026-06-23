@@ -16,14 +16,14 @@ public class CreateFriendUIComponent:MonoBehaviour
 	public Button BackButton;
 	public Button UploadAvatarButton;
 	public Image AvatarPreviewImage;
-	public InputField InputInputField;
-	public Text UsernameCountText;
+	public TMP_InputField InputInputField;
+	public TMP_Text UsernameCountText;
 	public Button Field_birthdayDateButton;
-	public Text birthdayDateText;
+	public TMP_Text birthdayDateText;
 	public Button Field_birthdayTimeButton;
-	public Text birthdayTimeText;
+	public TMP_Text birthdayTimeText;
 	public Button Field_birthdayCountryButton;
-	public Text birthdayCountryText;
+	public TMP_Text birthdayCountryText;
 	public Button SubmitButton;
 	public void InitComponent(WindowBase target)
 	{

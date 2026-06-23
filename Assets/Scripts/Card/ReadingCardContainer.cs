@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using GamerFrameWork.UIFrameWork;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -11,14 +12,14 @@ using UnityEngine.UI;
 public class ReadingCardContainer : MonoBehaviour
 {
     [Header("标题")]
-    public Text titleText;
+    public TMP_Text titleText;
 
     [Header("描述")]
-    public Text descriptText;
+    public TMP_Text descriptText;
 
 
     [Header("塔罗牌")]
-    public Text cardNameText;
+    public TMP_Text cardNameText;
     public Image cardImage;
 
     public Button deepChatBtn;

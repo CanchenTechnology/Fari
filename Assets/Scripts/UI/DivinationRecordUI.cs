@@ -11,6 +11,7 @@ using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 using GamerFrameWork.OracleRuntime;
+using TMPro;
 
 public class DivinationRecordUI : WindowBase
 {
@@ -148,7 +149,7 @@ public class DivinationRecordUI : WindowBase
 		GameObject spreadHeader = CreateTextElement(
 			"SpreadHeader", _contentRect,
 			_currentRecord.SpreadLabel,
-			fontSize: 24, fontStyle: FontStyle.Bold, color: titleColor,
+			fontSize: 24, fontStyle: FontStyles.Bold, color: titleColor,
 			width: textWidth, height: 32f,
 			yOffset: currentY, alignment: TextAnchor.MiddleCenter);
 		_dynamicElements.Add(spreadHeader);
@@ -168,7 +169,7 @@ public class DivinationRecordUI : WindowBase
 		GameObject questionTitle = CreateTextElement(
 			"QuestionTitle", _contentRect,
 			"你的问题",
-			fontSize: 14, fontStyle: FontStyle.Bold, color: new Color(0.75f, 0.55f, 0.9f, 1f),
+			fontSize: 14, fontStyle: FontStyles.Bold, color: new Color(0.75f, 0.55f, 0.9f, 1f),
 			width: textWidth, height: 22f,
 			yOffset: currentY, alignment: TextAnchor.MiddleLeft);
 		_dynamicElements.Add(questionTitle);
@@ -187,7 +188,7 @@ public class DivinationRecordUI : WindowBase
 		GameObject cardsTitle = CreateTextElement(
 			"CardsTitle", _contentRect,
 			"抽到的牌",
-			fontSize: 14, fontStyle: FontStyle.Bold, color: new Color(0.75f, 0.55f, 0.9f, 1f),
+			fontSize: 14, fontStyle: FontStyles.Bold, color: new Color(0.75f, 0.55f, 0.9f, 1f),
 			width: textWidth, height: 22f,
 			yOffset: currentY, alignment: TextAnchor.MiddleLeft);
 		_dynamicElements.Add(cardsTitle);
@@ -213,7 +214,7 @@ public class DivinationRecordUI : WindowBase
 			GameObject verdictTitle = CreateTextElement(
 				"VerdictTitle", _contentRect,
 				"解读",
-				fontSize: 14, fontStyle: FontStyle.Bold, color: new Color(0.75f, 0.55f, 0.9f, 1f),
+				fontSize: 14, fontStyle: FontStyles.Bold, color: new Color(0.75f, 0.55f, 0.9f, 1f),
 				width: textWidth, height: 22f,
 				yOffset: currentY, alignment: TextAnchor.MiddleLeft);
 			_dynamicElements.Add(verdictTitle);
@@ -260,7 +261,7 @@ public class DivinationRecordUI : WindowBase
 		GameObject title = CreateTextElement(
 			"EmptyTitle", _contentRect,
 			"占卜记录",
-			fontSize: 24, fontStyle: FontStyle.Bold, color: titleColor,
+			fontSize: 24, fontStyle: FontStyles.Bold, color: titleColor,
 			width: textWidth, height: 36f,
 			yOffset: 24f, alignment: TextAnchor.MiddleCenter);
 		_dynamicElements.Add(title);
@@ -312,13 +313,13 @@ public class DivinationRecordUI : WindowBase
 		pRt.pivot = new Vector2(0f, 1f);
 		pRt.anchoredPosition = new Vector2(16f, -14f);
 		pRt.sizeDelta = new Vector2(0f, 36f);
-		Text posText = posGo.AddComponent<Text>();
+		TMP_Text posText = posGo.AddComponent<TextMeshProUGUI>();
 		posText.text = card.position ?? "";
-		posText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+		posText.font = TMP_Settings.defaultFontAsset;
 		posText.fontSize = 14;
-		posText.fontStyle = FontStyle.Bold;
+		posText.fontStyle = FontStyles.Bold;
 		posText.color = titleColor;
-		posText.alignment = TextAnchor.MiddleLeft;
+		posText.alignment = TextAlignmentOptions.Left;
 
 		// 中间卡牌名
 		GameObject nameGo = new GameObject("CardName", typeof(RectTransform));
@@ -329,12 +330,12 @@ public class DivinationRecordUI : WindowBase
 		nRt.pivot = new Vector2(0f, 1f);
 		nRt.anchoredPosition = new Vector2(0f, -14f);
 		nRt.sizeDelta = new Vector2(0f, 36f);
-		Text nameText = nameGo.AddComponent<Text>();
+		TMP_Text nameText = nameGo.AddComponent<TextMeshProUGUI>();
 		nameText.text = card.cardName ?? "";
-		nameText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+		nameText.font = TMP_Settings.defaultFontAsset;
 		nameText.fontSize = 16;
 		nameText.color = cardNameColor;
-		nameText.alignment = TextAnchor.MiddleLeft;
+		nameText.alignment = TextAlignmentOptions.Left;
 
 		// 右侧正/逆位标签
 		GameObject orientGo = new GameObject("Orientation", typeof(RectTransform));
@@ -345,14 +346,14 @@ public class DivinationRecordUI : WindowBase
 		oRt.pivot = new Vector2(1f, 1f);
 		oRt.anchoredPosition = new Vector2(-12f, -14f);
 		oRt.sizeDelta = new Vector2(50f, 36f);
-		Text orientText = orientGo.AddComponent<Text>();
+		TMP_Text orientText = orientGo.AddComponent<TextMeshProUGUI>();
 		bool isUpright = card.orientation == "upright";
 		orientText.text = isUpright ? "正位 ↑" : "逆位 ↓";
-		orientText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+		orientText.font = TMP_Settings.defaultFontAsset;
 		orientText.fontSize = 14;
-		orientText.fontStyle = FontStyle.Bold;
+		orientText.fontStyle = FontStyles.Bold;
 		orientText.color = isUpright ? uprightColor : reversedColor;
-		orientText.alignment = TextAnchor.MiddleRight;
+		orientText.alignment = TextAlignmentOptions.Right;
 
 		return go;
 	}
@@ -364,7 +365,7 @@ public class DivinationRecordUI : WindowBase
 		GameObject sectionTitle = CreateTextElement(
 			title + "Title", _contentRect,
 			title,
-			fontSize: 14, fontStyle: FontStyle.Bold, color: new Color(0.75f, 0.55f, 0.9f, 1f),
+			fontSize: 14, fontStyle: FontStyles.Bold, color: new Color(0.75f, 0.55f, 0.9f, 1f),
 			width: textWidth, height: 22f,
 			yOffset: currentY, alignment: TextAnchor.MiddleLeft);
 		_dynamicElements.Add(sectionTitle);
@@ -608,7 +609,7 @@ public class DivinationRecordUI : WindowBase
 			return;
 
 		uiComponent.SaveToDiaryButton.interactable = interactable;
-		Text buttonText = uiComponent.SaveToDiaryButton.GetComponentInChildren<Text>(true);
+		TMP_Text buttonText = uiComponent.SaveToDiaryButton.GetComponentInChildren<TMP_Text>(true);
 		if (buttonText != null)
 			buttonText.text = label ?? string.Empty;
 	}
@@ -621,7 +622,7 @@ public class DivinationRecordUI : WindowBase
 		if (!uiComponent.SaveToDiaryButton.interactable)
 		{
 			uiComponent.SaveToDiaryButton.interactable = true;
-			Text buttonText = uiComponent.SaveToDiaryButton.GetComponentInChildren<Text>(true);
+			TMP_Text buttonText = uiComponent.SaveToDiaryButton.GetComponentInChildren<TMP_Text>(true);
 			if (buttonText != null)
 				buttonText.text = "保存到历史";
 
@@ -669,7 +670,7 @@ public class DivinationRecordUI : WindowBase
 	private GameObject CreateTextElement(
 		string name, Transform parent,
 		string content,
-		int fontSize = 16, FontStyle fontStyle = FontStyle.Normal, Color? color = null,
+		int fontSize = 16, FontStyles fontStyle = FontStyles.Normal, Color? color = null,
 		float width = 300f, float height = 30f, float yOffset = 0f,
 		TextAnchor alignment = TextAnchor.MiddleLeft,
 		float paddingX = 20f, float paddingY = 0f, Color? bgColor = null)
@@ -701,15 +702,15 @@ public class DivinationRecordUI : WindowBase
 		textRt.offsetMin = new Vector2(paddingX, paddingY);
 		textRt.offsetMax = new Vector2(-paddingX - 4f, -paddingY - 2f);
 
-		Text text = textGo.AddComponent<Text>();
+		TMP_Text text = textGo.AddComponent<TextMeshProUGUI>();
 		text.text = content ?? "";
-		text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+		text.font = TMP_Settings.defaultFontAsset;
 		text.fontSize = fontSize;
 		text.fontStyle = fontStyle;
 		text.color = color ?? Color.white;
-		text.alignment = alignment;
-		text.horizontalOverflow = HorizontalWrapMode.Wrap;
-		text.verticalOverflow = VerticalWrapMode.Overflow;
+		text.alignment = TMPTextBridge.ToAlignment(alignment);
+		text.enableWordWrapping = true;
+		text.overflowMode = TextOverflowModes.Overflow;
 
 		return go;
 	}

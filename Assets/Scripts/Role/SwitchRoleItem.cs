@@ -8,14 +8,15 @@ using SuperScrollView;
 using System.Diagnostics.Tracing;
 using GamerFrameWork;
 using System;
+using TMPro;
 
 public class SwitchRoleItem : MonoBehaviour, IGamerUIViewListItem, IGamerUIListViewItemContext
 {
     [Header("基础信息")]
     public Image roleImage;
-    public Text roleNameText;
-    public Text roleTypeText;
-    public Text roleInfoText;
+    public TMP_Text roleNameText;
+    public TMP_Text roleTypeText;
+    public TMP_Text roleInfoText;
     public Button detailBtn;
     public Button switchBtn;
     public GameObject usingTagGo;

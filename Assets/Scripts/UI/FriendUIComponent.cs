@@ -16,10 +16,10 @@ public class FriendUIComponent:MonoBehaviour
 	public Button NotionButton;
 	public Transform InviteBannerTransform;
 	public Button AddRelationButton;
-	public Text ExistingCountText;
+	public TMP_Text ExistingCountText;
 	public Button ExpandRealFriendButton;
 	public Transform RealFriendContentTransform;
-	public Text CreatedCountText;
+	public TMP_Text CreatedCountText;
 	public Button ExpandVirtualFriendButton;
 	public Transform VirtualFriendContentTransform;
 	public Button AddFriendButton;

@@ -9,6 +9,7 @@ using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 using System.Collections.Generic;
+using TMPro;
 
 public class MemoryManageListUI : WindowBase
 {
@@ -126,9 +127,9 @@ public class MemoryManageListUI : WindowBase
 		rect.pivot = new Vector2(0.5f, 1f);
 		rect.anchoredPosition = new Vector2(0, -24);
 		rect.sizeDelta = new Vector2(960, 360);
-		CreateText("EmptyIcon", go.transform, "◇", 66, FontStyle.Normal, new Color(0.48f, 0.39f, 0.60f, 1f), new Vector2(0, 70), new Vector2(140, 90), TextAnchor.MiddleCenter);
-		CreateText("EmptyText", go.transform, "暂无记忆内容", 36, FontStyle.Bold, new Color(0.78f, 0.75f, 0.82f, 1f), new Vector2(0, -18), new Vector2(420, 60), TextAnchor.MiddleCenter);
-		CreateText("EmptyHint", go.transform, "可以手动新增，或继续对话后由 AI 总结。", 28, FontStyle.Normal, new Color(0.58f, 0.56f, 0.64f, 1f), new Vector2(0, -82), new Vector2(700, 46), TextAnchor.MiddleCenter);
+		CreateText("EmptyIcon", go.transform, "◇", 66, FontStyles.Normal, new Color(0.48f, 0.39f, 0.60f, 1f), new Vector2(0, 70), new Vector2(140, 90), TextAnchor.MiddleCenter);
+		CreateText("EmptyText", go.transform, "暂无记忆内容", 36, FontStyles.Bold, new Color(0.78f, 0.75f, 0.82f, 1f), new Vector2(0, -18), new Vector2(420, 60), TextAnchor.MiddleCenter);
+		CreateText("EmptyHint", go.transform, "可以手动新增，或继续对话后由 AI 总结。", 28, FontStyles.Normal, new Color(0.58f, 0.56f, 0.64f, 1f), new Vector2(0, -82), new Vector2(700, 46), TextAnchor.MiddleCenter);
 		_runtimeRows.Add(go);
 	}
 
@@ -151,12 +152,12 @@ public class MemoryManageListUI : WindowBase
 		rowButton.targetGraphic = row.GetComponent<Image>();
 		rowButton.onClick.AddListener(() => OpenDetail(item.Id));
 
-		CreateText("Category", row.transform, MemoryUiStore.GetCategoryLabel(item.Category), 26, FontStyle.Normal, new Color(0.74f, 0.45f, 0.96f, 1f), new Vector2(-360, 52), new Vector2(190, 38), TextAnchor.MiddleLeft);
-		CreateText("Content", row.transform, item.Text, 34, FontStyle.Normal, activeOrPending ? new Color(0.90f, 0.88f, 0.92f, 1f) : new Color(0.58f, 0.56f, 0.64f, 1f), new Vector2(-105, 8), new Vector2(640, 58), TextAnchor.MiddleLeft);
-		CreateText("Meta", row.transform, $"{item.Source} · {item.DateText}", 25, FontStyle.Normal, item.PendingConfirm ? new Color(0.94f, 0.73f, 0.46f, 1f) : new Color(0.55f, 0.53f, 0.62f, 1f), new Vector2(-215, -54), new Vector2(520, 38), TextAnchor.MiddleLeft);
+		CreateText("Category", row.transform, MemoryUiStore.GetCategoryLabel(item.Category), 26, FontStyles.Normal, new Color(0.74f, 0.45f, 0.96f, 1f), new Vector2(-360, 52), new Vector2(190, 38), TextAnchor.MiddleLeft);
+		CreateText("Content", row.transform, item.Text, 34, FontStyles.Normal, activeOrPending ? new Color(0.90f, 0.88f, 0.92f, 1f) : new Color(0.58f, 0.56f, 0.64f, 1f), new Vector2(-105, 8), new Vector2(640, 58), TextAnchor.MiddleLeft);
+		CreateText("Meta", row.transform, $"{item.Source} · {item.DateText}", 25, FontStyles.Normal, item.PendingConfirm ? new Color(0.94f, 0.73f, 0.46f, 1f) : new Color(0.55f, 0.53f, 0.62f, 1f), new Vector2(-215, -54), new Vector2(520, 38), TextAnchor.MiddleLeft);
 
 		if (item.Important)
-			CreateText("Important", row.transform, "★", 34, FontStyle.Normal, new Color(0.94f, 0.73f, 0.46f, 1f), new Vector2(210, 50), new Vector2(52, 52), TextAnchor.MiddleCenter);
+			CreateText("Important", row.transform, "★", 34, FontStyles.Normal, new Color(0.94f, 0.73f, 0.46f, 1f), new Vector2(210, 50), new Vector2(52, 52), TextAnchor.MiddleCenter);
 
 		Button enableButton = CreateButton(row.transform, stateLabel, 23, new Vector2(330, 38), new Vector2(118, 54), item.PendingConfirm ? new Color(0.44f, 0.28f, 0.12f, 0.94f) : item.Enabled ? new Color(0.34f, 0.18f, 0.64f, 0.92f) : new Color(0.080f, 0.060f, 0.095f, 0.90f), activeOrPending ? new Color(0.92f, 0.86f, 0.94f, 1f) : new Color(0.66f, 0.63f, 0.70f, 1f));
 		enableButton.onClick.AddListener(() => ToggleMemory(item));
@@ -239,9 +240,9 @@ public class MemoryManageListUI : WindowBase
 		return go;
 	}
 
-	private Text CreateText(string name, Transform parent, string text, int fontSize, FontStyle fontStyle, Color color, Vector2 position, Vector2 size, TextAnchor alignment)
+	private TMP_Text CreateText(string name, Transform parent, string text, int fontSize, FontStyles fontStyle, Color color, Vector2 position, Vector2 size, TextAnchor alignment)
 	{
-		GameObject go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+		GameObject go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
 		go.transform.SetParent(parent, false);
 		RectTransform rect = go.GetComponent<RectTransform>();
 		rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
@@ -249,15 +250,15 @@ public class MemoryManageListUI : WindowBase
 		rect.anchoredPosition = position;
 		rect.sizeDelta = size;
 
-		Text label = go.GetComponent<Text>();
-		label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+		TMP_Text label = go.GetComponent<TMP_Text>();
+		label.font = TMP_Settings.defaultFontAsset;
 		label.text = text ?? "";
 		label.fontSize = fontSize;
 		label.fontStyle = fontStyle;
 		label.color = color;
-		label.alignment = alignment;
-		label.horizontalOverflow = HorizontalWrapMode.Wrap;
-		label.verticalOverflow = VerticalWrapMode.Truncate;
+		label.alignment = TMPTextBridge.ToAlignment(alignment);
+		label.enableWordWrapping = true;
+		label.overflowMode = TextOverflowModes.Truncate;
 		label.raycastTarget = false;
 		return label;
 	}
@@ -273,7 +274,7 @@ public class MemoryManageListUI : WindowBase
 
 		Button button = go.AddComponent<Button>();
 		button.targetGraphic = go.GetComponent<Image>();
-		CreateText("Text", go.transform, text, fontSize, FontStyle.Normal, textColor, Vector2.zero, size, TextAnchor.MiddleCenter);
+		CreateText("Text", go.transform, text, fontSize, FontStyles.Normal, textColor, Vector2.zero, size, TextAnchor.MiddleCenter);
 		return button;
 	}
 

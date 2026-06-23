@@ -4,12 +4,13 @@ using GamerFrameWork.UIFrameWork;
 using SuperScrollView;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public class MemorySingleItem : MonoBehaviour, IGamerUIViewListItem, IGamerUIListViewItemContext
 {
-    public Text contentText;
+    public TMP_Text contentText;
 
-    public Text timeText;
+    public TMP_Text timeText;
 
     public Button infoBtn;
 

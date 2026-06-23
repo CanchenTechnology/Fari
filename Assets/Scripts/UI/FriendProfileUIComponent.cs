@@ -18,7 +18,7 @@ public class FriendProfileUIComponent:MonoBehaviour
 	public Button BackButton;
 	public Button MoreButton;
 	public Image FriendAvatarImage;
-	public Text FriendNameText;
+	public TMP_Text FriendNameText;
 	public Button AllRecordsButton;
 	public LoopListView2 OracleHistoryScrollViewLoopListView2;
 	public Switch SyncSwitchSwitch;

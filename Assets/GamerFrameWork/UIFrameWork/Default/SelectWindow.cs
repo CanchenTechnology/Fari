@@ -9,6 +9,7 @@ using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 using System;
+using TMPro;
 namespace GamerFrameWork.UIFrameWork
 {
     public enum SelectType
@@ -61,11 +62,38 @@ namespace GamerFrameWork.UIFrameWork
             mOnCancelCallBack = cancelCallBack; 
 
             uiComponent.ContentText.text = content;
-            uiComponent.ContentText.alignment = aligment;
+            uiComponent.ContentText.alignment = ToTMPAlignment(aligment);
             uiComponent.CancelText.text = cancelText;
             uiComponent.OKText.text = sureText;
             uiComponent.OKButton.gameObject.SetActive(type==SelectType.Normal||type==SelectType.Only_OK);
             uiComponent.CancelButton.gameObject.SetActive(type==SelectType.Normal);
+        }
+
+        private static TextAlignmentOptions ToTMPAlignment(TextAnchor anchor)
+        {
+            switch (anchor)
+            {
+                case TextAnchor.UpperLeft:
+                    return TextAlignmentOptions.TopLeft;
+                case TextAnchor.UpperCenter:
+                    return TextAlignmentOptions.Top;
+                case TextAnchor.UpperRight:
+                    return TextAlignmentOptions.TopRight;
+                case TextAnchor.MiddleLeft:
+                    return TextAlignmentOptions.Left;
+                case TextAnchor.MiddleCenter:
+                    return TextAlignmentOptions.Center;
+                case TextAnchor.MiddleRight:
+                    return TextAlignmentOptions.Right;
+                case TextAnchor.LowerLeft:
+                    return TextAlignmentOptions.BottomLeft;
+                case TextAnchor.LowerCenter:
+                    return TextAlignmentOptions.Bottom;
+                case TextAnchor.LowerRight:
+                    return TextAlignmentOptions.BottomRight;
+                default:
+                    return TextAlignmentOptions.Center;
+            }
         }
         #endregion
 

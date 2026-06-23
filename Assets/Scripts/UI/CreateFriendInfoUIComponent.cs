@@ -17,12 +17,12 @@ public class CreateFriendInfoUIComponent:MonoBehaviour
 	public WindowLayer windowLayer = WindowLayer.Top;
 	public Button BackButton;
 	public Image FriendAvatarImage;
-	public Text FriendNameText;
-	public Text SignatureTextText;
-	public Text birthdayDateText;
-	public Text birthdayTimeText;
-	public Text birthdayCityText;
-	public Text userNameText;
+	public TMP_Text FriendNameText;
+	public TMP_Text SignatureTextText;
+	public TMP_Text birthdayDateText;
+	public TMP_Text birthdayTimeText;
+	public TMP_Text birthdayCityText;
+	public TMP_Text userNameText;
 	public Button MoreRecordsButton;
 	public LoopListView2 OracleHistoryScrollViewLoopListView2;
 	public Switch SwitchSwitch;

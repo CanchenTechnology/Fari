@@ -17,12 +17,12 @@ public class NotionUIComponent:MonoBehaviour
 	public Button BackButton;
 	public Switch DailyOracleSwitch;
 	public Switch DialogueSwitch;
-	public Text DivinationDescText;
+	public TMP_Text DivinationDescText;
 	public Switch DivinationReturnSwitch;
 	public Switch FriendInteractionSwitch;
 	public Switch ActivitySystemSwitch;
 	public Button TimeSettingButton;
-	public Text TimeValueText;
+	public TMP_Text TimeValueText;
 	public void InitComponent(WindowBase target)
 	{
 	    //组件事件绑定

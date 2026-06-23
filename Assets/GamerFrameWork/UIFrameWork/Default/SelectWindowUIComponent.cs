@@ -8,15 +8,16 @@
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
+using TMPro;
 
 public class SelectWindowUIComponent:MonoBehaviour
 {
 	public WindowLayer windowLayer = WindowLayer.Top;
 	public Button CancelButton;
-	public Text CancelText;
+	public TMP_Text CancelText;
 	public Button OKButton;
-	public Text OKText;
-	public Text ContentText;
+	public TMP_Text OKText;
+	public TMP_Text ContentText;
 	public void InitComponent(WindowBase target)
 	{
 	    //组件事件绑定

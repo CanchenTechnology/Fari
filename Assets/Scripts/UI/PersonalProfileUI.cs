@@ -10,6 +10,7 @@ using System.Globalization;
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
+using TMPro;
 
 public class PersonalProfileUI : WindowBase
 {
@@ -321,12 +322,12 @@ public class PersonalProfileUI : WindowBase
 		return string.IsNullOrWhiteSpace(value) || value.Trim() == EmptyDisplayText;
 	}
 
-	private string GetValueText(Text text)
+	private string GetValueText(TMP_Text text)
 	{
 		return text == null ? string.Empty : text.text;
 	}
 
-	private void SetText(Text text, string value)
+	private void SetText(TMP_Text text, string value)
 	{
 		if (text != null)
 			text.text = value ?? string.Empty;

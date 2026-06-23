@@ -14,15 +14,15 @@ public class TarorSingleSpreadShuffleUIComponent:MonoBehaviour
 {
 	public WindowLayer windowLayer = WindowLayer.MainUI;
 	public Button BackButton;
-	public Text TitleTextText;
-	public Text SubtitleTextText;
+	public TMP_Text TitleTextText;
+	public TMP_Text SubtitleTextText;
 	public CardSlotItem CardSlotItem1CardSlotItem;
 	public CardSlotItem CardSlotItem2CardSlotItem;
 	public CardSlotItem CardSlotItem3CardSlotItem;
 	public CardSlotItem CardSlotItem4CardSlotItem;
 	public CardSlotItem CardSlotItem5CardSlotItem;
-	public Text cardTitleText;
-	public Text InstructionTextText;
+	public TMP_Text cardTitleText;
+	public TMP_Text InstructionTextText;
 	public Button StartShuffleButton;
 
 	[Header("洗牌配置")]

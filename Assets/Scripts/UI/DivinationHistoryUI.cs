@@ -11,6 +11,7 @@ using GamerFrameWork.OracleRuntime;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 using UnityEngine.UI;
+using TMPro;
 
 public class DivinationHistoryUI : WindowBase
 {
@@ -583,7 +584,7 @@ public class DivinationHistoryUI : WindowBase
 		return go.AddComponent<DivinationRecordFirestore>();
 	}
 
-	private void SetText(Text text, string value)
+	private void SetText(TMP_Text text, string value)
 	{
 		if (text != null)
 			text.text = value ?? "";
@@ -593,7 +594,7 @@ public class DivinationHistoryUI : WindowBase
 	{
 		if (button == null) return;
 		button.interactable = true;
-		Text text = button.GetComponentInChildren<Text>(true);
+		TMP_Text text = button.GetComponentInChildren<TMP_Text>(true);
 		if (text != null)
 			text.text = label ?? "";
 	}

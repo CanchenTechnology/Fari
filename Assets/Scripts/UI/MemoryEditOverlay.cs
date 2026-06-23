@@ -2,6 +2,7 @@ using System;
 using GamerFrameWork.UIFrameWork;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public static class MemoryEditOverlay
 {
@@ -29,27 +30,26 @@ public static class MemoryEditOverlay
 		sheetRect.anchoredPosition = Vector2.zero;
 		sheetRect.sizeDelta = new Vector2(900f, 760f);
 
-		Font font = GetFont();
-		CreateText("Title", sheet.transform, item == null ? "新增记忆" : "编辑记忆", 44, FontStyle.Bold, GoldColor, new Vector2(0, 298), new Vector2(760, 64), TextAnchor.MiddleCenter, font);
-		CreateText("Hint", sheet.transform, "这条记忆会用于之后的神谕回复，你可以随时关闭或删除。", 27, FontStyle.Normal, SubTextColor, new Vector2(0, 245), new Vector2(760, 44), TextAnchor.MiddleCenter, font);
+		CreateText("Title", sheet.transform, item == null ? "新增记忆" : "编辑记忆", 44, FontStyles.Bold, GoldColor, new Vector2(0, 298), new Vector2(760, 64), TextAnchor.MiddleCenter);
+		CreateText("Hint", sheet.transform, "这条记忆会用于之后的神谕回复，你可以随时关闭或删除。", 27, FontStyles.Normal, SubTextColor, new Vector2(0, 245), new Vector2(760, 44), TextAnchor.MiddleCenter);
 
-		InputField input = CreateInput(sheet.transform, item?.Text ?? "", font);
+		TMP_InputField input = CreateInput(sheet.transform, item?.Text ?? "");
 
 		MemoryUiCategory selectedCategory = item?.Category ?? MemoryUiCategory.Topic;
 		bool wasPending = item?.PendingConfirm ?? false;
 		bool enabled = item == null || item.Enabled || wasPending;
 		bool important = item?.Important ?? false;
 
-		Button topicBtn = CreateButton(sheet.transform, "对话主题", 26, new Vector2(-315, 70), new Vector2(160, 58), font);
-		Button preferenceBtn = CreateButton(sheet.transform, "个人偏好", 26, new Vector2(-105, 70), new Vector2(160, 58), font);
-		Button emotionBtn = CreateButton(sheet.transform, "情感模式", 26, new Vector2(105, 70), new Vector2(160, 58), font);
-		Button growthBtn = CreateButton(sheet.transform, "成长轨迹", 26, new Vector2(315, 70), new Vector2(160, 58), font);
+		Button topicBtn = CreateButton(sheet.transform, "对话主题", 26, new Vector2(-315, 70), new Vector2(160, 58));
+		Button preferenceBtn = CreateButton(sheet.transform, "个人偏好", 26, new Vector2(-105, 70), new Vector2(160, 58));
+		Button emotionBtn = CreateButton(sheet.transform, "情感模式", 26, new Vector2(105, 70), new Vector2(160, 58));
+		Button growthBtn = CreateButton(sheet.transform, "成长轨迹", 26, new Vector2(315, 70), new Vector2(160, 58));
 
-		Button enabledBtn = CreateButton(sheet.transform, "", 28, new Vector2(-215, -25), new Vector2(250, 62), font);
-		Button importantBtn = CreateButton(sheet.transform, "", 28, new Vector2(215, -25), new Vector2(250, 62), font);
+		Button enabledBtn = CreateButton(sheet.transform, "", 28, new Vector2(-215, -25), new Vector2(250, 62));
+		Button importantBtn = CreateButton(sheet.transform, "", 28, new Vector2(215, -25), new Vector2(250, 62));
 
-		Button cancelBtn = CreateButton(sheet.transform, "取消", 34, new Vector2(-230, -270), new Vector2(360, 88), font);
-		Button saveBtn = CreateButton(sheet.transform, item == null ? "保存记忆" : "保存修改", 34, new Vector2(230, -270), new Vector2(360, 88), font);
+		Button cancelBtn = CreateButton(sheet.transform, "取消", 34, new Vector2(-230, -270), new Vector2(360, 88));
+		Button saveBtn = CreateButton(sheet.transform, item == null ? "保存记忆" : "保存修改", 34, new Vector2(230, -270), new Vector2(360, 88));
 
 		void Refresh()
 		{
@@ -90,7 +90,7 @@ public static class MemoryEditOverlay
 		Refresh();
 	}
 
-	private static InputField CreateInput(Transform parent, string value, Font font)
+	private static TMP_InputField CreateInput(Transform parent, string value)
 	{
 		GameObject go = CreatePanel("MemoryTextInput", parent, new Color(0.060f, 0.052f, 0.090f, 1f));
 		RectTransform rect = go.GetComponent<RectTransform>();
@@ -99,11 +99,11 @@ public static class MemoryEditOverlay
 		rect.anchoredPosition = new Vector2(0, 160);
 		rect.sizeDelta = new Vector2(760, 128);
 
-		InputField input = go.AddComponent<InputField>();
-		input.lineType = InputField.LineType.MultiLineNewline;
+		TMP_InputField input = go.AddComponent<TMP_InputField>();
+		input.lineType = TMP_InputField.LineType.MultiLineNewline;
 		input.text = value ?? "";
 
-		GameObject textGo = new GameObject("Text", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+		GameObject textGo = new GameObject("Text", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
 		textGo.transform.SetParent(go.transform, false);
 		RectTransform textRect = textGo.GetComponent<RectTransform>();
 		textRect.anchorMin = Vector2.zero;
@@ -111,15 +111,15 @@ public static class MemoryEditOverlay
 		textRect.offsetMin = new Vector2(24, 14);
 		textRect.offsetMax = new Vector2(-24, -14);
 
-		Text text = textGo.GetComponent<Text>();
-		text.font = font;
+		TMP_Text text = textGo.GetComponent<TMP_Text>();
+		text.font = TMP_Settings.defaultFontAsset;
 		text.fontSize = 30;
 		text.color = TextColor;
-		text.alignment = TextAnchor.UpperLeft;
-		text.horizontalOverflow = HorizontalWrapMode.Wrap;
-		text.verticalOverflow = VerticalWrapMode.Truncate;
+		text.alignment = TextAlignmentOptions.TopLeft;
+		text.enableWordWrapping = true;
+		text.overflowMode = TextOverflowModes.Truncate;
 
-		GameObject placeholderGo = new GameObject("Placeholder", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+		GameObject placeholderGo = new GameObject("Placeholder", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
 		placeholderGo.transform.SetParent(go.transform, false);
 		RectTransform placeholderRect = placeholderGo.GetComponent<RectTransform>();
 		placeholderRect.anchorMin = Vector2.zero;
@@ -127,15 +127,17 @@ public static class MemoryEditOverlay
 		placeholderRect.offsetMin = new Vector2(24, 14);
 		placeholderRect.offsetMax = new Vector2(-24, -14);
 
-		Text placeholder = placeholderGo.GetComponent<Text>();
-		placeholder.font = font;
+		TMP_Text placeholder = placeholderGo.GetComponent<TMP_Text>();
+		placeholder.font = TMP_Settings.defaultFontAsset;
 		placeholder.fontSize = 30;
 		placeholder.color = new Color(0.55f, 0.52f, 0.60f, 0.9f);
-		placeholder.alignment = TextAnchor.UpperLeft;
+		placeholder.alignment = TextAlignmentOptions.TopLeft;
 		placeholder.text = "输入一条你希望 AI 记住的信息";
 
 		input.textComponent = text;
 		input.placeholder = placeholder;
+		input.fontAsset = TMP_Settings.defaultFontAsset;
+		input.pointSize = 30;
 		input.targetGraphic = go.GetComponent<Image>();
 		input.text = value ?? "";
 		return input;
@@ -150,9 +152,9 @@ public static class MemoryEditOverlay
 		return go;
 	}
 
-	private static Text CreateText(string name, Transform parent, string value, int size, FontStyle style, Color color, Vector2 position, Vector2 sizeDelta, TextAnchor alignment, Font font)
+	private static TMP_Text CreateText(string name, Transform parent, string value, int size, FontStyles style, Color color, Vector2 position, Vector2 sizeDelta, TextAnchor alignment)
 	{
-		GameObject go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+		GameObject go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
 		go.transform.SetParent(parent, false);
 		RectTransform rect = go.GetComponent<RectTransform>();
 		rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
@@ -160,19 +162,19 @@ public static class MemoryEditOverlay
 		rect.anchoredPosition = position;
 		rect.sizeDelta = sizeDelta;
 
-		Text text = go.GetComponent<Text>();
-		text.font = font;
+		TMP_Text text = go.GetComponent<TMP_Text>();
+		text.font = TMP_Settings.defaultFontAsset;
 		text.text = value ?? "";
 		text.fontSize = size;
 		text.fontStyle = style;
 		text.color = color;
-		text.alignment = alignment;
-		text.horizontalOverflow = HorizontalWrapMode.Wrap;
-		text.verticalOverflow = VerticalWrapMode.Truncate;
+		text.alignment = TMPTextBridge.ToAlignment(alignment);
+		text.enableWordWrapping = true;
+		text.overflowMode = TextOverflowModes.Truncate;
 		return text;
 	}
 
-	private static Button CreateButton(Transform parent, string label, int fontSize, Vector2 position, Vector2 size, Font font)
+	private static Button CreateButton(Transform parent, string label, int fontSize, Vector2 position, Vector2 size)
 	{
 		GameObject go = CreatePanel(label + "Button", parent, DimColor);
 		RectTransform rect = go.GetComponent<RectTransform>();
@@ -183,7 +185,7 @@ public static class MemoryEditOverlay
 
 		Button button = go.AddComponent<Button>();
 		button.targetGraphic = go.GetComponent<Image>();
-		Text text = CreateText("Text", go.transform, label, fontSize, FontStyle.Normal, TextColor, Vector2.zero, size, TextAnchor.MiddleCenter, font);
+		TMP_Text text = CreateText("Text", go.transform, label, fontSize, FontStyles.Normal, TextColor, Vector2.zero, size, TextAnchor.MiddleCenter);
 		text.raycastTarget = false;
 		return button;
 	}
@@ -193,7 +195,7 @@ public static class MemoryEditOverlay
 		if (button == null) return;
 		Image image = button.GetComponent<Image>();
 		if (image != null) image.color = selected ? PurpleColor : DimColor;
-		Text text = button.GetComponentInChildren<Text>();
+		TMP_Text text = button.GetComponentInChildren<TMP_Text>();
 		if (text != null) text.color = selected ? TextColor : SubTextColor;
 	}
 
@@ -202,7 +204,7 @@ public static class MemoryEditOverlay
 		if (button == null) return;
 		Image image = button.GetComponent<Image>();
 		if (image != null) image.color = selected ? PurpleColor : DimColor;
-		Text text = button.GetComponentInChildren<Text>();
+		TMP_Text text = button.GetComponentInChildren<TMP_Text>();
 		if (text != null)
 		{
 			text.text = label;
@@ -218,9 +220,4 @@ public static class MemoryEditOverlay
 		rect.offsetMax = Vector2.zero;
 	}
 
-	private static Font GetFont()
-	{
-		return Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ??
-		       Resources.GetBuiltinResource<Font>("Arial.ttf");
-	}
 }

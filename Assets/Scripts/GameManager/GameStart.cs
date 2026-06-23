@@ -11,6 +11,12 @@ public class GameStart : MonoBehaviour
     /// </summary>
     public EPlayMode PlayMode = EPlayMode.EditorSimulateMode;
 
+    [Header("Startup Splash")]
+    [SerializeField] private GameObject startupSplashPrefab;
+    [SerializeField] private bool showStartupSplash = true;
+    [SerializeField] private float minimumSplashSeconds = 2.5f;
+    [SerializeField] private float splashFadeSeconds = 0.35f;
+
     private void Awake()
     {
         Debug.Log($"资源系统运行模式：{PlayMode}");
@@ -21,6 +27,9 @@ public class GameStart : MonoBehaviour
     // Start is called before the first frame update
     IEnumerator Start()
     {
+        if (showStartupSplash)
+            yield return PlayStartupSplash();
+
         // 游戏管理器
         YooManager.Instance.Behaviour = this;
         // 初始化事件系统
@@ -46,6 +55,84 @@ public class GameStart : MonoBehaviour
         // 切换到主页面场景
         SceneEventDefine.ChangeToAppScene.SendEventMessage();
 
+    }
+
+    private IEnumerator PlayStartupSplash()
+    {
+        GameObject splashObject = GetStartupSplashObject();
+        if (splashObject == null)
+            yield break;
+
+        CanvasGroup splash = PrepareStartupSplash(splashObject);
+        if (minimumSplashSeconds > 0f)
+            yield return new WaitForSecondsRealtime(minimumSplashSeconds);
+
+        if (splashFadeSeconds > 0f)
+        {
+            float timer = 0f;
+            while (timer < splashFadeSeconds)
+            {
+                timer += Time.unscaledDeltaTime;
+                splash.alpha = 1f - Mathf.Clamp01(timer / splashFadeSeconds);
+                yield return null;
+            }
+        }
+
+        Destroy(splash.gameObject);
+    }
+
+    private GameObject GetStartupSplashObject()
+    {
+        if (startupSplashPrefab != null)
+            return Instantiate(startupSplashPrefab);
+
+        StartupSplashUIComponent sceneSplash = FindObjectOfType<StartupSplashUIComponent>(true);
+        if (sceneSplash != null)
+            return sceneSplash.gameObject;
+
+        GameObject namedSplash = GameObject.Find("StartupSplashUI");
+        if (namedSplash != null)
+            return namedSplash;
+
+        Debug.LogWarning("[GameStart] StartupSplashUI not found. Put StartupSplashUI in Start scene or assign startupSplashPrefab.");
+        return null;
+    }
+
+    private static CanvasGroup PrepareStartupSplash(GameObject splashObject)
+    {
+        splashObject.SetActive(true);
+        splashObject.name = "StartupSplashUI";
+
+        RectTransform rectTransform = splashObject.GetComponent<RectTransform>();
+        if (rectTransform != null)
+        {
+            rectTransform.localScale = Vector3.one;
+            rectTransform.anchorMin = Vector2.zero;
+            rectTransform.anchorMax = Vector2.one;
+            rectTransform.offsetMin = Vector2.zero;
+            rectTransform.offsetMax = Vector2.zero;
+            rectTransform.anchoredPosition = Vector2.zero;
+        }
+        else
+        {
+            splashObject.transform.localScale = Vector3.one;
+        }
+
+        Canvas canvas = splashObject.GetComponent<Canvas>();
+        if (canvas != null)
+        {
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = short.MaxValue;
+        }
+
+        CanvasGroup canvasGroup = splashObject.GetComponent<CanvasGroup>();
+        if (canvasGroup == null)
+            canvasGroup = splashObject.AddComponent<CanvasGroup>();
+
+        canvasGroup.alpha = 1f;
+        canvasGroup.interactable = true;
+        canvasGroup.blocksRaycasts = true;
+        return canvasGroup;
     }
 
 }

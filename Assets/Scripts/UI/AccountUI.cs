@@ -110,6 +110,7 @@ public class AccountUI : WindowBase
 	private void ConfirmLogout()
 	{
 		FirebaseAuthManager.Instance?.SignOut();
+		ClearAccountSessionCaches();
 		UserDataManager.Instance.Logout();
 		Debug.Log("[AccountUI] 用户已退出登录");
 
@@ -197,9 +198,7 @@ public class AccountUI : WindowBase
 
 	private void ClearDeletedAccountLocalCaches()
 	{
-		HistoryUI.SelectedRecord = null;
-		DivinationHistoryUI.SelectedRecord = null;
-		DivinationInfoUI.SelectedRecord = null;
+		ClearAccountSessionCaches();
 		DivinationRecordFirestore.ClearLocalCacheForCurrentUser();
 		DailyOracleFirestore.ClearLocalCacheForCurrentUser();
 		DialogHistoryFirestore.ClearLocalDefault();
@@ -207,6 +206,14 @@ public class AccountUI : WindowBase
 		DivinationEngine.Instance?.ClearTodayCard();
 		DivinationEngine.Instance?.ClearSession();
 		UsageStatsManager.Instance?.ClearLocalUsageStats();
+	}
+
+	private void ClearAccountSessionCaches()
+	{
+		HistoryUI.SelectedRecord = null;
+		DivinationHistoryUI.SelectedRecord = null;
+		DivinationInfoUI.SelectedRecord = null;
+		DivinationHistoryCacheService.Instance.ClearMemoryCache();
 	}
 
 	private void SetAccountButtonsInteractable(bool interactable)

@@ -2,6 +2,7 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public static class FriendRelatedUIPrefabBuilder
 {
@@ -755,20 +756,20 @@ public static class FriendRelatedUIPrefabBuilder
 		return image;
 	}
 
-	private static Text CreateText(string name, Transform parent, string value, int fontSize, Color color, TextAnchor alignment, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 size, FontStyle style, Vector2? pivot = null)
+	private static TMP_Text CreateText(string name, Transform parent, string value, int fontSize, Color color, TextAnchor alignment, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 size, FontStyle style, Vector2? pivot = null)
 	{
-		GameObject go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text), typeof(Shadow));
+		GameObject go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI), typeof(Shadow));
 		go.transform.SetParent(parent, false);
 		Rect(go, anchorMin, anchorMax, anchoredPosition, size, pivot ?? new Vector2(0.5f, 0.5f));
-		Text text = go.GetComponent<Text>();
+		TMP_Text text = go.GetComponent<TMP_Text>();
 		text.text = value;
-		text.font = AssetDatabase.LoadAssetAtPath<Font>("Assets/GamerFrameWork/I2/Localization/Examples/Resources/ARIAL.TTF") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+		text.font = EditorTMPTextFactory.GetUIFont();
 		text.fontSize = fontSize;
-		text.fontStyle = style;
+		text.fontStyle = EditorTMPTextFactory.ToFontStyle(style);
 		text.color = color;
-		text.alignment = alignment;
-		text.horizontalOverflow = HorizontalWrapMode.Wrap;
-		text.verticalOverflow = VerticalWrapMode.Overflow;
+		text.alignment = EditorTMPTextFactory.ToAlignment(alignment);
+		text.enableWordWrapping = true;
+		text.overflowMode = TextOverflowModes.Overflow;
 		Shadow shadow = go.GetComponent<Shadow>();
 		shadow.effectColor = new Color(0f, 0f, 0f, 0.65f);
 		shadow.effectDistance = new Vector2(0, -1);

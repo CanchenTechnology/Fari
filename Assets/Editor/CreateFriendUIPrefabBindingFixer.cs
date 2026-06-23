@@ -1,6 +1,7 @@
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public static class CreateFriendUIPrefabBindingFixer
 {
@@ -34,14 +35,14 @@ public static class CreateFriendUIPrefabBindingFixer
 		component.BackButton = FindComponent<Button>(instance.transform, "[Button]Back");
 		component.UploadAvatarButton = FindComponent<Button>(instance.transform, "[Button]UploadAvatar");
 		component.AvatarPreviewImage = FindComponent<Image>(instance.transform, "[Image]AvatarPreview");
-		component.InputInputField = FindComponent<InputField>(instance.transform, "[InputField]UserNameInput");
-		component.UsernameCountText = FindComponent<Text>(instance.transform, "[Text]UsernameCount");
+		component.InputInputField = FindComponent<TMP_InputField>(instance.transform, "[InputField]UserNameInput");
+		component.UsernameCountText = FindComponent<TMP_Text>(instance.transform, "[Text]UsernameCount");
 		component.Field_birthdayDateButton = FindComponent<Button>(instance.transform, "[Button]Field_birthdayDate");
-		component.birthdayDateText = FindComponent<Text>(instance.transform, "[Text]birthdayDate");
+		component.birthdayDateText = FindComponent<TMP_Text>(instance.transform, "[Text]birthdayDate");
 		component.Field_birthdayTimeButton = FindComponent<Button>(instance.transform, "[Button]Field_birthdayTime");
-		component.birthdayTimeText = FindComponent<Text>(instance.transform, "[Text]birthdayTime");
+		component.birthdayTimeText = FindComponent<TMP_Text>(instance.transform, "[Text]birthdayTime");
 		component.Field_birthdayCountryButton = FindComponent<Button>(instance.transform, "[Button]Field_birthdayCountry");
-		component.birthdayCountryText = FindComponent<Text>(instance.transform, "[Text]birthdayCountry");
+		component.birthdayCountryText = FindComponent<TMP_Text>(instance.transform, "[Text]birthdayCountry");
 		component.SubmitButton = FindComponent<Button>(instance.transform, "[Button]Submit");
 
 		ValidateBinding(component.BackButton, nameof(component.BackButton));

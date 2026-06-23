@@ -14,11 +14,11 @@ public class AccountUIComponent:MonoBehaviour
 {
 	public WindowLayer windowLayer = WindowLayer.MainUI;
 	public Button BackButtonButton;
-	public Text EmailValueText;
-	public Text LoginTypeValueText;
-	public Text UserIdValueText;
-	public Text RegTimeValueText;
-	public Text StatusValueText;
+	public TMP_Text EmailValueText;
+	public TMP_Text LoginTypeValueText;
+	public TMP_Text UserIdValueText;
+	public TMP_Text RegTimeValueText;
+	public TMP_Text StatusValueText;
 	public Button exitButton;
 	public Button deleteButton;
 	public void InitComponent(WindowBase target)

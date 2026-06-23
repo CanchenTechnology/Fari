@@ -11,6 +11,7 @@ using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 using SuperScrollView;
+using TMPro;
 
 public class CreateFriendInfoUI : WindowBase
 {
@@ -428,7 +429,7 @@ public class CreateFriendInfoUI : WindowBase
 		ToastManager.ShowToast(success ? "每日占卜动态同步已保存" : "设置已保存，今天还没有可同步的每日牌");
 	}
 
-	private void SetText(Text text, string value)
+	private void SetText(TMP_Text text, string value)
 	{
 		if (text != null)
 			text.text = value ?? string.Empty;

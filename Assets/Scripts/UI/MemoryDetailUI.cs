@@ -9,6 +9,7 @@ using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 using UltimateClean;
+using TMPro;
 
 public class MemoryDetailUI : WindowBase
 {
@@ -112,7 +113,7 @@ public class MemoryDetailUI : WindowBase
 		_isRefreshingSwitches = false;
 	}
 
-	private void SetText(Text target, string value)
+	private void SetText(TMP_Text target, string value)
 	{
 		if (target != null)
 			target.text = value ?? "";

@@ -8,6 +8,7 @@
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
+using TMPro;
 
 public class JumpToDialogUI : WindowBase
 {
@@ -17,8 +18,8 @@ public class JumpToDialogUI : WindowBase
 
 	private FriendDataManager.FriendData currentFriend;
 	private string currentQuestion = string.Empty;
-	private Text friendInfoText;
-	private Text autoHintText;
+	private TMP_Text friendInfoText;
+	private TMP_Text autoHintText;
 
 	public static void Show(FriendDataManager.FriendData friend)
 	{
@@ -71,8 +72,8 @@ public class JumpToDialogUI : WindowBase
 	#region API Function
 	private void CacheOptionalTextRefs()
 	{
-		Text[] texts = gameObject.GetComponentsInChildren<Text>(true);
-		foreach (Text text in texts)
+		TMP_Text[] texts = gameObject.GetComponentsInChildren<TMP_Text>(true);
+		foreach (TMP_Text text in texts)
 		{
 			if (text == null) continue;
 
@@ -127,7 +128,7 @@ public class JumpToDialogUI : WindowBase
 		return parts.Count > 0 ? string.Join(" · ", parts) : (currentFriend.isVirtual ? "创建的好友档案" : "好友档案");
 	}
 
-	private void SetText(Text text, string value)
+	private void SetText(TMP_Text text, string value)
 	{
 		if (text != null)
 		{

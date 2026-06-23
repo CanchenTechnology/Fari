@@ -13,7 +13,7 @@ using UnityEngine;
 public class LoadingTextUIComponent:MonoBehaviour
 {
 	public WindowLayer windowLayer = WindowLayer.MainUI;
-	public Text loadingText;
+	public TMP_Text loadingText;
 	public void InitComponent(WindowBase target)
 	{
 	    //组件事件绑定

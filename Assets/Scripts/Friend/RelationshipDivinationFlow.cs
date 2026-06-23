@@ -4,6 +4,7 @@ using GamerFrameWork.OracleRuntime;
 using GamerFrameWork.UIFrameWork;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public static class RelationshipDivinationFlow
 {
@@ -440,7 +441,7 @@ public static class RelationshipDivinationFlow
     public static void SetButtonText(Button button, string text)
     {
         if (button == null) return;
-        Text label = button.GetComponentInChildren<Text>(true);
+        TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
         if (label != null) label.text = text ?? string.Empty;
     }
 

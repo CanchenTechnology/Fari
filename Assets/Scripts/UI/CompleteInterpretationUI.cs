@@ -23,6 +23,7 @@ using GamerFrameWork.UIFrameWork;
 using GamerFrameWork;
 using System.Collections.Generic;
 using GamerFrameWork.OracleRuntime;
+using TMPro;
 
 public class CompleteInterpretationUI : WindowBase
 {
@@ -353,16 +354,16 @@ public class CompleteInterpretationUI : WindowBase
 
         uiComponent.TopicText1Text = uiComponent.TopicText1Text != null
             ? uiComponent.TopicText1Text
-            : FindComponentByObjectName<Text>("[Text]TopicText1");
+            : FindComponentByObjectName<TMP_Text>("[Text]TopicText1");
         uiComponent.TopicText2Text = uiComponent.TopicText2Text != null
             ? uiComponent.TopicText2Text
-            : FindComponentByObjectName<Text>("[Text]TopicText2");
+            : FindComponentByObjectName<TMP_Text>("[Text]TopicText2");
         uiComponent.TopicText3Text = uiComponent.TopicText3Text != null
             ? uiComponent.TopicText3Text
-            : FindComponentByObjectName<Text>("[Text]TopicText3");
+            : FindComponentByObjectName<TMP_Text>("[Text]TopicText3");
         uiComponent.TopicText4Text = uiComponent.TopicText4Text != null
             ? uiComponent.TopicText4Text
-            : FindComponentByObjectName<Text>("[Text]TopicText4");
+            : FindComponentByObjectName<TMP_Text>("[Text]TopicText4");
     }
 
     private T FindComponentByObjectName<T>(string objectName) where T : Component
@@ -421,7 +422,7 @@ public class CompleteInterpretationUI : WindowBase
         SetTopicButton(uiComponent.TopicText4Text, topics, 3);
     }
 
-    private void SetTopicButton(Text label, List<string> topics, int index)
+    private void SetTopicButton(TMP_Text label, List<string> topics, int index)
     {
         if (label == null) return;
         var topic = (topics != null && index < topics.Count) ? topics[index] : "";

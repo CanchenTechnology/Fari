@@ -8,6 +8,7 @@
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
+using TMPro;
 
 public class FriendMoveUI : WindowBase
 {
@@ -115,22 +116,11 @@ public class FriendMoveUI : WindowBase
 			return;
 		}
 
-		if (!RelationshipDivinationFlow.CanUseTwoPersonDivination(currentFriend, true))
-		{
-			RefreshView();
-            return;
-        }
-
-        if (!currentFriend.isVirtual && !CanOpenRealFriendProfile(currentFriend))
-        {
-            ToastManager.ShowToast("好友关系确认后才能发起双人占卜");
-            RefreshView();
-            return;
-        }
-
-        FriendDataManager.FriendData captured = currentFriend;
-        HideWindow();
-        RelationshipDivinationOverlay.StartForFriend(transform, captured);
+		FriendDataManager.FriendData captured = currentFriend;
+		HideWindow();
+		UIModule.Instance.GetWindow<NavigationUI>()?.OpenDialogUI();
+		UIModule.Instance.GetWindow<DialogUI>()?.SendAtFriendsMessage(captured);
+		ToastManager.ShowToast("已带入好友，直接告诉塔罗师你想看的问题");
     }
 
     public void OnDeleteFriendButtonClick()
@@ -163,13 +153,11 @@ public class FriendMoveUI : WindowBase
     {
         if (uiComponent == null) return;
 
-        bool hasFriend = currentFriend != null;
-        bool isRealFriend = hasFriend && !currentFriend.isVirtual;
+		bool hasFriend = currentFriend != null;
+		bool isRealFriend = hasFriend && !currentFriend.isVirtual;
 		bool canOpenProfile = hasFriend && (currentFriend.isVirtual || CanOpenRealFriendProfile(currentFriend));
 		bool canUseRelationshipDivination = hasFriend
-			&& (CreatedFriendRelationshipDivinationLocalFlow.CanHandle(currentFriend)
-				|| (CanOpenRealFriendProfile(currentFriend)
-					&& RelationshipDivinationFlow.CanUseTwoPersonDivination(currentFriend, false)));
+			&& CreatedFriendRelationshipDivinationLocalFlow.CanHandle(currentFriend);
 
         SetButtonVisible(uiComponent.ViewFriendButton, canOpenProfile);
         SetButtonVisible(uiComponent.SendOracleRelatonButton, canUseRelationshipDivination);
@@ -424,7 +412,7 @@ public class FriendMoveUI : WindowBase
     private void SetButtonText(Button button, string text)
     {
         if (button == null) return;
-        Text label = button.GetComponentInChildren<Text>(true);
+        TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
         if (label != null)
             label.text = text ?? string.Empty;
     }

@@ -145,6 +145,9 @@ namespace GamerFrameWork.OracleRuntime
             // 用户明确要求占卜/抽牌/牌阵时才进入占卜流程
             if (HasDivinationIntent(text))
             {
+                if (!string.IsNullOrEmpty(activeRelationshipId) && IsRelationshipDivinationRequest(text))
+                    return MakeResult("before_draw", "relationship_divination_request");
+
                 if (IsImmediateDrawRequest(text))
                     return MakeResult("before_draw", "direct_draw_request");
 
@@ -182,6 +185,13 @@ namespace GamerFrameWork.OracleRuntime
         {
             return Regex.IsMatch(text ?? "",
                 @"开始.*(占卜|牌阵)|抽.*牌|翻.*牌|pull|draw|start.*(card|spread|reading)",
+                RegexOptions.IgnoreCase);
+        }
+
+        private static bool IsRelationshipDivinationRequest(string text)
+        {
+            return Regex.IsMatch(text ?? "",
+                @"((双人|关系|感情|喜欢|暧昧|复合|联系|好友|朋友|对方|他|她|ta|TA|我们|跟|和).*(占卜|塔罗|抽牌|牌阵|看牌|神谕|reading|tarot|spread|oracle))|((占卜|塔罗|抽牌|牌阵|看牌|神谕|reading|tarot|spread|oracle).*(双人|关系|感情|喜欢|暧昧|复合|联系|好友|朋友|对方|他|她|ta|TA|我们|跟|和))",
                 RegexOptions.IgnoreCase);
         }
 

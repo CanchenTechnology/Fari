@@ -2,12 +2,13 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 namespace SuperScrollView
 {
     public class SpinPickerItem : MonoBehaviour
     {
-        public Text mText;
+        public TMP_Text mText;
         public int mValue;
 
         public void Init()

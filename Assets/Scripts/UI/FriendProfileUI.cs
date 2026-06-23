@@ -13,6 +13,7 @@ using UnityEngine;
 using UnityEngine.Networking;
 using GamerFrameWork.UIFrameWork;
 using SuperScrollView;
+using TMPro;
 
 public class FriendProfileUI : WindowBase
 {
@@ -422,19 +423,19 @@ public class FriendProfileUI : WindowBase
 
 	private void SetTextByName(string objectName, string value)
 	{
-		Text text = FindTextByName(transform, objectName);
+		TMP_Text text = FindTextByName(transform, objectName);
 		if (text != null) text.text = value ?? "";
 	}
 
-	private Text FindTextByName(Transform root, string objectName)
+	private TMP_Text FindTextByName(Transform root, string objectName)
 	{
 		if (root == null) return null;
 		if (root.name == objectName)
-			return root.GetComponent<Text>();
+			return root.GetComponent<TMP_Text>();
 
 		for (int i = 0; i < root.childCount; i++)
 		{
-			Text result = FindTextByName(root.GetChild(i), objectName);
+			TMP_Text result = FindTextByName(root.GetChild(i), objectName);
 			if (result != null) return result;
 		}
 

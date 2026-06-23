@@ -15,13 +15,13 @@ public class ConfirmFriendInfoUIComponent:MonoBehaviour
 	public WindowLayer windowLayer = WindowLayer.MainUI;
 	public Button BackButton;
 	public Image AvatarImage;
-	public Text FriendNameText;
+	public TMP_Text FriendNameText;
 	public Button EditNameButton;
-	public Text BirthdayValueText;
+	public TMP_Text BirthdayValueText;
 	public Button EditBirthdayButton;
-	public Text BirthTimeValueText;
+	public TMP_Text BirthTimeValueText;
 	public Button EditBirthTimeButton;
-	public Text BirthCityValueText;
+	public TMP_Text BirthCityValueText;
 	public Button EditBirthCityButton;
 	public Button CreateFriendButton;
 	public Button BackEditButton;

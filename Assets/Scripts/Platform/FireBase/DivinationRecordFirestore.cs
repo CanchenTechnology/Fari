@@ -129,6 +129,15 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
         if (string.IsNullOrEmpty(record.createdAt))
             record.createdAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 
+#if UNITY_EDITOR
+        if (IsEditorPreviewMode())
+        {
+            SaveRecordToEditorPreview(record);
+            onComplete?.Invoke(true);
+            return;
+        }
+#endif
+
         if (!CheckReady(onComplete)) return;
 
         string uid = GetCurrentUid();
@@ -153,10 +162,17 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
             if (task.IsFaulted || task.IsCanceled)
             {
                 Debug.LogError($"[DivinationRecordFirestore] 保存记录失败: {task.Exception?.InnerException?.Message}");
+#if UNITY_EDITOR
+                SaveRecordToEditorPreview(record);
+                onComplete?.Invoke(true);
+                return;
+#else
                 onComplete?.Invoke(false);
                 return;
+#endif
             }
             Debug.Log($"[DivinationRecordFirestore] 记录已保存: {record.readingId}");
+            DivinationHistoryCacheService.Instance.UpsertRecord(record);
             onComplete?.Invoke(true);
         });
     }
@@ -168,8 +184,13 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
 
     public static bool SaveRecordLocal(DivinationRecordData record, bool restoreDeleted)
     {
+#if UNITY_EDITOR
+        SaveRecordToEditorPreviewStatic(record);
+        return record != null;
+#else
         Debug.LogWarning("[DivinationRecordFirestore] 占卜历史不再保存到本地，请使用 SaveRecord 写入 Firebase。");
         return false;
+#endif
     }
 
     public static void ClearLocalCacheForCurrentUser()
@@ -222,6 +243,14 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
     /// </summary>
     public void LoadAllRecords(Action<List<DivinationRecordData>> onComplete)
     {
+#if UNITY_EDITOR
+        if (IsEditorPreviewMode())
+        {
+            onComplete?.Invoke(LoadCachedRecordsLocal());
+            return;
+        }
+#endif
+
         if (!IsReady)
         {
             onComplete?.Invoke(new List<DivinationRecordData>());
@@ -248,8 +277,13 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
                 if (task.IsFaulted || task.IsCanceled)
                 {
                     Debug.LogError($"[DivinationRecordFirestore] 加载记录失败: {task.Exception?.InnerException?.Message}");
+#if UNITY_EDITOR
+                    onComplete?.Invoke(LoadCachedRecordsLocal());
+                    return;
+#else
                     onComplete?.Invoke(new List<DivinationRecordData>());
                     return;
+#endif
                 }
 
                 foreach (var doc in task.Result.Documents)
@@ -268,6 +302,14 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
     /// </summary>
     public void LoadRecord(string readingId, Action<DivinationRecordData> onComplete)
     {
+#if UNITY_EDITOR
+        if (IsEditorPreviewMode())
+        {
+            onComplete?.Invoke(FindCachedRecord(readingId));
+            return;
+        }
+#endif
+
         if (!IsReady)
         {
             onComplete?.Invoke(null);
@@ -313,6 +355,16 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
             return;
         }
 
+#if UNITY_EDITOR
+        if (IsEditorPreviewMode())
+        {
+            bool removed = RemoveCachedRecord(readingId);
+            DivinationHistoryCacheService.Instance.RemoveRecord(readingId);
+            onComplete?.Invoke(removed);
+            return;
+        }
+#endif
+
         if (!IsReady)
         {
             onComplete?.Invoke(false);
@@ -336,10 +388,18 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
                 if (task.IsFaulted || task.IsCanceled)
                 {
                     Debug.LogError($"[DivinationRecordFirestore] 删除失败: {task.Exception?.InnerException?.Message}");
+#if UNITY_EDITOR
+                    bool removed = RemoveCachedRecord(readingId);
+                    DivinationHistoryCacheService.Instance.RemoveRecord(readingId);
+                    onComplete?.Invoke(removed);
+                    return;
+#else
                     onComplete?.Invoke(false);
                     return;
+#endif
                 }
                 Debug.Log($"[DivinationRecordFirestore] 已删除记录: {readingId}");
+                DivinationHistoryCacheService.Instance.RemoveRecord(readingId);
                 onComplete?.Invoke(true);
             });
     }
@@ -483,11 +543,21 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
 
     private string GetCurrentUid()
     {
-        if (UserDataManager.Instance != null && !string.IsNullOrWhiteSpace(UserDataManager.Instance.FirebaseUid))
-            return UserDataManager.Instance.FirebaseUid;
-
         var auth = Firebase.Auth.FirebaseAuth.DefaultInstance;
-        return auth?.CurrentUser?.UserId ?? "";
+        string authUid = auth?.CurrentUser?.UserId ?? "";
+        if (string.IsNullOrWhiteSpace(authUid))
+        {
+            Debug.LogWarning("[DivinationRecordFirestore] FirebaseAuth 当前用户为空，跳过云端占卜历史操作");
+            return "";
+        }
+
+        string cachedUid = UserDataManager.Instance?.FirebaseUid ?? "";
+        if (!string.IsNullOrWhiteSpace(cachedUid) && cachedUid != authUid)
+        {
+            Debug.LogWarning($"[DivinationRecordFirestore] 本地 FirebaseUid({cachedUid}) 与 AuthUid({authUid}) 不一致，已使用 AuthUid");
+        }
+
+        return authUid;
     }
 
     private string GetCurrentOracleId()
@@ -510,7 +580,11 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
 
     public List<DivinationRecordData> LoadCachedRecords()
     {
+#if UNITY_EDITOR
+        return LoadCachedRecordsLocal();
+#else
         return new List<DivinationRecordData>();
+#endif
     }
 
     private DivinationRecordData FindCachedRecord(string readingId)
@@ -559,6 +633,34 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
     {
         SaveRecordsToCacheLocal(records);
     }
+
+#if UNITY_EDITOR
+    private bool IsEditorPreviewMode()
+    {
+        return Firebase.Auth.FirebaseAuth.DefaultInstance?.CurrentUser == null;
+    }
+
+    private void SaveRecordToEditorPreview(DivinationRecordData record)
+    {
+        SaveRecordToEditorPreviewStatic(record);
+    }
+
+    private static void SaveRecordToEditorPreviewStatic(DivinationRecordData record)
+    {
+        if (record == null) return;
+        if (string.IsNullOrEmpty(record.readingId))
+            record.readingId = "record_" + Guid.NewGuid().ToString("N");
+        if (string.IsNullOrEmpty(record.createdAt))
+            record.createdAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+
+        List<DivinationRecordData> records = LoadCachedRecordsLocal();
+        records.RemoveAll(item => item == null || item.readingId == record.readingId);
+        records.Insert(0, record);
+        SaveRecordsToCacheLocal(records);
+        DivinationHistoryCacheService.Instance.UpsertRecord(record);
+        Debug.LogWarning($"[DivinationRecordFirestore] Editor 预览模式：占卜历史已保存到编辑器本地缓存 {record.readingId}");
+    }
+#endif
 
     private static List<DivinationRecordData> LoadCachedRecordsLocal()
     {

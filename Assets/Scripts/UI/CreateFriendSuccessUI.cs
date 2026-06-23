@@ -8,6 +8,7 @@
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
+using TMPro;
 
 public class CreateFriendSuccessUI : WindowBase
 {
@@ -77,7 +78,7 @@ public class CreateFriendSuccessUI : WindowBase
 		}
 	}
 
-	private void SetText(Text text, string value)
+	private void SetText(TMP_Text text, string value)
 	{
 		if (text != null)
 		{

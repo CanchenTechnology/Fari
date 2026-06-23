@@ -15,6 +15,7 @@ using GamerFrameWork.UIFrameWork;
 using GamerFrameWork;
 using GamerFrameWork.OracleRuntime;
 using XFGameFrameWork;
+using TMPro;
 
 public class TarorSingleSpreadShuffleUI : WindowBase
 {
@@ -28,7 +29,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     private bool _shuffleDone;
     private bool _cardsReadyToDraw;
     private int _nextDrawIndex;
-    private Text _startShuffleButtonText;
+    private TMP_Text _startShuffleButtonText;
     private int _latestRevealedIndex = -1;
     private int _cardInfoRequestVersion;
     private bool _isCardInfoLoading;
@@ -120,7 +121,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         if (_startShuffleButtonText != null) return;
         if (uiComponent.StartShuffleButton == null) return;
 
-        _startShuffleButtonText = uiComponent.StartShuffleButton.GetComponentInChildren<Text>(true);
+        _startShuffleButtonText = uiComponent.StartShuffleButton.GetComponentInChildren<TMP_Text>(true);
     }
 
     /// <summary>

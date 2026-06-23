@@ -18,20 +18,20 @@ public class EditFriendUIComponent:MonoBehaviour
 	public Button BackButton;
 	public Image FriendAvatarImage;
 	public Button EditAvatarButton;
-	public InputField FriendNameInputField;
-	public InputField FriendSignatureInputField;
+	public TMP_InputField FriendNameInputField;
+	public TMP_InputField FriendSignatureInputField;
 	public Button ResetDefaultButton;
-	public Text BirthdayTextText;
+	public TMP_Text BirthdayTextText;
 	public Button BirthDateButton;
-	public Text BirthTimeTextText;
+	public TMP_Text BirthTimeTextText;
 	public Button BirthTimeButton;
-	public Text BirthCityTextText;
+	public TMP_Text BirthCityTextText;
 	public Button BirthCityButton;
 	public Button MoreRecordsButton;
 	public LoopListView2 OracleHistoryScrollViewLoopListView2;
 	public Switch SwitchSwitch;
 	public Button SaveChangesButton;
-	public Text LastSavedTextText;
+	public TMP_Text LastSavedTextText;
 	public void InitComponent(WindowBase target)
 	{
 	    //组件事件绑定

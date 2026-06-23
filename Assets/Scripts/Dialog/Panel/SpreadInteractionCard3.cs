@@ -7,6 +7,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using XFGameFrameWork;
 using GamerFrameWork.OracleRuntime;
+using TMPro;
 
 /// <summary>
 /// 三排牌阵互动卡 —— AI 在对话中直接触发的三卡互动牌阵
@@ -20,12 +21,12 @@ using GamerFrameWork.OracleRuntime;
 public class SpreadInteractionCard3 : MonoBehaviour
 {
     [Header("标题")]
-    public Text cardTitle;
-    public Text cardSubtitle;
+    public TMP_Text cardTitle;
+    public TMP_Text cardSubtitle;
 
     [Header("抽牌")]
     public Button drawCardBtn;
-    public Text drawCardBtnText;           // 按钮文字（可选），默认"开始抽牌"
+    public TMP_Text drawCardBtnText;           // 按钮文字（可选），默认"开始抽牌"
 
     [Header("卡牌槽位（左→中→右）")]
     public CardSlotItem cardSlotItem1;
@@ -383,7 +384,7 @@ public class SpreadInteractionCard3 : MonoBehaviour
 
     private void SetButtonText(Button button, string text)
     {
-        var label = button != null ? button.GetComponentInChildren<Text>(true) : null;
+        var label = button != null ? button.GetComponentInChildren<TMP_Text>(true) : null;
         if (label != null)
             label.text = text;
     }

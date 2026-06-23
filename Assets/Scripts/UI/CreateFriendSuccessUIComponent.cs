@@ -16,7 +16,7 @@ public class CreateFriendSuccessUIComponent:MonoBehaviour
 	public Button NotificationButton;
 	public Button BackButton;
 	public Image FriendAvatarImage;
-	public Text FriendNameText;
+	public TMP_Text FriendNameText;
 	public Button EnterConversationButton;
 	public Button BackToFriendsButton;
 	public void InitComponent(WindowBase target)

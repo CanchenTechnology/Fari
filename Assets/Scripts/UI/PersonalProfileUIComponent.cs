@@ -15,13 +15,13 @@ public class PersonalProfileUIComponent:MonoBehaviour
 	public WindowLayer windowLayer = WindowLayer.Top;
 	public Button BackButton;
 	public Image AvatarImageImage;
-	public Text UserNameTitleText;
-	public InputField BioInputInputField;
+	public TMP_Text UserNameTitleText;
+	public TMP_InputField BioInputInputField;
 	public Button BirthdayArrowButton;
-	public Text birthdayTextText;
-	public Text birthdayTimeText;
+	public TMP_Text birthdayTextText;
+	public TMP_Text birthdayTimeText;
 	public Button TimeArrowButton;
-	public Text CityTextText;
+	public TMP_Text CityTextText;
 	public Button CityArrowButton;
 	public Image AvatarHeadImage;
 	public Button SetAvatarButton;

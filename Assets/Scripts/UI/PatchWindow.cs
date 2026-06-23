@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UniFramework.Event;
+using TMPro;
 
 public class PatchWindow : MonoBehaviour
 {
@@ -13,7 +14,7 @@ public class PatchWindow : MonoBehaviour
     private class MessageBox
     {
         private GameObject _cloneObject;
-        private Text _content;
+        private TMP_Text _content;
         private Button _btnOK;
         private System.Action _clickOK;
 
@@ -28,7 +29,7 @@ public class PatchWindow : MonoBehaviour
         public void Create(GameObject cloneObject)
         {
             _cloneObject = cloneObject;
-            _content = cloneObject.transform.Find("txt_content").GetComponent<Text>();
+            _content = cloneObject.transform.Find("txt_content").GetComponent<TMP_Text>();
             _btnOK = cloneObject.transform.Find("btn_ok").GetComponent<Button>();
             _btnOK.onClick.AddListener(OnClickYes);
         }
@@ -58,12 +59,12 @@ public class PatchWindow : MonoBehaviour
     // UGUI相关
     private GameObject _messageBoxObj;
     private Slider _slider;
-    private Text _tips;
+    private TMP_Text _tips;
 
     void Awake()
     {
         _slider = transform.Find("UIWindow/Slider").GetComponent<Slider>();
-        _tips = transform.Find("UIWindow/Slider/txt_tips").GetComponent<Text>();
+        _tips = transform.Find("UIWindow/Slider/txt_tips").GetComponent<TMP_Text>();
         _tips.text = "Initializing the game world !";
         _messageBoxObj = transform.Find("UIWindow/MessgeBox").gameObject;
         _messageBoxObj.SetActive(false);

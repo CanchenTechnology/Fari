@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
+using TMPro;
 namespace GamerFrameWork.UIFrameWork
 {
     /// <summary>
@@ -11,6 +12,8 @@ namespace GamerFrameWork.UIFrameWork
     /// </summary>
     public class WindowBase : WindowBehaviour
     {
+        public static bool EnableWindowAnimation = false;
+
         private CanvasGroup mUIMaskCanvasGroup;
         private CanvasGroup mCanvasGroup;
         protected Transform mUIContent;
@@ -19,6 +22,7 @@ namespace GamerFrameWork.UIFrameWork
         private List<Button> mAllButtonList = new List<Button>();//所有Button列表
         private List<Toggle> mToggleList = new List<Toggle>();//所有的Toggle列表
         private List<InputField> mInputList = new List<InputField>();//所有的输入框列表
+        private List<TMP_InputField> mTmpInputList = new List<TMP_InputField>();//所有TMP输入框列表
         private void InitializeBaseComponent()
         {
             mCanvasGroup = transform.GetComponent<CanvasGroup>();
@@ -53,13 +57,16 @@ namespace GamerFrameWork.UIFrameWork
             mAllButtonList.Clear();
             mToggleList.Clear();
             mInputList.Clear();
+            mTmpInputList.Clear();
         }
         #endregion
         #region 动画管理
         public void ShowAnimation()
         {
+            KillWindowTweens();
+
             //基础弹窗不需要动画
-            if (Canvas.sortingOrder > 90 && !mDisableAnim)
+            if (ShouldPlayWindowAnimation())
             {
                 //Mask动画
                 mUIMaskCanvasGroup.alpha = 0;
@@ -68,11 +75,17 @@ namespace GamerFrameWork.UIFrameWork
                 mUIContent.localScale = Vector3.one * 0.8f;
                 mUIContent.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack);
             }
+            else if (ShouldUseWindowAnimationSlot())
+            {
+                ResetWindowAnimationState();
+            }
 
         }
         public void HideAnimation()
         {
-            if (Canvas.sortingOrder > 90 && !mDisableAnim)
+            KillWindowTweens();
+
+            if (ShouldPlayWindowAnimation())
             {
                 mUIContent.DOScale(Vector3.one * 1.1f, 0.2f).SetEase(Ease.OutBack).OnComplete(() =>
                 {
@@ -81,7 +94,48 @@ namespace GamerFrameWork.UIFrameWork
             }
             else
             {
+                if (ShouldUseWindowAnimationSlot())
+                {
+                    ResetWindowAnimationState();
+                }
+
                 UIModule.Instance.HideWindow(Name);
+            }
+        }
+
+        private bool ShouldPlayWindowAnimation()
+        {
+            return EnableWindowAnimation && ShouldUseWindowAnimationSlot();
+        }
+
+        private bool ShouldUseWindowAnimationSlot()
+        {
+            return Canvas != null && Canvas.sortingOrder > 90 && !mDisableAnim;
+        }
+
+        private void ResetWindowAnimationState()
+        {
+            if (mUIMaskCanvasGroup != null)
+            {
+                mUIMaskCanvasGroup.alpha = 1f;
+            }
+
+            if (mUIContent != null)
+            {
+                mUIContent.localScale = Vector3.one;
+            }
+        }
+
+        private void KillWindowTweens()
+        {
+            if (mUIContent != null)
+            {
+                DOTween.Kill(mUIContent);
+            }
+
+            if (mUIMaskCanvasGroup != null)
+            {
+                DOTween.Kill(mUIMaskCanvasGroup);
             }
         }
         #endregion
@@ -164,6 +218,20 @@ namespace GamerFrameWork.UIFrameWork
             }
 
         }
+        public void AddInputFieldListener(TMP_InputField input, UnityAction<string> onChangeAction, UnityAction<string> endAction)
+        {
+            if (input != null)
+            {
+                if (!mTmpInputList.Contains(input))
+                {
+                    mTmpInputList.Add(input);
+                }
+                input.onValueChanged.RemoveAllListeners();
+                input.onEndEdit.RemoveAllListeners();
+                input.onValueChanged.AddListener(onChangeAction);
+                input.onEndEdit.AddListener(endAction);
+            }
+        }
         public void RemoveAllButtonListener()
         {
             foreach (var item in mAllButtonList)
@@ -181,6 +249,11 @@ namespace GamerFrameWork.UIFrameWork
         public void RemoveAllInputListener()
         {
             foreach (var item in mInputList)
+            {
+                item.onValueChanged.RemoveAllListeners();
+                item.onEndEdit.RemoveAllListeners();
+            }
+            foreach (var item in mTmpInputList)
             {
                 item.onValueChanged.RemoveAllListeners();
                 item.onEndEdit.RemoveAllListeners();

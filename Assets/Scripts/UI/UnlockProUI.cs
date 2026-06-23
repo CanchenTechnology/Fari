@@ -8,22 +8,23 @@
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
+using TMPro;
 
 public class UnlockProUI : WindowBase
 {
 	public UnlockProUIComponent uiComponent;
 
 	private IapProductsConfig iapProducts = IapProductsConfig.Default;
-	private Text monthlyPurchaseText;
-	private Text yearlyPurchaseText;
-	private Text purchaseHintText;
-	private Text pageTitleText;
-	private Text proStatusTitleText;
-	private Text proStatusDescText;
-	private Text currentPlanLabelText;
-	private Text currentPlanValueText;
-	private readonly Text[] featureTitleTexts = new Text[4];
-	private readonly Text[] featureDescTexts = new Text[4];
+	private TMP_Text monthlyPurchaseText;
+	private TMP_Text yearlyPurchaseText;
+	private TMP_Text purchaseHintText;
+	private TMP_Text pageTitleText;
+	private TMP_Text proStatusTitleText;
+	private TMP_Text proStatusDescText;
+	private TMP_Text currentPlanLabelText;
+	private TMP_Text currentPlanValueText;
+	private readonly TMP_Text[] featureTitleTexts = new TMP_Text[4];
+	private readonly TMP_Text[] featureDescTexts = new TMP_Text[4];
 	private bool isCurrentPro;
 	private bool isRefreshingStatus;
 
@@ -200,19 +201,19 @@ public class UnlockProUI : WindowBase
 		}
 	}
 
-	private Text GetButtonLabel(Button button, Text cached)
+	private TMP_Text GetButtonLabel(Button button, TMP_Text cached)
 	{
 		if (cached != null) return cached;
-		return button != null ? button.GetComponentInChildren<Text>(true) : null;
+		return button != null ? button.GetComponentInChildren<TMP_Text>(true) : null;
 	}
 
-	private Text FindTextByObjectName(string objectName)
+	private TMP_Text FindTextByObjectName(string objectName)
 	{
 		if (string.IsNullOrEmpty(objectName))
 			return null;
 
-		Text[] texts = gameObject.GetComponentsInChildren<Text>(true);
-		foreach (Text text in texts)
+		TMP_Text[] texts = gameObject.GetComponentsInChildren<TMP_Text>(true);
+		foreach (TMP_Text text in texts)
 		{
 			if (text == null) continue;
 			string name = text.gameObject.name;
@@ -315,15 +316,15 @@ public class UnlockProUI : WindowBase
 		SetText(featureDescTexts[index], desc);
 	}
 
-	private static void SetText(Text target, string value)
+	private static void SetText(TMP_Text target, string value)
 	{
 		if (target == null)
 			return;
 
 		target.text = value ?? "";
-		target.resizeTextForBestFit = true;
-		target.resizeTextMinSize = Mathf.Clamp(target.resizeTextMinSize <= 0 ? 12 : target.resizeTextMinSize, 10, 18);
-		target.resizeTextMaxSize = Mathf.Max(target.fontSize, target.resizeTextMaxSize);
+		target.enableAutoSizing = true;
+		target.fontSizeMin = Mathf.Clamp(target.fontSizeMin <= 0 ? 12 : target.fontSizeMin, 10, 18);
+		target.fontSizeMax = Mathf.Max(target.fontSize, target.fontSizeMax);
 	}
 	#endregion
 

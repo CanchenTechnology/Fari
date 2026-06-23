@@ -144,7 +144,15 @@ public static class DailyOracleHistoryBridge
         DivinationRecordFirestore store = GetRecordStore();
         if (store != null)
         {
-            if (store.IsReady)
+#if UNITY_EDITOR
+            if (Firebase.Auth.FirebaseAuth.DefaultInstance?.CurrentUser == null)
+            {
+                DivinationRecordFirestore.SaveRecordLocal(record);
+                return record;
+            }
+#endif
+
+            if (store.IsReady && Firebase.Auth.FirebaseAuth.DefaultInstance?.CurrentUser != null)
                 SaveToFirestore(store, record);
             else
                 store.StartCoroutine(SaveToFirestoreWhenReady(store, record));
@@ -170,13 +178,15 @@ public static class DailyOracleHistoryBridge
     private static IEnumerator SaveToFirestoreWhenReady(DivinationRecordFirestore store, DivinationRecordData record)
     {
         float elapsed = 0f;
-        while (store != null && !store.IsReady && elapsed < SaveWhenReadyTimeout)
+        while (store != null
+            && (!store.IsReady || Firebase.Auth.FirebaseAuth.DefaultInstance?.CurrentUser == null)
+            && elapsed < SaveWhenReadyTimeout)
         {
             elapsed += Time.deltaTime;
             yield return null;
         }
 
-        if (store == null || !store.IsReady)
+        if (store == null || !store.IsReady || Firebase.Auth.FirebaseAuth.DefaultInstance?.CurrentUser == null)
         {
             Debug.LogWarning($"[DailyOracleHistoryBridge] 历史服务暂未就绪，未保存每日神谕历史: {record?.readingId}");
             yield break;

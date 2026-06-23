@@ -7,6 +7,7 @@ using GamerFrameWork.OracleRuntime;
 using UnityEngine;
 using UnityEngine.UI;
 using XFGameFrameWork;
+using TMPro;
 
 /// <summary>
 /// 单排牌阵互动卡 —— AI 在对话中直接触发的单卡互动牌阵（单张镜像牌阵）
@@ -20,13 +21,13 @@ using XFGameFrameWork;
 public class SpreadInteractionCard1 : MonoBehaviour
 {
     [Header("标题")]
-    public Text cardTitle;
-    public Text cardSubtitle1;
-    public Text cardSubtitle2;
+    public TMP_Text cardTitle;
+    public TMP_Text cardSubtitle1;
+    public TMP_Text cardSubtitle2;
 
     [Header("抽牌")]
     public Button drawCardBtn;
-    public Text drawCardBtnText;           // 按钮文字（可选），默认"开始抽牌"
+    public TMP_Text drawCardBtnText;           // 按钮文字（可选），默认"开始抽牌"
 
     [Header("卡牌槽位")]
     public CardSlotItem cardSlotItem;
@@ -355,7 +356,7 @@ public class SpreadInteractionCard1 : MonoBehaviour
 
     private void SetButtonText(Button button, string text)
     {
-        var label = button != null ? button.GetComponentInChildren<Text>(true) : null;
+        var label = button != null ? button.GetComponentInChildren<TMP_Text>(true) : null;
         if (label != null)
             label.text = text;
     }

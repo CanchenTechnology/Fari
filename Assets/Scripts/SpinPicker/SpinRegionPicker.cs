@@ -3,6 +3,7 @@ using SuperScrollView;
 using UnityEngine;
 using UnityEngine.Serialization;
 using UnityEngine.UI;
+using TMPro;
 
 public class SpinRegionPicker : MonoBehaviour
 {
@@ -132,7 +133,7 @@ public class SpinRegionPicker : MonoBehaviour
 	public LoopListView2 mLoopListViewCity;
 	public Color mColorReserved = new Color(0.63f, 0.60f, 0.66f, 1f);
 	public Color mColorSelected = new Color(1f, 0.84f, 0.48f, 1f);
-	public Text CurSelect;
+	public TMP_Text CurSelect;
 	public Button ConfirmButton;
 
 	private int mCurSelectedCountryIndex;
@@ -189,7 +190,7 @@ public class SpinRegionPicker : MonoBehaviour
 		if (CurSelect == null)
 		{
 			Transform item = transform.Find("CurSelect");
-			if (item != null) CurSelect = item.GetComponent<Text>();
+			if (item != null) CurSelect = item.GetComponent<TMP_Text>();
 		}
 		if (ConfirmButton == null)
 		{
@@ -350,7 +351,7 @@ public class SpinRegionPicker : MonoBehaviour
 		}
 
 		itemScript.Value = valueIndex;
-		Text itemText = EnsureItemText(itemScript, item.transform);
+		TMP_Text itemText = EnsureItemText(itemScript, item.transform);
 		if (itemText != null)
 		{
 			itemText.text = label;
@@ -358,20 +359,20 @@ public class SpinRegionPicker : MonoBehaviour
 		return item;
 	}
 
-	private Text EnsureItemText(SpinPickerItem itemScript, Transform itemTransform)
+	private TMP_Text EnsureItemText(SpinPickerItem itemScript, Transform itemTransform)
 	{
 		if (itemScript.mText != null)
 		{
 			return itemScript.mText;
 		}
 
-		itemScript.mText = itemTransform.GetComponentInChildren<Text>(true);
+		itemScript.mText = itemTransform.GetComponentInChildren<TMP_Text>(true);
 		if (itemScript.mText != null)
 		{
 			return itemScript.mText;
 		}
 
-		GameObject textObject = new GameObject("TextName", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+		GameObject textObject = new GameObject("TextName", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
 		textObject.transform.SetParent(itemTransform, false);
 		RectTransform textRect = textObject.GetComponent<RectTransform>();
 		textRect.anchorMin = Vector2.zero;
@@ -379,14 +380,14 @@ public class SpinRegionPicker : MonoBehaviour
 		textRect.offsetMin = Vector2.zero;
 		textRect.offsetMax = Vector2.zero;
 
-		Text text = textObject.GetComponent<Text>();
-		text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+		TMP_Text text = textObject.GetComponent<TMP_Text>();
+		text.font = TMP_Settings.defaultFontAsset;
 		text.fontSize = 34;
-		text.alignment = TextAnchor.MiddleCenter;
+		text.alignment = TextAlignmentOptions.Center;
 		text.color = mColorReserved;
 		text.raycastTarget = false;
-		text.horizontalOverflow = HorizontalWrapMode.Overflow;
-		text.verticalOverflow = VerticalWrapMode.Overflow;
+		text.enableWordWrapping = false;
+		text.overflowMode = TextOverflowModes.Overflow;
 		itemScript.mText = text;
 		return itemScript.mText;
 	}

@@ -3,6 +3,7 @@ using SuperScrollView;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public static class SpinPickerUIPrefabBuilder
 {
@@ -164,17 +165,17 @@ public static class SpinPickerUIPrefabBuilder
 		CreateSelectionLine("LineTop", column.transform, new Vector2(0, 48), size);
 		CreateSelectionLine("LineBottom", column.transform, new Vector2(0, -48), size);
 
-		GameObject itemPrefab = new GameObject("ItemPrefab", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text), typeof(LoopListViewItem2), typeof(SpinPickerItem));
+		GameObject itemPrefab = new GameObject("ItemPrefab", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI), typeof(LoopListViewItem2), typeof(SpinPickerItem));
 		itemPrefab.transform.SetParent(column.transform, false);
 		RectTransform itemRect = itemPrefab.GetComponent<RectTransform>();
 		Rect(itemRect, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(size.x, 96), new Vector2(0.5f, 0.5f));
-		Text itemText = itemPrefab.GetComponent<Text>();
+		TMP_Text itemText = itemPrefab.GetComponent<TMP_Text>();
 		itemText.font = GetUIFont();
 		itemText.fontSize = itemFontSize;
 		itemText.color = MutedText;
-		itemText.alignment = TextAnchor.MiddleCenter;
-		itemText.horizontalOverflow = HorizontalWrapMode.Overflow;
-		itemText.verticalOverflow = VerticalWrapMode.Overflow;
+		itemText.alignment = TextAlignmentOptions.Center;
+		itemText.enableWordWrapping = false;
+		itemText.overflowMode = TextOverflowModes.Overflow;
 		itemPrefab.GetComponent<SpinPickerItem>().mText = itemText;
 
 		LoopListView2 loopListView = column.AddComponent<LoopListView2>();
@@ -246,20 +247,20 @@ public static class SpinPickerUIPrefabBuilder
 		return image;
 	}
 
-	private static Text CreateText(string name, Transform parent, string value, int fontSize, Color color, TextAnchor alignment, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 size, FontStyle style, Vector2? pivot = null, bool stretchSize = false)
+	private static TMP_Text CreateText(string name, Transform parent, string value, int fontSize, Color color, TextAnchor alignment, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 size, FontStyle style, Vector2? pivot = null, bool stretchSize = false)
 	{
-		GameObject go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text), typeof(Shadow));
+		GameObject go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI), typeof(Shadow));
 		go.transform.SetParent(parent, false);
 		Rect(go.GetComponent<RectTransform>(), anchorMin, anchorMax, anchoredPosition, size, pivot ?? new Vector2(0.5f, 0.5f), stretchSize);
-		Text text = go.GetComponent<Text>();
+		TMP_Text text = go.GetComponent<TMP_Text>();
 		text.text = value;
 		text.font = GetUIFont();
 		text.fontSize = fontSize;
-		text.fontStyle = style;
+		text.fontStyle = ToTMPFontStyle(style);
 		text.color = color;
-		text.alignment = alignment;
-		text.horizontalOverflow = HorizontalWrapMode.Wrap;
-		text.verticalOverflow = VerticalWrapMode.Overflow;
+		text.alignment = ToTMPAlignment(alignment);
+		text.enableWordWrapping = true;
+		text.overflowMode = TextOverflowModes.Overflow;
 
 		Shadow shadow = go.GetComponent<Shadow>();
 		shadow.effectColor = new Color(0f, 0f, 0f, 0.86f);
@@ -307,10 +308,52 @@ public static class SpinPickerUIPrefabBuilder
 		}
 	}
 
-	private static Font GetUIFont()
+	private static TMP_FontAsset GetUIFont()
 	{
-		return AssetDatabase.LoadAssetAtPath<Font>("Assets/GamerFrameWork/I2/Localization/Examples/Resources/ARIAL.TTF")
-			?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+		return AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/GameData/Arts/Fonts/TMP/Regular SDF.asset")
+			?? TMP_Settings.defaultFontAsset;
+	}
+
+	private static FontStyles ToTMPFontStyle(FontStyle style)
+	{
+		switch (style)
+		{
+			case FontStyle.Bold:
+				return FontStyles.Bold;
+			case FontStyle.Italic:
+				return FontStyles.Italic;
+			case FontStyle.BoldAndItalic:
+				return FontStyles.Bold | FontStyles.Italic;
+			default:
+				return FontStyles.Normal;
+		}
+	}
+
+	private static TextAlignmentOptions ToTMPAlignment(TextAnchor alignment)
+	{
+		switch (alignment)
+		{
+			case TextAnchor.UpperLeft:
+				return TextAlignmentOptions.TopLeft;
+			case TextAnchor.UpperCenter:
+				return TextAlignmentOptions.Top;
+			case TextAnchor.UpperRight:
+				return TextAlignmentOptions.TopRight;
+			case TextAnchor.MiddleLeft:
+				return TextAlignmentOptions.Left;
+			case TextAnchor.MiddleCenter:
+				return TextAlignmentOptions.Center;
+			case TextAnchor.MiddleRight:
+				return TextAlignmentOptions.Right;
+			case TextAnchor.LowerLeft:
+				return TextAlignmentOptions.BottomLeft;
+			case TextAnchor.LowerCenter:
+				return TextAlignmentOptions.Bottom;
+			case TextAnchor.LowerRight:
+				return TextAlignmentOptions.BottomRight;
+			default:
+				return TextAlignmentOptions.Center;
+		}
 	}
 
 	private static void SetLayerRecursive(GameObject go, int layer)

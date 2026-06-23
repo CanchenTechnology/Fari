@@ -14,14 +14,14 @@ public class TwoPersonDivinationWaitingFriendFlowUIComponent:MonoBehaviour
 {
 	public WindowLayer windowLayer = WindowLayer.Top;
 	public Button BackButton;
-	public Text WaitingTitleText;
+	public TMP_Text WaitingTitleText;
 	public Image MyCardSlotImage;
 	public Image FriendCardSlotImage;
-	public Text FriendCardStateText;
+	public TMP_Text FriendCardStateText;
 	public Image YouStateAvatarImage;
 	public Image FriendStateAvatarImage;
-	public Text FriendNameText;
-	public Text FriendStateTextText;
+	public TMP_Text FriendNameText;
+	public TMP_Text FriendStateTextText;
 	public Button RemindFriendButton;
 	public void InitComponent(WindowBase target)
 	{

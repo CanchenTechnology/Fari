@@ -19,21 +19,21 @@ public class CompleteInterpretationUIComponent:MonoBehaviour
 	public WindowLayer windowLayer = WindowLayer.MainUI;
 	public Button SwitchOracleButton;
 	public Image CardImageImage;
-	public Text CardDescTextText;
-	public Text CardNameTextText;
-	public Text Tag1TextText;
-	public Text Tag2TextText;
-	public Text Tag3TextText;
-	public Text MeaningSectionText;
-	public Text ActionSectionText;
+	public TMP_Text CardDescTextText;
+	public TMP_Text CardNameTextText;
+	public TMP_Text Tag1TextText;
+	public TMP_Text Tag2TextText;
+	public TMP_Text Tag3TextText;
+	public TMP_Text MeaningSectionText;
+	public TMP_Text ActionSectionText;
 	public Button Topic1ItemButton;
-	public Text TopicText1Text;
+	public TMP_Text TopicText1Text;
 	public Button Topic2ItemButton;
-	public Text TopicText2Text;
+	public TMP_Text TopicText2Text;
 	public Button Topic3ItemButton;
-	public Text TopicText3Text;
+	public TMP_Text TopicText3Text;
 	public Button Topic4ItemButton;
-	public Text TopicText4Text;
+	public TMP_Text TopicText4Text;
 	public Button ContinueChatButton;
 
 

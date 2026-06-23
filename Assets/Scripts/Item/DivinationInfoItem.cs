@@ -3,13 +3,14 @@ using System.Collections.Generic;
 using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public class DivinationInfoItem : MonoBehaviour
 {
     public Image iconImage;
-    public Text cardName;
+    public TMP_Text cardName;
 
-    public Text cardDesText;  //塔罗牌的详细描述
+    public TMP_Text cardDesText;  //塔罗牌的详细描述
 
     public void SetItemData(Sprite iconSprite,string cardNameStr,string cardDes)
     {

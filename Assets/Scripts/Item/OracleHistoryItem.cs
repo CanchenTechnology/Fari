@@ -2,17 +2,18 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public class OracleHistoryItem : MonoBehaviour
 {
-    public Text tag1Text;
-    public Text tag2Text;
+    public TMP_Text tag1Text;
+    public TMP_Text tag2Text;
 
-    public Text contentText;
+    public TMP_Text contentText;
 
-    public Text timeText;
+    public TMP_Text timeText;
 
-    public Text stateText;
+    public TMP_Text stateText;
 
     public Button viewBtn;
 

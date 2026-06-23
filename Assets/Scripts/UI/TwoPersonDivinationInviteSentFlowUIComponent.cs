@@ -14,8 +14,8 @@ public class TwoPersonDivinationInviteSentFlowUIComponent:MonoBehaviour
 {
 	public WindowLayer windowLayer = WindowLayer.Top;
 	public Button BackButton;
-	public Text WaitingAcceptTitleText;
-	public Text InviteCountdownText;
+	public TMP_Text WaitingAcceptTitleText;
+	public TMP_Text InviteCountdownText;
 	public Image MyCardImage;
 	public Button CancelInviteButton;
 	public Button CopyInviteLinkButton;

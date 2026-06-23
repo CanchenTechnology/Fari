@@ -5,13 +5,14 @@ using GamerFrameWork.UIFrameWork;
 using GamerFrameWork.OracleRuntime;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public class DailyCardBox : MonoBehaviour
 {
-    public Text cardTitleText;
+    public TMP_Text cardTitleText;
     public Image cardImage;
-    public Text cardDesTitleText;
-    public Text cardDesText;
+    public TMP_Text cardDesTitleText;
+    public TMP_Text cardDesText;
 
     public Button detailBtn;
 

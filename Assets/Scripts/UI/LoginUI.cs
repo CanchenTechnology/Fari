@@ -10,11 +10,12 @@ using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 using Firebase.Auth;
+using TMPro;
 
 public class LoginUI : WindowBase
 {
 	public LoginUIComponent uiComponent;
-	private InputField emailInputField;
+	private TMP_InputField emailInputField;
 	private Button emailLoginButton;
 	private Button createAccountButton;
 	private Button gameCenterSignInButton;
@@ -243,12 +244,12 @@ public class LoginUI : WindowBase
 		return null;
 	}
 
-	private static InputField FindInputFieldByName(Transform root, params string[] names)
+	private static TMP_InputField FindInputFieldByName(Transform root, params string[] names)
 	{
 		if (root == null || names == null) return null;
 
-		InputField[] fields = root.GetComponentsInChildren<InputField>(true);
-		foreach (InputField field in fields)
+		TMP_InputField[] fields = root.GetComponentsInChildren<TMP_InputField>(true);
+		foreach (TMP_InputField field in fields)
 		{
 			foreach (string name in names)
 			{
@@ -332,13 +333,13 @@ public static class LoginEmailAuthOverlay
 		layout.childForceExpandWidth = true;
 		layout.childForceExpandHeight = false;
 
-		Text title = CreateText(panel.transform, "邮箱登录", 28, FontStyle.Bold, new Color(1f, 0.78f, 0.45f, 1f));
-		title.alignment = TextAnchor.MiddleCenter;
+		TMP_Text title = CreateText(panel.transform, "邮箱登录", 28, FontStyles.Bold, new Color(1f, 0.78f, 0.45f, 1f));
+		title.alignment = TextAlignmentOptions.Center;
 
-		InputField emailField = CreateInput(panel.transform, "邮箱", false);
+		TMP_InputField emailField = CreateInput(panel.transform, "邮箱", false);
 		emailField.text = initialEmail ?? string.Empty;
-		InputField passwordField = CreateInput(panel.transform, "密码（至少 6 位）", true);
-		InputField nameField = CreateInput(panel.transform, "昵称（创建账号时使用，可选）", false);
+		TMP_InputField passwordField = CreateInput(panel.transform, "密码（至少 6 位）", true);
+		TMP_InputField nameField = CreateInput(panel.transform, "昵称（创建账号时使用，可选）", false);
 
 		GameObject row = new GameObject("EmailAuthButtons", typeof(RectTransform), typeof(HorizontalLayoutGroup));
 		row.transform.SetParent(panel.transform, false);
@@ -449,25 +450,25 @@ public static class LoginEmailAuthOverlay
 		return panel;
 	}
 
-	private static Text CreateText(Transform parent, string value, int size, FontStyle style, Color color)
+	private static TMP_Text CreateText(Transform parent, string value, int size, FontStyles style, Color color)
 	{
-		GameObject go = new GameObject("Text", typeof(RectTransform), typeof(Text));
+		GameObject go = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
 		go.transform.SetParent(parent, false);
-		Text text = go.GetComponent<Text>();
-		text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+		TMP_Text text = go.GetComponent<TMP_Text>();
+		text.font = TMP_Settings.defaultFontAsset;
 		text.fontSize = size;
 		text.fontStyle = style;
 		text.color = color;
 		text.text = value ?? string.Empty;
-		text.horizontalOverflow = HorizontalWrapMode.Wrap;
-		text.verticalOverflow = VerticalWrapMode.Overflow;
+		text.enableWordWrapping = true;
+		text.overflowMode = TextOverflowModes.Overflow;
 		text.GetComponent<RectTransform>().sizeDelta = new Vector2(0f, Mathf.Max(size * 2.1f, 42f));
 		return text;
 	}
 
-	private static InputField CreateInput(Transform parent, string placeholder, bool password)
+	private static TMP_InputField CreateInput(Transform parent, string placeholder, bool password)
 	{
-		GameObject go = new GameObject(placeholder, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(InputField));
+		GameObject go = new GameObject(placeholder, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(TMP_InputField));
 		go.transform.SetParent(parent, false);
 		RectTransform rect = go.GetComponent<RectTransform>();
 		rect.sizeDelta = new Vector2(0f, 54f);
@@ -475,21 +476,24 @@ public static class LoginEmailAuthOverlay
 		Image image = go.GetComponent<Image>();
 		image.color = new Color(0.06f, 0.04f, 0.10f, 1f);
 
-		InputField input = go.GetComponent<InputField>();
+		TMP_InputField input = go.GetComponent<TMP_InputField>();
 		input.targetGraphic = image;
-		input.contentType = password ? InputField.ContentType.Password : InputField.ContentType.Standard;
+		input.contentType = password ? TMP_InputField.ContentType.Password : TMP_InputField.ContentType.Standard;
+		input.textViewport = rect;
+		input.fontAsset = TMP_Settings.defaultFontAsset;
 
-		Text text = CreateText(go.transform, string.Empty, 20, FontStyle.Normal, Color.white);
-		text.alignment = TextAnchor.MiddleLeft;
+		TMP_Text text = CreateText(go.transform, string.Empty, 20, FontStyles.Normal, Color.white);
+		text.alignment = TextAlignmentOptions.Left;
 		RectTransform textRect = text.GetComponent<RectTransform>();
 		textRect.anchorMin = Vector2.zero;
 		textRect.anchorMax = Vector2.one;
 		textRect.offsetMin = new Vector2(18f, 0f);
 		textRect.offsetMax = new Vector2(-18f, 0f);
 		input.textComponent = text;
+		input.pointSize = 20;
 
-		Text placeholderText = CreateText(go.transform, placeholder, 18, FontStyle.Italic, new Color(0.55f, 0.50f, 0.62f, 1f));
-		placeholderText.alignment = TextAnchor.MiddleLeft;
+		TMP_Text placeholderText = CreateText(go.transform, placeholder, 18, FontStyles.Italic, new Color(0.55f, 0.50f, 0.62f, 1f));
+		placeholderText.alignment = TextAlignmentOptions.Left;
 		RectTransform placeholderRect = placeholderText.GetComponent<RectTransform>();
 		placeholderRect.anchorMin = Vector2.zero;
 		placeholderRect.anchorMax = Vector2.one;
@@ -514,8 +518,8 @@ public static class LoginEmailAuthOverlay
 		Button button = go.GetComponent<Button>();
 		button.targetGraphic = image;
 
-		Text text = CreateText(go.transform, label, 20, FontStyle.Bold, Color.white);
-		text.alignment = TextAnchor.MiddleCenter;
+		TMP_Text text = CreateText(go.transform, label, 20, FontStyles.Bold, Color.white);
+		text.alignment = TextAlignmentOptions.Center;
 		RectTransform textRect = text.GetComponent<RectTransform>();
 		textRect.anchorMin = Vector2.zero;
 		textRect.anchorMax = Vector2.one;

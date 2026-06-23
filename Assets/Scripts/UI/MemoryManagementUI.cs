@@ -10,6 +10,7 @@ using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 using GamerFrameWork.OracleRuntime;
 using System.Collections.Generic;
+using TMPro;
 
 public class MemoryManagementUI : WindowBase
 {
@@ -17,8 +18,8 @@ public class MemoryManagementUI : WindowBase
 	private readonly List<GameObject> _renderedItems = new List<GameObject>();
 	private RectTransform _contentRect;
 	private const float CLEAR_CONFIRM_SECONDS = 8f;
-	private Text _clearTitleText;
-	private Text _clearDescText;
+	private TMP_Text _clearTitleText;
+	private TMP_Text _clearDescText;
 	private string _clearTitleDefault;
 	private string _clearDescDefault;
 	private bool _clearConfirmArmed;
@@ -205,12 +206,12 @@ public class MemoryManagementUI : WindowBase
 
 	private void AddHeader(string text, ref float y)
 	{
-		AddText(text, 24, FontStyle.Bold, new Color(0.95f, 0.86f, 1f, 1f), ref y, 34f);
+		AddText(text, 24, FontStyles.Bold, new Color(0.95f, 0.86f, 1f, 1f), ref y, 34f);
 	}
 
 	private void AddSection(string title, List<string> lines, ref float y)
 	{
-		AddText(title, 19, FontStyle.Bold, new Color(0.86f, 0.7f, 1f, 1f), ref y, 28f);
+		AddText(title, 19, FontStyles.Bold, new Color(0.86f, 0.7f, 1f, 1f), ref y, 28f);
 		if (lines == null || lines.Count == 0)
 		{
 			AddParagraph("暂无记录", ref y);
@@ -224,10 +225,10 @@ public class MemoryManagementUI : WindowBase
 
 	private void AddParagraph(string text, ref float y)
 	{
-		AddText(text, 15, FontStyle.Normal, new Color(0.86f, 0.84f, 0.92f, 1f), ref y, 44f);
+		AddText(text, 15, FontStyles.Normal, new Color(0.86f, 0.84f, 0.92f, 1f), ref y, 44f);
 	}
 
-	private void AddText(string text, int fontSize, FontStyle style, Color color, ref float y, float height)
+	private void AddText(string text, int fontSize, FontStyles style, Color color, ref float y, float height)
 	{
 		var go = new GameObject("MemoryText", typeof(RectTransform));
 		go.transform.SetParent(_contentRect, false);
@@ -238,14 +239,14 @@ public class MemoryManagementUI : WindowBase
 		rect.anchoredPosition = new Vector2(20f, -y);
 		rect.sizeDelta = new Vector2(-40f, height);
 
-		var label = go.AddComponent<Text>();
-		label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+		var label = go.AddComponent<TextMeshProUGUI>();
+		label.font = TMP_Settings.defaultFontAsset;
 		label.fontSize = fontSize;
 		label.fontStyle = style;
 		label.color = color;
-		label.alignment = TextAnchor.UpperLeft;
-		label.horizontalOverflow = HorizontalWrapMode.Wrap;
-		label.verticalOverflow = VerticalWrapMode.Truncate;
+		label.alignment = TextAlignmentOptions.TopLeft;
+		label.enableWordWrapping = true;
+		label.overflowMode = TextOverflowModes.Truncate;
 		label.text = text ?? "";
 
 		_renderedItems.Add(go);
@@ -279,13 +280,13 @@ public class MemoryManagementUI : WindowBase
 			_clearDescDefault = _clearDescText.text;
 	}
 
-	private Text FindTextByObjectName(string objectName)
+	private TMP_Text FindTextByObjectName(string objectName)
 	{
 		if (string.IsNullOrEmpty(objectName))
 			return null;
 
-		Text[] texts = gameObject.GetComponentsInChildren<Text>(true);
-		foreach (Text text in texts)
+		TMP_Text[] texts = gameObject.GetComponentsInChildren<TMP_Text>(true);
+		foreach (TMP_Text text in texts)
 		{
 			if (text != null && text.gameObject.name == objectName)
 				return text;

@@ -3,12 +3,13 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using GamerFrameWork.UIFrameWork;
+using TMPro;
 
 public class InviteItem : MonoBehaviour
 {
     public Image headImage;
-    public Text nameText;
-    public Text infoText;
+    public TMP_Text nameText;
+    public TMP_Text infoText;
     public Button infoBtn;
     public Button rejectBtn;
 
@@ -153,7 +154,7 @@ public class InviteItem : MonoBehaviour
     private void SetButtonText(Button button, string text)
     {
         if (button == null) return;
-        Text buttonText = button.GetComponentInChildren<Text>(true);
+        TMP_Text buttonText = button.GetComponentInChildren<TMP_Text>(true);
         if (buttonText != null) buttonText.text = text;
     }
 
@@ -176,7 +177,7 @@ public class InviteItem : MonoBehaviour
         if (nameText != null)
         {
             nameText.color = new Color(1f, 0.82f, 0.50f, 1f);
-            nameText.fontStyle = FontStyle.Bold;
+            nameText.fontStyle = FontStyles.Bold;
         }
 
         if (infoText != null)
@@ -194,11 +195,11 @@ public class InviteItem : MonoBehaviour
         if (image != null)
             image.color = background;
 
-        Text text = button.GetComponentInChildren<Text>(true);
+        TMP_Text text = button.GetComponentInChildren<TMP_Text>(true);
         if (text != null)
         {
             text.color = textColor;
-            text.fontStyle = FontStyle.Bold;
+            text.fontStyle = FontStyles.Bold;
         }
     }
 }

@@ -16,7 +16,7 @@ public class UserSearchUIComponent:MonoBehaviour
 	public WindowLayer windowLayer = WindowLayer.MainUI;
 	public Button BackButton;
 	public Button NotificationsButton;
-	public InputField SearchInputInputField;
+	public TMP_InputField SearchInputInputField;
 	public Button SearchFriendsButton;
 	public LoopListView2 SearchFriendScrollViewLoopListView2;
 	public Button Invite1Button;

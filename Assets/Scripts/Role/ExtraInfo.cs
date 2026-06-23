@@ -2,14 +2,15 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public class ExtraInfo : MonoBehaviour
 {
-    public Text roleName;
-    public Text roleDes;
-    public Text roleContent;
+    public TMP_Text roleName;
+    public TMP_Text roleDes;
+    public TMP_Text roleContent;
 
-    public Text tag1Text, tag2Text, tag3Text;
+    public TMP_Text tag1Text, tag2Text, tag3Text;
 
     public void SetData(
         string roleNameStr,

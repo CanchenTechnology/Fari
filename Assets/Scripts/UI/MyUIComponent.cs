@@ -14,11 +14,11 @@ public class MyUIComponent:MonoBehaviour
 {
 	public WindowLayer windowLayer = WindowLayer.MainUI;
 	public Image AvatarImage;
-	public Text UsernameText;
-	public Text UserSubtitleText;
-	public Text tatTodayCardValueText;
-	public Text StatTodaydialouNumText;
-	public Text StatTodaydesText;
+	public TMP_Text UsernameText;
+	public TMP_Text UserSubtitleText;
+	public TMP_Text tatTodayCardValueText;
+	public TMP_Text StatTodaydialouNumText;
+	public TMP_Text StatTodaydesText;
 	public Button btn_divinationButton;
 	public Button btn_myinfoButton;
 	public Button memoryButton;
@@ -27,6 +27,8 @@ public class MyUIComponent:MonoBehaviour
 	public Button noticeButton;
 	public Button feedbackButton;
 	public Button shareButton;
+
+	public Button exitLoginButton;
 	public void InitComponent(WindowBase target)
 	{
 	    //组件事件绑定

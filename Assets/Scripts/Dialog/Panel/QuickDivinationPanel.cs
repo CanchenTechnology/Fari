@@ -6,6 +6,7 @@ using SuperScrollView;
 using UnityEngine;
 using UnityEngine.UI;
 using XFGameFrameWork;
+using TMPro;
 
 public class QuickDivinationPanel : MonoBehaviour
 {
@@ -30,7 +31,7 @@ public class QuickDivinationPanel : MonoBehaviour
 
     [Header("标题区域")]
     public Button toggleBtn;            // 收起/展开按钮
-    public Text toggleBtnText;          // 按钮文字（收起⌃ / 展开⌄）
+    public TMP_Text toggleBtnText;          // 按钮文字（收起⌃ / 展开⌄）
 
     [Header("话题标签按钮 (4个)")]
     public Button selfBtn;
@@ -405,7 +406,7 @@ public class QuickDivinationPanel : MonoBehaviour
             mTopicButtons[topic.key] = btn;
 
             // 更新按钮文字
-            var label = btn.GetComponentInChildren<Text>();
+            var label = btn.GetComponentInChildren<TMP_Text>();
             if (label != null) label.text = $"{topic.icon} {topic.label}";
 
             string topicKey = topic.key;
@@ -446,7 +447,7 @@ public class QuickDivinationPanel : MonoBehaviour
             kv.Value.colors = colors;
 
             // 子文字颜色
-            var label = kv.Value.GetComponentInChildren<Text>();
+            var label = kv.Value.GetComponentInChildren<TMP_Text>();
             if (label != null)
                 label.color = isActive ? Color.white : new Color(0.8f, 0.8f, 0.85f);
         }

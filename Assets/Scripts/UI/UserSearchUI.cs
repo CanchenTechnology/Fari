@@ -10,6 +10,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using GamerFrameWork.UIFrameWork;
 using SuperScrollView;
+using TMPro;
 
 public class UserSearchUI : WindowBase
 {
@@ -26,8 +27,8 @@ public class UserSearchUI : WindowBase
 	private bool searchFriendListViewInited;
 	private int searchRequestVersion;
 
-	private Text[] fallbackResultNameTexts;
-	private Text[] fallbackResultHandleTexts;
+	private TMP_Text[] fallbackResultNameTexts;
+	private TMP_Text[] fallbackResultHandleTexts;
 	private Button[] fallbackInviteButtons;
 
 	#region 生命周期函数
@@ -273,8 +274,8 @@ public class UserSearchUI : WindowBase
 			return;
 		}
 
-		Text nameText = FindTextByName(itemObject.transform, "NameText", "NameText1");
-		Text handleText = FindTextByName(itemObject.transform, "HandleText", "HandleText1");
+		TMP_Text nameText = FindTextByName(itemObject.transform, "NameText", "NameText1");
+		TMP_Text handleText = FindTextByName(itemObject.transform, "HandleText", "HandleText1");
 		Button inviteButton = FindButtonByName(itemObject.transform, "[Button]Invite", "[Button]Invite1");
 
 		if (nameText != null)
@@ -307,7 +308,7 @@ public class UserSearchUI : WindowBase
 			button.interactable = hasResult && !isSelf && !alreadyFriend;
 			button.onClick.RemoveAllListeners();
 
-			Text buttonText = button.GetComponentInChildren<Text>(true);
+			TMP_Text buttonText = button.GetComponentInChildren<TMP_Text>(true);
 			if (buttonText != null)
 			{
 				buttonText.text = !hasResult ? string.Empty : isSelf ? "自己" : alreadyFriend ? "已添加" : blocked ? "解除" : alreadyRequested ? "取消" : "添加";
@@ -573,15 +574,15 @@ public class UserSearchUI : WindowBase
 		}
 	}
 
-	private static Text FindTextByName(Transform root, params string[] targetNames)
+	private static TMP_Text FindTextByName(Transform root, params string[] targetNames)
 	{
 		if (root == null)
 		{
 			return null;
 		}
 
-		Text[] texts = root.GetComponentsInChildren<Text>(true);
-		foreach (Text text in texts)
+		TMP_Text[] texts = root.GetComponentsInChildren<TMP_Text>(true);
+		foreach (TMP_Text text in texts)
 		{
 			foreach (string targetName in targetNames)
 			{

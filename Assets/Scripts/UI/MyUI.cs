@@ -5,6 +5,7 @@
  * Description: UI 表现层，该层只负责界面的交互、表现相关的更新，不允许编写任何业务逻辑代码
  * 注意: 以下文件是自动生成的，再次生成不会覆盖原有的代码，会在原有的代码上进行新增，可放心使用
 ---------------------------------*/
+using System.Collections.Generic;
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
@@ -153,23 +154,23 @@ public class MyUI : WindowBase
 
 	private void LoadLatestDivination(int requestId)
 	{
-		if (uiComponent.StatTodaydesText != null)
-			uiComponent.StatTodaydesText.text = "最近占卜：加载中...";
-
-		var firestore = DivinationRecordFirestore.Instance;
-		if (firestore == null)
+		DivinationHistoryCacheService cache = DivinationHistoryCacheService.Instance;
+		List<DivinationRecordData> cachedRecords = cache.GetSnapshot();
+		if (cachedRecords.Count > 0)
 		{
-			var go = new GameObject("DivinationRecordFirestore");
-			firestore = go.AddComponent<DivinationRecordFirestore>();
+			_latestRecord = cachedRecords[0];
+			SetLatestRecord(_latestRecord);
 		}
-
-		if (firestore == null)
+		else if (uiComponent.StatTodaydesText != null && !cache.HasLoadedOnce)
+		{
+			uiComponent.StatTodaydesText.text = "最近占卜：加载中...";
+		}
+		else
 		{
 			SetLatestRecord(null);
-			return;
 		}
 
-		firestore.LoadAllRecords(records =>
+		cache.Refresh(false, (records, success) =>
 		{
 			if (requestId != _dashboardRequestId) return;
 			_latestRecord = records != null && records.Count > 0 ? records[0] : null;

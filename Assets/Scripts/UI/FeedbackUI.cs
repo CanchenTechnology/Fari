@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
+using TMPro;
 
 public class FeedbackUI : WindowBase
 {
@@ -176,8 +177,8 @@ public class FeedbackUI : WindowBase
 		if (content == null) return;
 
 		float y = 16f;
-		AddText(content, _communityItems, "反馈社区", 22, FontStyle.Bold, new Color(0.95f, 0.86f, 1f), ref y, 32f);
-		AddText(content, _communityItems, $"当前标签：{GetTagDisplay(_selectedTag)}", 14, FontStyle.Normal, new Color(0.72f, 0.66f, 0.82f), ref y, 24f);
+		AddText(content, _communityItems, "反馈社区", 22, FontStyles.Bold, new Color(0.95f, 0.86f, 1f), ref y, 32f);
+		AddText(content, _communityItems, $"当前标签：{GetTagDisplay(_selectedTag)}", 14, FontStyles.Normal, new Color(0.72f, 0.66f, 0.82f), ref y, 24f);
 
 		int count = 0;
 		foreach (var entry in _feedbackEntries)
@@ -192,7 +193,7 @@ public class FeedbackUI : WindowBase
 			string emptyText = string.IsNullOrWhiteSpace(_searchText)
 				? "暂无反馈记录，写下你的想法后会显示在这里。"
 				: "没有匹配的反馈。";
-			AddText(content, _communityItems, emptyText, 16, FontStyle.Normal, new Color(0.72f, 0.66f, 0.82f), ref y, 52f);
+			AddText(content, _communityItems, emptyText, 16, FontStyles.Normal, new Color(0.72f, 0.66f, 0.82f), ref y, 52f);
 		}
 
 		SetContentHeight(content, y + 24f, 420f);
@@ -229,7 +230,7 @@ public class FeedbackUI : WindowBase
 	private void AddFeedbackCard(RectTransform parent, FeedbackEntry entry, ref float y)
 	{
 		string text = $"[{GetTagDisplay(entry.tag)}] {entry.content}\n{entry.createdAt} · {entry.status}";
-		AddText(parent, _communityItems, text, 15, FontStyle.Normal, new Color(0.86f, 0.84f, 0.92f), ref y, EstimateHeight(text, 15, parent.rect.width - 56f), new Color(0.16f, 0.12f, 0.24f));
+		AddText(parent, _communityItems, text, 15, FontStyles.Normal, new Color(0.86f, 0.84f, 0.92f), ref y, EstimateHeight(text, 15, parent.rect.width - 56f), new Color(0.16f, 0.12f, 0.24f));
 		y += 8f;
 	}
 
@@ -242,11 +243,11 @@ public class FeedbackUI : WindowBase
 			? new Color(0.33f, 0.18f, 0.52f)
 			: new Color(0.14f, 0.12f, 0.2f);
 		float height = EstimateHeight(message.text, 15, parent.rect.width - 80f);
-		AddText(parent, _chatItems, message.text, 15, FontStyle.Normal, textColor, ref y, height, bgColor, message.fromUser);
+		AddText(parent, _chatItems, message.text, 15, FontStyles.Normal, textColor, ref y, height, bgColor, message.fromUser);
 		y += 8f;
 	}
 
-	private void AddText(RectTransform parent, List<GameObject> owner, string text, int fontSize, FontStyle style, Color color, ref float y, float height, Color? background = null, bool alignRight = false)
+	private void AddText(RectTransform parent, List<GameObject> owner, string text, int fontSize, FontStyles style, Color color, ref float y, float height, Color? background = null, bool alignRight = false)
 	{
 		GameObject go = new GameObject("FeedbackText", typeof(RectTransform));
 		go.transform.SetParent(parent, false);
@@ -271,14 +272,14 @@ public class FeedbackUI : WindowBase
 		labelRect.offsetMin = new Vector2(12f, 6f);
 		labelRect.offsetMax = new Vector2(-12f, -6f);
 
-		var label = labelGo.AddComponent<Text>();
-		label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+		var label = labelGo.AddComponent<TextMeshProUGUI>();
+		label.font = TMP_Settings.defaultFontAsset;
 		label.fontSize = fontSize;
 		label.fontStyle = style;
 		label.color = color;
-		label.alignment = alignRight ? TextAnchor.UpperRight : TextAnchor.UpperLeft;
-		label.horizontalOverflow = HorizontalWrapMode.Wrap;
-		label.verticalOverflow = VerticalWrapMode.Overflow;
+		label.alignment = alignRight ? TextAlignmentOptions.TopRight : TextAlignmentOptions.TopLeft;
+		label.enableWordWrapping = true;
+		label.overflowMode = TextOverflowModes.Overflow;
 		label.text = text ?? string.Empty;
 
 		owner.Add(go);

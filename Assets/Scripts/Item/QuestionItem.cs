@@ -1,12 +1,13 @@
 using System;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public class QuestionItem : MonoBehaviour
 {
     public Button btn;
-    public Text desText;
-    public Text iconText;  // "✦" 符号（Optional，没有就忽略）
+    public TMP_Text desText;
+    public TMP_Text iconText;  // "✦" 符号（Optional，没有就忽略）
 
     private Action mOnClickCallback;
 

@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
+using TMPro;
 
 public class FriendUI : WindowBase
 {
@@ -25,10 +26,10 @@ public class FriendUI : WindowBase
 	private List<GameObject> activeRelationshipInviteItems = new List<GameObject>();
 
 	private Transform dailyOracleFeedRoot;
-	private Text dailyOracleFeedStatusText;
+	private TMP_Text dailyOracleFeedStatusText;
 	private int dailyOracleFeedRequestId;
 	private Transform relationshipInviteRoot;
-	private Text relationshipInviteStatusText;
+	private TMP_Text relationshipInviteStatusText;
 	private int relationshipInviteRequestId;
 	private Coroutine relationshipInviteRetryCoroutine;
 	private int cloudFriendSyncRequestId;
@@ -607,23 +608,23 @@ public class FriendUI : WindowBase
 			18,
 			new Color(0.96f, 0.79f, 0.38f),
 			28f,
-			FontStyle.Bold);
+			FontStyles.Bold);
 	}
 
-	private Text CreateFeedText(string name, Transform parent, string content, int fontSize, Color color, float minHeight, FontStyle style = FontStyle.Normal)
+	private TMP_Text CreateFeedText(string name, Transform parent, string content, int fontSize, Color color, float minHeight, FontStyles style = FontStyles.Normal)
 	{
-		GameObject go = new GameObject(name, typeof(RectTransform), typeof(Text), typeof(LayoutElement));
+		GameObject go = new GameObject(name, typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
 		go.transform.SetParent(parent, false);
 
-		Text text = go.GetComponent<Text>();
+		TMP_Text text = go.GetComponent<TMP_Text>();
 		text.font = GetFeedFont();
 		text.text = content;
 		text.fontSize = fontSize;
 		text.fontStyle = style;
 		text.color = color;
-		text.alignment = TextAnchor.MiddleLeft;
-		text.horizontalOverflow = HorizontalWrapMode.Wrap;
-		text.verticalOverflow = VerticalWrapMode.Overflow;
+		text.alignment = TextAlignmentOptions.Left;
+		text.enableWordWrapping = true;
+		text.overflowMode = TextOverflowModes.Overflow;
 
 		var element = go.GetComponent<LayoutElement>();
 		element.minHeight = minHeight;
@@ -631,13 +632,13 @@ public class FriendUI : WindowBase
 		return text;
 	}
 
-	private Font GetFeedFont()
+	private TMP_FontAsset GetFeedFont()
 	{
 		if (uiComponent.ExistingCountText != null && uiComponent.ExistingCountText.font != null)
 			return uiComponent.ExistingCountText.font;
 		if (uiComponent.CreatedCountText != null && uiComponent.CreatedCountText.font != null)
 			return uiComponent.CreatedCountText.font;
-		return Resources.GetBuiltinResource<Font>("Arial.ttf");
+		return TMP_Settings.defaultFontAsset;
 	}
 
 	private void EnsureRelationshipInviteRoot()
@@ -684,7 +685,7 @@ public class FriendUI : WindowBase
 			18,
 			new Color(0.96f, 0.79f, 0.38f),
 			28f,
-			FontStyle.Bold);
+			FontStyles.Bold);
 		section.SetActive(false);
 	}
 
@@ -722,7 +723,7 @@ public class FriendUI : WindowBase
 		element.flexibleWidth = 1f;
 
 		string inviter = string.IsNullOrWhiteSpace(record.initiatorName) ? "好友" : record.initiatorName;
-		CreateFeedText("InviteTitleText", card.transform, $"{inviter} 邀请你进行双人关系占卜", 16, new Color(0.95f, 0.82f, 0.48f), 24f, FontStyle.Bold);
+		CreateFeedText("InviteTitleText", card.transform, $"{inviter} 邀请你进行双人关系占卜", 16, new Color(0.95f, 0.82f, 0.48f), 24f, FontStyles.Bold);
 		CreateFeedText("InviteQuestionText", card.transform, TrimForFeed(record.question, 80), 14, new Color(0.84f, 0.80f, 0.92f), 44f);
 		CreateFeedText("InviteActionText", card.transform, "点按加入并翻开你的私牌", 13, new Color(0.70f, 0.62f, 0.86f), 22f);
 		return card;
@@ -763,8 +764,8 @@ public class FriendUI : WindowBase
 		string oracle = string.IsNullOrWhiteSpace(record.oracle) ? "好友同步了今日牌摘要。" : record.oracle;
 		string action = string.IsNullOrWhiteSpace(record.microAction) ? "点按进入对话，结合好友上下文继续询问。" : record.microAction;
 
-		CreateFeedText("FriendNameText", card.transform, $"{friendName} 的每日牌", 16, new Color(0.95f, 0.82f, 0.48f), 24f, FontStyle.Bold);
-		CreateFeedText("CardTitleText", card.transform, $"{cardName} · {orientation}｜{title}", 15, Color.white, 24f, FontStyle.Bold);
+		CreateFeedText("FriendNameText", card.transform, $"{friendName} 的每日牌", 16, new Color(0.95f, 0.82f, 0.48f), 24f, FontStyles.Bold);
+		CreateFeedText("CardTitleText", card.transform, $"{cardName} · {orientation}｜{title}", 15, Color.white, 24f, FontStyles.Bold);
 		CreateFeedText("OracleText", card.transform, TrimForFeed(oracle, 72), 14, new Color(0.82f, 0.80f, 0.9f), 42f);
 		CreateFeedText("ActionText", card.transform, $"✦ {TrimForFeed(action, 42)}", 13, new Color(0.70f, 0.62f, 0.86f), 22f);
 		return card;

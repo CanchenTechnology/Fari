@@ -12,6 +12,7 @@ using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 using GamerFrameWork;
 using GamerFrameWork.OracleRuntime;
+using TMPro;
 
 public class TodayCardDetailContent
 {
@@ -441,7 +442,7 @@ public class TodayCardUI : WindowBase
 		return withNumber && !string.IsNullOrEmpty(value) ? $"{index + 1}. {value}" : value;
 	}
 
-	private static void SetText(Text text, string value)
+	private static void SetText(TMP_Text text, string value)
 	{
 		if (text != null)
 			text.text = value ?? "";
@@ -498,7 +499,7 @@ public class TodayCardUI : WindowBase
 		}
 		else
 		{
-			var text = button.GetComponentInChildren<Text>(true);
+			var text = button.GetComponentInChildren<TMP_Text>(true);
 			if (text != null)
 				text.text = question;
 
@@ -527,7 +528,7 @@ public class TodayCardUI : WindowBase
 		if (questRowItem != null && !string.IsNullOrWhiteSpace(questRowItem.Question))
 			return questRowItem.Question;
 
-		var text = button != null ? button.GetComponentInChildren<Text>(true) : null;
+		var text = button != null ? button.GetComponentInChildren<TMP_Text>(true) : null;
 		if (text != null && !string.IsNullOrWhiteSpace(text.text))
 			return text.text;
 

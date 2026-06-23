@@ -2,6 +2,7 @@ using System;
 using SuperScrollView;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public class SpinTimePicker : MonoBehaviour
 {
@@ -9,7 +10,7 @@ public class SpinTimePicker : MonoBehaviour
 	public LoopListView2 mLoopListViewMinute;
 	public Color mColorReserved = new Color(0.63f, 0.60f, 0.66f, 1f);
 	public Color mColorSelected = new Color(1f, 0.84f, 0.48f, 1f);
-	public Text CurSelect;
+	public TMP_Text CurSelect;
 	public Button ConfirmButton;
 
 	[SerializeField] private int mFirstHour = 0;
@@ -59,7 +60,7 @@ public class SpinTimePicker : MonoBehaviour
 		if (CurSelect == null)
 		{
 			Transform item = transform.Find("CurSelect");
-			if (item != null) CurSelect = item.GetComponent<Text>();
+			if (item != null) CurSelect = item.GetComponent<TMP_Text>();
 		}
 		if (ConfirmButton == null)
 		{

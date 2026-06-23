@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using GamerFrameWork.UIFrameWork;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public class FriendRuntimeAction
 {
@@ -45,12 +46,12 @@ public static class FriendRuntimeDialog
         layout.childForceExpandWidth = true;
         layout.childForceExpandHeight = false;
 
-        Text titleText = CreateText(panel.transform, title, 28, FontStyle.Bold, new Color(1f, 0.78f, 0.45f, 1f));
-        titleText.alignment = TextAnchor.MiddleCenter;
+        TMP_Text titleText = CreateText(panel.transform, title, 28, FontStyles.Bold, new Color(1f, 0.78f, 0.45f, 1f));
+        titleText.alignment = TextAlignmentOptions.Center;
         if (!string.IsNullOrWhiteSpace(message))
         {
-            Text messageText = CreateText(panel.transform, message, 18, FontStyle.Normal, new Color(0.86f, 0.82f, 0.92f, 1f));
-            messageText.alignment = TextAnchor.MiddleCenter;
+            TMP_Text messageText = CreateText(panel.transform, message, 18, FontStyles.Normal, new Color(0.86f, 0.82f, 0.92f, 1f));
+            messageText.alignment = TextAlignmentOptions.Center;
         }
 
         if (actions != null)
@@ -120,18 +121,18 @@ public static class FriendRuntimeDialog
         panel.sizeDelta = new Vector2(panel.sizeDelta.x, Mathf.Clamp(height, 240f, 640f));
     }
 
-    private static Text CreateText(Transform parent, string value, int size, FontStyle style, Color color)
+    private static TMP_Text CreateText(Transform parent, string value, int size, FontStyles style, Color color)
     {
-        GameObject go = new GameObject("Text", typeof(RectTransform), typeof(Text));
+        GameObject go = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
         go.transform.SetParent(parent, false);
-        Text text = go.GetComponent<Text>();
-        text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        TMP_Text text = go.GetComponent<TMP_Text>();
+        text.font = TMP_Settings.defaultFontAsset;
         text.fontSize = size;
         text.fontStyle = style;
         text.color = color;
         text.text = value ?? string.Empty;
-        text.horizontalOverflow = HorizontalWrapMode.Wrap;
-        text.verticalOverflow = VerticalWrapMode.Overflow;
+        text.enableWordWrapping = true;
+        text.overflowMode = TextOverflowModes.Overflow;
         RectTransform rect = go.GetComponent<RectTransform>();
         rect.sizeDelta = new Vector2(0f, Mathf.Max(size * 2.2f, 42f));
         return text;
@@ -150,8 +151,8 @@ public static class FriendRuntimeDialog
         Button button = go.GetComponent<Button>();
         button.targetGraphic = image;
 
-        Text text = CreateText(go.transform, label, 20, FontStyle.Bold, Color.white);
-        text.alignment = TextAnchor.MiddleCenter;
+        TMP_Text text = CreateText(go.transform, label, 20, FontStyles.Bold, Color.white);
+        text.alignment = TextAlignmentOptions.Center;
         RectTransform textRect = text.GetComponent<RectTransform>();
         textRect.anchorMin = Vector2.zero;
         textRect.anchorMax = Vector2.one;
@@ -172,14 +173,14 @@ public static class FriendOracleHistoryOverlay
         GameObject panel = CreatePanel(root);
         RectTransform panelRect = panel.GetComponent<RectTransform>();
 
-        Text titleText = CreateText(panel.transform, title, 28, FontStyle.Bold, new Color(1f, 0.78f, 0.45f, 1f));
+        TMP_Text titleText = CreateText(panel.transform, title, 28, FontStyles.Bold, new Color(1f, 0.78f, 0.45f, 1f));
         RectTransform titleRect = titleText.GetComponent<RectTransform>();
         titleRect.anchorMin = new Vector2(0f, 1f);
         titleRect.anchorMax = new Vector2(1f, 1f);
         titleRect.pivot = new Vector2(0.5f, 1f);
         titleRect.anchoredPosition = new Vector2(0f, -22f);
         titleRect.sizeDelta = new Vector2(-120f, 48f);
-        titleText.alignment = TextAnchor.MiddleCenter;
+        titleText.alignment = TextAlignmentOptions.Center;
 
         Button closeButton = CreateSmallButton(panel.transform, "×");
         RectTransform closeRect = closeButton.GetComponent<RectTransform>();
@@ -304,8 +305,8 @@ public static class FriendOracleHistoryOverlay
         layout.childControlWidth = true;
         layout.childControlHeight = true;
 
-        CreateText(row.transform, $"{entry.title}    {entry.date}", 19, FontStyle.Bold, new Color(1f, 0.82f, 0.50f, 1f));
-        CreateText(row.transform, entry.content, 17, FontStyle.Normal, new Color(0.88f, 0.84f, 0.94f, 1f));
+        CreateText(row.transform, $"{entry.title}    {entry.date}", 19, FontStyles.Bold, new Color(1f, 0.82f, 0.50f, 1f));
+        CreateText(row.transform, entry.content, 17, FontStyles.Normal, new Color(0.88f, 0.84f, 0.94f, 1f));
     }
 
     private static Button CreateSmallButton(Transform parent, string label)
@@ -317,8 +318,8 @@ public static class FriendOracleHistoryOverlay
         go.GetComponent<Image>().color = new Color(0.25f, 0.15f, 0.34f, 1f);
 
         Button button = go.GetComponent<Button>();
-        Text text = CreateText(go.transform, label, 26, FontStyle.Bold, Color.white);
-        text.alignment = TextAnchor.MiddleCenter;
+        TMP_Text text = CreateText(go.transform, label, 26, FontStyles.Bold, Color.white);
+        text.alignment = TextAlignmentOptions.Center;
         RectTransform textRt = text.GetComponent<RectTransform>();
         textRt.anchorMin = Vector2.zero;
         textRt.anchorMax = Vector2.one;
@@ -327,18 +328,18 @@ public static class FriendOracleHistoryOverlay
         return button;
     }
 
-    private static Text CreateText(Transform parent, string value, int size, FontStyle style, Color color)
+    private static TMP_Text CreateText(Transform parent, string value, int size, FontStyles style, Color color)
     {
-        GameObject go = new GameObject("Text", typeof(RectTransform), typeof(Text));
+        GameObject go = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
         go.transform.SetParent(parent, false);
-        Text text = go.GetComponent<Text>();
-        text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        TMP_Text text = go.GetComponent<TMP_Text>();
+        text.font = TMP_Settings.defaultFontAsset;
         text.fontSize = size;
         text.fontStyle = style;
         text.color = color;
         text.text = value ?? string.Empty;
-        text.horizontalOverflow = HorizontalWrapMode.Wrap;
-        text.verticalOverflow = VerticalWrapMode.Overflow;
+        text.enableWordWrapping = true;
+        text.overflowMode = TextOverflowModes.Overflow;
         RectTransform rect = go.GetComponent<RectTransform>();
         rect.sizeDelta = new Vector2(0f, Mathf.Max(size * 2.3f, 42f));
         return text;
@@ -384,9 +385,9 @@ public static class RelationshipDivinationOverlay
         bool visible = IsCardVisibleToCurrentUser(card, record, currentUid);
         string title = visible ? card.DisplayName : "牌面暂未揭示";
         string visibility = GetVisibilityText(card, record, currentUid);
-        CreateText(row.transform, card.position, 19, FontStyle.Bold, new Color(1f, 0.82f, 0.50f, 1f), 28f);
-        CreateText(row.transform, $"{title} · {visibility}", 17, FontStyle.Normal, visible ? Color.white : new Color(0.70f, 0.66f, 0.78f, 1f), 34f);
-        CreateText(row.transform, BuildCardHint(card, visible), 15, FontStyle.Normal, new Color(0.70f, 0.64f, 0.78f, 1f), 28f);
+        CreateText(row.transform, card.position, 19, FontStyles.Bold, new Color(1f, 0.82f, 0.50f, 1f), 28f);
+        CreateText(row.transform, $"{title} · {visibility}", 17, FontStyles.Normal, visible ? Color.white : new Color(0.70f, 0.66f, 0.78f, 1f), 34f);
+        CreateText(row.transform, BuildCardHint(card, visible), 15, FontStyles.Normal, new Color(0.70f, 0.64f, 0.78f, 1f), 28f);
     }
 
     private static bool IsCardVisibleToCurrentUser(RelationshipDivinationCard card, RelationshipDivinationRecord record, string currentUid)
@@ -539,19 +540,19 @@ public static class RelationshipDivinationOverlay
         return panel;
     }
 
-    private static Text CreateText(Transform parent, string value, int size, FontStyle style, Color color, float minHeight)
+    private static TMP_Text CreateText(Transform parent, string value, int size, FontStyles style, Color color, float minHeight)
     {
-        GameObject go = new GameObject("Text", typeof(RectTransform), typeof(Text), typeof(LayoutElement));
+        GameObject go = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
         go.transform.SetParent(parent, false);
-        Text text = go.GetComponent<Text>();
-        text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        TMP_Text text = go.GetComponent<TMP_Text>();
+        text.font = TMP_Settings.defaultFontAsset;
         text.fontSize = size;
         text.fontStyle = style;
         text.color = color;
         text.text = value ?? string.Empty;
-        text.horizontalOverflow = HorizontalWrapMode.Wrap;
-        text.verticalOverflow = VerticalWrapMode.Overflow;
-        text.alignment = TextAnchor.MiddleLeft;
+        text.enableWordWrapping = true;
+        text.overflowMode = TextOverflowModes.Overflow;
+        text.alignment = TextAlignmentOptions.Left;
         LayoutElement element = go.GetComponent<LayoutElement>();
         element.minHeight = minHeight;
         element.flexibleWidth = 1f;
@@ -572,8 +573,8 @@ public static class RelationshipDivinationOverlay
         Button button = go.GetComponent<Button>();
         button.targetGraphic = image;
 
-        Text text = CreateText(go.transform, label, 20, FontStyle.Bold, Color.white, 52f);
-        text.alignment = TextAnchor.MiddleCenter;
+        TMP_Text text = CreateText(go.transform, label, 20, FontStyles.Bold, Color.white, 52f);
+        text.alignment = TextAlignmentOptions.Center;
         RectTransform textRt = text.GetComponent<RectTransform>();
         textRt.anchorMin = Vector2.zero;
         textRt.anchorMax = Vector2.one;

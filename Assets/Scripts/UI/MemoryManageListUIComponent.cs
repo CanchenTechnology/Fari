@@ -14,7 +14,7 @@ public class MemoryManageListUIComponent:MonoBehaviour
 {
 	public WindowLayer windowLayer = WindowLayer.Top;
 	public Button BackButton;
-	public InputField MemorySearchInputInputField;
+	public TMP_InputField MemorySearchInputInputField;
 	public ToggleGroup CategoryTabsToggleGroup;
 	public Toggle TabAllToggle;
 	public Toggle TabTopicToggle;

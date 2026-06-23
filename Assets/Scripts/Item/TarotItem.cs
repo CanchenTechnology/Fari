@@ -2,12 +2,13 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public class TarotItem : MonoBehaviour
 {
     public Image tarotImage;
-    public Text tarotNameText;
-    public Text tarotTagText;
+    public TMP_Text tarotNameText;
+    public TMP_Text tarotTagText;
 
     public void SetItemData(Sprite tarotSprite,string name,string tag)
     {

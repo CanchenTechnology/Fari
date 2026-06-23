@@ -16,16 +16,16 @@ public class DialogUIComponent:MonoBehaviour
 	public WindowLayer windowLayer = WindowLayer.MainUI;
 	public Image chatBGImage;
 	public Button switchDivinerButton;
-	public Text NameText;
-	public Text desText;
+	public TMP_Text NameText;
+	public TMP_Text desText;
 	public Image headImage;
 	public Button questionButton;
 	public Button sendButton;
-	public InputField questionInputField;
+	public TMP_InputField questionInputField;
 
 	public LoopListView2 ChatScrollViewLoopListView2;
 	public RectTransform artFriendRectTransfrom;
-	public Text artFriendNameText;
+	public TMP_Text artFriendNameText;
 	public Button cancelArtButton;
 
 	public Transform QuickDivinationPanelTransform;
