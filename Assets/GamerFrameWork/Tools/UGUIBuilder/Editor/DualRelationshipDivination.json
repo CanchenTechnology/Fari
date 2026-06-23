@@ -1,0 +1,1197 @@
+{
+  "screenName": "DualRelationshipDivination",
+  "resolution": {
+    "x": 1080,
+    "y": 1920
+  },
+  "matchWidthOrHeight": 0.5,
+  "includeMask": false,
+  "elements": [
+    {
+      "name": "Background",
+      "type": "Panel",
+      "color": {
+        "r": 0.05,
+        "g": 0.03,
+        "b": 0.08,
+        "a": 1
+      },
+      "anchorMin": {
+        "x": 0,
+        "y": 0
+      },
+      "anchorMax": {
+        "x": 1,
+        "y": 1
+      },
+      "size": {
+        "x": 0,
+        "y": 0
+      },
+      "children": [
+        {
+          "name": "HeaderPanel",
+          "type": "Panel",
+          "color": {
+            "r": 0.07,
+            "g": 0.05,
+            "b": 0.12,
+            "a": 1
+          },
+          "anchorMin": {
+            "x": 0,
+            "y": 1
+          },
+          "anchorMax": {
+            "x": 1,
+            "y": 1
+          },
+          "size": {
+            "x": 0,
+            "y": 100
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 0.5
+          },
+          "children": [
+            {
+              "name": "[Button]Back",
+              "type": "Button",
+              "sprite": "icon_back",
+              "text": "",
+              "size": {
+                "x": 48,
+                "y": 48
+              },
+              "anchorMin": {
+                "x": 0,
+                "y": 0.5
+              },
+              "anchorMax": {
+                "x": 0,
+                "y": 0.5
+              },
+              "position": {
+                "x": 30,
+                "y": 0
+              },
+              "pivot": {
+                "x": 0,
+                "y": 0.5
+              },
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0
+              }
+            },
+            {
+              "name": "HeaderTitlePanel",
+              "type": "Panel",
+              "size": {
+                "x": 400,
+                "y": 60
+              },
+              "anchorMin": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "anchorMax": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "position": {
+                "x": -60,
+                "y": 0
+              },
+              "pivot": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0
+              },
+              "children": [
+                {
+                  "name": "AppNameText",
+                  "type": "Text",
+                  "text": "Nocturne Oracle",
+                  "fontSize": 22,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Center",
+                  "textColor": {
+                    "r": 0.85,
+                    "g": 0.75,
+                    "b": 0.95,
+                    "a": 1
+                  },
+                  "size": {
+                    "x": 300,
+                    "y": 32
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 8
+                  },
+                  "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                {
+                  "name": "AppSubtitleText",
+                  "type": "Text",
+                  "text": "夜色为引，真相自现 ✦",
+                  "fontSize": 13,
+                  "textAlignment": "Center",
+                  "textColor": {
+                    "r": 0.55,
+                    "g": 0.45,
+                    "b": 0.65,
+                    "a": 1
+                  },
+                  "size": {
+                    "x": 300,
+                    "y": 20
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": -16
+                  },
+                  "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                }
+              ]
+            },
+            {
+              "name": "[Button]SwitchOracle",
+              "type": "Button",
+              "text": "切换神谕师",
+              "fontSize": 14,
+              "textColor": {
+                "r": 0.8,
+                "g": 0.7,
+                "b": 0.9,
+                "a": 1
+              },
+              "color": {
+                "r": 0.18,
+                "g": 0.12,
+                "b": 0.28,
+                "a": 1
+              },
+              "size": {
+                "x": 120,
+                "y": 36
+              },
+              "anchorMin": {
+                "x": 1,
+                "y": 0.5
+              },
+              "anchorMax": {
+                "x": 1,
+                "y": 0.5
+              },
+              "position": {
+                "x": -30,
+                "y": 0
+              },
+              "pivot": {
+                "x": 1,
+                "y": 0.5
+              }
+            }
+          ]
+        },
+        {
+          "name": "TitleSection",
+          "type": "Panel",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1,
+            "a": 0
+          },
+          "anchorMin": {
+            "x": 0.5,
+            "y": 1
+          },
+          "anchorMax": {
+            "x": 0.5,
+            "y": 1
+          },
+          "size": {
+            "x": 600,
+            "y": 120
+          },
+          "position": {
+            "x": 0,
+            "y": -150
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 0.5
+          },
+          "children": [
+            {
+              "name": "MainTitle",
+              "type": "Text",
+              "text": "✦ 双人关系占卜 ✦",
+              "fontSize": 32,
+              "fontStyle": "Bold",
+              "textAlignment": "Center",
+              "textColor": {
+                "r": 0.95,
+                "g": 0.85,
+                "b": 0.55,
+                "a": 1
+              },
+              "size": {
+                "x": 500,
+                "y": 44
+              },
+              "position": {
+                "x": 0,
+                "y": 20
+              },
+              "pivot": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            {
+              "name": "MainSubtitle",
+              "type": "Text",
+              "text": "与你与重要之人，共启一场真心的对话",
+              "fontSize": 16,
+              "textAlignment": "Center",
+              "textColor": {
+                "r": 0.7,
+                "g": 0.65,
+                "b": 0.8,
+                "a": 1
+              },
+              "size": {
+                "x": 500,
+                "y": 28
+              },
+              "position": {
+                "x": 0,
+                "y": -16
+              },
+              "pivot": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          ]
+        },
+        {
+          "name": "DivinationInfoPanel",
+          "type": "Panel",
+          "color": {
+            "r": 0.1,
+            "g": 0.07,
+            "b": 0.18,
+            "a": 0.85
+          },
+          "anchorMin": {
+            "x": 0.5,
+            "y": 1
+          },
+          "anchorMax": {
+            "x": 0.5,
+            "y": 1
+          },
+          "size": {
+            "x": 660,
+            "y": 150
+          },
+          "position": {
+            "x": 0,
+            "y": -310
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 0.5
+          },
+          "children": [
+            {
+              "name": "InfoTitleText",
+              "type": "Text",
+              "text": "✦ 占卜说明 ✦",
+              "fontSize": 18,
+              "fontStyle": "Bold",
+              "textAlignment": "Center",
+              "textColor": {
+                "r": 0.9,
+                "g": 0.8,
+                "b": 0.5,
+                "a": 1
+              },
+              "size": {
+                "x": 300,
+                "y": 30
+              },
+              "position": {
+                "x": 0,
+                "y": 48
+              },
+              "pivot": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            {
+              "name": "InfoDescText",
+              "type": "Text",
+              "text": "本次为双人关系占卜，牌阵共三张。你和对方各自翻开属于自己的牌，只有你们自己可以看到翻开的结果。",
+              "fontSize": 14,
+              "textAlignment": "Center",
+              "textColor": {
+                "r": 0.7,
+                "g": 0.65,
+                "b": 0.8,
+                "a": 1
+              },
+              "size": {
+                "x": 580,
+                "y": 60
+              },
+              "position": {
+                "x": 0,
+                "y": -5
+              },
+              "pivot": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          ]
+        },
+        {
+          "name": "CardsRow",
+          "type": "Panel",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1,
+            "a": 0
+          },
+          "anchorMin": {
+            "x": 0.5,
+            "y": 0.5
+          },
+          "anchorMax": {
+            "x": 0.5,
+            "y": 0.5
+          },
+          "size": {
+            "x": 780,
+            "y": 500
+          },
+          "position": {
+            "x": 0,
+            "y": -50
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 0.5
+          },
+          "children": [
+            {
+              "name": "UserCard",
+              "type": "Panel",
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0
+              },
+              "size": {
+                "x": 220,
+                "y": 480
+              },
+              "anchorMin": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "anchorMax": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "position": {
+                "x": -260,
+                "y": 0
+              },
+              "pivot": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "children": [
+                {
+                  "name": "UserCardIcon",
+                  "type": "Text",
+                  "text": "✦✦",
+                  "fontSize": 22,
+                  "textAlignment": "Center",
+                  "textColor": {
+                    "r": 0.9,
+                    "g": 0.8,
+                    "b": 0.5,
+                    "a": 1
+                  },
+                  "size": {
+                    "x": 220,
+                    "y": 30
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 210
+                  },
+                  "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                {
+                  "name": "UserCardCardImage",
+                  "type": "Image",
+                  "sprite": "card_usercard",
+                  "imageType": "Simple",
+                  "color": {
+                    "r": 1,
+                    "g": 1,
+                    "b": 1,
+                    "a": 1
+                  },
+                  "size": {
+                    "x": 160,
+                    "y": 240
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 60
+                  },
+                  "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                {
+                  "name": "UserCardTopLabel",
+                  "type": "Text",
+                  "text": "你可翻开",
+                  "fontSize": 16,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Center",
+                  "textColor": {
+                    "r": 0.95,
+                    "g": 0.85,
+                    "b": 0.55,
+                    "a": 1
+                  },
+                  "size": {
+                    "x": 220,
+                    "y": 26
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": -80
+                  },
+                  "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                {
+                  "name": "UserCardBottomLabel",
+                  "type": "Text",
+                  "text": "你的内心与看法",
+                  "fontSize": 13,
+                  "textAlignment": "Center",
+                  "textColor": {
+                    "r": 0.6,
+                    "g": 0.55,
+                    "b": 0.7,
+                    "a": 1
+                  },
+                  "size": {
+                    "x": 220,
+                    "y": 22
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": -106
+                  },
+                  "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                }
+              ]
+            },
+            {
+              "name": "SharedCard",
+              "type": "Panel",
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0
+              },
+              "size": {
+                "x": 220,
+                "y": 480
+              },
+              "anchorMin": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "anchorMax": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "pivot": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "children": [
+                {
+                  "name": "SharedCardIcon",
+                  "type": "Text",
+                  "text": "✦✦",
+                  "fontSize": 22,
+                  "textAlignment": "Center",
+                  "textColor": {
+                    "r": 0.9,
+                    "g": 0.8,
+                    "b": 0.5,
+                    "a": 1
+                  },
+                  "size": {
+                    "x": 220,
+                    "y": 30
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 210
+                  },
+                  "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                {
+                  "name": "SharedCardCardImage",
+                  "type": "Image",
+                  "sprite": "card_sharedcard",
+                  "imageType": "Simple",
+                  "color": {
+                    "r": 1,
+                    "g": 1,
+                    "b": 1,
+                    "a": 1
+                  },
+                  "size": {
+                    "x": 160,
+                    "y": 240
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 60
+                  },
+                  "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                {
+                  "name": "SharedCardTopLabel",
+                  "type": "Text",
+                  "text": "共同揭示",
+                  "fontSize": 16,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Center",
+                  "textColor": {
+                    "r": 0.95,
+                    "g": 0.85,
+                    "b": 0.55,
+                    "a": 1
+                  },
+                  "size": {
+                    "x": 220,
+                    "y": 26
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": -80
+                  },
+                  "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                {
+                  "name": "SharedCardBottomLabel",
+                  "type": "Text",
+                  "text": "关系的现状与指引",
+                  "fontSize": 13,
+                  "textAlignment": "Center",
+                  "textColor": {
+                    "r": 0.6,
+                    "g": 0.55,
+                    "b": 0.7,
+                    "a": 1
+                  },
+                  "size": {
+                    "x": 220,
+                    "y": 22
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": -106
+                  },
+                  "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                }
+              ]
+            },
+            {
+              "name": "PartnerCard",
+              "type": "Panel",
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0
+              },
+              "size": {
+                "x": 220,
+                "y": 480
+              },
+              "anchorMin": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "anchorMax": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "position": {
+                "x": 260,
+                "y": 0
+              },
+              "pivot": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "children": [
+                {
+                  "name": "PartnerCardIcon",
+                  "type": "Text",
+                  "text": "✦✦",
+                  "fontSize": 22,
+                  "textAlignment": "Center",
+                  "textColor": {
+                    "r": 0.9,
+                    "g": 0.8,
+                    "b": 0.5,
+                    "a": 1
+                  },
+                  "size": {
+                    "x": 220,
+                    "y": 30
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 210
+                  },
+                  "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                {
+                  "name": "PartnerCardCardImage",
+                  "type": "Image",
+                  "sprite": "card_partnercard",
+                  "imageType": "Simple",
+                  "color": {
+                    "r": 1,
+                    "g": 1,
+                    "b": 1,
+                    "a": 1
+                  },
+                  "size": {
+                    "x": 160,
+                    "y": 240
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 60
+                  },
+                  "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                {
+                  "name": "PartnerCardTopLabel",
+                  "type": "Text",
+                  "text": "对方可翻开",
+                  "fontSize": 16,
+                  "fontStyle": "Bold",
+                  "textAlignment": "Center",
+                  "textColor": {
+                    "r": 0.95,
+                    "g": 0.85,
+                    "b": 0.55,
+                    "a": 1
+                  },
+                  "size": {
+                    "x": 220,
+                    "y": 26
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": -80
+                  },
+                  "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                {
+                  "name": "PartnerCardBottomLabel",
+                  "type": "Text",
+                  "text": "对方的内心与想法",
+                  "fontSize": 13,
+                  "textAlignment": "Center",
+                  "textColor": {
+                    "r": 0.6,
+                    "g": 0.55,
+                    "b": 0.7,
+                    "a": 1
+                  },
+                  "size": {
+                    "x": 220,
+                    "y": 22
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": -106
+                  },
+                  "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "VisibilityRow",
+          "type": "Panel",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1,
+            "a": 0
+          },
+          "anchorMin": {
+            "x": 0.5,
+            "y": 0.5
+          },
+          "anchorMax": {
+            "x": 0.5,
+            "y": 0.5
+          },
+          "size": {
+            "x": 780,
+            "y": 50
+          },
+          "position": {
+            "x": 0,
+            "y": -320
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 0.5
+          },
+          "children": [
+            {
+              "name": "Visibility0",
+              "type": "Panel",
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0
+              },
+              "size": {
+                "x": 220,
+                "y": 50
+              },
+              "anchorMin": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "anchorMax": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "position": {
+                "x": -260,
+                "y": 0
+              },
+              "pivot": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "children": [
+                {
+                  "name": "VisLabel0",
+                  "type": "Text",
+                  "text": "仅你可见",
+                  "fontSize": 14,
+                  "textAlignment": "Center",
+                  "textColor": {
+                    "r": 0.5,
+                    "g": 0.45,
+                    "b": 0.6,
+                    "a": 1
+                  },
+                  "size": {
+                    "x": 220,
+                    "y": 24
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 0
+                  },
+                  "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Visibility1",
+              "type": "Panel",
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0
+              },
+              "size": {
+                "x": 220,
+                "y": 50
+              },
+              "anchorMin": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "anchorMax": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "pivot": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "children": [
+                {
+                  "name": "VisLabel1",
+                  "type": "Text",
+                  "text": "你与对方可见",
+                  "fontSize": 14,
+                  "textAlignment": "Center",
+                  "textColor": {
+                    "r": 0.5,
+                    "g": 0.45,
+                    "b": 0.6,
+                    "a": 1
+                  },
+                  "size": {
+                    "x": 220,
+                    "y": 24
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 0
+                  },
+                  "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Visibility2",
+              "type": "Panel",
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0
+              },
+              "size": {
+                "x": 220,
+                "y": 50
+              },
+              "anchorMin": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "anchorMax": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "position": {
+                "x": 260,
+                "y": 0
+              },
+              "pivot": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "children": [
+                {
+                  "name": "VisLabel2",
+                  "type": "Text",
+                  "text": "仅对方可见",
+                  "fontSize": 14,
+                  "textAlignment": "Center",
+                  "textColor": {
+                    "r": 0.5,
+                    "g": 0.45,
+                    "b": 0.6,
+                    "a": 1
+                  },
+                  "size": {
+                    "x": 220,
+                    "y": 24
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 0
+                  },
+                  "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "PrivacyNotice",
+          "type": "Panel",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1,
+            "a": 0
+          },
+          "anchorMin": {
+            "x": 0.5,
+            "y": 0.5
+          },
+          "anchorMax": {
+            "x": 0.5,
+            "y": 0.5
+          },
+          "size": {
+            "x": 500,
+            "y": 60
+          },
+          "position": {
+            "x": 0,
+            "y": -380
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 0.5
+          },
+          "children": [
+            {
+              "name": "PrivacyIcon",
+              "type": "Text",
+              "text": "🛡",
+              "fontSize": 18,
+              "textAlignment": "Center",
+              "textColor": {
+                "r": 0.9,
+                "g": 0.8,
+                "b": 0.5,
+                "a": 1
+              },
+              "size": {
+                "x": 30,
+                "y": 30
+              },
+              "position": {
+                "x": -80,
+                "y": 6
+              },
+              "pivot": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            {
+              "name": "PrivacyTitle",
+              "type": "Text",
+              "text": "隐私保护已开启",
+              "fontSize": 16,
+              "fontStyle": "Bold",
+              "textAlignment": "Left",
+              "textColor": {
+                "r": 0.9,
+                "g": 0.8,
+                "b": 0.5,
+                "a": 1
+              },
+              "size": {
+                "x": 180,
+                "y": 26
+              },
+              "position": {
+                "x": -50,
+                "y": 8
+              },
+              "pivot": {
+                "x": 0,
+                "y": 0.5
+              }
+            },
+            {
+              "name": "PrivacySubtitle",
+              "type": "Text",
+              "text": "结果仅对各自可见，保障你们的信任与安全",
+              "fontSize": 13,
+              "textAlignment": "Left",
+              "textColor": {
+                "r": 0.55,
+                "g": 0.45,
+                "b": 0.65,
+                "a": 1
+              },
+              "size": {
+                "x": 400,
+                "y": 22
+              },
+              "position": {
+                "x": -50,
+                "y": -14
+              },
+              "pivot": {
+                "x": 0,
+                "y": 0.5
+              }
+            }
+          ]
+        },
+        {
+          "name": "[Button]SendInvitation",
+          "type": "Button",
+          "text": "发送占卜邀请  →",
+          "fontSize": 20,
+          "fontStyle": "Bold",
+          "textColor": {
+            "r": 0.15,
+            "g": 0.08,
+            "b": 0.18,
+            "a": 1
+          },
+          "color": {
+            "r": 0.85,
+            "g": 0.72,
+            "b": 0.35,
+            "a": 1
+          },
+          "size": {
+            "x": 500,
+            "y": 56
+          },
+          "anchorMin": {
+            "x": 0.5,
+            "y": 0.5
+          },
+          "anchorMax": {
+            "x": 0.5,
+            "y": 0.5
+          },
+          "position": {
+            "x": 0,
+            "y": -460
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 0.5
+          }
+        },
+        {
+          "name": "BottomHintText",
+          "type": "Text",
+          "text": "邀请对方加入，占卜将自动开始",
+          "fontSize": 13,
+          "textAlignment": "Center",
+          "textColor": {
+            "r": 0.45,
+            "g": 0.4,
+            "b": 0.55,
+            "a": 1
+          },
+          "size": {
+            "x": 400,
+            "y": 24
+          },
+          "anchorMin": {
+            "x": 0.5,
+            "y": 0.5
+          },
+          "anchorMax": {
+            "x": 0.5,
+            "y": 0.5
+          },
+          "position": {
+            "x": 0,
+            "y": -520
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 0.5
+          }
+        }
+      ]
+    }
+  ]
+}
