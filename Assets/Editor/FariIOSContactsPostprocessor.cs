@@ -48,6 +48,7 @@ public static class FariIOSContactsPostprocessor
         capabilities.AddGameCenter();
         capabilities.AddSignInWithApple();
         capabilities.AddInAppPurchase();
+        capabilities.AddPushNotifications(EditorUserBuildSettings.development);
         capabilities.WriteToFile();
     }
 }

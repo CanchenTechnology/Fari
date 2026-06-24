@@ -6,7 +6,6 @@ namespace XFGameFrameWork.ActionXF
     public class CallbackAction : ActionBase
     {
         private Action action;
-        private bool called;
 
         public CallbackAction(Action action)
         {
@@ -22,7 +21,6 @@ namespace XFGameFrameWork.ActionXF
             }
 
             action?.Invoke();
-            called = true;
             IsFinished = true;
         }
 

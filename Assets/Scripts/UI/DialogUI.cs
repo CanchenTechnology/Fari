@@ -1191,7 +1191,7 @@ public class DialogUI : WindowBase
         if (prepared == null || prepared.totalDuration <= 0f)
         {
             Debug.LogError($"[DialogUI] TTS 合成失败: {error ?? "AudioClip 为空"}");
-            ToastManager.ShowToast("语音生成失败");
+            ToastManager.ShowToast(TTSManager.ToUserFacingError(error));
             _currentTTSItem = null;
             _currentTTSMessageId = -1;
             _ttsPlaybackCoroutine = null;
@@ -1433,7 +1433,7 @@ public class DialogUI : WindowBase
         Debug.Log("重新生成声音按钮点击");
         if (ttsManager == null)
         {
-            ToastManager.ShowToast("TTS 服务未就绪，请在 TTSManager 中配置 API 密钥");
+            ToastManager.ShowToast("TTS 服务未就绪，请稍后重试");
             return;
         }
 

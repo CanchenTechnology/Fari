@@ -106,7 +106,7 @@ public class PatchOperation : GameAsyncOperation
         }
         else
         {
-            throw new System.NotImplementedException($"{message.GetType()}");
+            Debug.LogWarning($"[PatchOperation] Unhandled user patch event: {message.GetType().Name}");
         }
     }
     public void SetFinish()

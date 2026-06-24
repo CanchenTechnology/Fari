@@ -12,6 +12,8 @@ using GamerFrameWork.UIFrameWork;
 public class SetBirthTimeUI : WindowBase
 {
 	public SetBirthTimeUIComponent uiComponent;
+	private string selectedBirthTime = string.Empty;
+	private bool unknownTime;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -26,6 +28,11 @@ public class SetBirthTimeUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		selectedBirthTime = UserDataManager.Instance != null ? UserDataManager.Instance.BirthTime : string.Empty;
+		unknownTime = RegistrationFlowUtility.IsUnknownBirthTime(selectedBirthTime);
+		if (uiComponent?.UnknownTimeToggle != null)
+			uiComponent.UnknownTimeToggle.isOn = unknownTime;
+		RefreshBirthTimeButtons();
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -50,19 +57,75 @@ public class SetBirthTimeUI : WindowBase
 	}
 	public void OnHourPickerButtonClick()
 	{
+		OpenBirthTimePicker();
 	}
 	public void OnMinutePickerButtonClick()
 	{
+		OpenBirthTimePicker();
 	}
 	public void OnPeriodPickerButtonClick()
 	{
+		OpenBirthTimePicker();
 	}
 	public void OnUnknownTimeToggleChange(bool state, Toggle toggle)
 	{
+		unknownTime = state;
+		if (unknownTime)
+		{
+			selectedBirthTime = RegistrationFlowUtility.UnknownBirthTime;
+			UserDataManager.Instance?.SetBirthTime(selectedBirthTime);
+			RegistrationFlowUtility.SaveUserDataAndSyncCloud();
+		}
+		else if (RegistrationFlowUtility.IsUnknownBirthTime(selectedBirthTime))
+		{
+			selectedBirthTime = string.Empty;
+			UserDataManager.Instance?.SetBirthTime(selectedBirthTime);
+			RegistrationFlowUtility.SaveUserDataAndSyncCloud();
+		}
+		RefreshBirthTimeButtons();
 	}
 	public void OnContinueButtonClick()
 	{
+		if (string.IsNullOrWhiteSpace(selectedBirthTime))
+		{
+			ToastManager.ShowToast("请选择出生时间，或勾选时间未知");
+			return;
+		}
+
+		UserDataManager.Instance?.SetBirthTime(selectedBirthTime);
+		RegistrationFlowUtility.SaveUserDataAndSyncCloud();
 		UIModule.Instance.PopUpWindow<SetBirthCityUI>();
+	}
+
+	private void OpenBirthTimePicker()
+	{
+		if (unknownTime && uiComponent?.UnknownTimeToggle != null)
+			uiComponent.UnknownTimeToggle.isOn = false;
+
+		SpinPickerUI.ShowTime(RegistrationFlowUtility.IsUnknownBirthTime(selectedBirthTime) ? string.Empty : selectedBirthTime, value =>
+		{
+			if (!RegistrationFlowUtility.TryNormalizeBirthTime(value, out string normalized))
+			{
+				ToastManager.ShowToast("出生时间格式无效");
+				return;
+			}
+
+			selectedBirthTime = normalized;
+			unknownTime = false;
+			if (uiComponent?.UnknownTimeToggle != null)
+				uiComponent.UnknownTimeToggle.isOn = false;
+			UserDataManager.Instance?.SetBirthTime(selectedBirthTime);
+			RegistrationFlowUtility.SaveUserDataAndSyncCloud();
+			RefreshBirthTimeButtons();
+		});
+	}
+
+	private void RefreshBirthTimeButtons()
+	{
+		RegistrationFlowUtility.TryGetBirthTimeParts(selectedBirthTime, out string hour, out string minute, out string period);
+		RegistrationFlowUtility.SetButtonText(uiComponent?.HourPickerButton, hour);
+		RegistrationFlowUtility.SetButtonText(uiComponent?.MinutePickerButton, minute);
+		RegistrationFlowUtility.SetButtonText(uiComponent?.PeriodPickerButton, period);
 	}
 	#endregion
 }

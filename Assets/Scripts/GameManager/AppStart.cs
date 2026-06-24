@@ -12,6 +12,9 @@ public class AppStart : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
+        NotificationSettingsManager settings = NotificationSettingsManager.Instance;
+        AppNotificationScheduler.Instance.SyncFromSettings(settings);
+        RemotePushManager.Instance.Initialize();
         AppReadinessDiagnostics.LogCurrentState("AppStart");
         UIModule.Instance.PopUpWindow<LoginUI>();
     }

@@ -12,6 +12,7 @@ using GamerFrameWork.UIFrameWork;
 public class SetBirthCityUI : WindowBase
 {
 	public SetBirthCityUIComponent uiComponent;
+	private string selectedCity = string.Empty;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -26,6 +27,10 @@ public class SetBirthCityUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		selectedCity = UserDataManager.Instance != null ? UserDataManager.Instance.City : string.Empty;
+		if (uiComponent?.SearchCityInputField != null)
+			uiComponent.SearchCityInputField.text = selectedCity;
+		RefreshCityButton();
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -50,16 +55,48 @@ public class SetBirthCityUI : WindowBase
 	}
 	public void OnSearchCityInputChange(string text)
 	{
+		selectedCity = text ?? string.Empty;
 	}
 	public void OnSearchCityInputEnd(string text)
 	{
+		selectedCity = string.IsNullOrWhiteSpace(text) ? string.Empty : text.Trim();
+		if (uiComponent?.SearchCityInputField != null)
+			uiComponent.SearchCityInputField.text = selectedCity;
+		RefreshCityButton();
 	}
 	public void OnSelectCityButtonClick()
 	{
+		SpinPickerUI.ShowRegion(selectedCity, value =>
+		{
+			selectedCity = string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
+			if (uiComponent?.SearchCityInputField != null)
+				uiComponent.SearchCityInputField.text = selectedCity;
+			UserDataManager.Instance?.SetCity(selectedCity);
+			RegistrationFlowUtility.SaveUserDataAndSyncCloud();
+			RefreshCityButton();
+		});
 	}
 	public void OnContinueButtonClick()
 	{
+		selectedCity = uiComponent?.SearchCityInputField != null
+			? uiComponent.SearchCityInputField.text.Trim()
+			: selectedCity.Trim();
+
+		if (string.IsNullOrWhiteSpace(selectedCity))
+		{
+			ToastManager.ShowToast("请先选择出生城市");
+			return;
+		}
+
+		UserDataManager.Instance?.SetCity(selectedCity);
+		RegistrationFlowUtility.SaveUserDataAndSyncCloud();
 		UIModule.Instance.PopUpWindow<VerifyPhoneUI>();
+	}
+
+	private void RefreshCityButton()
+	{
+		RegistrationFlowUtility.SetButtonText(uiComponent?.SelectCityButton,
+			string.IsNullOrWhiteSpace(selectedCity) ? "选择城市" : selectedCity);
 	}
 	#endregion
 }

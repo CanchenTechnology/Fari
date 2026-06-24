@@ -70,12 +70,30 @@ public class CreateFriendSuccessUI : WindowBase
 		}
 
 		SetText(uiComponent.FriendNameText, string.IsNullOrWhiteSpace(currentFriend.name) ? "好友" : currentFriend.name.Trim());
+		ApplyAvatar(FriendAvatarImageUtility.ResolveFriendAvatar(currentFriend, uiComponent.FriendAvatarImage));
+		LoadRemoteAvatarIfNeeded();
+	}
 
-		if (uiComponent.FriendAvatarImage != null && currentFriend.headSprite != null)
+	private void ApplyAvatar(Sprite avatar)
+	{
+		FriendAvatarImageUtility.ApplyAvatar(uiComponent?.FriendAvatarImage, avatar);
+	}
+
+	private void LoadRemoteAvatarIfNeeded()
+	{
+		if (currentFriend == null
+			|| currentFriend.headSprite != null
+			|| string.IsNullOrWhiteSpace(currentFriend.photoUrl)
+			|| uiComponent == null)
+			return;
+
+		FriendDataManager.FriendData friend = currentFriend;
+		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadSpriteFromUrlCoroutine(currentFriend.photoUrl, sprite =>
 		{
-			uiComponent.FriendAvatarImage.sprite = currentFriend.headSprite;
-			uiComponent.FriendAvatarImage.preserveAspect = true;
-		}
+			if (currentFriend != friend || sprite == null) return;
+			currentFriend.headSprite = sprite;
+			ApplyAvatar(sprite);
+		}));
 	}
 
 	private void SetText(TMP_Text text, string value)

@@ -211,11 +211,10 @@ public class PersonalProfileUI : WindowBase
 			return;
 		}
 
-		manager.SaveData();
-		FirestoreManager.Instance?.SaveUserData(success =>
+		RegistrationFlowUtility.SaveUserDataAndSyncCloud(success =>
 		{
 			if (!success)
-				Debug.LogWarning("[PersonalProfileUI] 用户资料云端同步失败");
+				Debug.LogWarning("[PersonalProfileUI] 用户资料云端同步暂未完成");
 		});
 
 		ShowToast(manager.IsProfileComplete()

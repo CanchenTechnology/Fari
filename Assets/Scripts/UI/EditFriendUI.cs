@@ -52,6 +52,7 @@ public class EditFriendUI : WindowBase
 		uiComponent.InitComponent(this);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		defaultAvatarSprite = uiComponent.FriendAvatarImage != null ? uiComponent.FriendAvatarImage.sprite : null;
+		defaultAvatarSprite = FriendAvatarImageUtility.ResolveAvatar(defaultAvatarSprite);
 		InitHistoryListView();
 		base.OnAwake();
 	}
@@ -109,7 +110,7 @@ public class EditFriendUI : WindowBase
 		editBirthday = currentFriend.birthday ?? string.Empty;
 		editBirthTime = currentFriend.birthTime ?? string.Empty;
 		editCity = currentFriend.city ?? string.Empty;
-		selectedAvatarSprite = currentFriend.headSprite != null ? currentFriend.headSprite : defaultAvatarSprite;
+		selectedAvatarSprite = FriendAvatarImageUtility.ResolveFriendAvatar(currentFriend, uiComponent.FriendAvatarImage, defaultAvatarSprite);
 		selectedAvatarImagePath = currentFriend.avatarImagePath ?? string.Empty;
 
 		if (uiComponent.FriendNameInputField != null)
@@ -131,9 +132,8 @@ public class EditFriendUI : WindowBase
 
 	private void ApplyAvatar(Sprite avatar)
 	{
-		if (avatar == null || uiComponent?.FriendAvatarImage == null) return;
-		uiComponent.FriendAvatarImage.sprite = avatar;
-		uiComponent.FriendAvatarImage.preserveAspect = true;
+		if (uiComponent?.FriendAvatarImage == null) return;
+		FriendAvatarImageUtility.ApplyAvatar(uiComponent.FriendAvatarImage, avatar, defaultAvatarSprite);
 	}
 
 	private void LoadRemoteAvatarIfNeeded()

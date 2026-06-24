@@ -131,6 +131,7 @@ has_file "scripts/setup-firebase-secrets.sh"
 has_file "scripts/check-firebase-secrets.sh"
 has_file "scripts/resolve-unity-packages.sh"
 has_file "scripts/check-firebase-network.sh"
+has_file "scripts/check-firebase-sdk-versions.sh"
 has_file "scripts/check-ios-export.sh"
 has_file "scripts/build-ios-xcode.sh"
 has_file "scripts/check-android-config.sh"
@@ -230,7 +231,7 @@ else
 fi
 echo
 
-for export_name in membershipStatus readinessStatus publicConfig submitFeedback adminPublicConfigUpdate adminFeedbackList adminFeedbackUpdate deleteMyAccountData submitIapReceipt aiChat aiChatStream ttsSynthesize; do
+for export_name in membershipStatus readinessStatus publicConfig submitFeedback adminPublicConfigUpdate adminFeedbackList adminFeedbackUpdate deleteMyAccountData submitIapReceipt aiChat aiChatStream processStaleDialogueReplyJobs ttsSynthesize; do
   if grep_file "exports\\.$export_name" "functions/index.js"; then
     ok "functions exports $export_name"
   else
@@ -418,7 +419,7 @@ if env \
   GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account","client_email":"readiness@fari-app-b2fd2.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\nREADINESS\n-----END PRIVATE KEY-----\n"}' \
   IAP_RECEIPT=readiness_real_receipt_payload_for_format_check \
   IAP_STORE=AppleAppStore \
-  IAP_PRODUCT_ID=fair.pro.monthly \
+  IAP_PRODUCT_ID=fari.pro.monthly \
   SKIP_ANDROID_KEYSTORE_VALIDATION=1 \
   ./scripts/check-release-env.sh --no-env-file >/tmp/moonly_readiness_release_env_check.log 2>&1; then
   ok "release env check script validates complete release inputs without printing secrets"
@@ -459,7 +460,6 @@ if grep_file "RUN_PUBLIC_CONFIG_UPDATE" "scripts/prepare-release.sh" \
   && grep_file "validate_public_config_inputs" "scripts/prepare-release.sh" \
   && grep_file "functions/scripts/set-public-config.js" "scripts/prepare-release.sh" \
   && grep_file "selected public app config release validation" "scripts/check-release-blockers.sh" \
-  && grep_file "functions/public-config.live.json\" -prune" "scripts/check-release-blockers.sh" \
   && grep_file "init-public-config.sh" "scripts/check-release-blockers.sh" \
   && grep_file "RUN_PUBLIC_CONFIG_UPDATE=1 PUBLIC_CONFIG_PATH=functions/public-config.live.json" "scripts/check-release-blockers.sh" \
   && grep_file "Copy Init Public Config Command" "Assets/Editor/AppReadinessDiagnosticsMenu.cs" \
@@ -564,6 +564,25 @@ else
   fail "WindowConfig has duplicate names, missing prefab paths, or misplaced My windows; see /tmp/moonly_readiness_window_config.log"
 fi
 
+if grep_file "Unhandled user patch event" "Assets/Scripts/HotFix/PatchOperation.cs" \
+  && grep_file "Unhandled patch event" "Assets/Scripts/UI/PatchWindow.cs" \
+  && grep_file "TotalDownloadCount <= 0" "Assets/Scripts/UI/PatchWindow.cs" \
+  && ! grep_file "NotImplementedException" "Assets/Scripts/HotFix/PatchOperation.cs" \
+  && ! grep_file "NotImplementedException" "Assets/Scripts/UI/PatchWindow.cs"; then
+  ok "patch update flow handles unknown events and zero-count progress without crashing"
+else
+  fail "patch update flow still has crash-prone unhandled event or progress handling"
+fi
+
+if grep_file "ResolveFallbackResultViews" "Assets/Scripts/UI/UserSearchUI.cs" \
+  && grep_file "fallbackResultRoots" "Assets/Scripts/UI/UserSearchUI.cs" \
+  && grep_file "IsRecommendationItem" "Assets/Scripts/UI/UserSearchUI.cs" \
+  && grep_file "SetActive(hasResult)" "Assets/Scripts/UI/UserSearchUI.cs"; then
+  ok "user search result fallback views resolve at runtime when LoopListView is unavailable"
+else
+  fail "user search fallback result views are not resolved safely"
+fi
+
 if node <<'NODE' >/tmp/moonly_readiness_ui_bindings.log 2>&1
 const fs = require("fs");
 const path = require("path");
@@ -655,10 +674,10 @@ const feedback = fs.readFileSync("Assets/Scripts/UI/FeedbackUI.cs", "utf8");
 const firestore = fs.readFileSync("Assets/Scripts/Platform/FireBase/FirestoreManager.cs", "utf8");
 
 const myDashboardUsesReadingQuota = /tatTodayCardValueText\.text = stats\.GetReadingDisplay\(_isPro\)/.test(myUI)
-  && /m_Text: "\\u4ECA\\u65E5\\u5360\\u535C"/.test(myUIPrefab);
+  && /m_text: "\\u4ECA\\u65E5\\u5360\\u535C"/.test(myUIPrefab);
 
-const historySafeStore = /LoadFromFirestore\(GetRecordStore\(\)\)/.test(history)
-  && /private DivinationRecordFirestore GetRecordStore\(\)/.test(history)
+const historySafeStore = /DivinationHistoryCacheService/.test(history)
+  && /cache\.Refresh\(false/.test(history)
   && /历史服务暂不可用/.test(history);
 
 const feedbackMigratesLocalPending = /MergeLocalPendingFeedbackEntries\(\)/.test(feedback)
@@ -693,6 +712,7 @@ const files = {
   history: read("Assets/Scripts/UI/HistoryUI.cs"),
   detail: read("Assets/Scripts/UI/DivinationRecordUI.cs"),
   profile: read("Assets/Scripts/UI/PersonalProfileUI.cs"),
+  registration: read("Assets/Scripts/UI/RegistrationFlowUtility.cs"),
   memory: read("Assets/Scripts/UI/MemoryManagementUI.cs"),
   account: read("Assets/Scripts/UI/AccountUI.cs"),
   notion: read("Assets/Scripts/UI/NotionUI.cs"),
@@ -720,15 +740,15 @@ const checks = {
     && /OnLatestRecordEntryClick\(\)[\s\S]*?PopUpWindow<DivinationRecordUI>/.test(files.my)
     && /PopUpWindow<HistoryUI>/.test(files.my)
     && /PopUpWindow<PersonalProfileUI>/.test(files.my)
-    && /PopUpWindow<MemoryManagementUI>/.test(files.my)
+    && /PopUpWindow<MemoryManageUI>/.test(files.my)
     && /PopUpWindow<UnlockProUI>/.test(files.my)
     && /PopUpWindow<AccountUI>/.test(files.my)
     && /PopUpWindow<NotionUI>/.test(files.my)
     && /PopUpWindow<FeedbackUI>/.test(files.my)
     && /PopUpWindow<FollowusUI>/.test(files.my),
   history:
-    /LoadFromFirestore\(GetRecordStore\(\)\)/.test(files.history)
-    && /LoadAllRecords/.test(files.history)
+    /DivinationHistoryCacheService/.test(files.history)
+    && /cache\.Refresh\(false/.test(files.history)
     && /ValidateSelectedRecord\(\)/.test(files.history)
     && /SelectedRecord = record/.test(files.history)
     && /PopUpWindow<DivinationHistoryUI>/.test(files.history)
@@ -741,12 +761,16 @@ const checks = {
     && /BuildShareText\(\)/.test(files.detail)
     && /EnsureSaveToDiaryButtonInteractable\(\)/.test(files.detail),
   personalProfile:
-    /EnsureBioInputField\(\)/.test(files.profile)
-    && /AvatarUploadManager\.Instance\.PickAndUploadAvatar/.test(files.profile)
+    /BioInputInputField/.test(files.profile)
+    && /PickAndUploadAvatar/.test(files.profile)
     && /TryNormalizeBirthday/.test(files.profile)
     && /TryNormalizeBirthTime/.test(files.profile)
     && /SetProfileBio\(bio\)/.test(files.profile)
-    && /SaveUserData/.test(files.profile),
+    && /RegistrationFlowUtility\.SaveUserDataAndSyncCloud/.test(files.profile)
+    && /SyncAuthUserProfile/.test(files.registration)
+    && /NormalizeHttpUrl/.test(files.registration)
+    && /UpdateUserProfile\(displayName, photoUrl/.test(files.registration)
+    && /SaveUserData/.test(files.registration),
   memory:
     /LoadMemorySource/.test(files.memory)
     && /SetMemorySource/.test(files.memory)
@@ -761,10 +785,16 @@ const checks = {
     && /关系记忆/.test(files.memory)
     && /占卜连续性/.test(files.memory)
     && /最近 Prompt/.test(files.memory),
+  memoryPrivacy:
+    /CreateRuntimeClearButton/.test(read("Assets/Scripts/UI/MemoryPrivacySettingsUI.cs"))
+    && /CreateRuntimeClearConfirmModal/.test(read("Assets/Scripts/UI/MemoryPrivacySettingsUI.cs"))
+    && /MemoryUiStore\.ClearAll/.test(read("Assets/Scripts/UI/MemoryPrivacySettingsUI.cs"))
+    && /SetClearButtonsInteractable/.test(read("Assets/Scripts/UI/MemoryPrivacySettingsUI.cs"))
+    && !/清空确认弹窗还未生成/.test(read("Assets/Scripts/UI/MemoryPrivacySettingsUI.cs")),
   account:
     /GetLoginTypeDisplayText/.test(files.account)
     && /GetFormattedRegTime/.test(files.account)
-    && /FriendRuntimeDialog\.ShowConfirm/.test(files.account)
+    && /ShowSelectWindow/.test(files.account)
     && /SignOut/.test(files.account)
     && /DeleteUser/.test(files.account)
     && /ClearData/.test(files.account),
@@ -817,7 +847,7 @@ const checks = {
     && /RestorePurchases/.test(files.unlock)
     && /OpenSubscriptionManagement/.test(files.unlock)
     && /BuildProductButtonText/.test(files.unlock)
-    && /interactable = !isCurrentPro/.test(files.unlock),
+    && /SetPurchaseButtonsInteractable\(!isCurrentPro/.test(files.unlock),
 };
 
 const failed = Object.entries(checks)
@@ -918,6 +948,12 @@ if grep_file "Assets/GameData" "scripts/check-release-blockers.sh" \
   ok "release blockers freshness check includes UI prefabs, Resources, and framework runtime assets"
 else
   fail "release blockers freshness check is missing UI prefab, Resources, or framework runtime asset paths"
+fi
+
+if ! awk '/file_is_stale_against_sources\\(\\)/,/^}/ { print }' scripts/check-release-blockers.sh | grep -q "^[[:space:]]*functions[[:space:]]*\\\\"; then
+  ok "mobile artifact freshness excludes Firebase Functions source; backend deployment is checked separately"
+else
+  fail "mobile artifact freshness should not be invalidated by Firebase Functions-only edits"
 fi
 
 if grep_file "window == null" "Assets/GamerFrameWork/UIFrameWork/Scripts/Runtime/Code/UIModule.cs" \
@@ -1053,6 +1089,15 @@ else
   fail "scripts/check-android-config.sh is not executable"
 fi
 
+if bash scripts/check-firebase-sdk-versions.sh >/tmp/moonly_readiness_firebase_sdk_versions.log 2>&1; then
+  ok "Firebase SDK version consistency check passed"
+  if grep -q "^\[WARN\]" /tmp/moonly_readiness_firebase_sdk_versions.log; then
+    warn "Firebase SDK version consistency check has non-blocking warnings; see /tmp/moonly_readiness_firebase_sdk_versions.log"
+  fi
+else
+  fail "Firebase SDK version consistency check failed; see /tmp/moonly_readiness_firebase_sdk_versions.log"
+fi
+
 if grep_file "functions:secrets:set" "scripts/setup-firebase-secrets.sh"; then
   ok "secret setup script can write Firebase Functions secrets"
 else
@@ -1079,8 +1124,10 @@ else
   fail "notification scheduler missing diagnostic scheduling or scheduled-state summary"
 fi
 
-if grep_file "PresentationOptions" "Assets/Scripts/GameManager/AppNotificationScheduler.cs" \
-  && grep_file "RepeatInterval.*Daily" "Assets/Scripts/GameManager/AppNotificationScheduler.cs"; then
+if grep_file "ForegroundPresentationOption" "Assets/Scripts/GameManager/AppNotificationScheduler.cs" \
+  && grep_file "RepeatInterval = TimeSpan.FromDays(1)" "Assets/Scripts/GameManager/AppNotificationScheduler.cs" \
+  && grep_file "iOSNotificationCalendarTrigger" "Assets/Scripts/GameManager/AppNotificationScheduler.cs" \
+  && grep_file "Repeats = true" "Assets/Scripts/GameManager/AppNotificationScheduler.cs"; then
   ok "notification scheduler configures alert presentation and daily repeat scheduling"
 else
   fail "notification scheduler missing alert presentation or daily repeat scheduling"
@@ -1106,6 +1153,26 @@ else
   fail "email login UI is missing Firebase password reset support"
 fi
 
+if grep_file "ttsSynthesize" "Assets/Scripts/TTS/TTSManager.cs" \
+  && grep_file "Authorization.*Bearer" "Assets/Scripts/TTS/TTSManager.cs" \
+  && grep_file "BuildTTSFunctionErrorMessage" "Assets/Scripts/TTS/TTSManager.cs" \
+  && grep_file "ToUserFacingError" "Assets/Scripts/UI/DialogUI.cs" \
+  && ! grep_file "配置 API 密钥" "Assets/Scripts/UI/DialogUI.cs"; then
+  ok "dialogue TTS uses authenticated Cloud Function and maps service errors for users"
+else
+  fail "dialogue TTS is missing Cloud Function auth or user-facing error handling"
+fi
+
+if grep_file "PhoneAuthProvider.GetInstance" "Assets/Scripts/UI/VerifyPhoneUI.cs" \
+  && grep_file "VerifyPhoneNumber" "Assets/Scripts/UI/VerifyPhoneUI.cs" \
+  && grep_file "UpdatePhoneNumberCredentialAsync" "Assets/Scripts/UI/VerifyPhoneUI.cs" \
+  && grep_file "\"phoneVerified\"" "Assets/Scripts/UI/RegistrationFlowUtility.cs" \
+  && ! grep_file "真实短信校验待接入" "Assets/Scripts/UI/VerifyPhoneUI.cs"; then
+  ok "phone registration UI uses Firebase Phone Auth and records verified status"
+else
+  fail "phone registration UI still lacks Firebase Phone Auth verification"
+fi
+
 if grep_file "SignInWithGameCenter" "Assets/Scripts/Platform/FireBase/FirebaseAuthManager.cs" \
   && grep_file "GameCenterAuthProvider.GetCredentialAsync" "Assets/Scripts/Platform/FireBase/FirebaseAuthManager.cs" \
   && grep_file "OnGameCenterSignInButtonClick" "Assets/Scripts/UI/LoginUI.cs" \
@@ -1113,6 +1180,16 @@ if grep_file "SignInWithGameCenter" "Assets/Scripts/Platform/FireBase/FirebaseAu
   ok "Game Center login is wired to Firebase Auth provider"
 else
   fail "Game Center login is not wired to Firebase Auth provider"
+fi
+
+if grep_file "Apple 登录仅支持 iOS 设备" "Assets/Scripts/Platform/FireBase/FirebaseAuthManager.cs" \
+  && grep_file "Apple 账号关联仅支持 iOS 设备" "Assets/Scripts/Platform/FireBase/FirebaseAuthManager.cs" \
+  && grep_file "ApplyPlatformButtonVisibility" "Assets/Scripts/UI/LoginUI.cs" \
+  && grep_file "IsAppleSignInVisible" "Assets/Scripts/UI/LoginUI.cs" \
+  && grep_file "IsGameCenterSignInVisible" "Assets/Scripts/UI/LoginUI.cs"; then
+  ok "platform-specific sign-in buttons and Apple auth guard avoid non-iOS mock credential paths"
+else
+  fail "platform-specific sign-in guards are missing for Apple or Game Center login buttons"
 fi
 
 if grep_file "AddGameCenter" "Assets/Editor/FariIOSContactsPostprocessor.cs" \
@@ -1138,6 +1215,55 @@ else
   fail "one or more notification trigger call sites are missing"
 fi
 
+if node <<'NODE' >/tmp/moonly_readiness_dialogue_remote_push.log 2>&1
+const fs = require("fs");
+
+const functionsIndex = fs.readFileSync("functions/index.js", "utf8");
+const deepSeekApi = fs.readFileSync("Assets/Scripts/Dialog/DeepSeekAPI.cs", "utf8");
+const dialogSystem = fs.readFileSync("Assets/Scripts/Dialog/Data/DialogSystem.cs", "utf8");
+const dialogHistory = fs.readFileSync("Assets/Scripts/Platform/FireBase/DialogHistoryFirestore.cs", "utf8");
+const remotePush = fs.readFileSync("Assets/Scripts/GameManager/RemotePushManager.cs", "utf8");
+const rules = fs.readFileSync("firestore.rules", "utf8");
+const deploy = fs.readFileSync("scripts/deploy-firebase.sh", "utf8");
+
+const functionsQueuesReply = /function shouldNotifyDialogueReply/.test(functionsIndex)
+  && /async function enqueueDialogueReplyNotification/.test(functionsIndex)
+  && /async function completeDialogueReplyJob/.test(functionsIndex)
+  && /exports\.processStaleDialogueReplyJobs = onSchedule/.test(functionsIndex)
+  && /collectionGroup\(DIALOG_REPLY_JOBS_COLLECTION\)/.test(functionsIndex)
+  && /collection\(PUSH_OUTBOX_COLLECTION\)/.test(functionsIndex)
+  && /preferenceKey: "dialogueReplyEnabled"/.test(functionsIndex)
+  && /remote_notifications/.test(functionsIndex);
+const clientCanRequestReplyPush = /AppendNotificationOptions/.test(deepSeekApi)
+  && /notifyOnComplete/.test(deepSeekApi)
+  && /notificationType\\":\\"dialogue_reply/.test(deepSeekApi)
+  && /clientRequestId/.test(deepSeekApi);
+const dialogOptsIn = /QueueDialogueReplyJob\(replyJobId, messages/.test(dialogSystem)
+  && /SendChatRequest\(messages,[\s\S]*?true,[\s\S]*?replyJobId/.test(dialogSystem)
+  && /SendChatRequestStream\(messages,[\s\S]*?true,[\s\S]*?replyJobId/.test(dialogSystem);
+const clientQueuesFallbackJob = /REPLY_JOBS_COLLECTION_NAME = "dialog_reply_jobs"/.test(dialogHistory)
+  && /QueueDialogueReplyJob/.test(dialogHistory)
+  && /"status", "client_streaming"/.test(dialogHistory);
+const foregroundDedupesReply = /IsDialogueReplyPush/.test(remotePush)
+  && /Application\.isFocused/.test(remotePush)
+  && /dialogue_reply/.test(remotePush);
+const rulesAllowClientCreate = /match \/dialog_reply_jobs\/\{jobId\}[\s\S]*?allow read, create, delete: if isOwner\(uid\);[\s\S]*?allow update: if false;/.test(rules);
+const deploysScheduler = /functions:processStaleDialogueReplyJobs/.test(deploy);
+
+if (!functionsQueuesReply) throw new Error("functions dialogue reply outbox wiring missing");
+if (!clientCanRequestReplyPush) throw new Error("DeepSeekAPI notify-on-complete payload missing");
+if (!dialogOptsIn) throw new Error("DialogSystem does not opt chat requests into remote reply push");
+if (!clientQueuesFallbackJob) throw new Error("DialogHistoryFirestore does not queue fallback reply jobs");
+if (!foregroundDedupesReply) throw new Error("RemotePushManager foreground dialogue dedupe missing");
+if (!rulesAllowClientCreate) throw new Error("Firestore rules do not allow owned dialogue reply job creation safely");
+if (!deploysScheduler) throw new Error("deploy script does not include scheduled dialogue reply worker");
+NODE
+then
+  ok "dialogue reply remote push and offline fallback job wiring are present"
+else
+  fail "dialogue reply remote push/offline fallback wiring is incomplete; see /tmp/moonly_readiness_dialogue_remote_push.log"
+fi
+
 if node <<'NODE' >/tmp/moonly_readiness_virtual_relationship.log 2>&1
 const fs = require("fs");
 const helper = fs.readFileSync("Assets/Scripts/Friend/CreatedFriendRelationshipDivinationLocalFlow.cs", "utf8");
@@ -1145,6 +1271,8 @@ const createInfo = fs.readFileSync("Assets/Scripts/UI/CreateFriendInfoUI.cs", "u
 const friendMove = fs.readFileSync("Assets/Scripts/UI/FriendMoveUI.cs", "utf8");
 const friendRuntime = fs.readFileSync("Assets/Scripts/Friend/FriendRuntimeUI.cs", "utf8");
 const inviteConfirm = fs.readFileSync("Assets/Scripts/UI/TwoPersonDivinationInviteConfirmFlowUI.cs", "utf8");
+const flow = fs.readFileSync("Assets/Scripts/Friend/RelationshipDivinationFlow.cs", "utf8");
+const service = fs.readFileSync("Assets/Scripts/Platform/FireBase/RelationshipDivinationFirestore.cs", "utf8");
 
 const helperCreatesLocalRecord = /public static bool TryStart\(FriendDataManager\.FriendData friend\)[\s\S]*?RelationshipDivinationFlow\.ShowRecord\(record, friend\)/.test(helper)
   && /status = RelationshipDivinationStatus\.Completed/.test(helper)
@@ -1157,14 +1285,20 @@ const friendMoveLocalEntry = /OnSendOracleRelatonButtonClick[\s\S]*?CreatedFrien
   && /canUseRelationshipDivination[\s\S]*?CreatedFriendRelationshipDivinationLocalFlow\.CanHandle\(currentFriend\)/.test(friendMove);
 const overlayLocalEntry = /StartForFriend[\s\S]*?CreatedFriendRelationshipDivinationLocalFlow\.TryStart\(friend\)/.test(friendRuntime);
 const confirmLocalEntry = /private void CreateInvite\(\)[\s\S]*?CreatedFriendRelationshipDivinationLocalFlow\.TryStart\(currentFriend\)/.test(inviteConfirm);
+const genericFlowAllowsLocal = /ShowInviteConfirm[\s\S]*?CreatedFriendRelationshipDivinationLocalFlow\.TryStart\(friend\)/.test(flow)
+  && /TryOpenActiveOrCreate[\s\S]*?CreatedFriendRelationshipDivinationLocalFlow\.CanHandle\(friend\)[\s\S]*?onCanCreate\?\.Invoke\(\)/.test(flow)
+  && /CanUseTwoPersonDivination[\s\S]*?CreatedFriendRelationshipDivinationLocalFlow\.CanHandle\(friend\)\) return true/.test(flow)
+  && /自建好友 · 本地关系占卜/.test(flow);
+const serviceLocalFallback = /if \(friend\.isVirtual\)[\s\S]*?CreatedFriendRelationshipDivinationLocalFlow\.CreateRecord\(friend, question\)[\s\S]*?onComplete\?\.Invoke\(localRecord\)/.test(service)
+  && !/自己创建的好友暂不支持双人占卜/.test(service);
 
-if (!helperCreatesLocalRecord || !createInfoEntry || !friendMoveLocalEntry || !overlayLocalEntry || !confirmLocalEntry) {
-  console.error(JSON.stringify({ helperCreatesLocalRecord, createInfoEntry, friendMoveLocalEntry, overlayLocalEntry, confirmLocalEntry }, null, 2));
+if (!helperCreatesLocalRecord || !createInfoEntry || !friendMoveLocalEntry || !overlayLocalEntry || !confirmLocalEntry || !genericFlowAllowsLocal || !serviceLocalFallback) {
+  console.error(JSON.stringify({ helperCreatesLocalRecord, createInfoEntry, friendMoveLocalEntry, overlayLocalEntry, confirmLocalEntry, genericFlowAllowsLocal, serviceLocalFallback }, null, 2));
   process.exit(1);
 }
 NODE
 then
-  ok "created-friend relationship divination is wired as a local completed reading"
+  ok "created-friend relationship divination is wired as a local completed reading across UI and service paths"
 else
   fail "created-friend local relationship divination flow is missing or disabled; see /tmp/moonly_readiness_virtual_relationship.log"
 fi
@@ -1314,7 +1448,7 @@ fi
 if [[ "${CHECK_FIREBASE_FUNCTIONS:-0}" == "1" ]]; then
   if command -v firebase >/dev/null 2>&1; then
     if firebase functions:list --project "$PROJECT_ID" --json >/tmp/moonly_readiness_functions_list.json 2>/tmp/moonly_readiness_functions_list.err; then
-      for function_name in membershipStatus readinessStatus publicConfig submitFeedback adminPublicConfigUpdate adminFeedbackList adminFeedbackUpdate deleteMyAccountData; do
+      for function_name in membershipStatus readinessStatus publicConfig submitFeedback adminPublicConfigUpdate adminFeedbackList adminFeedbackUpdate deleteMyAccountData sendTestPush friendRequestRemotePush relationshipInviteRemotePush remoteNotificationOutboxPush processStaleDialogueReplyJobs; do
         if node - "$function_name" <<'NODE' >/dev/null 2>&1
 const fs = require("fs");
 const functionName = process.argv[2];

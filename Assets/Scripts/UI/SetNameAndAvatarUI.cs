@@ -12,6 +12,8 @@ using GamerFrameWork.UIFrameWork;
 public class SetNameAndAvatarUI : WindowBase
 {
 	public SetNameAndAvatarUIComponent uiComponent;
+	private AvatarType selectedAvatar = AvatarType.Moon;
+	private string selectedName = string.Empty;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -26,6 +28,13 @@ public class SetNameAndAvatarUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		UserDataManager manager = UserDataManager.Instance;
+		selectedName = manager != null ? manager.UserName : string.Empty;
+		selectedAvatar = manager != null ? manager.CurrentAvatar : AvatarType.Moon;
+
+		if (uiComponent?.NameInputField != null)
+			uiComponent.NameInputField.text = selectedName;
+		RefreshAvatarToggles();
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -53,22 +62,67 @@ public class SetNameAndAvatarUI : WindowBase
 	}
 	public void OnAvatarOption1ToggleChange(bool state, Toggle toggle)
 	{
+		if (state) SelectAvatar(AvatarType.Moon);
 	}
 	public void OnAvatarOption2ToggleChange(bool state, Toggle toggle)
 	{
+		if (state) SelectAvatar(AvatarType.Person);
 	}
 	public void OnAvatarOption3ToggleChange(bool state, Toggle toggle)
 	{
+		if (state) SelectAvatar(AvatarType.Moon);
 	}
 	public void OnNameInputChange(string text)
 	{
+		selectedName = text ?? string.Empty;
 	}
 	public void OnNameInputEnd(string text)
 	{
+		selectedName = RegistrationFlowUtility.NormalizeName(text);
+		if (uiComponent?.NameInputField != null)
+			uiComponent.NameInputField.text = selectedName;
 	}
 	public void OnContinueButtonClick()
 	{
+		selectedName = RegistrationFlowUtility.NormalizeName(uiComponent?.NameInputField != null
+			? uiComponent.NameInputField.text
+			: selectedName);
+
+		if (string.IsNullOrWhiteSpace(selectedName))
+		{
+			ToastManager.ShowToast("请先填写昵称");
+			return;
+		}
+
+		UserDataManager manager = UserDataManager.Instance;
+		if (manager == null)
+		{
+			ToastManager.ShowToast("用户资料服务暂不可用");
+			return;
+		}
+
+		manager.SetUserName(selectedName);
+		manager.SetAvatarType(selectedAvatar);
+		RegistrationFlowUtility.SaveUserDataAndSyncCloud();
 		UIModule.Instance.PopUpWindow<ChooseGuideUI>();
+	}
+
+	private void SelectAvatar(AvatarType avatar)
+	{
+		selectedAvatar = avatar;
+		UserDataManager.Instance?.SetAvatarType(selectedAvatar);
+	}
+
+	private void RefreshAvatarToggles()
+	{
+		if (uiComponent == null) return;
+
+		if (uiComponent.AvatarOption1Toggle != null)
+			uiComponent.AvatarOption1Toggle.isOn = selectedAvatar == AvatarType.Moon;
+		if (uiComponent.AvatarOption2Toggle != null)
+			uiComponent.AvatarOption2Toggle.isOn = selectedAvatar == AvatarType.Person;
+		if (uiComponent.AvatarOption3Toggle != null)
+			uiComponent.AvatarOption3Toggle.isOn = false;
 	}
 	#endregion
 }

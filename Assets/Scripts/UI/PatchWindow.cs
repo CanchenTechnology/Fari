@@ -111,12 +111,14 @@ public class PatchWindow : MonoBehaviour
             float sizeMB = msg.TotalSizeBytes / 1048576f;
             sizeMB = Mathf.Clamp(sizeMB, 0.1f, float.MaxValue);
             string totalSizeMB = sizeMB.ToString("f1");
-            ShowMessageBox($"Found update patch files, Total count {msg.TotalCount} Total szie {totalSizeMB}MB", callback);
+            ShowMessageBox($"Found update patch files, Total count {msg.TotalCount} Total size {totalSizeMB}MB", callback);
         }
         else if (message is PatchEventDefine.DownloadUpdate)
         {
             var msg = message as PatchEventDefine.DownloadUpdate;
-            _slider.value = (float)msg.CurrentDownloadCount / msg.TotalDownloadCount;
+            _slider.value = msg.TotalDownloadCount <= 0
+                ? 0f
+                : Mathf.Clamp01((float)msg.CurrentDownloadCount / msg.TotalDownloadCount);
             string currentSizeMB = (msg.CurrentDownloadSizeBytes / 1048576f).ToString("f1");
             string totalSizeMB = (msg.TotalDownloadSizeBytes / 1048576f).ToString("f1");
             _tips.text = $"{msg.CurrentDownloadCount}/{msg.TotalDownloadCount} {currentSizeMB}MB/{totalSizeMB}MB";
@@ -148,7 +150,7 @@ public class PatchWindow : MonoBehaviour
         }
         else
         {
-            throw new System.NotImplementedException($"{message.GetType()}");
+            Debug.LogWarning($"[PatchWindow] Unhandled patch event: {message.GetType().Name}");
         }
     }
 

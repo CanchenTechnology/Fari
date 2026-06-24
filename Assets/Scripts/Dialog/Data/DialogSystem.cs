@@ -2612,17 +2612,55 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             messages = GetApiMessagesWithSystemPrompt();
         }
 
-        deepSeekAPI.SendChatRequest(messages,
-            (aiResponse) =>
+        string replyJobId = CreateDialogueReplyJobId();
+        QueueDialogueReplyJob(replyJobId, messages, () =>
+        {
+            deepSeekAPI.SendChatRequest(messages,
+                (aiResponse) =>
+                {
+                    var guardedOutput = ApplyOutputGuard(aiResponse);
+                    StorePromptRecord(guardedOutput);
+                    QueueMemorySummary(lastAssemblyResult?.promptRecord?.userInput, guardedOutput);
+                    SaveCloudDialogHistory();
+                    onSuccess?.Invoke(guardedOutput);
+                },
+                onError,
+                true,
+                replyJobId
+            );
+        });
+    }
+
+    private string CreateDialogueReplyJobId()
+    {
+        return Guid.NewGuid().ToString("N");
+    }
+
+    private void QueueDialogueReplyJob(string replyJobId, List<DeepSeekAPI.Message> messages, Action onReady)
+    {
+        DialogHistoryFirestore store = DialogHistoryFirestore.Instance;
+        if (store == null || string.IsNullOrWhiteSpace(replyJobId) || messages == null || messages.Count == 0)
+        {
+            onReady?.Invoke();
+            return;
+        }
+
+        string lastUserMessage = "";
+        for (int i = messages.Count - 1; i >= 0; i--)
+        {
+            if (messages[i] != null && messages[i].role == "user")
             {
-                var guardedOutput = ApplyOutputGuard(aiResponse);
-                StorePromptRecord(guardedOutput);
-                QueueMemorySummary(lastAssemblyResult?.promptRecord?.userInput, guardedOutput);
-                SaveCloudDialogHistory();
-                onSuccess?.Invoke(guardedOutput);
-            },
-            onError
-        );
+                lastUserMessage = messages[i].content ?? "";
+                break;
+            }
+        }
+
+        store.QueueDialogueReplyJob(replyJobId, messages, lastUserMessage, CurrentDivinerType.ToString(), success =>
+        {
+            if (!success)
+                Debug.LogWarning("[DialogSystem] 对话回复离线队列未写入，将继续使用即时请求");
+            onReady?.Invoke();
+        });
     }
 
     // ---- 流式输出支持 ----
@@ -2661,38 +2699,44 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         // 创建占位消息。每次请求都持有自己的索引，避免并发流式回复互相覆盖。
         int streamingMessageIndex = CreateStreamingAIMessage();
 
-        deepSeekAPI.SendChatRequestStream(messages,
-            (chunk) =>
-            {
-                AppendToStreamingMessage(streamingMessageIndex, chunk);
-                onChunk?.Invoke(chunk);
-            },
-            (fullContent) =>
-            {
-                var guardedOutput = ApplyOutputGuard(fullContent);
-                string cleanedOutput = ExtractClientActionFromOutput(guardedOutput);
-                string displayOutput = BuildVisibleReplyFromStructuredOutput(cleanedOutput);
-                FinalizeStreamingMessage(streamingMessageIndex, displayOutput);
-                StorePromptRecord(guardedOutput);
-                QueueMemorySummary(lastAssemblyResult?.promptRecord?.userInput, displayOutput);
-                SaveCloudDialogHistory();
-
-                onComplete?.Invoke(displayOutput);
-            },
-            (error) =>
-            {
-                // 移除占位消息
-                if (streamingMessageIndex >= 0 && streamingMessageIndex < mChatMessageList.Count)
+        string replyJobId = CreateDialogueReplyJobId();
+        QueueDialogueReplyJob(replyJobId, messages, () =>
+        {
+            deepSeekAPI.SendChatRequestStream(messages,
+                (chunk) =>
                 {
-                    mChatMessageList.RemoveAt(streamingMessageIndex);
-                }
-                if (mStreamingMessageIndex == streamingMessageIndex)
-                    mStreamingMessageIndex = -1;
-                if (streamingClientActionMessageIndex == streamingMessageIndex)
-                    streamingClientActionMessageIndex = -1;
-                onError?.Invoke(error);
-            }
-        );
+                    AppendToStreamingMessage(streamingMessageIndex, chunk);
+                    onChunk?.Invoke(chunk);
+                },
+                (fullContent) =>
+                {
+                    var guardedOutput = ApplyOutputGuard(fullContent);
+                    string cleanedOutput = ExtractClientActionFromOutput(guardedOutput);
+                    string displayOutput = BuildVisibleReplyFromStructuredOutput(cleanedOutput);
+                    FinalizeStreamingMessage(streamingMessageIndex, displayOutput);
+                    StorePromptRecord(guardedOutput);
+                    QueueMemorySummary(lastAssemblyResult?.promptRecord?.userInput, displayOutput);
+                    SaveCloudDialogHistory();
+
+                    onComplete?.Invoke(displayOutput);
+                },
+                (error) =>
+                {
+                    // 移除占位消息
+                    if (streamingMessageIndex >= 0 && streamingMessageIndex < mChatMessageList.Count)
+                    {
+                        mChatMessageList.RemoveAt(streamingMessageIndex);
+                    }
+                    if (mStreamingMessageIndex == streamingMessageIndex)
+                        mStreamingMessageIndex = -1;
+                    if (streamingClientActionMessageIndex == streamingMessageIndex)
+                        streamingClientActionMessageIndex = -1;
+                    onError?.Invoke(error);
+                },
+                true,
+                replyJobId
+            );
+        });
 
         return streamingMessageIndex;
     }

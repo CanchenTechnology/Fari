@@ -7,6 +7,7 @@
 ---------------------------------*/
 using System.Collections.Generic;
 using System;
+using System.Text;
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
@@ -561,6 +562,16 @@ public class TodayCardUI : WindowBase
 	}
 	public void OnShareButtonClick()
 	{
+		if (DivinationEngine.Instance?.TodayCard.HasValue != true)
+		{
+			ToastManager.ShowToast("暂无今日神谕可分享");
+			return;
+		}
+
+		var (card, upright) = DivinationEngine.Instance.TodayCard.Value;
+		TodayCardDetailContent content = BuildContent(card, upright);
+		string shareText = BuildShareText(card, upright, content);
+		FriendInviteShareUtility.ShareText(shareText, "分享今日神谕", "今日神谕已复制");
 	}
 	public void OnAskQuestion1ButtonClick()
 	{
@@ -578,6 +589,27 @@ public class TodayCardUI : WindowBase
 	{
 		HideWindow();
 		UIModule.Instance.GetWindow<NavigationUI>().OpenDialogUI();
+	}
+
+	private string BuildShareText(TarotCard card, bool upright, TodayCardDetailContent content)
+	{
+		StringBuilder builder = new StringBuilder();
+		builder.AppendLine("FariApp 今日神谕");
+		builder.AppendLine($"今日牌：{card.DisplayName(upright)}");
+
+		if (!string.IsNullOrWhiteSpace(content?.uprightMeaning))
+			builder.AppendLine($"神谕：{content.uprightMeaning}");
+		if (!string.IsNullOrWhiteSpace(content?.todayState))
+			builder.AppendLine($"今日状态：{content.todayState}");
+		if (!string.IsNullOrWhiteSpace(content?.actionSuggestion))
+			builder.AppendLine($"行动建议：{content.actionSuggestion}");
+
+		if (content?.dos != null && content.dos.Count > 0)
+			builder.AppendLine($"适宜：{content.dos[0]}");
+		if (content?.donts != null && content.donts.Count > 0)
+			builder.AppendLine($"不宜：{content.donts[0]}");
+
+		return builder.ToString().Trim();
 	}
 	#endregion
 }

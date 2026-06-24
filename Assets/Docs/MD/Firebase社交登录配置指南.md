@@ -43,7 +43,7 @@
 | 依赖项 | 版本要求 | 用途 |
 |--------|----------|------|
 | Unity | 2019.4+ (推荐 2022.3+) | 引擎 |
-| Firebase Unity SDK | 11.x+ (本项目使用 13.12.0) | 认证核心 |
+| Firebase Unity SDK | 11.x+ (本项目使用 13.13.0) | 认证核心 |
 | Google Sign-In (play-services-auth) | 21.2.0+ | Google 登录（通过 AndroidJavaClass 调用原生 API） |
 | Facebook SDK for Unity | 最新版 | Facebook 登录 |
 | apple-signin-unity 插件（可选） | 最新版 | Apple 登录增强 |

@@ -5,189 +5,101 @@
  * Description: UI 表现层，该层只负责界面的交互、表现相关的更新，不允许编写任何业务逻辑代码
  * 注意: 以下文件是自动生成的，再次生成不会覆盖原有的代码，会在原有的代码上进行新增，可放心使用
 ---------------------------------*/
+using System;
 using System.Collections;
 using System.Collections.Generic;
-using UnityEngine.UI;
-using UnityEngine;
 using GamerFrameWork.UIFrameWork;
+using SuperScrollView;
 using TMPro;
+using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
-public class FriendUI : WindowBase
+public class FriendUI : WindowBase, IPointerClickHandler
 {
-	private static readonly bool ShowDailyOracleFeed = false;
+	private const string FriendItemPrefabName = "FriendItem";
 
 	public FriendUIComponent uiComponent;
 
-	// 当前活跃的 FriendItem 列表（用于管理回收）
-	private List<FriendItem> activeRealFriendItems = new List<FriendItem>();
-	private List<FriendItem> activeVirtualFriendItems = new List<FriendItem>();
-	private List<InviteItem> activeInviteItems = new List<InviteItem>();
-	private List<GameObject> activeDailyOracleFeedItems = new List<GameObject>();
-	private List<GameObject> activeRelationshipInviteItems = new List<GameObject>();
-
-	private Transform dailyOracleFeedRoot;
-	private TMP_Text dailyOracleFeedStatusText;
-	private int dailyOracleFeedRequestId;
-	private Transform relationshipInviteRoot;
-	private TMP_Text relationshipInviteStatusText;
-	private int relationshipInviteRequestId;
-	private Coroutine relationshipInviteRetryCoroutine;
+	private readonly List<FriendDataManager.FriendData> sortedFriends = new List<FriendDataManager.FriendData>();
+	private LoopListView2 friendListView;
+	private bool friendListViewInited;
 	private int cloudFriendSyncRequestId;
 	private Coroutine cloudFriendSyncRetryCoroutine;
-
-	// 折叠状态
-	private bool realFriendExpanded = true;
-	private bool virtualFriendExpanded = true;
+	private int avatarRequestVersion;
+	private FriendDataManager.FriendData pendingDeleteFriend;
+	private bool isDeletingFriend;
 
 	#region 生命周期函数
-	// 调用机制与 Mono Awake 一致
 	public override void OnAwake()
 	{
 		uiComponent = gameObject.GetComponent<FriendUIComponent>();
 		uiComponent.InitComponent(this);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		base.OnAwake();
+
+		ResolveFriendListView();
+		InitFriendListView();
+		SetAddPanelVisible(false);
+		SetDeleteFriendConfirmVisible(false);
 	}
-	// 物体显示时执行
+
 	public override void OnShow()
 	{
 		base.OnShow();
-		InitPoolIfNeeded();
+		uiComponent.ResolveReferences();
+		ResolveFriendListView();
+		InitFriendListView();
+		SetAddPanelVisible(false);
+		pendingDeleteFriend = null;
+		isDeletingFriend = false;
+		SetDeleteFriendConfirmVisible(false);
+		RefreshUserHeader();
+
 		FriendDataManager.Instance.EnsureDebugRealFriends();
 		FriendDataManager.Instance.DataChanged -= HandleFriendDataChanged;
 		FriendDataManager.Instance.DataChanged += HandleFriendDataChanged;
-		RefreshAllViews();
-		RefreshRelationshipDivinationInvites();
-		HideDailyOracleFeed();
+
+		RebuildFriendList(true);
 		RefreshCloudFriendData();
 	}
-	// 物体隐藏时执行
+
 	public override void OnHide()
 	{
 		base.OnHide();
-		dailyOracleFeedRequestId++;
-		relationshipInviteRequestId++;
+		avatarRequestVersion++;
 		cloudFriendSyncRequestId++;
-		StopRelationshipInviteRetry();
+		pendingDeleteFriend = null;
+		isDeletingFriend = false;
+		SetDeleteFriendConfirmVisible(false);
 		StopCloudFriendSyncRetry();
 		FriendDataManager.Instance.DataChanged -= HandleFriendDataChanged;
-		// 隐藏时回收所有对象到池中
-		ReleaseAllItems();
+		FriendOnlinePresenceManager.Instance.ClearFriendWatchers();
 	}
-	// 物体销毁时执行
+
 	public override void OnDestroy()
 	{
+		avatarRequestVersion++;
+		cloudFriendSyncRequestId++;
+		StopCloudFriendSyncRetry();
+		FriendOnlinePresenceManager.Instance.ClearFriendWatchers();
 		base.OnDestroy();
 	}
+
+	public void OnPointerClick(PointerEventData eventData)
+	{
+		CloseOpenFriendSwipe();
+	}
 	#endregion
 
-	#region 初始化
-
-	/// <summary>
-	/// 初始化对象池（仅首次调用）
-	/// </summary>
-	private void InitPoolIfNeeded()
-	{
-		FriendDataManager.Instance.InitPools(
-			uiComponent.friendPrefab,
-			uiComponent.invitePrefab,
-			transform
-		);
-	}
-
-	#endregion
-
-	#region 视图刷新
-
-	/// <summary>
-	/// 刷新所有视图
-	/// </summary>
-	private void RefreshAllViews()
-	{
-		RefreshRealFriendView();
-		RefreshVirtualFriendView();
-		RefreshInviteView();
-		UpdateCountText();
-	}
-
+	#region 数据刷新
 	private void HandleFriendDataChanged()
 	{
-		if (gameObject.activeInHierarchy)
-		{
-			RefreshAllViews();
-			RefreshRelationshipDivinationInvites();
-			HideDailyOracleFeed();
-		}
-	}
+		if (!gameObject.activeInHierarchy) return;
 
-	/// <summary>
-	/// 刷新真实好友列表
-	/// </summary>
-	private void RefreshRealFriendView()
-	{
-		// 回收旧对象
-		ReleaseRealFriendItems();
-
-		var dataList = FriendDataManager.Instance.RealFriendList;
-		foreach (var data in dataList)
-		{
-			GameObject friendGO = FriendDataManager.Instance.GetFriendItem(uiComponent.RealFriendContentTransform);
-			FriendItem item = friendGO.GetComponent<FriendItem>();
-			item.SetData(data);
-			activeRealFriendItems.Add(item);
-		}
-
-		// 强制刷新 ContentSizeFitter 布局
-		ForceRebuildLayout(uiComponent.RealFriendContentTransform);
-
-		// 控制折叠
-		uiComponent.RealFriendContentTransform.gameObject.SetActive(realFriendExpanded);
-	}
-
-	/// <summary>
-	/// 刷新虚拟好友列表
-	/// </summary>
-	private void RefreshVirtualFriendView()
-	{
-		// 回收旧对象
-		ReleaseVirtualFriendItems();
-
-		var dataList = FriendDataManager.Instance.VirtualFriendList;
-		foreach (var data in dataList)
-		{
-			GameObject friendGO = FriendDataManager.Instance.GetFriendItem(uiComponent.VirtualFriendContentTransform);
-			FriendItem item = friendGO.GetComponent<FriendItem>();
-			item.SetData(data);
-			activeVirtualFriendItems.Add(item);
-		}
-
-		// 强制刷新 ContentSizeFitter 布局
-		ForceRebuildLayout(uiComponent.VirtualFriendContentTransform);
-
-		// 控制折叠
-		uiComponent.VirtualFriendContentTransform.gameObject.SetActive(virtualFriendExpanded);
-	}
-
-	/// <summary>
-	/// 刷新邀请列表
-	/// </summary>
-	private void RefreshInviteView()
-	{
-		// 回收旧对象
-		ReleaseInviteItems();
-
-		var dataList = FriendDataManager.Instance.InviteList;
-		foreach (var data in dataList)
-		{
-			GameObject inviteGO = FriendDataManager.Instance.GetInviteItem(uiComponent.InviteBannerTransform);
-			InviteItem item = inviteGO.GetComponent<InviteItem>();
-			item.SetData(data);
-			activeInviteItems.Add(item);
-		}
-		AppNotificationScheduler.Instance.NotifyFriendRequestCount(dataList.Count);
-
-		// 强制刷新 ContentSizeFitter 布局
-		ForceRebuildLayout(uiComponent.InviteBannerTransform);
+		RefreshUserHeader();
+		RebuildFriendList(false);
+		NotifyFriendRequestCount();
 	}
 
 	private void RefreshCloudFriendData()
@@ -209,21 +121,26 @@ public class FriendUI : WindowBase
 
 		firestore.LoadFriends(_ =>
 		{
-			if (requestId != cloudFriendSyncRequestId || !gameObject.activeInHierarchy) return;
-			RefreshAllViews();
-			RefreshRelationshipDivinationInvites();
-			HideDailyOracleFeed();
+			if (!IsValidCloudRequest(requestId)) return;
+			RebuildFriendList(false);
+			NotifyFriendDailyOracleCount();
 		});
 		firestore.LoadFriendRequests(_ =>
 		{
-			if (requestId != cloudFriendSyncRequestId || !gameObject.activeInHierarchy) return;
-			RefreshAllViews();
+			if (!IsValidCloudRequest(requestId)) return;
+			NotifyFriendRequestCount();
+			NotifyRelationshipInviteCount();
 		});
 		firestore.LoadVirtualFriends(_ =>
 		{
-			if (requestId != cloudFriendSyncRequestId || !gameObject.activeInHierarchy) return;
-			RefreshAllViews();
+			if (!IsValidCloudRequest(requestId)) return;
+			RebuildFriendList(false);
 		});
+	}
+
+	private bool IsValidCloudRequest(int requestId)
+	{
+		return requestId == cloudFriendSyncRequestId && gameObject != null && gameObject.activeInHierarchy;
 	}
 
 	private void ScheduleCloudFriendSyncRetry(int requestId)
@@ -235,7 +152,7 @@ public class FriendUI : WindowBase
 
 	private void StopCloudFriendSyncRetry()
 	{
-		if (cloudFriendSyncRetryCoroutine != null && uiComponent != null)
+		if (cloudFriendSyncRetryCoroutine != null)
 			uiComponent.StopCoroutine(cloudFriendSyncRetryCoroutine);
 		cloudFriendSyncRetryCoroutine = null;
 	}
@@ -246,8 +163,7 @@ public class FriendUI : WindowBase
 		for (int i = 0; i < maxAttempts; i++)
 		{
 			yield return new WaitForSeconds(1.5f);
-			if (requestId != cloudFriendSyncRequestId || gameObject == null || !gameObject.activeInHierarchy)
-				yield break;
+			if (!IsValidCloudRequest(requestId)) yield break;
 
 			FirestoreManager firestore = FirestoreManager.Instance;
 			if (firestore != null && firestore.IsInitialized)
@@ -261,630 +177,608 @@ public class FriendUI : WindowBase
 		cloudFriendSyncRetryCoroutine = null;
 	}
 
-	private void RefreshRelationshipDivinationInvites()
+	private void NotifyFriendRequestCount()
 	{
-		EnsureRelationshipInviteRoot();
-		if (relationshipInviteRoot == null) return;
+		AppNotificationScheduler.Instance.NotifyFriendRequestCount(FriendDataManager.Instance.InviteList.Count);
+	}
 
-		int requestId = ++relationshipInviteRequestId;
-		SetRelationshipInviteStatus("正在读取关系占卜邀请...");
-
-		RelationshipDivinationFirestore store = RelationshipDivinationFlow.GetOrCreateService();
-		if (store == null || !store.IsReady)
-		{
-			RenderRelationshipInviteStatus("双人关系占卜邀请同步中，稍后自动刷新。");
-			ScheduleRelationshipInviteRetry(requestId);
+	private void NotifyRelationshipInviteCount()
+	{
+		RelationshipDivinationFirestore service = RelationshipDivinationFlow.GetOrCreateService();
+		if (service == null || !service.IsReady)
 			return;
-		}
 
-		store.LoadIncomingInvites((records, succeeded) =>
+		service.LoadIncomingInvites((records, succeeded) =>
 		{
-			if (requestId != relationshipInviteRequestId || !gameObject.activeInHierarchy) return;
-			StopRelationshipInviteRetry();
-			if (!succeeded)
-			{
-				RenderRelationshipInviteStatus("双人关系占卜邀请同步失败，请稍后再试。");
+			if (!succeeded) return;
+			AppNotificationScheduler.Instance.NotifyRelationshipInviteCount(records != null ? records.Count : 0);
+		});
+	}
+
+	private void NotifyFriendDailyOracleCount()
+	{
+		DailyOracleFirestore store = GetOrCreateDailyOracleStore();
+		if (store == null || !store.IsReady)
+			return;
+
+		store.LoadTodayFriendSummaries(summaries =>
+		{
+			AppNotificationScheduler.Instance.NotifyFriendDailyOracleCount(summaries != null ? summaries.Count : 0);
+		});
+	}
+
+	private DailyOracleFirestore GetOrCreateDailyOracleStore()
+	{
+		DailyOracleFirestore store = DailyOracleFirestore.Instance;
+		if (store != null)
+			return store;
+
+		GameObject go = new GameObject("DailyOracleFirestore");
+		return go.AddComponent<DailyOracleFirestore>();
+	}
+	#endregion
+
+	#region 用户头部
+	private void RefreshUserHeader()
+	{
+		uiComponent.ResolveReferences();
+
+		if (uiComponent.nameText != null)
+			uiComponent.nameText.text = GetCurrentUserName();
+
+		if (uiComponent.stateText != null)
+			uiComponent.stateText.text = IsCurrentUserOnline() ? "online" : "offline";
+
+		LoadCurrentUserAvatar();
+	}
+
+	private string GetCurrentUserName()
+	{
+		UserDataManager userData = UserDataManager.Instance;
+		if (userData != null && !string.IsNullOrWhiteSpace(userData.UserName))
+			return userData.UserName.Trim();
+		if (userData != null && !string.IsNullOrWhiteSpace(userData.Email))
+			return userData.Email.Trim();
+		return "Gato";
+	}
+
+	private bool IsCurrentUserOnline()
+	{
+		UserDataManager userData = UserDataManager.Instance;
+		if (userData == null) return Application.internetReachability != NetworkReachability.NotReachable;
+		return userData.IsFirebaseAuthenticated || userData.IsLoggedIn();
+	}
+
+	private void LoadCurrentUserAvatar()
+	{
+		if (uiComponent.headImage == null) return;
+
+		FriendAvatarImageUtility.ApplyAvatar(uiComponent.headImage, null);
+		int requestId = ++avatarRequestVersion;
+		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadCurrentUserAvatarCoroutine((sprite, _) =>
+		{
+			if (requestId != avatarRequestVersion || uiComponent == null || uiComponent.headImage == null)
 				return;
-			}
-
-			RenderRelationshipInvites(records);
-		});
+			FriendAvatarImageUtility.ApplyAvatar(uiComponent.headImage, sprite);
+		}));
 	}
-
-	private void RenderRelationshipInviteStatus(string statusText)
-	{
-		ReleaseRelationshipInviteItems();
-		if (relationshipInviteRoot == null) return;
-
-		relationshipInviteRoot.gameObject.SetActive(true);
-		SetRelationshipInviteStatus(statusText);
-		ForceRebuildLayout(relationshipInviteRoot);
-	}
-
-	private void RenderRelationshipInvites(List<RelationshipDivinationRecord> records)
-	{
-		ReleaseRelationshipInviteItems();
-
-		if (records == null || records.Count == 0)
-		{
-			if (relationshipInviteRoot != null)
-				relationshipInviteRoot.gameObject.SetActive(false);
-			return;
-		}
-
-		relationshipInviteRoot.gameObject.SetActive(true);
-		SetRelationshipInviteStatus($"双人关系占卜邀请 · {records.Count}");
-		AppNotificationScheduler.Instance.NotifyRelationshipInviteCount(records.Count);
-		foreach (RelationshipDivinationRecord record in records)
-		{
-			if (record == null) continue;
-			GameObject card = CreateRelationshipInviteCard(record);
-			activeRelationshipInviteItems.Add(card);
-		}
-		ForceRebuildLayout(relationshipInviteRoot);
-	}
-
-	private void ScheduleRelationshipInviteRetry(int requestId)
-	{
-		StopRelationshipInviteRetry();
-		if (uiComponent == null || !gameObject.activeInHierarchy) return;
-		relationshipInviteRetryCoroutine = uiComponent.StartCoroutine(RelationshipInviteRetryRoutine(requestId));
-	}
-
-	private void StopRelationshipInviteRetry()
-	{
-		if (relationshipInviteRetryCoroutine != null && uiComponent != null)
-			uiComponent.StopCoroutine(relationshipInviteRetryCoroutine);
-		relationshipInviteRetryCoroutine = null;
-	}
-
-	private IEnumerator RelationshipInviteRetryRoutine(int requestId)
-	{
-		const int maxAttempts = 10;
-		for (int i = 0; i < maxAttempts; i++)
-		{
-			yield return new WaitForSeconds(1.5f);
-			if (requestId != relationshipInviteRequestId || gameObject == null || !gameObject.activeInHierarchy)
-				yield break;
-
-			RelationshipDivinationFirestore store = RelationshipDivinationFirestore.Instance;
-			if (store != null && store.IsReady)
-			{
-				relationshipInviteRetryCoroutine = null;
-				RefreshRelationshipDivinationInvites();
-				yield break;
-			}
-		}
-
-		if (requestId == relationshipInviteRequestId && gameObject != null && gameObject.activeInHierarchy)
-			RenderRelationshipInviteStatus("双人关系占卜邀请仍在同步中，稍后重新进入好友页刷新。");
-		relationshipInviteRetryCoroutine = null;
-	}
-
-	private void RefreshDailyOracleFeed()
-	{
-		if (!ShowDailyOracleFeed)
-		{
-			HideDailyOracleFeed();
-			return;
-		}
-
-		EnsureDailyOracleFeedRoot();
-		if (dailyOracleFeedRoot == null) return;
-
-		int requestId = ++dailyOracleFeedRequestId;
-		SetDailyOracleFeedStatus("正在读取好友今日牌...");
-
-		if (FriendDataManager.Instance.RealFriendList.Count == 0)
-		{
-			RenderDailyOracleFeed(null, "添加真实好友后，可以在这里看到 TA 们同步的每日牌摘要。");
-			return;
-		}
-
-		var store = DailyOracleFirestore.Instance;
-		if (store == null || !store.IsReady)
-		{
-			RenderDailyOracleFeed(null, "每日牌动态服务初始化中，稍后再试。");
-			return;
-		}
-
-		store.LoadTodayFriendSummaries(records =>
-		{
-			if (requestId != dailyOracleFeedRequestId || !gameObject.activeInHierarchy) return;
-			RenderDailyOracleFeed(records, "今天还没有好友同步每日牌摘要。");
-		});
-	}
-
-	private void RenderDailyOracleFeed(List<DailyOracleSummaryRecord> records, string emptyText)
-	{
-		ReleaseDailyOracleFeedItems();
-
-		if (records == null || records.Count == 0)
-		{
-			SetDailyOracleFeedStatus(emptyText);
-			ForceRebuildLayout(dailyOracleFeedRoot);
-			return;
-		}
-
-		SetDailyOracleFeedStatus($"今日好友每日牌 · {records.Count}");
-		foreach (DailyOracleSummaryRecord record in records)
-		{
-			if (record == null || !record.IsVisibleInFriendFeed) continue;
-			GameObject card = CreateDailyOracleSummaryCard(record);
-			activeDailyOracleFeedItems.Add(card);
-		}
-
-		if (activeDailyOracleFeedItems.Count == 0)
-			SetDailyOracleFeedStatus(emptyText);
-		else
-			AppNotificationScheduler.Instance.NotifyFriendDailyOracleCount(activeDailyOracleFeedItems.Count);
-
-		ForceRebuildLayout(dailyOracleFeedRoot);
-	}
-
-	/// <summary>
-	/// 更新数量显示
-	/// </summary>
-	private void UpdateCountText()
-	{
-		if (uiComponent.ExistingCountText != null)
-		{
-			uiComponent.ExistingCountText.text = FriendDataManager.Instance.RealFriendList.Count.ToString();
-		}
-		if (uiComponent.CreatedCountText != null)
-		{
-			uiComponent.CreatedCountText.text = FriendDataManager.Instance.VirtualFriendList.Count.ToString();
-		}
-	}
-
 	#endregion
 
-	#region 对象回收
-
-	private void ReleaseRealFriendItems()
+	#region 好友列表
+	private void ResolveFriendListView()
 	{
-		// 1. 回收 tracked 的对象
-		foreach (var item in activeRealFriendItems)
-		{
-			if (item != null)
-			{
-				item.ResetForPool();
-				FriendDataManager.Instance.ReleaseFriendItem(item.gameObject);
-			}
-		}
-		activeRealFriendItems.Clear();
+		if (friendListView != null) return;
 
-		// 2. 清理 ContentTransform 下所有残留的 FriendItem（防止堆叠）
-		var remainItems = uiComponent.RealFriendContentTransform.GetComponentsInChildren<FriendItem>(true);
-		foreach (var item in remainItems)
+		friendListView = uiComponent.friendListView;
+		if (friendListView == null)
 		{
-			if (item != null)
-			{
-				item.ResetForPool();
-				FriendDataManager.Instance.ReleaseFriendItem(item.gameObject);
-			}
+			LoopListView2[] listViews = gameObject.GetComponentsInChildren<LoopListView2>(true);
+			if (listViews.Length > 0)
+				friendListView = listViews[0];
 		}
+
+		if (uiComponent.friendListView == null)
+			uiComponent.friendListView = friendListView;
 	}
 
-	private void ReleaseVirtualFriendItems()
+	private bool InitFriendListView()
 	{
-		// 1. 回收 tracked 的对象
-		foreach (var item in activeVirtualFriendItems)
+		if (friendListView == null) return false;
+		if (friendListViewInited || friendListView.ListViewInited)
 		{
-			if (item != null)
-			{
-				item.ResetForPool();
-				FriendDataManager.Instance.ReleaseFriendItem(item.gameObject);
-			}
+			friendListViewInited = true;
+			return true;
 		}
-		activeVirtualFriendItems.Clear();
 
-		// 2. 清理 ContentTransform 下所有残留的 FriendItem（防止堆叠）
-		var remainItems = uiComponent.VirtualFriendContentTransform.GetComponentsInChildren<FriendItem>(true);
-		foreach (var item in remainItems)
-		{
-			if (item != null)
-			{
-				item.ResetForPool();
-				FriendDataManager.Instance.ReleaseFriendItem(item.gameObject);
-			}
-		}
+		friendListView.InitListView(0, OnGetFriendItemByIndex);
+		friendListViewInited = true;
+		return true;
 	}
 
-	private void ReleaseInviteItems()
+	private void RebuildFriendList(bool resetPos)
 	{
-		// 1. 回收 tracked 的对象
-		foreach (var item in activeInviteItems)
-		{
-			if (item != null)
-			{
-				item.ResetForPool();
-				FriendDataManager.Instance.ReleaseInviteItem(item.gameObject);
-			}
-		}
-		activeInviteItems.Clear();
+		sortedFriends.Clear();
 
-		// 2. 清理 ContentTransform 下所有残留的 InviteItem（防止堆叠）
-		var remainItems = uiComponent.InviteBannerTransform.GetComponentsInChildren<InviteItem>(true);
-		foreach (var item in remainItems)
+		foreach (FriendDataManager.FriendData friend in FriendDataManager.Instance.RealFriendList)
 		{
-			if (item != null)
-			{
-				item.ResetForPool();
-				FriendDataManager.Instance.ReleaseInviteItem(item.gameObject);
-			}
+			if (friend != null) sortedFriends.Add(friend);
 		}
+		foreach (FriendDataManager.FriendData friend in FriendDataManager.Instance.VirtualFriendList)
+		{
+			if (friend != null) sortedFriends.Add(friend);
+		}
+
+		sortedFriends.Sort(CompareFriendForList);
+		RefreshFriendListView(resetPos);
+		RefreshFriendPresenceWatchers();
 	}
 
-	private void ReleaseDailyOracleFeedItems()
+	private int CompareFriendForList(FriendDataManager.FriendData a, FriendDataManager.FriendData b)
 	{
-		foreach (GameObject item in activeDailyOracleFeedItems)
+		if (a == null && b == null) return 0;
+		if (a == null) return 1;
+		if (b == null) return -1;
+
+		int onlineCompare = IsFriendOnline(b).CompareTo(IsFriendOnline(a));
+		if (onlineCompare != 0) return onlineCompare;
+
+		int timeCompare = GetFriendSortTime(b).CompareTo(GetFriendSortTime(a));
+		if (timeCompare != 0) return timeCompare;
+
+		return string.Compare(GetFriendDisplayName(a), GetFriendDisplayName(b), StringComparison.CurrentCultureIgnoreCase);
+	}
+
+	private bool IsFriendOnline(FriendDataManager.FriendData friend)
+	{
+		return friend != null && !friend.isVirtual && friend.isOnline;
+	}
+
+	private long GetFriendSortTime(FriendDataManager.FriendData friend)
+	{
+		if (friend == null) return 0;
+		return friend.isVirtual ? friend.virtualFriendLastOperatedUnixMs : friend.lastLoginUnixMs;
+	}
+
+	private void RefreshFriendListView(bool resetPos)
+	{
+		if (!InitFriendListView()) return;
+
+		friendListView.SetListItemCount(sortedFriends.Count, resetPos);
+		friendListView.RefreshAllShownItem();
+	}
+
+	private void RefreshFriendPresenceWatchers()
+	{
+		FriendOnlinePresenceManager.Instance.WatchFriends(FriendDataManager.Instance.RealFriendList);
+	}
+
+	private LoopListViewItem2 OnGetFriendItemByIndex(LoopListView2 listView, int index)
+	{
+		if (index < 0 || index >= sortedFriends.Count)
+			return null;
+
+		LoopListViewItem2 item = listView.NewListViewItem(FriendItemPrefabName);
+		if (item == null)
+			return null;
+
+		BindFriendItem(item.gameObject, sortedFriends[index]);
+		return item;
+	}
+
+	private void BindFriendItem(GameObject itemObject, FriendDataManager.FriendData friend)
+	{
+		if (itemObject == null || friend == null) return;
+
+		FriendItem friendItem = itemObject.GetComponent<FriendItem>();
+		if (friendItem != null)
 		{
-			if (item != null)
-				UnityEngine.Object.Destroy(item);
+			friendItem.SetData(friend, BuildFriendStatusText(friend));
+			return;
 		}
-		activeDailyOracleFeedItems.Clear();
-	}
 
-	private void HideDailyOracleFeed()
-	{
-		dailyOracleFeedRequestId++;
-		ReleaseDailyOracleFeedItems();
-		if (dailyOracleFeedRoot != null)
+		TMP_Text nameText = FindTextByName(itemObject.transform, "name", "NameText");
+		TMP_Text infoText = FindTextByName(itemObject.transform, "info", "InfoText");
+		Image headImage = FindImageByName(itemObject.transform, "headImage", "HeadImage", "AvatarImage", "MeAvatar");
+		if (nameText != null) nameText.text = GetFriendDisplayName(friend);
+		if (infoText != null)
 		{
-			dailyOracleFeedRoot.gameObject.SetActive(false);
-			ForceRebuildLayout(dailyOracleFeedRoot.parent);
+			infoText.richText = true;
+			infoText.text = BuildFriendStatusText(friend);
 		}
+		FriendAvatarImageUtility.ApplyAvatar(headImage, FriendAvatarImageUtility.ResolveFriendAvatar(friend, headImage));
 	}
 
-	private void ReleaseRelationshipInviteItems()
+	private string BuildFriendStatusText(FriendDataManager.FriendData friend)
 	{
-		foreach (GameObject item in activeRelationshipInviteItems)
+		if (friend == null) return string.Empty;
+
+		if (friend.isVirtual)
 		{
-			if (item != null)
-				UnityEngine.Object.Destroy(item);
+			string accessText = friend.virtualFriendLastOperatedUnixMs > 0
+				? $"上次访问{FormatRelativeTime(friend.virtualFriendLastOperatedUnixMs)}"
+				: "暂无访问记录";
+			return friend.virtualFriendLastOperatedUnixMs > 0
+				? $"{ColorText("创建好友", "#D6A15C")}·{ColorText(accessText, "#C9B8D8")}"
+				: $"{ColorText("创建好友", "#D6A15C")}·{ColorText(accessText, "#8F8598")}";
 		}
-		activeRelationshipInviteItems.Clear();
+
+		string stateText = friend.isOnline ? "在线" : "离线";
+		string stateColor = friend.isOnline ? "#58D878" : "#8F8598";
+		if (friend.isOnline)
+			return $"{ColorText("真实好友", "#D6A15C")}·{ColorText(stateText, stateColor)}";
+
+		string lastOnlineText = friend.lastLoginUnixMs > 0
+			? $"上次上线{FormatRelativeTime(friend.lastLoginUnixMs)}"
+			: "暂无上线记录";
+
+		return $"{ColorText("真实好友", "#D6A15C")}·{ColorText(stateText, stateColor)}，{ColorText(lastOnlineText, "#C9B8D8")}";
 	}
 
-	private void ReleaseAllItems()
+	private string ColorText(string text, string color)
 	{
-		ReleaseRealFriendItems();
-		ReleaseVirtualFriendItems();
-		ReleaseInviteItems();
-		ReleaseRelationshipInviteItems();
-		ReleaseDailyOracleFeedItems();
+		return $"<color={color}>{text}</color>";
 	}
 
+	private string FormatRelativeTime(long unixMs)
+	{
+		long deltaMs = Math.Max(0, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - unixMs);
+		TimeSpan delta = TimeSpan.FromMilliseconds(deltaMs);
+		if (delta.TotalMinutes < 1) return "刚刚";
+		if (delta.TotalHours < 1) return $"{Mathf.FloorToInt((float)delta.TotalMinutes)}分钟前";
+		if (delta.TotalDays < 1) return $"{Mathf.FloorToInt((float)delta.TotalHours)}小时前";
+		if (delta.TotalDays < 7) return $"{Mathf.FloorToInt((float)delta.TotalDays)}天前";
+		return DateTimeOffset.FromUnixTimeMilliseconds(unixMs).LocalDateTime.ToString("MM/dd");
+	}
+
+	private string GetFriendDisplayName(FriendDataManager.FriendData friend)
+	{
+		if (friend == null) return "好友";
+		if (!string.IsNullOrWhiteSpace(friend.name)) return friend.name.Trim();
+		if (!string.IsNullOrWhiteSpace(friend.handle)) return friend.handle.Trim();
+		return friend.isVirtual ? "虚拟好友" : "好友";
+	}
+
+	private TMP_Text FindTextByName(Transform root, params string[] names)
+	{
+		if (root == null || names == null) return null;
+		if (NameMatches(root.name, names)) return root.GetComponent<TMP_Text>();
+
+		for (int i = 0; i < root.childCount; i++)
+		{
+			TMP_Text result = FindTextByName(root.GetChild(i), names);
+			if (result != null) return result;
+		}
+
+		return null;
+	}
+
+	private Image FindImageByName(Transform root, params string[] names)
+	{
+		if (root == null || names == null) return null;
+		if (NameMatches(root.name, names)) return root.GetComponent<Image>();
+
+		for (int i = 0; i < root.childCount; i++)
+		{
+			Image result = FindImageByName(root.GetChild(i), names);
+			if (result != null) return result;
+		}
+
+		return null;
+	}
+
+	private bool NameMatches(string objectName, params string[] names)
+	{
+		if (string.IsNullOrEmpty(objectName)) return false;
+		foreach (string name in names)
+		{
+			if (objectName == name) return true;
+		}
+		return false;
+	}
 	#endregion
 
-	#region API Function
-
-	private void EnsureDailyOracleFeedRoot()
+	#region 添加面板
+	private void CloseOpenFriendSwipe()
 	{
-		if (!ShowDailyOracleFeed) return;
-		if (dailyOracleFeedRoot != null) return;
-
-		Transform parent = uiComponent.InviteBannerTransform != null
-			? uiComponent.InviteBannerTransform.parent
-			: uiComponent.RealFriendContentTransform != null
-				? uiComponent.RealFriendContentTransform.parent
-				: null;
-		if (parent == null) return;
-
-		GameObject section = new GameObject("DailyOracleFeedSection", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter), typeof(LayoutElement));
-		section.transform.SetParent(parent, false);
-		dailyOracleFeedRoot = section.transform;
-
-		RectTransform rect = section.GetComponent<RectTransform>();
-		rect.anchorMin = new Vector2(0f, 1f);
-		rect.anchorMax = new Vector2(1f, 1f);
-		rect.pivot = new Vector2(0.5f, 1f);
-		rect.offsetMin = Vector2.zero;
-		rect.offsetMax = Vector2.zero;
-
-		var layout = section.GetComponent<VerticalLayoutGroup>();
-		layout.padding = new RectOffset(0, 0, 8, 8);
-		layout.spacing = 8f;
-		layout.childAlignment = TextAnchor.UpperLeft;
-		layout.childControlWidth = true;
-		layout.childControlHeight = true;
-		layout.childForceExpandWidth = true;
-		layout.childForceExpandHeight = false;
-
-		var fitter = section.GetComponent<ContentSizeFitter>();
-		fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-
-		var element = section.GetComponent<LayoutElement>();
-		element.flexibleWidth = 1f;
-
-		if (uiComponent.InviteBannerTransform != null)
-			section.transform.SetSiblingIndex(uiComponent.InviteBannerTransform.GetSiblingIndex());
-
-		dailyOracleFeedStatusText = CreateFeedText(
-			"DailyOracleFeedStatus",
-			dailyOracleFeedRoot,
-			"正在读取好友今日牌...",
-			18,
-			new Color(0.96f, 0.79f, 0.38f),
-			28f,
-			FontStyles.Bold);
+		FriendSwipeRevealItem.CloseCurrentOpen();
 	}
 
-	private TMP_Text CreateFeedText(string name, Transform parent, string content, int fontSize, Color color, float minHeight, FontStyles style = FontStyles.Normal)
+	private void SetAddPanelVisible(bool visible)
 	{
-		GameObject go = new GameObject(name, typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
-		go.transform.SetParent(parent, false);
-
-		TMP_Text text = go.GetComponent<TMP_Text>();
-		text.font = GetFeedFont();
-		text.text = content;
-		text.fontSize = fontSize;
-		text.fontStyle = style;
-		text.color = color;
-		text.alignment = TextAlignmentOptions.Left;
-		text.enableWordWrapping = true;
-		text.overflowMode = TextOverflowModes.Overflow;
-
-		var element = go.GetComponent<LayoutElement>();
-		element.minHeight = minHeight;
-		element.flexibleWidth = 1f;
-		return text;
+		if (uiComponent.addPanelGO != null)
+			uiComponent.addPanelGO.SetActive(visible);
 	}
 
-	private TMP_FontAsset GetFeedFont()
+	public void ShowDeleteFriendConfirm(FriendDataManager.FriendData friend)
 	{
-		if (uiComponent.ExistingCountText != null && uiComponent.ExistingCountText.font != null)
-			return uiComponent.ExistingCountText.font;
-		if (uiComponent.CreatedCountText != null && uiComponent.CreatedCountText.font != null)
-			return uiComponent.CreatedCountText.font;
-		return TMP_Settings.defaultFontAsset;
-	}
-
-	private void EnsureRelationshipInviteRoot()
-	{
-		if (relationshipInviteRoot != null) return;
-
-		Transform parent = uiComponent.InviteBannerTransform != null
-			? uiComponent.InviteBannerTransform.parent
-			: uiComponent.RealFriendContentTransform != null
-				? uiComponent.RealFriendContentTransform.parent
-				: null;
-		if (parent == null) return;
-
-		GameObject section = new GameObject("RelationshipDivinationInviteSection", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter), typeof(LayoutElement));
-		section.transform.SetParent(parent, false);
-		relationshipInviteRoot = section.transform;
-
-		RectTransform rect = section.GetComponent<RectTransform>();
-		rect.anchorMin = new Vector2(0f, 1f);
-		rect.anchorMax = new Vector2(1f, 1f);
-		rect.pivot = new Vector2(0.5f, 1f);
-		rect.offsetMin = Vector2.zero;
-		rect.offsetMax = Vector2.zero;
-
-		VerticalLayoutGroup layout = section.GetComponent<VerticalLayoutGroup>();
-		layout.padding = new RectOffset(0, 0, 8, 8);
-		layout.spacing = 8f;
-		layout.childAlignment = TextAnchor.UpperLeft;
-		layout.childControlWidth = true;
-		layout.childControlHeight = true;
-		layout.childForceExpandWidth = true;
-		layout.childForceExpandHeight = false;
-
-		section.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-		section.GetComponent<LayoutElement>().flexibleWidth = 1f;
-
-		if (uiComponent.InviteBannerTransform != null)
-			section.transform.SetSiblingIndex(uiComponent.InviteBannerTransform.GetSiblingIndex() + 1);
-
-		relationshipInviteStatusText = CreateFeedText(
-			"RelationshipInviteStatus",
-			relationshipInviteRoot,
-			"正在读取关系占卜邀请...",
-			18,
-			new Color(0.96f, 0.79f, 0.38f),
-			28f,
-			FontStyles.Bold);
-		section.SetActive(false);
-	}
-
-	private void SetRelationshipInviteStatus(string text)
-	{
-		EnsureRelationshipInviteRoot();
-		if (relationshipInviteStatusText != null)
-			relationshipInviteStatusText.text = text;
-	}
-
-	private GameObject CreateRelationshipInviteCard(RelationshipDivinationRecord record)
-	{
-		GameObject card = new GameObject("RelationshipDivinationInviteCard", typeof(RectTransform), typeof(Image), typeof(Button), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter), typeof(LayoutElement));
-		card.transform.SetParent(relationshipInviteRoot, false);
-
-		Image bg = card.GetComponent<Image>();
-		bg.color = new Color(0.16f, 0.08f, 0.20f, 0.98f);
-
-		Button button = card.GetComponent<Button>();
-		button.targetGraphic = bg;
-		button.onClick.AddListener(() => RelationshipDivinationOverlay.Show(transform, record, FindRealFriendByFirebaseUid(record.initiatorUid)));
-
-		VerticalLayoutGroup layout = card.GetComponent<VerticalLayoutGroup>();
-		layout.padding = new RectOffset(14, 14, 10, 10);
-		layout.spacing = 5f;
-		layout.childAlignment = TextAnchor.UpperLeft;
-		layout.childControlWidth = true;
-		layout.childControlHeight = true;
-		layout.childForceExpandWidth = true;
-		layout.childForceExpandHeight = false;
-
-		card.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-		LayoutElement element = card.GetComponent<LayoutElement>();
-		element.minHeight = 118f;
-		element.flexibleWidth = 1f;
-
-		string inviter = string.IsNullOrWhiteSpace(record.initiatorName) ? "好友" : record.initiatorName;
-		CreateFeedText("InviteTitleText", card.transform, $"{inviter} 邀请你进行双人关系占卜", 16, new Color(0.95f, 0.82f, 0.48f), 24f, FontStyles.Bold);
-		CreateFeedText("InviteQuestionText", card.transform, TrimForFeed(record.question, 80), 14, new Color(0.84f, 0.80f, 0.92f), 44f);
-		CreateFeedText("InviteActionText", card.transform, "点按加入并翻开你的私牌", 13, new Color(0.70f, 0.62f, 0.86f), 22f);
-		return card;
-	}
-
-	private GameObject CreateDailyOracleSummaryCard(DailyOracleSummaryRecord record)
-	{
-		GameObject card = new GameObject("DailyOracleSummaryCard", typeof(RectTransform), typeof(Image), typeof(Button), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter), typeof(LayoutElement));
-		card.transform.SetParent(dailyOracleFeedRoot, false);
-
-		Image bg = card.GetComponent<Image>();
-		bg.color = new Color(0.08f, 0.06f, 0.14f, 0.96f);
-
-		Button button = card.GetComponent<Button>();
-		button.targetGraphic = bg;
-		button.onClick.AddListener(() => OpenFriendDailyOracleDialog(record));
-
-		var layout = card.GetComponent<VerticalLayoutGroup>();
-		layout.padding = new RectOffset(14, 14, 10, 10);
-		layout.spacing = 5f;
-		layout.childAlignment = TextAnchor.UpperLeft;
-		layout.childControlWidth = true;
-		layout.childControlHeight = true;
-		layout.childForceExpandWidth = true;
-		layout.childForceExpandHeight = false;
-
-		var fitter = card.GetComponent<ContentSizeFitter>();
-		fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-
-		var element = card.GetComponent<LayoutElement>();
-		element.minHeight = 124f;
-		element.flexibleWidth = 1f;
-
-		string friendName = GetFriendDisplayName(record.ownerUid);
-		string orientation = record.IsUpright ? "正位" : "逆位";
-		string cardName = string.IsNullOrWhiteSpace(record.cardName) ? "未知牌" : record.cardName;
-		string title = string.IsNullOrWhiteSpace(record.title) ? $"{cardName} · 今日牌" : record.title;
-		string oracle = string.IsNullOrWhiteSpace(record.oracle) ? "好友同步了今日牌摘要。" : record.oracle;
-		string action = string.IsNullOrWhiteSpace(record.microAction) ? "点按进入对话，结合好友上下文继续询问。" : record.microAction;
-
-		CreateFeedText("FriendNameText", card.transform, $"{friendName} 的每日牌", 16, new Color(0.95f, 0.82f, 0.48f), 24f, FontStyles.Bold);
-		CreateFeedText("CardTitleText", card.transform, $"{cardName} · {orientation}｜{title}", 15, Color.white, 24f, FontStyles.Bold);
-		CreateFeedText("OracleText", card.transform, TrimForFeed(oracle, 72), 14, new Color(0.82f, 0.80f, 0.9f), 42f);
-		CreateFeedText("ActionText", card.transform, $"✦ {TrimForFeed(action, 42)}", 13, new Color(0.70f, 0.62f, 0.86f), 22f);
-		return card;
-	}
-
-	private void SetDailyOracleFeedStatus(string text)
-	{
-		EnsureDailyOracleFeedRoot();
-		if (dailyOracleFeedStatusText != null)
-			dailyOracleFeedStatusText.text = text;
-	}
-
-	private string GetFriendDisplayName(string firebaseUid)
-	{
-		var friend = FindRealFriendByFirebaseUid(firebaseUid);
-		if (friend != null && !string.IsNullOrWhiteSpace(friend.name))
-			return friend.name;
-		return "好友";
-	}
-
-	private FriendDataManager.FriendData FindRealFriendByFirebaseUid(string firebaseUid)
-	{
-		if (string.IsNullOrWhiteSpace(firebaseUid)) return null;
-		return FriendDataManager.Instance.FindRealFriendByFirebaseUid(firebaseUid);
-	}
-
-	private void OpenFriendDailyOracleDialog(DailyOracleSummaryRecord record)
-	{
-		if (record == null) return;
-
-		var friend = FindRealFriendByFirebaseUid(record.ownerUid);
 		if (friend == null)
 		{
-			ToastManager.ShowToast("好友资料还在同步中，请稍后再试");
+			ToastManager.ShowToast("好友资料不完整");
 			return;
 		}
 
-		UIModule.Instance.GetWindow<NavigationUI>()?.OpenDialogUI();
-		DialogUI dialog = UIModule.Instance.GetWindow<DialogUI>();
-		dialog?.SendAtFriendsMessage(friend, BuildDailyOracleFriendContext(record, friend));
-		ToastManager.ShowToast($"已带入 {friend.name} 的每日牌摘要");
+		if (isDeletingFriend)
+			return;
+
+		uiComponent.ResolveReferences();
+		pendingDeleteFriend = friend;
+		SetAddPanelVisible(false);
+		CloseOpenFriendSwipe();
+		RefreshDeleteFriendConfirmText(friend);
+		SetDeleteFriendButtonsInteractable(true);
+		SetDeleteFriendConfirmVisible(true);
 	}
 
-	private string BuildDailyOracleFriendContext(DailyOracleSummaryRecord record, FriendDataManager.FriendData friend)
+	private void RefreshDeleteFriendConfirmText(FriendDataManager.FriendData friend)
 	{
-		string friendName = friend != null && !string.IsNullOrWhiteSpace(friend.name) ? friend.name : "该好友";
-		string orientation = record.IsUpright ? "正位" : "逆位";
-		string cardName = string.IsNullOrWhiteSpace(record.cardName) ? "未知牌" : record.cardName;
+		if (uiComponent.deleteContent == null) return;
 
-		return $"【{friendName} 今天同步的每日牌摘要】\n"
-			+ $"日期：{record.date}\n"
-			+ $"牌面：{cardName}（{orientation}）\n"
-			+ $"标题：{record.title}\n"
-			+ $"摘要：{record.oracle}\n"
-			+ $"微行动：{record.microAction}\n"
-			+ "提醒：这只是好友公开同步的每日牌摘要，不包含完整解读。";
+		uiComponent.deleteContent.richText = true;
+		string friendName = EscapeTmpRichText(GetFriendDisplayName(friend));
+		uiComponent.deleteContent.text = $"<color=#FFFFFF>是否确定要删除</color><color=#D58A3F>{friendName}</color><color=#FFFFFF>?</color>";
 	}
 
-	private string TrimForFeed(string text, int maxLength)
+	private string EscapeTmpRichText(string value)
 	{
-		if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
-			return text ?? "";
-		return text.Substring(0, maxLength).TrimEnd() + "...";
+		if (string.IsNullOrEmpty(value)) return string.Empty;
+		return value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 	}
 
-	/// <summary>
-	/// 强制重建布局，解决 ContentSizeFitter 不及时刷新的问题。
-	/// 从目标节点向上逐级刷新，确保父级 LayoutGroup + ContentSizeFitter 也同步更新。
-	/// </summary>
-	private void ForceRebuildLayout(Transform contentTransform)
+	private void SetDeleteFriendConfirmVisible(bool visible)
 	{
-		if (contentTransform == null) return;
+		if (uiComponent == null) return;
 
-		LayoutRebuilder.ForceRebuildLayoutImmediate(contentTransform as RectTransform);
+		uiComponent.ResolveReferences();
+		if (uiComponent.deleteFriendRect == null) return;
 
-		// 向上逐级刷新，确保父节点（可能有 ContentSizeFitter）也同步
-		Transform parent = contentTransform.parent;
-		while (parent != null)
+		uiComponent.deleteFriendRect.gameObject.SetActive(visible);
+
+		Image overlayImage = uiComponent.deleteFriendRect.GetComponent<Image>();
+		if (overlayImage != null)
+			overlayImage.raycastTarget = visible;
+	}
+
+	private void SetDeleteFriendButtonsInteractable(bool interactable)
+	{
+		if (uiComponent.cancelBtn != null)
+			uiComponent.cancelBtn.interactable = interactable;
+		if (uiComponent.sureBtn != null)
+			uiComponent.sureBtn.interactable = interactable;
+	}
+
+	public void OnCancelDeleteFriendButtonClick()
+	{
+		if (isDeletingFriend)
+			return;
+
+		pendingDeleteFriend = null;
+		SetDeleteFriendConfirmVisible(false);
+	}
+
+	public void OnConfirmDeleteFriendButtonClick()
+	{
+		if (pendingDeleteFriend == null || isDeletingFriend)
+			return;
+
+		isDeletingFriend = true;
+		SetDeleteFriendButtonsInteractable(false);
+
+		if (pendingDeleteFriend.isVirtual)
 		{
-			if (parent.GetComponent<LayoutGroup>() != null || parent.GetComponent<ContentSizeFitter>() != null)
-			{
-				LayoutRebuilder.ForceRebuildLayoutImmediate(parent as RectTransform);
-			}
-			parent = parent.parent;
+			DeleteVirtualFriendFromConfirm(pendingDeleteFriend);
+			return;
 		}
+
+		DeleteRealFriendFromConfirm(pendingDeleteFriend);
 	}
 
+	private void DeleteVirtualFriendFromConfirm(FriendDataManager.FriendData friend)
+	{
+		FirestoreManager firestore = FirestoreManager.Instance;
+		if (firestore != null && firestore.IsInitialized)
+		{
+			ToastManager.ShowToast($"正在删除 {GetFriendDisplayName(friend)}");
+			firestore.DeleteVirtualFriend(friend, success =>
+			{
+				isDeletingFriend = false;
+				if (!success)
+				{
+					SetDeleteFriendButtonsInteractable(true);
+					ToastManager.ShowToast("云端删除失败，已保留本地好友");
+					return;
+				}
+
+				ToastManager.ShowToast("已删除创建的好友");
+				CloseAfterFriendDeleted();
+			});
+			return;
+		}
+
+		bool removed = FriendDataManager.Instance != null && FriendDataManager.Instance.RemoveVirtualFriend(friend.id);
+		isDeletingFriend = false;
+		ToastManager.ShowToast(removed ? "已删除本地创建好友" : "删除失败");
+		if (removed)
+			CloseAfterFriendDeleted();
+		else
+			SetDeleteFriendButtonsInteractable(true);
+	}
+
+	private void DeleteRealFriendFromConfirm(FriendDataManager.FriendData friend)
+	{
+		FirestoreManager firestore = FirestoreManager.Instance;
+		if (firestore == null)
+		{
+			string friendUid = friend.firebaseUid;
+			bool queued = !string.IsNullOrWhiteSpace(friendUid);
+			FirestoreManager.QueueRealFriendDeleteLocal(friendUid);
+			bool removed = RemoveRealFriendLocal(friend);
+			isDeletingFriend = false;
+			ToastManager.ShowToast(BuildLocalDeleteToast(removed, queued));
+			if (removed || queued)
+				CloseAfterFriendDeleted();
+			else
+				SetDeleteFriendButtonsInteractable(true);
+			return;
+		}
+
+		if (!firestore.IsInitialized)
+		{
+			ToastManager.ShowToast($"正在删除 {GetFriendDisplayName(friend)}");
+			firestore.RemoveRealFriend(friend, success =>
+			{
+				isDeletingFriend = false;
+				ToastManager.ShowToast(success ? BuildLocalDeleteToast(true, !string.IsNullOrWhiteSpace(friend.firebaseUid)) : "删除好友失败，请稍后再试");
+				if (success)
+					CloseAfterFriendDeleted();
+				else
+					SetDeleteFriendButtonsInteractable(true);
+			});
+			return;
+		}
+
+		ToastManager.ShowToast($"正在删除 {GetFriendDisplayName(friend)}");
+		firestore.RemoveRealFriend(friend, success =>
+		{
+			isDeletingFriend = false;
+			ToastManager.ShowToast(success ? "已删除好友" : "删除好友失败，请稍后再试");
+			if (success)
+				CloseAfterFriendDeleted();
+			else
+				SetDeleteFriendButtonsInteractable(true);
+		});
+	}
+
+	private bool RemoveRealFriendLocal(FriendDataManager.FriendData friend)
+	{
+		if (friend == null || FriendDataManager.Instance == null)
+			return false;
+
+		if (!string.IsNullOrWhiteSpace(friend.firebaseUid)
+			&& FriendDataManager.Instance.RemoveRealFriendByFirebaseUid(friend.firebaseUid))
+			return true;
+
+		return FriendDataManager.Instance.RemoveRealFriend(friend.id);
+	}
+
+	private string BuildLocalDeleteToast(bool removed, bool queued)
+	{
+		if (removed && queued) return "已删除好友，云端稍后同步";
+		if (removed) return "已从本地好友列表移除";
+		if (queued) return "已加入云端删除队列";
+		return "删除好友失败，请稍后再试";
+	}
+
+	private void CloseAfterFriendDeleted()
+	{
+		pendingDeleteFriend = null;
+		isDeletingFriend = false;
+		SetDeleteFriendButtonsInteractable(true);
+		SetDeleteFriendConfirmVisible(false);
+		UIModule.Instance.HideWindow<FriendProfileUI>();
+		RebuildFriendList(false);
+	}
+
+	public void OnAddExpandButtonClick()
+	{
+		CloseOpenFriendSwipe();
+		bool nextVisible = uiComponent.addPanelGO == null || !uiComponent.addPanelGO.activeSelf;
+		SetAddPanelVisible(nextVisible);
+	}
+
+	public void OnExitAddPanelButtonClick()
+	{
+		CloseOpenFriendSwipe();
+		SetAddPanelVisible(false);
+	}
+
+	public void OnAddFriendButtonClick()
+	{
+		CloseOpenFriendSwipe();
+		SetAddPanelVisible(false);
+		UIModule.Instance.PopUpWindow<UserSearchUI>();
+	}
+
+	public void OnCreateFriendButtonClick()
+	{
+		CloseOpenFriendSwipe();
+		SetAddPanelVisible(false);
+		UIModule.Instance.PopUpWindow<CreateFriendUI>();
+	}
+
+	public void OnSettingButtonClick()
+	{
+		CloseOpenFriendSwipe();
+		SetAddPanelVisible(false);
+		UIModule.Instance.PopUpWindow<MemoryPrivacySettingsUI>();
+	}
 	#endregion
 
 	#region UI组件事件
+	public void OnSearchButtonClick()
+	{
+		CloseOpenFriendSwipe();
+		UIModule.Instance.PopUpWindow<UserSearchUI>();
+	}
+
+	public void OnFriendRequestButtonClick()
+	{
+		CloseOpenFriendSwipe();
+		UIModule.Instance.PopUpWindow<FriendRequestUI>();
+	}
+
+	public void OnAlreadyReceiveInviteButtonClick()
+	{
+		CloseOpenFriendSwipe();
+		if (uiComponent != null)
+			uiComponent.StartCoroutine(OpenLatestIncomingRelationshipInviteRoutine());
+	}
+
 	public void OnNotionButtonClick()
 	{
-		UIModule.Instance.PopUpWindow<DailyDivinationSyncSettingsUI>();
+		CloseOpenFriendSwipe();
+		UIModule.Instance.PopUpWindow<NotionUI>();
 	}
-	public void OnAddRelationButtonClick()
+
+	private IEnumerator OpenLatestIncomingRelationshipInviteRoutine()
 	{
-		UIModule.Instance.PopUpWindow<AddFriendUI>();
-	}
-	public void OnExpandRealFriendButtonClick()
-	{
-		realFriendExpanded = !realFriendExpanded;
-		uiComponent.RealFriendContentTransform.gameObject.SetActive(realFriendExpanded);
-		// 展开/折叠后强制刷新布局
-		ForceRebuildLayout(uiComponent.RealFriendContentTransform);
-	}
-	public void OnExpandVirtualFriendButtonClick()
-	{
-		virtualFriendExpanded = !virtualFriendExpanded;
-		uiComponent.VirtualFriendContentTransform.gameObject.SetActive(virtualFriendExpanded);
-		// 展开/折叠后强制刷新布局
-		ForceRebuildLayout(uiComponent.VirtualFriendContentTransform);
-	}
-	public void OnAddFriendButtonClick()
-	{
-		UIModule.Instance.PopUpWindow<AddFriendUI>();
-	}
-	public void OnCreateFriendButtonClick()
-	{
-		UIModule.Instance.PopUpWindow<CreateFriendUI>();
+		RelationshipDivinationFirestore service = RelationshipDivinationFlow.GetOrCreateService();
+		const int maxAttempts = 20;
+		for (int i = 0; i < maxAttempts; i++)
+		{
+			if (service != null && service.IsReady)
+				break;
+
+			yield return new WaitForSeconds(0.5f);
+			service = RelationshipDivinationFlow.GetOrCreateService();
+		}
+
+		if (service == null || !service.IsReady)
+		{
+			ToastManager.ShowToast("关系占卜服务初始化中，请稍后再试");
+			yield break;
+		}
+
+		bool completed = false;
+		service.LoadIncomingInvites((records, succeeded) =>
+		{
+			completed = true;
+			if (!succeeded)
+			{
+				ToastManager.ShowToast("双人占卜邀请同步失败，请稍后再试");
+				return;
+			}
+
+			if (records == null || records.Count == 0)
+			{
+				ToastManager.ShowToast("暂无待加入的双人占卜邀请");
+				return;
+			}
+
+			RelationshipDivinationFlow.ShowRecord(records[0]);
+		});
+
+		while (!completed)
+			yield return null;
 	}
 	#endregion
 }

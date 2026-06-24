@@ -5,16 +5,19 @@
  * Description: UI 表现层，该层只负责界面的交互、表现相关的更新，不允许编写任何业务逻辑代码
  * 注意: 以下文件是自动生成的，再次生成不会覆盖原有的代码，会在原有的代码上进行新增，可放心使用
 ---------------------------------*/
+using System.Collections.Generic;
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
+using TMPro;
 
 public class NavigationUI : WindowBase
 {
 	public NavigationUIComponent uiComponent;
 
 	private const string FriendListWindowName = nameof(FriendUI);
-	private const string NoFriendWindowName = nameof(NoFriendUI);
+	private static readonly Color SelectedNavigationLabelColor = new Color32(0xD5, 0x8A, 0x3F, 0xFF);
+	private readonly Dictionary<Toggle, Color> navigationDefaultLabelColors = new Dictionary<Toggle, Color>();
 
 	/// <summary>
 	/// 当前活跃的导航窗口名称，用于防止重复点击同一导航栏
@@ -29,17 +32,17 @@ public class NavigationUI : WindowBase
 		uiComponent.InitComponent(this);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		base.OnAwake();
+		CacheNavigationLabelColors();
 		uiComponent.todayOracleToggle.isOn = true;
+		UpdateNavigationLabelColors();
 		mCurrentActiveWindow = nameof(TodayOracleUI);
 		UIModule.Instance.PopUpWindow<TodayOracleUI>();
-
-		FriendDataManager.Instance.DataChanged -= HandleFriendDataChanged;
-		FriendDataManager.Instance.DataChanged += HandleFriendDataChanged;
 	}
 	// 物体显示时执行
 	public override void OnShow()
 	{
 		base.OnShow();
+		UpdateNavigationLabelColors();
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -49,43 +52,25 @@ public class NavigationUI : WindowBase
 	// 物体销毁时执行
 	public override void OnDestroy()
 	{
-		FriendDataManager.Instance.DataChanged -= HandleFriendDataChanged;
 		base.OnDestroy();
 	}
 	#endregion
 
 	#region API Function
 
-	private bool HasAnyFriend()
-	{
-		return FriendDataManager.Instance.RealFriendList.Count > 0
-			|| FriendDataManager.Instance.VirtualFriendList.Count > 0;
-	}
-
 	private bool IsFriendEntryActive()
 	{
-		return mCurrentActiveWindow == FriendListWindowName
-			|| mCurrentActiveWindow == NoFriendWindowName;
+		return mCurrentActiveWindow == FriendListWindowName;
 	}
 
 	private void ShowFriendEntry()
 	{
-		bool hasAnyFriend = HasAnyFriend();
-		string targetWindowName = hasAnyFriend ? FriendListWindowName : NoFriendWindowName;
-		if (mCurrentActiveWindow == targetWindowName) return;
+		if (mCurrentActiveWindow == FriendListWindowName) return;
 
-		UIModule.Instance.HideWindow<FriendUI>();
 		UIModule.Instance.HideWindow<NoFriendUI>();
 
-		mCurrentActiveWindow = targetWindowName;
-		if (hasAnyFriend)
-		{
-			UIModule.Instance.PopUpWindow<FriendUI>();
-		}
-		else
-		{
-			UIModule.Instance.PopUpWindow<NoFriendUI>();
-		}
+		mCurrentActiveWindow = FriendListWindowName;
+		UIModule.Instance.PopUpWindow<FriendUI>();
 	}
 
 	private void HideFriendEntry()
@@ -95,14 +80,74 @@ public class NavigationUI : WindowBase
 		UIModule.Instance.HideWindow<NoFriendUI>();
 	}
 
-	private void HandleFriendDataChanged()
+	private void CacheNavigationLabelColors()
 	{
-		if (uiComponent == null || uiComponent.friendToggle == null || !uiComponent.friendToggle.isOn)
-		{
+		CacheToggleLabelColor(uiComponent.todayOracleToggle);
+		CacheToggleLabelColor(uiComponent.dialogueToggle);
+		CacheToggleLabelColor(uiComponent.friendToggle);
+		CacheToggleLabelColor(uiComponent.myToggle);
+	}
+
+	private void CacheToggleLabelColor(Toggle toggle)
+	{
+		if (toggle == null || navigationDefaultLabelColors.ContainsKey(toggle))
 			return;
+
+		TMP_Text label = GetToggleLabel(toggle);
+		if (label != null)
+			navigationDefaultLabelColors.Add(toggle, label.color);
+	}
+
+	private void UpdateNavigationLabelColors()
+	{
+		UpdateToggleLabelColor(uiComponent.todayOracleToggle);
+		UpdateToggleLabelColor(uiComponent.dialogueToggle);
+		UpdateToggleLabelColor(uiComponent.friendToggle);
+		UpdateToggleLabelColor(uiComponent.myToggle);
+	}
+
+	private void UpdateToggleLabelColor(Toggle toggle)
+	{
+		if (toggle == null) return;
+
+		TMP_Text label = GetToggleLabel(toggle);
+		if (label == null) return;
+
+		if (!navigationDefaultLabelColors.TryGetValue(toggle, out Color defaultColor))
+		{
+			defaultColor = label.color;
+			navigationDefaultLabelColors[toggle] = defaultColor;
 		}
 
-		ShowFriendEntry();
+		label.color = toggle.isOn ? SelectedNavigationLabelColor : defaultColor;
+	}
+
+	private TMP_Text GetToggleLabel(Toggle toggle)
+	{
+		if (toggle == null) return null;
+
+		Transform labelTransform = FindChildByName(toggle.transform, "Label");
+		if (labelTransform != null)
+		{
+			TMP_Text label = labelTransform.GetComponent<TMP_Text>();
+			if (label != null) return label;
+		}
+
+		return toggle.GetComponentInChildren<TMP_Text>(true);
+	}
+
+	private Transform FindChildByName(Transform root, string objectName)
+	{
+		if (root == null || string.IsNullOrEmpty(objectName)) return null;
+		if (root.name == objectName) return root;
+
+		for (int i = 0; i < root.childCount; i++)
+		{
+			Transform result = FindChildByName(root.GetChild(i), objectName);
+			if (result != null) return result;
+		}
+
+		return null;
 	}
 
 	#endregion
@@ -110,6 +155,7 @@ public class NavigationUI : WindowBase
 	#region UI组件事件
 	public void OntodayOracleToggleChange(bool state, Toggle toggle)
 	{
+		UpdateNavigationLabelColors();
 		if(state)
 		{
 			if (mCurrentActiveWindow == nameof(TodayOracleUI)) return;
@@ -124,6 +170,7 @@ public class NavigationUI : WindowBase
 	}
 	public void OndialogueToggleChange(bool state, Toggle toggle)
 	{
+		UpdateNavigationLabelColors();
 		if(state)
 		{
 			if (mCurrentActiveWindow == nameof(DialogUI)) return;
@@ -138,6 +185,7 @@ public class NavigationUI : WindowBase
 	}
 	public void OnfriendToggleChange(bool state, Toggle toggle)
 	{
+		UpdateNavigationLabelColors();
 		if(state)
 		{
 			ShowFriendEntry();
@@ -149,6 +197,7 @@ public class NavigationUI : WindowBase
 	}
 	public void OnmyToggleChange(bool state, Toggle toggle)
 	{
+		UpdateNavigationLabelColors();
 		if(state)
 		{
 			if (mCurrentActiveWindow == nameof(MyUI)) return;
@@ -165,11 +214,19 @@ public class NavigationUI : WindowBase
 	public void OpenDialogUI()
 	{
 		uiComponent.dialogueToggle.isOn = true;
+		UpdateNavigationLabelColors();
+	}
+
+	public void OpenTodayOracleUI()
+	{
+		uiComponent.todayOracleToggle.isOn = true;
+		UpdateNavigationLabelColors();
 	}
 
 	public void OpenFriendUI()
 	{
 		uiComponent.friendToggle.isOn = true;
+		UpdateNavigationLabelColors();
 		ShowFriendEntry();
 	}
 

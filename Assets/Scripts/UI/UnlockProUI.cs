@@ -69,8 +69,7 @@ public class UnlockProUI : WindowBase
 		var firestore = FirestoreManager.Instance;
 		if (firestore == null || !firestore.IsInitialized)
 		{
-			GetIapManager().ConfigureProducts(iapProducts);
-			RefreshPurchaseControls();
+			ApplyIapProductsConfig("default");
 			return;
 		}
 
@@ -79,9 +78,15 @@ public class UnlockProUI : WindowBase
 			if (config?.iapProducts != null)
 				iapProducts = config.iapProducts;
 
-			GetIapManager().ConfigureProducts(iapProducts);
-			RefreshPurchaseControls();
+			ApplyIapProductsConfig("app_config/public");
 		});
+	}
+
+	private void ApplyIapProductsConfig(string source)
+	{
+		GetIapManager().ConfigureProducts(iapProducts);
+		Debug.Log($"[UnlockProUI] IAP 商品配置({source}) appId={Application.identifier}, platform={Application.platform}, monthly={iapProducts.proMonthly?.productId}, yearly={iapProducts.proYearly?.productId}");
+		RefreshPurchaseControls();
 	}
 
 	private void RefreshMembershipStatus(bool showToast = false)
@@ -264,9 +269,9 @@ public class UnlockProUI : WindowBase
 		RefreshStaticCopy();
 
 		if (monthlyPurchaseText != null)
-			monthlyPurchaseText.text = isCurrentPro ? "已开通 Pro" : BuildProductButtonText(iapProducts.proMonthly, "Moonly Pro Monthly");
+			monthlyPurchaseText.text = isCurrentPro ? "已开通 Pro" : BuildProductButtonText(iapProducts.proMonthly, "Fari Pro 月度会员");
 		if (yearlyPurchaseText != null)
-			yearlyPurchaseText.text = isCurrentPro ? "可在订阅管理中调整方案" : BuildProductButtonText(iapProducts.proYearly, "Moonly Pro Yearly");
+			yearlyPurchaseText.text = isCurrentPro ? "可在订阅管理中调整方案" : BuildProductButtonText(iapProducts.proYearly, "Fari Pro 年度会员");
 
 		SetPurchaseButtonsInteractable(!isCurrentPro && !isRefreshingStatus);
 

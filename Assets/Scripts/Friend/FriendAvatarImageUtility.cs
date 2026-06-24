@@ -1,8 +1,10 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 using UnityEngine.Networking;
+using UnityEngine.UI;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -18,6 +20,84 @@ public static class FriendAvatarImageUtility
 
     private const int AvatarSize = 512;
     private const string AvatarFolderName = "FriendAvatars";
+    private const int FallbackAvatarSize = 128;
+
+    private static Sprite defaultAvatarSprite;
+    private static Texture2D defaultAvatarTexture;
+    private static readonly Dictionary<Image, string> avatarTargetTokens = new Dictionary<Image, string>();
+
+    public static Sprite DefaultAvatarSprite
+    {
+        get
+        {
+            if (defaultAvatarSprite == null)
+                defaultAvatarSprite = CreateDefaultAvatarSprite();
+            return defaultAvatarSprite;
+        }
+    }
+
+    public static void ApplyAvatar(Image target, Sprite sprite, Sprite localFallback = null)
+    {
+        if (target == null) return;
+
+        Sprite resolved = ResolveAvatar(sprite, target, localFallback);
+        target.sprite = resolved;
+        target.enabled = resolved != null;
+        target.preserveAspect = true;
+    }
+
+    public static Sprite ResolveAvatar(Sprite sprite, Image fallbackImage = null, Sprite localFallback = null)
+    {
+        if (sprite != null) return sprite;
+        if (localFallback != null) return localFallback;
+        if (fallbackImage != null && fallbackImage.sprite != null) return fallbackImage.sprite;
+        return DefaultAvatarSprite;
+    }
+
+    public static Sprite ResolveFriendAvatar(FriendDataManager.FriendData friend, Image fallbackImage = null, Sprite localFallback = null)
+    {
+        if (friend == null)
+            return ResolveAvatar(null, fallbackImage, localFallback);
+
+        if (friend.headSprite != null)
+            return friend.headSprite;
+
+        if (!string.IsNullOrWhiteSpace(friend.avatarImagePath))
+        {
+            Sprite localSprite = LoadSpriteFromPath(friend.avatarImagePath);
+            if (localSprite != null)
+            {
+                friend.headSprite = localSprite;
+                return localSprite;
+            }
+        }
+
+        return ResolveAvatar(null, fallbackImage, localFallback);
+    }
+
+    public static Sprite ResolveInviteAvatar(FriendDataManager.InviteData invite, Image fallbackImage = null, Sprite localFallback = null)
+    {
+        if (invite == null)
+            return ResolveAvatar(null, fallbackImage, localFallback);
+
+        if (invite.headSprite != null)
+            return invite.headSprite;
+
+        return ResolveAvatar(null, fallbackImage, localFallback);
+    }
+
+    public static void SetAvatarTargetToken(Image target, string token)
+    {
+        if (target == null) return;
+        avatarTargetTokens[target] = token ?? string.Empty;
+    }
+
+    public static bool IsAvatarTargetTokenValid(Image target, string token)
+    {
+        if (target == null) return false;
+        return avatarTargetTokens.TryGetValue(target, out string currentToken)
+            && currentToken == (token ?? string.Empty);
+    }
 
     public static void PickAvatar(Action<PickedAvatar> onSuccess, Action<string> onError)
     {
@@ -261,5 +341,52 @@ public static class FriendAvatarImageUtility
     {
         if (texture == null) return null;
         return Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+    }
+
+    private static Sprite CreateDefaultAvatarSprite()
+    {
+        if (defaultAvatarTexture == null)
+        {
+            defaultAvatarTexture = new Texture2D(FallbackAvatarSize, FallbackAvatarSize, TextureFormat.RGBA32, false)
+            {
+                name = "GeneratedFriendDefaultAvatar",
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp
+            };
+
+            Color edge = new Color(0.12f, 0.09f, 0.16f, 0f);
+            Color outer = new Color(0.23f, 0.13f, 0.27f, 1f);
+            Color inner = new Color(0.86f, 0.52f, 0.20f, 1f);
+            Color face = new Color(1f, 0.80f, 0.56f, 1f);
+
+            for (int y = 0; y < FallbackAvatarSize; y++)
+            {
+                for (int x = 0; x < FallbackAvatarSize; x++)
+                {
+                    float u = (x + 0.5f) / FallbackAvatarSize * 2f - 1f;
+                    float v = (y + 0.5f) / FallbackAvatarSize * 2f - 1f;
+                    float radius = Mathf.Sqrt(u * u + v * v);
+
+                    if (radius > 1f)
+                    {
+                        defaultAvatarTexture.SetPixel(x, y, edge);
+                        continue;
+                    }
+
+                    Color pixel = Color.Lerp(inner, outer, Mathf.Clamp01(radius));
+
+                    float head = Mathf.Sqrt(u * u + (v - 0.28f) * (v - 0.28f));
+                    float shoulders = Mathf.Sqrt((u / 0.72f) * (u / 0.72f) + ((v + 0.48f) / 0.36f) * ((v + 0.48f) / 0.36f));
+                    if (head < 0.28f || shoulders < 1f && v < -0.16f)
+                        pixel = Color.Lerp(pixel, face, 0.82f);
+
+                    defaultAvatarTexture.SetPixel(x, y, pixel);
+                }
+            }
+
+            defaultAvatarTexture.Apply(false, false);
+        }
+
+        return TextureToSprite(defaultAvatarTexture);
     }
 }

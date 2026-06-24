@@ -24,6 +24,9 @@ public static class RelationshipDivinationFlow
             return;
         }
 
+        if (CreatedFriendRelationshipDivinationLocalFlow.TryStart(friend))
+            return;
+
         if (!CanUseTwoPersonDivination(friend, true))
             return;
 
@@ -200,6 +203,12 @@ public static class RelationshipDivinationFlow
             return;
         }
 
+        if (CreatedFriendRelationshipDivinationLocalFlow.CanHandle(friend))
+        {
+            onCanCreate?.Invoke();
+            return;
+        }
+
         if (!CanUseTwoPersonDivination(friend, true))
             return;
 
@@ -281,12 +290,7 @@ public static class RelationshipDivinationFlow
     public static bool CanUseTwoPersonDivination(FriendDataManager.FriendData friend, bool showToast)
     {
         if (friend == null) return false;
-        if (friend.isVirtual)
-        {
-            if (showToast)
-                ToastManager.ShowToast("自己创建的好友暂不支持双人占卜，请选择真实好友");
-            return false;
-        }
+        if (CreatedFriendRelationshipDivinationLocalFlow.CanHandle(friend)) return true;
 
         if (!friend.isVirtual && !string.IsNullOrWhiteSpace(friend.firebaseUid)) return true;
 
@@ -297,8 +301,8 @@ public static class RelationshipDivinationFlow
 
     public static string GetDailyLimitText(FriendDataManager.FriendData friend)
     {
-        if (friend != null && friend.isVirtual)
-            return "自己创建的好友暂不支持双人占卜";
+        if (CreatedFriendRelationshipDivinationLocalFlow.CanHandle(friend))
+            return "自建好友 · 本地关系占卜";
 
         if (IsDebugTestFriend(friend))
             return "测试好友 · 不受每日次数限制";

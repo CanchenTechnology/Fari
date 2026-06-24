@@ -1,7 +1,9 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using UnityEditor;
+using UnityEditor.Android;
 using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -14,6 +16,7 @@ public static class CommandLineBuild
 {
     private const string DefaultYooPackageName = "DefaultPackage";
     private const string DefaultYooPipelineName = nameof(EBuildPipeline.ScriptableBuildPipeline);
+    internal static bool ForceAndroidCompileSdk34ForAppBundle { get; private set; }
 
     public static void BuildIOSProject()
     {
@@ -43,7 +46,7 @@ public static class CommandLineBuild
 
     public static void BuildAndroidApk()
     {
-        var outputPath = GetArg("-outputPath", "Builds/Android/MoonlyApp.apk");
+        var outputPath = GetArg("-outputPath", "Builds/Android/FariApp.apk");
         outputPath = Path.GetFullPath(outputPath);
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
 
@@ -51,15 +54,21 @@ public static class CommandLineBuild
         ValidateRelationshipDivinationLocalFlow();
         var oldBuildAppBundle = EditorUserBuildSettings.buildAppBundle;
         var oldExportAndroidProject = EditorUserBuildSettings.exportAsGoogleAndroidProject;
+        var oldUseCustomKeystore = PlayerSettings.Android.useCustomKeystore;
 
         try
         {
             EditorUserBuildSettings.buildAppBundle = false;
             EditorUserBuildSettings.exportAsGoogleAndroidProject = false;
+            if (GetBoolArg("-useDebugKeystore"))
+            {
+                PlayerSettings.Android.useCustomKeystore = false;
+                Debug.Log("Android APK build will use the default debug keystore for this batchmode run.");
+            }
 
-            SetGameStartPlayMode(EPlayMode.OfflinePlayMode);
-            BuildYooAssetPackage(BuildTarget.Android);
             GenerateHybridClrFiles();
+            BuildYooAssetPackage(BuildTarget.Android);
+            SetGameStartPlayMode(EPlayMode.OfflinePlayMode);
             ApplySigningPasswords();
             ClearBuildOutputPath(outputPath);
 
@@ -83,6 +92,61 @@ public static class CommandLineBuild
         {
             EditorUserBuildSettings.buildAppBundle = oldBuildAppBundle;
             EditorUserBuildSettings.exportAsGoogleAndroidProject = oldExportAndroidProject;
+            PlayerSettings.Android.useCustomKeystore = oldUseCustomKeystore;
+        }
+    }
+
+    public static void BuildAndroidAppBundle()
+    {
+        var outputPath = GetArg("-outputPath", "Builds/Android/FariApp.aab");
+        outputPath = Path.GetFullPath(outputPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
+
+        EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Android, BuildTarget.Android);
+        ValidateRelationshipDivinationLocalFlow();
+        var oldBuildAppBundle = EditorUserBuildSettings.buildAppBundle;
+        var oldExportAndroidProject = EditorUserBuildSettings.exportAsGoogleAndroidProject;
+        var oldTargetArchitectures = PlayerSettings.Android.targetArchitectures;
+        var oldTargetSdkVersion = PlayerSettings.Android.targetSdkVersion;
+        var oldForceCompileSdk34 = ForceAndroidCompileSdk34ForAppBundle;
+
+        try
+        {
+            EditorUserBuildSettings.buildAppBundle = true;
+            EditorUserBuildSettings.exportAsGoogleAndroidProject = false;
+            PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARMv7 | AndroidArchitecture.ARM64;
+            PlayerSettings.Android.targetSdkVersion = (AndroidSdkVersions)35;
+            ForceAndroidCompileSdk34ForAppBundle = true;
+
+            SetGameStartPlayMode(EPlayMode.OfflinePlayMode);
+            BuildYooAssetPackage(BuildTarget.Android);
+            GenerateHybridClrFiles();
+            ApplySigningPasswords();
+            ClearBuildOutputPath(outputPath);
+
+            var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+            {
+                scenes = GetEnabledScenes(),
+                locationPathName = outputPath,
+                target = BuildTarget.Android,
+                options = BuildOptions.None
+            });
+
+            var summary = report.summary;
+            Debug.Log($"Android app bundle build result: {summary.result}, output: {outputPath}, size: {summary.totalSize} bytes");
+
+            if (summary.result != UnityBuildResult.Succeeded)
+            {
+                throw new InvalidOperationException($"Android app bundle build failed: {summary.result}");
+            }
+        }
+        finally
+        {
+            EditorUserBuildSettings.buildAppBundle = oldBuildAppBundle;
+            EditorUserBuildSettings.exportAsGoogleAndroidProject = oldExportAndroidProject;
+            PlayerSettings.Android.targetArchitectures = oldTargetArchitectures;
+            PlayerSettings.Android.targetSdkVersion = oldTargetSdkVersion;
+            ForceAndroidCompileSdk34ForAppBundle = oldForceCompileSdk34;
         }
     }
 
@@ -373,5 +437,45 @@ public static class CommandLineBuild
         }
 
         return defaultValue;
+    }
+
+    private static bool GetBoolArg(string name)
+    {
+        var value = GetArg(name, "false");
+        return value.Equals("1", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("yes", StringComparison.OrdinalIgnoreCase);
+    }
+}
+
+public sealed class AndroidAppBundleGradlePostprocessor : IPostGenerateGradleAndroidProject
+{
+    public int callbackOrder => 10000;
+
+    public void OnPostGenerateGradleAndroidProject(string path)
+    {
+        if (!CommandLineBuild.ForceAndroidCompileSdk34ForAppBundle)
+        {
+            return;
+        }
+
+        var gradleRoot = Directory.GetParent(path)?.FullName;
+        if (string.IsNullOrEmpty(gradleRoot) || !Directory.Exists(gradleRoot))
+        {
+            return;
+        }
+
+        foreach (var gradleFile in Directory.GetFiles(gradleRoot, "build.gradle", SearchOption.AllDirectories))
+        {
+            var text = File.ReadAllText(gradleFile);
+            var patched = Regex.Replace(text, @"compileSdkVersion\s+35\b", "compileSdkVersion 34");
+            if (patched == text)
+            {
+                continue;
+            }
+
+            File.WriteAllText(gradleFile, patched);
+            Debug.Log($"Patched {gradleFile} compileSdkVersion 35 -> 34 for targetSdkVersion 35 app bundle build.");
+        }
     }
 }

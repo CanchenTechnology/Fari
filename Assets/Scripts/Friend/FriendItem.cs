@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.UI;
 using GamerFrameWork.UIFrameWork;
@@ -12,16 +13,23 @@ public class FriendItem : MonoBehaviour
     public Button moreBtn;
 
     private FriendDataManager.FriendData data;
+    private FriendDataManager.InviteData requestData;
     private Button itemButton;
+    private FriendSwipeRevealItem swipeRevealItem;
+    private Action<FriendDataManager.InviteData> requestAcceptAction;
+    private bool isRequestMode;
+    private bool requestAlreadyAdded;
     private int avatarRequestVersion;
     private void OnEnable()
     {
         ResolveButtons();
+        ResolveSwipeRevealItem();
         BindButtons();
     }
     private void OnDisable()
     {
         avatarRequestVersion++;
+        swipeRevealItem?.ResetReveal(true);
         UnbindButtons();
     }
 
@@ -32,6 +40,12 @@ public class FriendItem : MonoBehaviour
         if (itemButton == null) itemButton = GetComponent<Button>();
         if (itemButton == null) itemButton = gameObject.AddComponent<Button>();
         itemButton.transition = Selectable.Transition.None;
+    }
+
+    private void ResolveSwipeRevealItem()
+    {
+        if (swipeRevealItem == null)
+            swipeRevealItem = GetComponent<FriendSwipeRevealItem>();
     }
 
     private Button FindButtonByName(Transform root, params string[] names)
@@ -56,18 +70,28 @@ public class FriendItem : MonoBehaviour
     private void BindButtons()
     {
         UnbindButtons();
+        if (isRequestMode)
+        {
+            if (moreBtn != null) moreBtn.onClick.AddListener(OnFriendRequestActionButtonClick);
+            return;
+        }
+
         if (moreBtn != null) moreBtn.onClick.AddListener(OpenDialogWithAtFriend);
         if (itemButton != null && itemButton != moreBtn) itemButton.onClick.AddListener(OpenFriendProfile);
     }
 
     private void UnbindButtons()
     {
+        if (moreBtn != null) moreBtn.onClick.RemoveListener(OnFriendRequestActionButtonClick);
         if (moreBtn != null) moreBtn.onClick.RemoveListener(OpenDialogWithAtFriend);
         if (itemButton != null && itemButton != moreBtn) itemButton.onClick.RemoveListener(OpenFriendProfile);
     }
 
     private void OpenDialogWithAtFriend()
     {
+        if (CloseOpenSwipeReveal())
+            return;
+
         if (data == null)
         {
             ToastManager.ShowToast("好友资料不完整");
@@ -82,6 +106,9 @@ public class FriendItem : MonoBehaviour
 
     private void OpenFriendProfile()
     {
+        if (CloseOpenSwipeReveal())
+            return;
+
         if (data == null)
         {
             ToastManager.ShowToast("好友资料不完整");
@@ -90,6 +117,7 @@ public class FriendItem : MonoBehaviour
 
         if (data.isVirtual)
         {
+            FriendDataManager.Instance?.RecordVirtualFriendOperated(data);
             CreateFriendInfoUI.Show(data);
             return;
         }
@@ -101,6 +129,17 @@ public class FriendItem : MonoBehaviour
         }
 
         ToastManager.ShowToast("好友关系确认后才能查看资料");
+    }
+
+    private bool CloseOpenSwipeReveal()
+    {
+        if (swipeRevealItem != null && swipeRevealItem.IsOpen)
+        {
+            swipeRevealItem.Close();
+            return true;
+        }
+
+        return FriendSwipeRevealItem.CloseCurrentOpen(swipeRevealItem);
     }
 
     private string FormatFriendName(FriendDataManager.FriendData friend)
@@ -120,9 +159,13 @@ public class FriendItem : MonoBehaviour
     /// </summary>
     public void SetData(Sprite sprite, string name, string info)
     {
-        headImage.sprite = sprite ? sprite : defaultSprite;
-        nameText.text = name;
-        infoText.text = info;
+        FriendAvatarImageUtility.ApplyAvatar(headImage, sprite, GetDefaultAvatarSprite());
+        if (nameText != null) nameText.text = name;
+        if (infoText != null)
+        {
+            infoText.richText = true;
+            infoText.text = info;
+        }
     }
 
     /// <summary>
@@ -130,22 +173,86 @@ public class FriendItem : MonoBehaviour
     /// </summary>
     public void SetData(FriendDataManager.FriendData friendData)
     {
+        SetData(friendData, null);
+    }
+
+    public void SetData(FriendDataManager.FriendData friendData, string displayInfo)
+    {
         ResolveButtons();
+        ResolveSwipeRevealItem();
+        UnbindButtons();
+        isRequestMode = false;
+        requestData = null;
+        requestAcceptAction = null;
+        requestAlreadyAdded = false;
         data = friendData;
         if (friendData == null)
         {
             ResetForPool();
+            BindButtons();
             return;
         }
 
-        SetData(friendData.headSprite, friendData.name, friendData.info);
+        string info = string.IsNullOrWhiteSpace(displayInfo) ? friendData.info : displayInfo;
+        Sprite avatar = FriendAvatarImageUtility.ResolveFriendAvatar(friendData, headImage, GetDefaultAvatarSprite());
+        SetData(avatar, friendData.name, info);
         LoadRemoteAvatarIfNeeded(friendData);
 
         if (moreBtn != null)
         {
             moreBtn.gameObject.SetActive(friendData != null);
+            moreBtn.interactable = true;
+            SetButtonImageVisible(moreBtn, true);
             SetButtonText(moreBtn, "@");
         }
+
+        if (swipeRevealItem != null)
+            swipeRevealItem.Configure(OpenDeleteFriendFromSwipe, true);
+
+        BindButtons();
+    }
+
+    public void SetFriendRequestData(
+        FriendDataManager.InviteData inviteData,
+        bool alreadyAdded,
+        bool processing,
+        Action<FriendDataManager.InviteData> onAccept)
+    {
+        ResolveButtons();
+        ResolveSwipeRevealItem();
+        UnbindButtons();
+
+        isRequestMode = true;
+        data = null;
+        requestData = inviteData;
+        requestAlreadyAdded = alreadyAdded;
+        requestAcceptAction = onAccept;
+
+        if (inviteData == null)
+        {
+            ResetForPool();
+            BindButtons();
+            return;
+        }
+
+        string displayName = FormatInviteName(inviteData);
+        string signature = FormatInviteSignature(inviteData);
+        Sprite avatar = FriendAvatarImageUtility.ResolveInviteAvatar(inviteData, headImage, GetDefaultAvatarSprite());
+        SetData(avatar, displayName, signature);
+        LoadRemoteAvatarIfNeeded(inviteData);
+
+        if (moreBtn != null)
+        {
+            moreBtn.gameObject.SetActive(true);
+            moreBtn.interactable = !alreadyAdded && !processing;
+            SetButtonImageVisible(moreBtn, !alreadyAdded);
+            SetButtonText(moreBtn, alreadyAdded ? "已添加" : "同意");
+        }
+
+        if (swipeRevealItem != null)
+            swipeRevealItem.Configure(null, false);
+
+        BindButtons();
     }
 
     /// <summary>
@@ -154,11 +261,40 @@ public class FriendItem : MonoBehaviour
     public void ResetForPool()
     {
         data = null;
-        headImage.sprite = defaultSprite;
-        nameText.text = string.Empty;
-        infoText.text = string.Empty;
-        if (moreBtn != null) moreBtn.gameObject.SetActive(false);
+        requestData = null;
+        requestAcceptAction = null;
+        requestAlreadyAdded = false;
+        isRequestMode = false;
+        FriendAvatarImageUtility.ApplyAvatar(headImage, GetDefaultAvatarSprite());
+        if (nameText != null) nameText.text = string.Empty;
+        if (infoText != null) infoText.text = string.Empty;
+        if (moreBtn != null)
+        {
+            moreBtn.gameObject.SetActive(false);
+            moreBtn.interactable = true;
+            SetButtonImageVisible(moreBtn, true);
+        }
+        if (swipeRevealItem != null)
+            swipeRevealItem.Configure(null, false);
         avatarRequestVersion++;
+    }
+
+    private void OpenDeleteFriendFromSwipe()
+    {
+        if (data == null)
+        {
+            ToastManager.ShowToast("好友资料不完整");
+            return;
+        }
+
+        FriendUI friendUI = UIModule.Instance.GetWindow<FriendUI>();
+        if (friendUI != null)
+        {
+            friendUI.ShowDeleteFriendConfirm(data);
+            return;
+        }
+
+        FriendMoveUI.ShowDeleteConfirmFor(data);
     }
 
     private void SetButtonText(Button button, string text)
@@ -168,6 +304,42 @@ public class FriendItem : MonoBehaviour
         if (label != null) label.text = text;
         TMPro.TMP_Text tmpLabel = button.GetComponentInChildren<TMPro.TMP_Text>(true);
         if (tmpLabel != null) tmpLabel.text = text;
+    }
+
+    private void SetButtonImageVisible(Button button, bool visible)
+    {
+        if (button == null) return;
+        Image image = button.GetComponent<Image>();
+        if (image != null) image.enabled = visible;
+    }
+
+    private void OnFriendRequestActionButtonClick()
+    {
+        if (!isRequestMode || requestAlreadyAdded)
+            return;
+
+        if (requestData == null)
+        {
+            ToastManager.ShowToast("好友请求数据不完整");
+            return;
+        }
+
+        requestAcceptAction?.Invoke(requestData);
+    }
+
+    private string FormatInviteName(FriendDataManager.InviteData invite)
+    {
+        if (invite == null) return "新的好友请求";
+        if (!string.IsNullOrWhiteSpace(invite.name)) return invite.name.Trim();
+        if (!string.IsNullOrWhiteSpace(invite.email)) return invite.email.Trim();
+        return "新的好友请求";
+    }
+
+    private string FormatInviteSignature(FriendDataManager.InviteData invite)
+    {
+        if (invite == null || string.IsNullOrWhiteSpace(invite.info))
+            return "想添加你为好友";
+        return invite.info.Trim();
     }
 
     private void LoadRemoteAvatarIfNeeded(FriendDataManager.FriendData friendData)
@@ -182,7 +354,28 @@ public class FriendItem : MonoBehaviour
         {
             if (requestId != avatarRequestVersion || data != friendData || sprite == null) return;
             friendData.headSprite = sprite;
-            if (headImage != null) headImage.sprite = sprite;
+            FriendAvatarImageUtility.ApplyAvatar(headImage, sprite, GetDefaultAvatarSprite());
         }));
+    }
+
+    private void LoadRemoteAvatarIfNeeded(FriendDataManager.InviteData inviteData)
+    {
+        if (inviteData == null || inviteData.headSprite != null || string.IsNullOrWhiteSpace(inviteData.photoUrl))
+        {
+            return;
+        }
+
+        int requestId = ++avatarRequestVersion;
+        StartCoroutine(FriendAvatarImageUtility.LoadSpriteFromUrlCoroutine(inviteData.photoUrl, sprite =>
+        {
+            if (requestId != avatarRequestVersion || requestData != inviteData || sprite == null) return;
+            inviteData.headSprite = sprite;
+            FriendAvatarImageUtility.ApplyAvatar(headImage, sprite, GetDefaultAvatarSprite());
+        }));
+    }
+
+    private Sprite GetDefaultAvatarSprite()
+    {
+        return defaultSprite != null ? defaultSprite : FriendAvatarImageUtility.DefaultAvatarSprite;
     }
 }

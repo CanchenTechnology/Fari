@@ -10,12 +10,12 @@ const fs = require("fs");
 
 const EXPECTED = {
   proMonthly: {
-    productId: process.env.IAP_MONTHLY_PRODUCT_ID || "fair.pro.monthly",
+    productId: process.env.IAP_MONTHLY_PRODUCT_ID || "fari.pro.monthly",
     type: "subscription",
     store: "app_store_google_play",
   },
   proYearly: {
-    productId: process.env.IAP_YEARLY_PRODUCT_ID || "fair.pro.yearly",
+    productId: process.env.IAP_YEARLY_PRODUCT_ID || "fari.pro.yearly",
     type: "subscription",
     store: "app_store_google_play",
   },

@@ -42,6 +42,7 @@ public class CreateFriendInfoUI : WindowBase
 		uiComponent.InitComponent(this);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		defaultAvatarSprite = uiComponent.FriendAvatarImage != null ? uiComponent.FriendAvatarImage.sprite : null;
+		defaultAvatarSprite = FriendAvatarImageUtility.ResolveAvatar(defaultAvatarSprite);
 		InitHistoryListView();
 		base.OnAwake();
 	}
@@ -98,7 +99,7 @@ public class CreateFriendInfoUI : WindowBase
 	{
 		if (currentFriend == null || uiComponent == null) return;
 
-		ApplyAvatar(currentFriend.headSprite != null ? currentFriend.headSprite : defaultAvatarSprite);
+		ApplyAvatar(FriendAvatarImageUtility.ResolveFriendAvatar(currentFriend, uiComponent.FriendAvatarImage, defaultAvatarSprite));
 		LoadRemoteAvatarIfNeeded();
 		SetText(uiComponent.FriendNameText, FormatOptional(currentFriend.name, "未命名好友"));
 		SetText(uiComponent.SignatureTextText, BuildSignatureText());
@@ -185,9 +186,8 @@ public class CreateFriendInfoUI : WindowBase
 
 	private void ApplyAvatar(Sprite avatar)
 	{
-		if (avatar == null || uiComponent?.FriendAvatarImage == null) return;
-		uiComponent.FriendAvatarImage.sprite = avatar;
-		uiComponent.FriendAvatarImage.preserveAspect = true;
+		if (uiComponent?.FriendAvatarImage == null) return;
+		FriendAvatarImageUtility.ApplyAvatar(uiComponent.FriendAvatarImage, avatar, defaultAvatarSprite);
 	}
 
 	private void LoadRemoteAvatarIfNeeded()

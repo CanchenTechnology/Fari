@@ -14,6 +14,7 @@ public class FriendMoveUI : WindowBase
 {
     public FriendMoveUIComponent uiComponent;
     private static FriendDataManager.FriendData sPendingFriend;
+    private static bool sPendingDeleteConfirm;
 
     private FriendDataManager.FriendData currentFriend;
     private bool isProcessing;
@@ -27,6 +28,20 @@ public class FriendMoveUI : WindowBase
         }
 
         sPendingFriend = friend;
+        sPendingDeleteConfirm = false;
+        UIModule.Instance.PopUpWindow<FriendMoveUI>();
+    }
+
+    public static void ShowDeleteConfirmFor(FriendDataManager.FriendData friend)
+    {
+        if (friend == null)
+        {
+            ToastManager.ShowToast("好友资料不完整");
+            return;
+        }
+
+        sPendingFriend = friend;
+        sPendingDeleteConfirm = true;
         UIModule.Instance.PopUpWindow<FriendMoveUI>();
     }
 
@@ -52,8 +67,12 @@ public class FriendMoveUI : WindowBase
     {
         base.OnShow();
         currentFriend = sPendingFriend;
+        bool shouldShowDeleteConfirm = sPendingDeleteConfirm;
+        sPendingDeleteConfirm = false;
         isProcessing = false;
         RefreshView();
+        if (shouldShowDeleteConfirm)
+            ShowDeleteConfirmation(currentFriend);
     }
 
     // 物体隐藏时执行
@@ -61,6 +80,7 @@ public class FriendMoveUI : WindowBase
     {
         currentFriend = null;
         sPendingFriend = null;
+        sPendingDeleteConfirm = false;
         base.OnHide();
     }
 
@@ -130,7 +150,7 @@ public class FriendMoveUI : WindowBase
             return;
         }
 
-        ShowDeleteConfirm(currentFriend);
+        ShowDeleteConfirmation(currentFriend);
     }
 
     public void OnBlockFriendButtonClick()
@@ -178,7 +198,7 @@ public class FriendMoveUI : WindowBase
         SetButtonText(uiComponent.CancelButton, "取消");
     }
 
-    private void ShowDeleteConfirm(FriendDataManager.FriendData friend)
+    private void ShowDeleteConfirmation(FriendDataManager.FriendData friend)
     {
         if (friend == null) return;
 

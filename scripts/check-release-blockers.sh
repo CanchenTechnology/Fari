@@ -229,8 +229,6 @@ file_is_stale_against_sources() {
     Assets/GamerFrameWork \
     Packages \
     ProjectSettings \
-    functions \
-    -path "functions/public-config.live.json" -prune -o \
     -type f \
     -newer "$marker" \
     -print \
@@ -260,7 +258,7 @@ check_local_secret_env() {
 check_real_iap_receipt_input() {
   local receipt="${IAP_RECEIPT:-${REAL_IAP_RECEIPT:-}}"
   local store="${IAP_STORE:-AppleAppStore}"
-  local product_id="${IAP_PRODUCT_ID:-fair.pro.monthly}"
+  local product_id="${IAP_PRODUCT_ID:-fari.pro.monthly}"
 
   if [[ -z "$receipt" ]]; then
     block "real sandbox IAP receipt input is missing; set IAP_RECEIPT or REAL_IAP_RECEIPT"
@@ -352,6 +350,7 @@ else
   warn "public app config update is not selected; set RUN_PUBLIC_CONFIG_UPDATE=1 PUBLIC_CONFIG_PATH=functions/public-config.live.json REQUIRE_REAL_SOCIAL_LINKS=1 when publishing real social/IAP display config"
 fi
 run_required_check "Android source configuration" "android-source" scripts/check-android-config.sh
+run_required_check "Firebase SDK version consistency" "firebase-sdk-versions" bash scripts/check-firebase-sdk-versions.sh
 run_required_check "iOS export validator self-test" "ios-export-self-test" scripts/check-ios-export.sh --self-test
 echo
 

@@ -7,6 +7,7 @@ using TMPro;
 
 public class InviteItem : MonoBehaviour
 {
+    public Sprite defaultSprite;
     public Image headImage;
     public TMP_Text nameText;
     public TMP_Text infoText;
@@ -15,6 +16,7 @@ public class InviteItem : MonoBehaviour
 
     private FriendDataManager.InviteData data;
     private bool isProcessing;
+    private int avatarRequestVersion;
 
     private void OnEnable()
     {
@@ -26,6 +28,7 @@ public class InviteItem : MonoBehaviour
 
     private void OnDisable()
     {
+        avatarRequestVersion++;
         if (infoBtn != null) infoBtn.onClick.RemoveListener(OnActionButtonClick);
         if (rejectBtn != null) rejectBtn.onClick.RemoveListener(OnRejectButtonClick);
     }
@@ -40,7 +43,7 @@ public class InviteItem : MonoBehaviour
     /// </summary>
     public void SetData(Sprite sprite, string info)
     {
-        if (headImage != null) headImage.sprite = sprite;
+        FriendAvatarImageUtility.ApplyAvatar(headImage, sprite, GetDefaultAvatarSprite());
 
         if (infoText != null) infoText.text = info;
     }
@@ -62,7 +65,8 @@ public class InviteItem : MonoBehaviour
             : inviteData.info.Trim();
 
         if (nameText != null) nameText.text = displayName;
-        SetData(inviteData.headSprite, $"好友请求 · {info}");
+        SetData(FriendAvatarImageUtility.ResolveInviteAvatar(inviteData, headImage, GetDefaultAvatarSprite()), $"好友请求 · {info}");
+        LoadRemoteAvatarIfNeeded(inviteData);
         SetButtonText(infoBtn, "同意");
         SetButtonText(rejectBtn, "拒绝");
     }
@@ -74,9 +78,11 @@ public class InviteItem : MonoBehaviour
     {
         data = null;
         isProcessing = false;
+        FriendAvatarImageUtility.ApplyAvatar(headImage, GetDefaultAvatarSprite());
         if (nameText != null) nameText.text = string.Empty;
         if (infoText != null) infoText.text = string.Empty;
         SetButtonsInteractable(true);
+        avatarRequestVersion++;
     }
 
     private void OnActionButtonClick()
@@ -201,5 +207,26 @@ public class InviteItem : MonoBehaviour
             text.color = textColor;
             text.fontStyle = FontStyles.Bold;
         }
+    }
+
+    private void LoadRemoteAvatarIfNeeded(FriendDataManager.InviteData inviteData)
+    {
+        if (inviteData == null || inviteData.headSprite != null || string.IsNullOrWhiteSpace(inviteData.photoUrl))
+        {
+            return;
+        }
+
+        int requestId = ++avatarRequestVersion;
+        StartCoroutine(FriendAvatarImageUtility.LoadSpriteFromUrlCoroutine(inviteData.photoUrl, sprite =>
+        {
+            if (requestId != avatarRequestVersion || data != inviteData || sprite == null) return;
+            inviteData.headSprite = sprite;
+            FriendAvatarImageUtility.ApplyAvatar(headImage, sprite, GetDefaultAvatarSprite());
+        }));
+    }
+
+    private Sprite GetDefaultAvatarSprite()
+    {
+        return defaultSprite != null ? defaultSprite : FriendAvatarImageUtility.DefaultAvatarSprite;
     }
 }

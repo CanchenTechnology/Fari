@@ -9,6 +9,7 @@ using XFGameFrameWork;
 public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
 {
     private const string COLLECTION_NAME = "dialog_sessions";
+    private const string REPLY_JOBS_COLLECTION_NAME = "dialog_reply_jobs";
     private const string DEFAULT_SESSION_ID = "default";
 
     private FirebaseFirestore _db;
@@ -105,6 +106,64 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
                 var snapshot = DeserializeSnapshot(task.Result.ToDictionary());
                 SaveLocalDefault(snapshot);
                 onComplete?.Invoke(snapshot);
+            });
+    }
+
+    public void QueueDialogueReplyJob(
+        string jobId,
+        List<DeepSeekAPI.Message> messages,
+        string lastUserMessage,
+        string divinerType,
+        Action<bool> onComplete = null)
+    {
+        if (string.IsNullOrWhiteSpace(jobId) || messages == null || messages.Count == 0)
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        if (!CheckReady(onComplete))
+            return;
+
+        string uid = GetCurrentUid();
+        if (string.IsNullOrEmpty(uid))
+        {
+            Debug.LogWarning("[DialogHistoryFirestore] 用户未登录，跳过对话回复离线队列");
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        var data = new Dictionary<string, object>
+        {
+            { "status", "client_streaming" },
+            { "clientRequestId", jobId },
+            { "sessionId", DEFAULT_SESSION_ID },
+            { "messages", SerializeApiMessages(messages) },
+            { "lastUserMessage", lastUserMessage ?? "" },
+            { "divinerType", string.IsNullOrWhiteSpace(divinerType) ? DivinerType.Tarot.ToString() : divinerType },
+            { "notificationType", "dialogue_reply" },
+            { "notificationTitle", "神谕师回复了你" },
+            { "source", "unity_dialog_stream" },
+            { "createdAt", FieldValue.ServerTimestamp },
+            { "updatedAt", FieldValue.ServerTimestamp },
+            { "createdAtClient", DateTime.Now.ToString("o") }
+        };
+
+        _db.Collection("users")
+            .Document(uid)
+            .Collection(REPLY_JOBS_COLLECTION_NAME)
+            .Document(jobId)
+            .SetAsync(data, SetOptions.MergeAll)
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogWarning($"[DialogHistoryFirestore] 写入对话回复离线队列失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                onComplete?.Invoke(true);
             });
     }
 

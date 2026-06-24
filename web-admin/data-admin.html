@@ -3,80 +3,76 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Moonly Data Admin</title>
+  <title>Fari 管理后台</title>
   <style>
     :root {
       color-scheme: light;
-      --bg: #f6f5f2;
-      --panel: #ffffff;
-      --panel-soft: #fbfaf7;
-      --line: #d9d5cc;
-      --text: #1f2328;
-      --muted: #687076;
+      --bg: #f7f6f2;
+      --surface: #ffffff;
+      --surface-soft: #fbfaf7;
+      --line: #ded9cf;
+      --line-strong: #cbc4b7;
+      --text: #20252b;
+      --muted: #66707a;
+      --faint: #8b938f;
       --primary: #176b87;
-      --primary-dark: #0f5268;
-      --accent: #9b5d1f;
-      --danger: #b3261e;
-      --ok: #287a52;
-      --focus: rgba(23, 107, 135, 0.16);
-      --shadow: 0 12px 28px rgba(31, 35, 40, 0.08);
+      --primary-soft: #eaf4f6;
+      --green: #287a52;
+      --green-soft: #eaf5ef;
+      --amber: #9b641f;
+      --amber-soft: #f8efe2;
+      --red: #b3261e;
+      --red-soft: #f8e8e6;
+      --shadow: 0 12px 28px rgba(32, 37, 43, 0.08);
     }
 
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
+      min-height: 100vh;
       background: var(--bg);
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
     }
+
+    [hidden] { display: none !important; }
 
     button,
     input,
-    select,
-    textarea {
+    textarea,
+    select {
       font: inherit;
     }
 
     button {
-      min-height: 38px;
+      min-height: 36px;
       border: 0;
       border-radius: 6px;
-      padding: 0 13px;
+      padding: 0 12px;
       background: var(--primary);
       color: #fff;
-      font-weight: 720;
+      font-weight: 760;
       cursor: pointer;
     }
 
-    button:hover { background: var(--primary-dark); }
-    button.secondary { background: #e7e3da; color: var(--text); }
-    button.secondary:hover { background: #dbd5ca; }
-    button.ghost { background: transparent; color: var(--primary); border: 1px solid var(--line); }
-    button.ghost:hover { background: #eef4f4; }
-    button.danger { background: var(--danger); }
-    button.danger:hover { background: #8c1d18; }
+    button:hover { filter: brightness(0.94); }
     button:disabled { cursor: not-allowed; opacity: 0.55; }
+    button.secondary { background: #e8e3da; color: var(--text); }
+    button.ghost { background: transparent; color: var(--primary); border: 1px solid var(--line); }
+    button.danger { background: var(--red); }
+    button.icon { width: 36px; padding: 0; }
 
-    a.button-link {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 38px;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 0 13px;
-      background: transparent;
+    a {
       color: var(--primary);
       font-weight: 720;
       text-decoration: none;
     }
 
-    a.button-link:hover { background: #eef4f4; }
-
     input,
-    select,
-    textarea {
+    textarea,
+    select {
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 6px;
@@ -86,159 +82,424 @@
       outline: none;
     }
 
-    input:focus,
-    select:focus,
-    textarea:focus {
-      border-color: var(--primary);
-      box-shadow: 0 0 0 3px var(--focus);
-    }
-
     textarea {
-      min-height: 480px;
+      min-height: 260px;
       resize: vertical;
       font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
       font-size: 12px;
       line-height: 1.55;
-      tab-size: 2;
     }
 
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      min-height: 70px;
-      padding: 16px 24px;
-      border-bottom: 1px solid var(--line);
-      background: var(--panel);
-    }
-
-    h1 {
-      margin: 0;
-      font-size: 21px;
-      font-weight: 780;
-      letter-spacing: 0;
-    }
-
-    h2 {
-      margin: 0 0 12px;
-      font-size: 14px;
-      letter-spacing: 0;
+    input:focus,
+    textarea:focus,
+    select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(23, 107, 135, 0.14);
     }
 
     label {
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    .row {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      flex-wrap: wrap;
-    }
-
-    .status {
-      color: var(--muted);
-      font-size: 13px;
-      overflow-wrap: anywhere;
-    }
-
-    .layout {
-      display: grid;
-      grid-template-columns: 320px minmax(360px, 1fr) 460px;
-      min-height: calc(100vh - 70px);
-    }
-
-    aside,
-    .list-pane,
-    .editor-pane {
-      min-width: 0;
-      padding: 18px;
-    }
-
-    aside {
-      border-right: 1px solid var(--line);
-      background: var(--panel-soft);
-    }
-
-    .list-pane {
-      border-right: 1px solid var(--line);
-    }
-
-    .panel {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--panel);
-      padding: 14px;
-      margin-bottom: 14px;
-    }
-
-    .field {
       display: grid;
       gap: 6px;
-      margin-bottom: 11px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 740;
     }
 
-    .two {
+    .auth-screen {
+      min-height: 100vh;
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 9px;
+      place-items: center;
+      padding: 30px;
     }
 
-    .three {
+    .auth-shell {
+      width: min(960px, 100%);
       display: grid;
-      grid-template-columns: 1fr 92px 1fr;
-      gap: 8px;
+      grid-template-columns: minmax(0, 1fr) 390px;
+      gap: 28px;
+      align-items: center;
     }
 
-    .toolbar {
+    .auth-copy h1 {
+      margin: 0 0 12px;
+      font-size: 34px;
+      line-height: 1.15;
+    }
+
+    .auth-copy p {
+      margin: 0;
+      max-width: 560px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .auth-card,
+    .panel,
+    dialog {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .auth-card {
+      padding: 22px;
+    }
+
+    .auth-card h2 {
+      margin: 0 0 14px;
+      font-size: 18px;
+    }
+
+    .auth-actions {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .app-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: 72px 1fr;
+    }
+
+    .topbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 14px;
+      gap: 18px;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
     }
 
-    .doc-list {
+    .brand {
       display: grid;
-      gap: 9px;
+      gap: 2px;
+      min-width: 210px;
     }
 
-    .doc-row {
+    .brand-title {
+      font-size: 21px;
+      font-weight: 820;
+    }
+
+    .brand-subtitle {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .top-search {
+      flex: 1;
+      max-width: 760px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .account-area {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .admin-layout {
+      display: grid;
+      grid-template-columns: 248px minmax(0, 1fr);
+      min-height: calc(100vh - 72px);
+    }
+
+    .side-nav {
+      padding: 18px 14px;
+      border-right: 1px solid var(--line);
+      background: var(--surface-soft);
+      overflow-y: auto;
+    }
+
+    .side-section {
+      margin-bottom: 18px;
+    }
+
+    .side-title {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 780;
+    }
+
+    .nav-button {
       width: 100%;
+      min-height: 58px;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 12px;
-      align-items: start;
+      grid-template-columns: 34px 1fr;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 8px;
+      padding: 9px 10px;
       border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--panel);
-      padding: 12px;
+      background: var(--surface);
       color: var(--text);
       text-align: left;
+    }
+
+    .nav-button.active {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+      box-shadow: inset 3px 0 0 var(--primary);
+    }
+
+    .nav-icon {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border-radius: 6px;
+      background: #ece8df;
+      color: var(--primary);
+      font-weight: 860;
+    }
+
+    .nav-label {
+      display: grid;
+      gap: 2px;
+    }
+
+    .nav-label strong {
+      font-size: 14px;
+    }
+
+    .nav-label span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 620;
+    }
+
+    .workspace {
+      min-width: 0;
+      padding: 22px;
+      overflow-x: hidden;
+    }
+
+    .module {
+      display: none;
+    }
+
+    .module.active {
+      display: grid;
+      gap: 16px;
+    }
+
+    .module-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .module-title {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 820;
+    }
+
+    .module-subtitle {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .module-actions,
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .metric-card {
+      min-height: 96px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 14px;
+      display: grid;
+      align-content: space-between;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .metric-value {
+      font-size: 28px;
+      font-weight: 860;
+      line-height: 1;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 390px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      padding: 15px;
       box-shadow: none;
     }
 
-    .doc-row:hover,
-    .doc-row.active {
-      border-color: var(--primary);
-      background: #f4fbfb;
+    .panel-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
     }
 
-    .doc-id {
-      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    .panel-title h2 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0 8px;
+    }
+
+    .table th {
+      padding: 0 12px 4px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: left;
+    }
+
+    .table td {
+      padding: 12px;
+      background: var(--surface);
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      vertical-align: middle;
+    }
+
+    .table tr td:first-child {
+      border-left: 1px solid var(--line);
+      border-top-left-radius: 8px;
+      border-bottom-left-radius: 8px;
+    }
+
+    .table tr td:last-child {
+      border-right: 1px solid var(--line);
+      border-top-right-radius: 8px;
+      border-bottom-right-radius: 8px;
+    }
+
+    .clickable-row {
+      cursor: pointer;
+    }
+
+    .clickable-row:hover td {
+      background: #fdfbf6;
+      border-color: var(--line-strong);
+    }
+
+    .person {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .avatar {
+      width: 40px;
+      height: 40px;
+      flex: 0 0 40px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #e7e2d8;
+      object-fit: cover;
+      display: grid;
+      place-items: center;
+      color: var(--primary);
+      font-weight: 860;
+    }
+
+    .avatar.large {
+      width: 64px;
+      height: 64px;
+      flex-basis: 64px;
+      font-size: 22px;
+    }
+
+    .person-meta {
+      min-width: 0;
+      display: grid;
+      gap: 2px;
+    }
+
+    .identity-list {
+      min-width: 0;
+      display: grid;
+      gap: 5px;
+    }
+
+    .identity-line {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 54px minmax(0, 1fr);
+      gap: 8px;
+      align-items: baseline;
+    }
+
+    .identity-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 780;
+    }
+
+    .identity-value {
+      min-width: 0;
+      color: var(--text);
       font-size: 13px;
       font-weight: 760;
       overflow-wrap: anywhere;
     }
 
-    .doc-summary {
-      margin-top: 5px;
+    .identity-value.primary {
+      font-size: 18px;
+      font-weight: 850;
+    }
+
+    .strong {
+      font-weight: 800;
+    }
+
+    .muted,
+    .status {
       color: var(--muted);
       font-size: 13px;
-      line-height: 1.4;
+    }
+
+    .mono {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 12px;
       overflow-wrap: anywhere;
     }
 
@@ -248,299 +509,1036 @@
       min-height: 24px;
       border-radius: 999px;
       padding: 0 9px;
-      background: #ece8df;
-      color: var(--muted);
+      background: #eee9df;
+      color: var(--text);
       font-size: 12px;
-      font-weight: 720;
+      font-weight: 780;
       white-space: nowrap;
     }
 
-    .guide-card {
+    .pill.ok { background: var(--green-soft); color: var(--green); }
+    .pill.warn { background: var(--amber-soft); color: var(--amber); }
+    .pill.danger { background: var(--red-soft); color: var(--red); }
+
+    .detail-card {
+      position: sticky;
+      top: 16px;
       display: grid;
-      gap: 9px;
+      gap: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 16px;
+    }
+
+    .detail-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .kv {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-soft);
+      padding: 10px;
+    }
+
+    .kv-label {
       color: var(--muted);
-      font-size: 13px;
-      line-height: 1.45;
-    }
-
-    .guide-title {
-      color: var(--text);
-      font-weight: 780;
-      line-height: 1.3;
-    }
-
-    .meta-row {
-      display: grid;
-      gap: 3px;
-      border-top: 1px solid #ece8df;
-      padding-top: 8px;
-    }
-
-    .meta-label {
-      color: var(--text);
       font-size: 12px;
       font-weight: 760;
+      margin-bottom: 4px;
     }
 
-    .danger-note {
-      border-left: 3px solid var(--accent);
-      background: #fff8ec;
-      color: #714412;
-      padding: 8px 10px;
-      border-radius: 6px;
+    .kv-value {
+      min-height: 18px;
+      font-size: 13px;
+      font-weight: 720;
+      overflow-wrap: anywhere;
     }
 
-    .chip-list,
-    .template-actions {
+    .stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .section-title-row {
       display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 10px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
     }
 
-    .chip-list button,
-    .template-actions button {
-      min-height: 32px;
-      padding: 0 10px;
-      background: #e7e3da;
+    .friend-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .friend-card {
+      width: 100%;
+      min-height: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-soft);
       color: var(--text);
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .friend-card:hover {
+      border-color: var(--line-strong);
+      filter: none;
+    }
+
+    .friend-card.active {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+    }
+
+    .friend-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .friend-meta-grid {
+      display: grid;
+      grid-template-columns: 58px minmax(0, 1fr);
+      gap: 4px 8px;
+      color: var(--muted);
       font-size: 12px;
       font-weight: 720;
     }
 
-    .chip-list button:hover,
-    .template-actions button:hover {
-      background: #dbd5ca;
-    }
-
-    .path {
-      min-height: 34px;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      background: #f9f8f5;
-      padding: 8px 10px;
-      color: var(--muted);
-      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-      font-size: 12px;
-      line-height: 1.4;
+    .friend-meta-grid span:nth-child(even) {
+      color: var(--text);
       overflow-wrap: anywhere;
     }
 
-    .empty {
-      border: 1px dashed var(--line);
+    .chat-thread {
+      border: 1px solid var(--line);
       border-radius: 8px;
-      padding: 26px;
-      color: var(--muted);
-      text-align: center;
-      background: rgba(255, 255, 255, 0.58);
+      background: var(--surface);
+      padding: 10px;
+      display: grid;
+      gap: 8px;
     }
 
-    .switch {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
+    .chat-message {
+      border-left: 3px solid var(--line);
+      padding-left: 9px;
+      display: grid;
+      gap: 3px;
+    }
+
+    .chat-message.user {
+      border-left-color: var(--primary);
+    }
+
+    .chat-message.ai {
+      border-left-color: var(--green);
+    }
+
+    .chat-message-text {
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .chat-layout {
+      display: grid;
+      grid-template-columns: 390px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .agent-toolbar {
+      display: grid;
+      grid-template-columns: minmax(220px, 340px) minmax(160px, 220px) auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .agent-workbench {
+      display: grid;
+      grid-template-columns: 300px 330px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .agent-prompt-layout {
+      display: grid;
+      grid-template-columns: 330px minmax(0, 1fr) 330px;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .agent-map-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .agent-scroll {
+      max-height: calc(100vh - 265px);
+      overflow: auto;
+      padding-right: 3px;
+    }
+
+    .agent-turn-detail {
+      display: grid;
+      gap: 12px;
+    }
+
+    .code-block {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfaf7;
+      padding: 10px;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      max-height: 360px;
+      overflow: auto;
+    }
+
+    .prompt-editor {
+      min-height: 480px;
+    }
+
+    .session-card {
+      width: 100%;
+      min-height: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--text);
+      padding: 11px;
+      display: grid;
+      gap: 8px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .session-card:hover {
+      border-color: var(--line-strong);
+      filter: none;
+    }
+
+    .session-card.active {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+    }
+
+    .session-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chat-transcript {
+      display: grid;
+      gap: 10px;
+      max-height: calc(100vh - 230px);
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .chat-bubble {
+      max-width: min(760px, 92%);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-soft);
+      padding: 10px;
+      display: grid;
+      gap: 5px;
+    }
+
+    .chat-bubble.user {
+      justify-self: end;
+      background: var(--primary-soft);
+      border-color: rgba(23, 107, 135, 0.28);
+    }
+
+    .chat-bubble.ai {
+      justify-self: start;
+      background: var(--green-soft);
+      border-color: rgba(40, 122, 82, 0.24);
+    }
+
+    .chat-bubble.system {
+      max-width: 100%;
+      justify-self: stretch;
+      background: var(--amber-soft);
+      border-color: rgba(155, 100, 31, 0.22);
+    }
+
+    .chat-bubble-text {
+      font-size: 13px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .section-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .list-row {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 12px;
+      display: grid;
+      gap: 4px;
+    }
+
+    .compact-fields {
+      display: grid;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .compact-line {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 8px;
+      align-items: baseline;
+    }
+
+    .compact-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 780;
+    }
+
+    .compact-value {
+      min-width: 0;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .feedback-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 420px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .tab {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    .tab.active {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+      color: var(--primary);
+    }
+
+    .config-grid {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .full { grid-column: 1 / -1; }
+
+    .advanced-grid {
+      display: grid;
+      grid-template-columns: 330px minmax(0, 1fr) 430px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .roadmap-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .roadmap-card {
+      min-height: 180px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 14px;
+      display: grid;
+      align-content: start;
+      gap: 10px;
+    }
+
+    .roadmap-list {
+      margin: 0;
+      padding-left: 18px;
       color: var(--muted);
       font-size: 13px;
-      font-weight: 650;
+      line-height: 1.65;
     }
 
-    .switch input {
-      width: auto;
-      accent-color: var(--primary);
+    .empty {
+      min-height: 120px;
+      display: grid;
+      place-items: center;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      color: var(--muted);
+      text-align: center;
+      padding: 18px;
     }
 
-    .ok { color: var(--ok); }
-    .warn { color: var(--accent); }
-
-    @media (max-width: 1180px) {
-      .layout { grid-template-columns: 300px minmax(0, 1fr); }
-      .editor-pane { grid-column: 1 / -1; border-top: 1px solid var(--line); }
+    .empty.warn {
+      border-color: rgba(179, 38, 30, 0.35);
+      background: var(--red-soft);
+      color: var(--red);
     }
 
-    @media (max-width: 760px) {
-      header { align-items: flex-start; flex-direction: column; }
-      .layout { grid-template-columns: 1fr; }
-      aside,
-      .list-pane {
+    .message-box {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 50;
+      max-width: min(420px, calc(100vw - 36px));
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--text);
+      padding: 12px 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .message-box.ok { border-color: rgba(40, 122, 82, 0.35); }
+    .message-box.warn { border-color: rgba(179, 38, 30, 0.35); }
+
+    dialog {
+      width: min(620px, calc(100vw - 32px));
+      padding: 0;
+    }
+
+    dialog::backdrop {
+      background: rgba(32, 37, 43, 0.32);
+    }
+
+    .dialog-body {
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .dialog-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .dialog-head h2 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .hide-mobile { display: table-cell; }
+
+    @media (max-width: 1280px) {
+      .split,
+      .feedback-layout,
+      .chat-layout,
+      .agent-workbench,
+      .agent-prompt-layout,
+      .advanced-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .detail-card {
+        position: static;
+      }
+    }
+
+    @media (max-width: 980px) {
+      .topbar {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .top-search {
+        max-width: none;
+        width: 100%;
+      }
+
+      .admin-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .side-nav {
         border-right: 0;
         border-bottom: 1px solid var(--line);
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
       }
-      .two,
-      .three { grid-template-columns: 1fr; }
-      textarea { min-height: 360px; }
+
+      .side-section {
+        display: contents;
+      }
+
+      .side-title {
+        display: none;
+      }
+
+      .grid-4,
+      .config-grid,
+      .agent-toolbar,
+      .agent-map-grid,
+      .form-grid,
+      .roadmap-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .toolbar {
+        grid-template-columns: 1fr;
+      }
+
+      .hide-mobile {
+        display: none;
+      }
     }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Moonly 数据管理</h1>
-    <div class="row">
-      <span id="accountLabel" class="status">未登录</span>
-      <a class="button-link" href="moonly-firebase-data-admin-guide.md">管理手册</a>
-      <button id="signOutButton" class="ghost" type="button">退出</button>
-    </div>
-  </header>
-
-  <main class="layout">
-    <aside>
-      <div class="panel">
+  <section id="authView" class="auth-screen">
+    <div class="auth-shell">
+      <div class="auth-copy">
+        <h1>Fari 管理后台</h1>
+        <p>查看和维护用户、会员、反馈和配置数据。</p>
+      </div>
+      <form id="loginForm" class="auth-card">
         <h2>管理员登录</h2>
-        <div class="field">
-          <label for="emailInput">邮箱</label>
-          <input id="emailInput" type="email" autocomplete="username" placeholder="admin@example.com">
-        </div>
-        <div class="field">
-          <label for="passwordInput">密码</label>
-          <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Firebase Auth 密码">
-        </div>
-        <button id="signInButton" type="button">登录</button>
-      </div>
-
-      <div class="panel">
-        <h2>数据源</h2>
-        <div class="field">
-          <label for="collectionSelect">集合</label>
-          <select id="collectionSelect"></select>
-        </div>
-        <div id="parentUidField" class="field" style="display: none;">
-          <label for="parentUidInput">用户 UID</label>
-          <input id="parentUidInput" spellcheck="false" placeholder="users/{uid}">
-        </div>
-        <div class="field">
-          <label for="customPathInput">自定义集合路径</label>
-          <input id="customPathInput" spellcheck="false" placeholder="users/{uid}/settings">
-        </div>
-      </div>
-
-      <div class="panel">
-        <h2>功能说明</h2>
-        <div id="guidePanel" class="guide-card"></div>
-        <div id="quickActions" class="chip-list"></div>
-      </div>
-
-      <div class="panel">
-        <h2>查询</h2>
-        <div class="field">
-          <label for="docIdFilterInput">文档 ID</label>
-          <input id="docIdFilterInput" spellcheck="false" placeholder="精确查找">
-        </div>
-        <div class="three">
-          <div class="field">
-            <label for="whereFieldInput">字段</label>
-            <input id="whereFieldInput" spellcheck="false" placeholder="status">
-          </div>
-          <div class="field">
-            <label for="whereOpSelect">条件</label>
-            <select id="whereOpSelect">
-              <option value="==">==</option>
-              <option value="!=">!=</option>
-              <option value=">">&gt;</option>
-              <option value=">=">&gt;=</option>
-              <option value="<">&lt;</option>
-              <option value="<=">&lt;=</option>
-              <option value="array-contains">包含</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="whereValueInput">值</label>
-            <input id="whereValueInput" spellcheck="false" placeholder="new">
-          </div>
-        </div>
-        <div class="two">
-          <div class="field">
-            <label for="orderByInput">排序字段</label>
-            <input id="orderByInput" spellcheck="false" placeholder="updatedAt">
-          </div>
-          <div class="field">
-            <label for="orderDirectionSelect">方向</label>
-            <select id="orderDirectionSelect">
-              <option value="desc">降序</option>
-              <option value="asc">升序</option>
-            </select>
-          </div>
-        </div>
-        <div class="field">
-          <label for="limitSelect">数量</label>
-          <select id="limitSelect">
-            <option value="25">25</option>
-            <option value="50" selected>50</option>
-            <option value="100">100</option>
-            <option value="200">200</option>
-          </select>
-        </div>
-        <div class="row">
-          <button id="refreshButton" type="button">刷新</button>
-          <button id="newButton" class="secondary" type="button">新增</button>
-        </div>
-      </div>
-
-      <div id="messageBox" class="status"></div>
-    </aside>
-
-    <section class="list-pane">
-      <div class="toolbar">
-        <div>
-          <div id="collectionTitle" class="doc-id">等待选择集合</div>
-          <div id="collectionPathLabel" class="status"></div>
-        </div>
-        <button id="exportButton" class="ghost" type="button">导出 JSON</button>
-      </div>
-      <div id="docList" class="doc-list">
-        <div class="empty">登录管理员账号后加载数据。</div>
-      </div>
-    </section>
-
-    <section class="editor-pane">
-      <div class="toolbar">
-        <div>
-          <div id="editorTitle" class="doc-id">未选择文档</div>
-          <div id="editorMeta" class="status"></div>
-        </div>
-        <span id="saveState" class="status"></span>
-      </div>
-
-      <div class="field">
-        <label for="editorPath">路径</label>
-        <div id="editorPath" class="path"></div>
-      </div>
-
-      <div class="two">
-        <div class="field">
-          <label for="docIdInput">文档 ID</label>
-          <input id="docIdInput" spellcheck="false" placeholder="留空自动生成">
-        </div>
-        <div class="field">
-          <label>写入方式</label>
-          <label class="switch">
-            <input id="mergeToggle" type="checkbox" checked>
-            合并字段
-          </label>
-        </div>
-      </div>
-
-      <div class="panel">
-        <h2>文档模板</h2>
-        <div id="templateActions" class="template-actions"></div>
-        <div id="templateHint" class="status"></div>
-      </div>
-
-      <div class="field">
-        <label for="jsonEditor">JSON</label>
-        <textarea id="jsonEditor" spellcheck="false">{}</textarea>
-      </div>
-
-      <div class="row">
-        <button id="saveButton" type="button">保存</button>
-        <button id="formatButton" class="secondary" type="button">格式化</button>
-        <button id="copyPathButton" class="ghost" type="button">复制路径</button>
-        <button id="deleteButton" class="danger" type="button">删除</button>
-        <label class="switch">
-          <input id="recursiveDeleteToggle" type="checkbox">
-          连带子集合
+        <label>
+          邮箱
+          <input id="emailInput" type="email" autocomplete="username" required>
         </label>
+        <label style="margin-top: 12px;">
+          密码
+          <input id="passwordInput" type="password" autocomplete="current-password" required>
+        </label>
+        <div class="auth-actions">
+          <button type="submit">登录</button>
+        </div>
+        <div id="authMessage" class="status" style="margin-top: 12px;"></div>
+      </form>
+    </div>
+  </section>
+
+  <section id="appView" class="app-shell" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-title">Fari 管理后台</div>
+        <div class="brand-subtitle">用户、会员、反馈和配置</div>
       </div>
-    </section>
-  </main>
+      <div class="top-search">
+        <input id="globalSearchInput" placeholder="搜索用户名 / UID / 邮箱 / 交易号">
+        <button id="globalSearchButton" type="button">搜索</button>
+      </div>
+      <div class="account-area">
+        <span id="accountLabel"></span>
+        <a href="/admin-ui-concepts.html" target="_blank">UI蓝图</a>
+        <a href="/privacy.html" target="_blank">隐私政策</a>
+        <a href="/fari-firebase-data-admin-guide.md" target="_blank">管理手册</a>
+        <button id="signOutButton" type="button" class="ghost">退出</button>
+      </div>
+    </header>
+
+    <div class="admin-layout">
+      <nav class="side-nav" aria-label="后台模块">
+        <div class="side-section">
+          <div class="side-title">工作台</div>
+          <button class="nav-button active" type="button" data-module="dashboard">
+            <span class="nav-icon">总</span>
+            <span class="nav-label"><strong>总览</strong><span>关键指标与最近动态</span></span>
+          </button>
+          <button class="nav-button" type="button" data-module="users">
+            <span class="nav-icon">用</span>
+            <span class="nav-label"><strong>用户管理</strong><span>注册、资料和权限</span></span>
+          </button>
+          <button class="nav-button" type="button" data-module="membership">
+            <span class="nav-icon">会</span>
+            <span class="nav-label"><strong>会员支付</strong><span>Pro、收据和事件</span></span>
+          </button>
+          <button class="nav-button" type="button" data-module="feedback">
+            <span class="nav-icon">反</span>
+            <span class="nav-label"><strong>反馈处理</strong><span>工单状态和备注</span></span>
+          </button>
+          <button class="nav-button" type="button" data-module="chats">
+            <span class="nav-icon">聊</span>
+            <span class="nav-label"><strong>聊天记录</strong><span>用户与塔罗师对话</span></span>
+          </button>
+          <button class="nav-button" type="button" data-module="agent">
+            <span class="nav-icon">AI</span>
+            <span class="nav-label"><strong>AI 上下文</strong><span>Prompt 与调用复盘</span></span>
+          </button>
+          <button class="nav-button" type="button" data-module="config">
+            <span class="nav-icon">配</span>
+            <span class="nav-label"><strong>配置管理</strong><span>公开配置和 IAP</span></span>
+          </button>
+          <button class="nav-button" type="button" data-module="roadmap">
+            <span class="nav-icon">图</span>
+            <span class="nav-label"><strong>功能蓝图</strong><span>当前与未来能力</span></span>
+          </button>
+          <button class="nav-button" type="button" data-module="advanced">
+            <span class="nav-icon">数</span>
+            <span class="nav-label"><strong>高级数据</strong><span>Firestore JSON</span></span>
+          </button>
+        </div>
+      </nav>
+
+      <main class="workspace">
+        <section id="dashboardModule" class="module active">
+          <div class="module-head">
+            <div>
+              <h1 class="module-title">总览</h1>
+              <p class="module-subtitle">关键指标、最近用户、反馈和支付事件。</p>
+            </div>
+            <button id="refreshDashboardButton" type="button">刷新</button>
+          </div>
+          <div id="dashboardMetrics" class="grid-4"></div>
+          <div class="split">
+            <div class="panel">
+              <div class="panel-title"><h2>最近动态</h2></div>
+              <div id="dashboardRecent" class="section-list"></div>
+            </div>
+            <div class="detail-card">
+              <div class="panel-title"><h2>快捷入口</h2></div>
+              <button type="button" data-open-module="users">手动注册用户</button>
+              <button type="button" data-open-module="membership" class="secondary">查询会员支付</button>
+              <button type="button" data-open-module="feedback" class="secondary">处理反馈</button>
+              <button type="button" data-open-module="config" class="secondary">编辑配置</button>
+              <button type="button" data-open-module="roadmap" class="secondary">查看功能蓝图</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="usersModule" class="module">
+          <div class="module-head">
+            <div>
+              <h1 class="module-title">用户管理</h1>
+              <p class="module-subtitle">搜索用户、手动注册、查看出生资料和会员状态。</p>
+            </div>
+            <div class="module-actions">
+              <button id="openCreateUserButton" type="button">手动注册用户</button>
+              <button id="refreshUsersButton" type="button" class="secondary">刷新</button>
+            </div>
+          </div>
+          <div class="split">
+            <div class="panel">
+              <div class="toolbar">
+                <input id="userSearchInput" placeholder="用户名 / UID / 邮箱">
+                <div class="row">
+                  <button id="userSearchButton" type="button">搜索</button>
+                  <button id="userClearButton" type="button" class="secondary">清空</button>
+                </div>
+              </div>
+              <div id="usersTable"></div>
+            </div>
+            <aside id="userDetail" class="detail-card"></aside>
+          </div>
+        </section>
+
+        <section id="membershipModule" class="module">
+          <div class="module-head">
+            <div>
+              <h1 class="module-title">会员支付</h1>
+              <p class="module-subtitle">按 UID、邮箱或交易号查看 Pro、IAP 收据和支付事件。</p>
+            </div>
+          </div>
+          <div class="split">
+            <div class="stack">
+              <div class="panel">
+                <div class="toolbar">
+                  <input id="membershipSearchInput" placeholder="UID / 邮箱 / 交易号">
+                  <div class="row">
+                    <button id="membershipSearchButton" type="button">查询</button>
+                    <button id="membershipClearButton" type="button" class="secondary">清空</button>
+                  </div>
+                </div>
+              </div>
+              <div id="membershipContent" class="stack"></div>
+            </div>
+            <aside id="membershipDetail" class="detail-card"></aside>
+          </div>
+        </section>
+
+        <section id="feedbackModule" class="module">
+          <div class="module-head">
+            <div>
+              <h1 class="module-title">反馈处理</h1>
+              <p class="module-subtitle">筛选反馈、修改状态、记录处理备注。</p>
+            </div>
+            <button id="refreshFeedbackButton" type="button">刷新</button>
+          </div>
+          <div class="feedback-layout">
+            <div class="panel">
+              <div class="tabs" id="feedbackTabs"></div>
+              <div id="feedbackList" class="section-list"></div>
+            </div>
+            <aside id="feedbackDetail" class="detail-card"></aside>
+          </div>
+        </section>
+
+        <section id="chatsModule" class="module">
+          <div class="module-head">
+            <div>
+              <h1 class="module-title">聊天记录</h1>
+              <p class="module-subtitle">按 UID 或邮箱查看用户与塔罗师、占星师的对话历史。</p>
+            </div>
+            <button id="refreshChatsButton" type="button">刷新</button>
+          </div>
+          <div class="chat-layout">
+            <aside class="panel stack">
+              <div class="toolbar">
+                <input id="chatSearchInput" placeholder="UID / 邮箱 / 用户名">
+                <div class="row">
+                  <button id="chatSearchButton" type="button">查询</button>
+                  <button id="chatClearButton" type="button" class="secondary">清空</button>
+                </div>
+              </div>
+              <div class="section-title-row">
+                <div>
+                  <div class="strong">已有用户</div>
+                  <div class="muted">点击用户后直接查看聊天</div>
+                </div>
+                <button id="refreshChatUsersButton" type="button" class="ghost">刷新用户</button>
+              </div>
+              <div id="chatUserCandidates" class="section-list"></div>
+              <div id="chatUserSummary"></div>
+              <div id="chatSessionsList" class="section-list"></div>
+            </aside>
+            <section id="chatThreadDetail" class="panel stack"></section>
+          </div>
+        </section>
+
+        <section id="agentModule" class="module">
+          <div class="module-head">
+            <div>
+              <h1 class="module-title">AI 上下文</h1>
+              <p class="module-subtitle">查看用户对话轮次、Prompt 文件、发布流和上下文拼接关系。</p>
+            </div>
+            <button id="refreshAgentButton" type="button">刷新</button>
+          </div>
+          <div class="panel stack">
+            <div class="agent-toolbar">
+              <label>产品<select id="agentProductSelect"></select></label>
+              <label>环境<select id="agentEnvironmentSelect"><option value="production">production</option><option value="local">local</option></select></label>
+              <div class="tabs" id="agentTabs" style="margin-bottom: 0;">
+                <button type="button" class="tab active" data-agent-tab="context">上下文复盘</button>
+                <button type="button" class="tab" data-agent-tab="prompts">Prompt 中心</button>
+                <button type="button" class="tab" data-agent-tab="releases">发布流</button>
+                <button type="button" class="tab" data-agent-tab="map">拼接地图</button>
+              </div>
+            </div>
+          </div>
+          <div id="agentContent"></div>
+        </section>
+
+        <section id="configModule" class="module">
+          <div class="module-head">
+            <div>
+              <h1 class="module-title">配置管理</h1>
+              <p class="module-subtitle">公开链接、IAP 商品和快速占卜配置。</p>
+            </div>
+            <button id="refreshConfigButton" type="button">刷新</button>
+          </div>
+          <div class="config-grid">
+            <aside class="panel">
+              <div class="panel-title"><h2>配置分类</h2></div>
+              <div class="section-list">
+                <button type="button" class="secondary" data-config-section="public">公开配置</button>
+                <button type="button" class="secondary" data-config-section="iap">IAP 商品</button>
+                <button type="button" class="secondary" data-config-section="quick">快速占卜</button>
+              </div>
+            </aside>
+            <div id="configContent" class="panel"></div>
+          </div>
+        </section>
+
+        <section id="roadmapModule" class="module">
+          <div class="module-head">
+            <div>
+              <h1 class="module-title">功能蓝图</h1>
+              <p class="module-subtitle">把当前已实现、可实现和未来可能扩展的后台能力放到同一个产品地图里。</p>
+            </div>
+            <div class="module-actions">
+              <a href="/admin-ui-concepts.html" target="_blank">查看几套 UI 示意图</a>
+            </div>
+          </div>
+          <div class="grid-4">
+            <div class="metric-card"><div class="metric-label">已落地模块</div><div class="metric-value">6</div></div>
+            <div class="metric-card"><div class="metric-label">已上线后台服务</div><div class="metric-value">13</div></div>
+            <div class="metric-card"><div class="metric-label">规划能力组</div><div class="metric-value">12</div></div>
+            <div class="metric-card"><div class="metric-label">高风险操作</div><div class="metric-value">4</div></div>
+          </div>
+          <div class="roadmap-grid">
+            <article class="roadmap-card">
+              <div class="row"><h2>用户与账号</h2><span class="pill ok">已落地</span></div>
+              <ul class="roadmap-list">
+                <li>用户搜索、用户详情、公开资料</li>
+                <li>手动注册 Firebase Auth 用户</li>
+                <li>头像、生日、出生时间、地区</li>
+                <li>未来：禁用账号、数据导出、删除审批</li>
+              </ul>
+            </article>
+            <article class="roadmap-card">
+              <div class="row"><h2>会员与支付</h2><span class="pill ok">已落地</span></div>
+              <ul class="roadmap-list">
+                <li>Pro 总览、IAP 收据、支付事件</li>
+                <li>人工赋予 / 取消 Pro</li>
+                <li>用量额度和会员状态排查</li>
+                <li>未来：退款队列、恢复购买、补偿审批</li>
+              </ul>
+            </article>
+            <article class="roadmap-card">
+              <div class="row"><h2>反馈与工单</h2><span class="pill ok">已落地</span></div>
+              <ul class="roadmap-list">
+                <li>新反馈、处理中、已解决、已关闭</li>
+                <li>管理员备注和状态同步</li>
+                <li>未来：分派客服、优先级、SLA</li>
+              </ul>
+            </article>
+            <article class="roadmap-card">
+              <div class="row"><h2>社交与聊天</h2><span class="pill warn">可实现</span></div>
+              <ul class="roadmap-list">
+                <li>好友、好友请求、拉黑列表</li>
+                <li>虚拟好友、聊天会话、记忆</li>
+                <li>未来：举报、会话摘要、敏感内容排查</li>
+              </ul>
+            </article>
+            <article class="roadmap-card">
+              <div class="row"><h2>内容与 AI</h2><span class="pill warn">可实现</span></div>
+              <ul class="roadmap-list">
+                <li>快速占卜、神谕卡组、Prompt 版本</li>
+                <li>AI / TTS 用量、模型和声音配置</li>
+                <li>未来：Prompt A/B、质量评估、成本看板</li>
+              </ul>
+            </article>
+            <article class="roadmap-card">
+              <div class="row"><h2>推送与增长</h2><span class="pill warn">规划中</span></div>
+              <ul class="roadmap-list">
+                <li>推送 token、提醒 outbox、测试推送</li>
+                <li>未来：模板、分群、频控、转化追踪</li>
+              </ul>
+            </article>
+            <article class="roadmap-card">
+              <div class="row"><h2>配置与实验</h2><span class="pill ok">部分落地</span></div>
+              <ul class="roadmap-list">
+                <li>公开链接、IAP 商品、快速占卜</li>
+                <li>未来：远程配置、Feature Flags、灰度发布</li>
+              </ul>
+            </article>
+            <article class="roadmap-card">
+              <div class="row"><h2>安全与审计</h2><span class="pill danger">高优先级</span></div>
+              <ul class="roadmap-list">
+                <li>管理员权限字段保护已上线</li>
+                <li>未来：操作日志、角色分权、二次确认</li>
+                <li>高风险：会员、权限、删除、配置发布</li>
+              </ul>
+            </article>
+            <article class="roadmap-card">
+              <div class="row"><h2>数据与分析</h2><span class="pill warn">规划中</span></div>
+              <ul class="roadmap-list">
+                <li>analytics_events 可高级查询</li>
+                <li>未来：留存、漏斗、收入、活跃用户</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section id="advancedModule" class="module">
+          <div class="module-head">
+            <div>
+              <h1 class="module-title">高级数据</h1>
+              <p class="module-subtitle">原始 Firestore 数据管理，仅用于排查和兜底。</p>
+            </div>
+            <button id="refreshAdvancedButton" type="button">刷新</button>
+          </div>
+          <div class="advanced-grid">
+            <aside class="panel stack">
+              <label>数据类型<select id="advancedCollectionSelect"></select></label>
+              <label id="advancedParentUidWrap">用户 UID<input id="advancedParentUidInput" placeholder="users/{uid}/..."></label>
+              <label>文档 ID<input id="advancedDocIdFilter" placeholder="精确查找"></label>
+              <label>排序字段<input id="advancedOrderBy" value="updatedAt"></label>
+              <label>数量<select id="advancedLimit"><option>25</option><option selected>50</option><option>100</option><option>200</option></select></label>
+              <div class="row">
+                <button id="advancedApplyButton" type="button">应用</button>
+                <button id="advancedNewButton" type="button" class="secondary">新增</button>
+              </div>
+            </aside>
+            <div class="panel">
+              <div id="advancedList" class="section-list"></div>
+            </div>
+            <aside class="panel stack">
+              <label>文档路径<input id="advancedPathInput" readonly></label>
+              <label>写入方式<select id="advancedMergeSelect"><option value="true">合并字段</option><option value="false">覆盖文档</option></select></label>
+              <label>JSON<textarea id="advancedJsonEditor">{}</textarea></label>
+              <div class="row">
+                <button id="advancedSaveButton" type="button">保存</button>
+                <button id="advancedDeleteButton" type="button" class="danger">删除</button>
+              </div>
+            </aside>
+          </div>
+        </section>
+      </main>
+    </div>
+  </section>
+
+  <dialog id="createUserDialog">
+    <form id="createUserForm" class="dialog-body" method="dialog">
+      <div class="dialog-head">
+        <h2>手动注册用户</h2>
+        <button type="button" class="ghost icon" data-close-dialog="createUserDialog">×</button>
+      </div>
+      <div class="form-grid">
+        <label>邮箱<input name="email" type="email" required></label>
+        <label>昵称<input name="displayName" required></label>
+        <label class="full">头像 URL<input name="photoUrl" placeholder="https://..."></label>
+        <label>出生日期<input name="birthday" placeholder="YYYY-MM-DD"></label>
+        <label>出生时间<input name="birthTime" placeholder="HH:mm"></label>
+        <label class="full">出生地址/地区<input name="city" placeholder="城市 / 地区"></label>
+        <label class="full">临时密码<input name="password" type="password" minlength="6" required></label>
+      </div>
+      <div class="row">
+        <button type="submit">创建账号</button>
+        <button type="button" class="secondary" data-close-dialog="createUserDialog">取消</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="editUserDialog">
+    <form id="editUserForm" class="dialog-body" method="dialog">
+      <div class="dialog-head">
+        <h2>编辑玩家资料</h2>
+        <button type="button" class="ghost icon" data-close-dialog="editUserDialog">×</button>
+      </div>
+      <input name="uid" type="hidden">
+      <div id="editUserTarget" class="status"></div>
+      <div class="form-grid">
+        <label>用户名<input name="displayName" required></label>
+        <label class="full">头像 URL<input name="photoUrl" placeholder="https://..."></label>
+        <label>出生日期<input name="birthday" type="date"></label>
+        <label>出生时间<input name="birthTime" type="time"></label>
+        <label class="full">出生地址/地区<input name="city" placeholder="城市 / 地区"></label>
+        <label class="full">个人简介<textarea name="bio" style="min-height: 100px;" placeholder="可留空"></textarea></label>
+      </div>
+      <div class="row">
+        <button type="submit">保存资料</button>
+        <button type="button" class="secondary" data-close-dialog="editUserDialog">取消</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="grantProDialog">
+    <form id="grantProForm" class="dialog-body" method="dialog">
+      <div class="dialog-head">
+        <h2>赋予 Pro</h2>
+        <button type="button" class="ghost icon" data-close-dialog="grantProDialog">×</button>
+      </div>
+      <input name="uid" type="hidden">
+      <div id="grantProTarget" class="status"></div>
+      <div class="form-grid">
+        <label>有效天数<input name="days" type="number" min="1" max="3660" value="30" required></label>
+        <label>原因<input name="reason" value="客服补偿"></label>
+      </div>
+      <div class="row">
+        <button type="submit">确认赋予</button>
+        <button type="button" class="secondary" data-close-dialog="grantProDialog">取消</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="addRealFriendDialog">
+    <form id="addRealFriendForm" class="dialog-body" method="dialog">
+      <div class="dialog-head">
+        <h2>添加真实好友</h2>
+        <button type="button" class="ghost icon" data-close-dialog="addRealFriendDialog">×</button>
+      </div>
+      <input name="uid" type="hidden">
+      <div id="addRealFriendTarget" class="status"></div>
+      <div class="form-grid">
+        <label class="full">好友 UID / 邮箱 / 用户名<input name="friendSearch" list="realFriendUserOptions" placeholder="输入或选择已有用户" required></label>
+        <datalist id="realFriendUserOptions"></datalist>
+        <label class="full">添加方式<select id="addRealFriendMode" name="mode">
+          <option value="force" selected>强制互加为好友</option>
+          <option value="invite">向当前用户发送好友邀请</option>
+        </select></label>
+        <div id="addRealFriendModeHint" class="status full"></div>
+        <label class="full">备注<input name="note" value="管理员手动添加真实好友"></label>
+      </div>
+      <div class="row">
+        <button type="submit">确认处理</button>
+        <button type="button" class="secondary" data-close-dialog="addRealFriendDialog">取消</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="addVirtualFriendDialog">
+    <form id="addVirtualFriendForm" class="dialog-body" method="dialog">
+      <div class="dialog-head">
+        <h2>添加虚拟好友</h2>
+        <button type="button" class="ghost icon" data-close-dialog="addVirtualFriendDialog">×</button>
+      </div>
+      <input name="uid" type="hidden">
+      <div id="addVirtualFriendTarget" class="status"></div>
+      <div class="form-grid">
+        <label>姓名<input name="name" required></label>
+        <label>关系<input name="relationship" value="好友"></label>
+        <label>生日<input name="birthday" placeholder="YYYY-MM-DD"></label>
+        <label>出生时间<input name="birthTime" placeholder="HH:mm"></label>
+        <label class="full">地址/地区<input name="city" placeholder="城市 / 地区"></label>
+        <label class="full">头像 URL<input name="avatarUrl" placeholder="https://..."></label>
+        <label class="full">背景备注<textarea name="notes" style="min-height: 120px;" placeholder="关系背景、重要信息、管理员备注"></textarea></label>
+      </div>
+      <div class="row">
+        <button type="submit">创建虚拟好友</button>
+        <button type="button" class="secondary" data-close-dialog="addVirtualFriendDialog">取消</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="messageBox" class="message-box" hidden></div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
@@ -563,571 +1561,2487 @@
     const functionsBaseUrl = "https://us-central1-fari-app-b2fd2.cloudfunctions.net";
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
-
-    let idToken = "";
-    let collections = [];
-    let items = [];
-    let selectedDoc = null;
+    const adminAccessMessage = "当前账号没有后台权限，请让管理员为你添加后台权限。";
+    const invalidLoginMessage = "账号或密码不正确，请检查邮箱拼写；如果账号无误，请让管理员为你添加后台权限。";
 
     const $ = (id) => document.getElementById(id);
-    const collectionSelect = $("collectionSelect");
-    const parentUidField = $("parentUidField");
-    const parentUidInput = $("parentUidInput");
-    const customPathInput = $("customPathInput");
-    const docList = $("docList");
-    const messageBox = $("messageBox");
-    const accountLabel = $("accountLabel");
-    const collectionTitle = $("collectionTitle");
-    const collectionPathLabel = $("collectionPathLabel");
-    const editorTitle = $("editorTitle");
-    const editorMeta = $("editorMeta");
-    const editorPath = $("editorPath");
-    const docIdInput = $("docIdInput");
-    const jsonEditor = $("jsonEditor");
-    const mergeToggle = $("mergeToggle");
-    const saveState = $("saveState");
-    const guidePanel = $("guidePanel");
-    const quickActions = $("quickActions");
-    const templateActions = $("templateActions");
-    const templateHint = $("templateHint");
+    const state = {
+      token: "",
+      activeModule: "dashboard",
+      currentUser: null,
+      dashboard: null,
+      users: [],
+      userDetail: null,
+      membership: null,
+      feedbackStatus: "new",
+      feedbackItems: [],
+      feedbackDetail: null,
+      chatUser: null,
+      chatSessions: [],
+      chatSelectedSessionId: "",
+      chatUserCandidates: [],
+      chatUsersLoaded: false,
+      config: null,
+      configSection: "public",
+      collections: [],
+      advancedItems: [],
+      advancedSelected: null,
+      agent: {
+        initialized: false,
+        tab: "context",
+        products: [],
+        productId: "",
+        environment: "production",
+        users: [],
+        selectedUid: "",
+        categories: [],
+        selectedCategoryKey: "",
+        records: [],
+        selectedRecordId: "",
+        turns: [],
+        selectedTurnId: "",
+        turnDetail: null,
+        promptFiles: [],
+        selectedPromptPath: "",
+        promptFile: null,
+        drafts: [],
+        releases: [],
+        usage: null,
+        loading: "",
+      },
+    };
+
+    const feedbackStatuses = [
+      ["new", "新反馈"],
+      ["triaged", "已分诊"],
+      ["in_progress", "处理中"],
+      ["resolved", "已解决"],
+      ["closed", "已关闭"],
+    ];
+    const onlinePresenceTimeoutMs = 90 * 1000;
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) {
-        idToken = "";
-        accountLabel.textContent = "未登录";
-        renderCollections();
-        renderGuideTools();
-        renderList();
+        state.token = "";
+        state.currentUser = null;
+        $("authView").hidden = false;
+        $("appView").hidden = true;
         return;
       }
 
-      idToken = await user.getIdToken(true);
-      accountLabel.textContent = user.email || user.uid;
-      await loadCollections();
-      await loadDocuments();
+      try {
+        state.token = await user.getIdToken(true);
+        state.currentUser = user;
+        $("accountLabel").textContent = user.email || user.uid;
+        $("authView").hidden = true;
+        $("appView").hidden = false;
+        await loadModule("dashboard");
+      } catch (error) {
+        showAuthMessage(getFriendlyAuthError(error), "warn");
+        await signOut(auth).catch(() => {});
+      }
     });
 
-    $("signInButton").addEventListener("click", async () => {
-      setMessage("登录中...");
+    $("loginForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      showAuthMessage("登录中...");
       try {
         await signInWithEmailAndPassword(auth, $("emailInput").value.trim(), $("passwordInput").value);
         $("passwordInput").value = "";
-        setMessage("已登录", "ok");
       } catch (error) {
-        setMessage(error.message, "warn");
+        showAuthMessage(getFriendlyAuthError(error), "warn");
       }
     });
 
     $("signOutButton").addEventListener("click", async () => {
       await signOut(auth);
-      idToken = "";
-      items = [];
-      selectedDoc = null;
-      renderList();
-      renderEditor();
-      setMessage("已退出");
     });
 
-    collectionSelect.addEventListener("change", () => {
+    document.querySelectorAll("[data-module]").forEach((button) => {
+      button.addEventListener("click", () => loadModule(button.dataset.module));
+    });
+
+    document.querySelectorAll("[data-open-module]").forEach((button) => {
+      button.addEventListener("click", () => loadModule(button.dataset.openModule));
+    });
+
+    document.querySelectorAll("[data-close-dialog]").forEach((button) => {
+      button.addEventListener("click", () => $(button.dataset.closeDialog).close());
+    });
+
+    $("globalSearchButton").addEventListener("click", handleGlobalSearch);
+    $("globalSearchInput").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") handleGlobalSearch();
+    });
+
+    $("refreshDashboardButton").addEventListener("click", loadDashboard);
+    $("refreshUsersButton").addEventListener("click", () => loadUsers($("userSearchInput").value.trim()));
+    $("userSearchButton").addEventListener("click", () => loadUsers($("userSearchInput").value.trim()));
+    $("userClearButton").addEventListener("click", () => {
+      $("userSearchInput").value = "";
+      loadUsers("");
+    });
+    $("openCreateUserButton").addEventListener("click", () => $("createUserDialog").showModal());
+    $("membershipSearchButton").addEventListener("click", () => loadMembership($("membershipSearchInput").value.trim()));
+    $("membershipClearButton").addEventListener("click", clearMembership);
+    $("refreshFeedbackButton").addEventListener("click", loadFeedback);
+    $("refreshChatsButton").addEventListener("click", () => loadChats($("chatSearchInput").value.trim()));
+    $("refreshChatUsersButton").addEventListener("click", loadChatUserCandidates);
+    $("chatSearchButton").addEventListener("click", () => loadChats($("chatSearchInput").value.trim()));
+    $("chatSearchInput").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") loadChats($("chatSearchInput").value.trim());
+    });
+    $("chatClearButton").addEventListener("click", clearChats);
+    $("refreshAgentButton").addEventListener("click", () => loadAgent({ force: true }));
+    $("agentProductSelect").addEventListener("change", () => {
+      state.agent.productId = $("agentProductSelect").value;
+      resetAgentProductState();
+      loadAgent({ force: true });
+    });
+    $("agentEnvironmentSelect").addEventListener("change", () => {
+      state.agent.environment = $("agentEnvironmentSelect").value;
+      renderAgentActiveTab();
+    });
+    document.querySelectorAll("[data-agent-tab]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.agent.tab = button.dataset.agentTab;
+        renderAgentTabs();
+        loadAgentActiveTab({ force: false });
+      });
+    });
+    $("refreshConfigButton").addEventListener("click", loadConfig);
+    $("refreshAdvancedButton").addEventListener("click", loadAdvanced);
+    $("advancedApplyButton").addEventListener("click", loadAdvanced);
+    $("advancedNewButton").addEventListener("click", startAdvancedNew);
+    $("advancedSaveButton").addEventListener("click", saveAdvanced);
+    $("advancedDeleteButton").addEventListener("click", deleteAdvanced);
+    $("advancedCollectionSelect").addEventListener("change", () => {
       const selected = getSelectedCollection();
-      if (selected) {
-        $("orderByInput").value = selected.orderBy || "__name__";
-        $("orderDirectionSelect").value = selected.orderDirection || "desc";
+      $("advancedParentUidWrap").hidden = selected?.scope !== "user";
+      $("advancedOrderBy").value = selected?.orderBy || "__name__";
+      state.advancedSelected = null;
+      renderAdvancedEditor();
+    });
+
+    $("createUserForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formElement = event.currentTarget;
+      const form = new FormData(formElement);
+      const payload = Object.fromEntries(form.entries());
+      try {
+        await callFunction("/adminCreateRegisteredUser", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        $("createUserDialog").close();
+        formElement.reset();
+        await loadModule("users");
+        $("userSearchInput").value = payload.email;
+        await loadUsers(payload.email);
+        showMessage("用户已创建", "ok");
+      } catch (error) {
+        showMessage(error.message, "warn");
       }
-      selectedDoc = null;
-      customPathInput.value = "";
-      updateCollectionUi();
-      loadDocuments();
     });
 
-    customPathInput.addEventListener("change", () => {
-      selectedDoc = null;
-      updateCollectionUi();
-      loadDocuments();
+    $("editUserForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formElement = event.currentTarget;
+      const form = new FormData(formElement);
+      const payload = Object.fromEntries(form.entries());
+      try {
+        await callFunction("/adminUpdateUserProfile", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        $("editUserDialog").close();
+        await refreshCurrentDetail(payload.uid);
+        showMessage("玩家资料已保存", "ok");
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
     });
 
-    $("refreshButton").addEventListener("click", loadDocuments);
-    $("newButton").addEventListener("click", startNewDocument);
-    $("saveButton").addEventListener("click", saveDocument);
-    $("deleteButton").addEventListener("click", deleteDocument);
-    $("formatButton").addEventListener("click", formatEditorJson);
-    $("copyPathButton").addEventListener("click", copyCurrentPath);
-    $("exportButton").addEventListener("click", exportJson);
+    $("grantProForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const payload = Object.fromEntries(form.entries());
+      payload.days = Number(payload.days || 30);
+      try {
+        await callFunction("/adminGrantPro", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        $("grantProDialog").close();
+        await refreshCurrentDetail(payload.uid);
+        showMessage("已赋予 Pro", "ok");
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
+    });
+
+    $("addRealFriendForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formElement = event.currentTarget;
+      const form = new FormData(formElement);
+      const payload = Object.fromEntries(form.entries());
+      try {
+        const result = await callFunction("/adminAddRealFriend", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        $("addRealFriendDialog").close();
+        formElement.reset();
+        await refreshCurrentDetail(payload.uid);
+        showMessage(result.mode === "invite" ? "好友邀请已发送给当前用户" : "真实好友已强制添加", "ok");
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
+    });
+    $("addRealFriendMode").addEventListener("change", updateAddRealFriendModeHint);
+
+    $("addVirtualFriendForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formElement = event.currentTarget;
+      const form = new FormData(formElement);
+      const payload = Object.fromEntries(form.entries());
+      try {
+        await callFunction("/adminAddVirtualFriend", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        $("addVirtualFriendDialog").close();
+        formElement.reset();
+        await refreshCurrentDetail(payload.uid);
+        showMessage("虚拟好友已创建", "ok");
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
+    });
+
+    function setActiveModule(moduleKey) {
+      state.activeModule = moduleKey;
+      document.querySelectorAll("[data-module]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.module === moduleKey);
+      });
+      document.querySelectorAll(".module").forEach((module) => {
+        module.classList.toggle("active", module.id === `${moduleKey}Module`);
+      });
+    }
+
+    async function loadModule(moduleKey) {
+      setActiveModule(moduleKey);
+      if (!state.token) return;
+      if (moduleKey === "dashboard") return loadDashboard();
+      if (moduleKey === "users") return loadUsers($("userSearchInput").value.trim());
+      if (moduleKey === "membership") return renderMembership();
+      if (moduleKey === "feedback") return loadFeedback();
+      if (moduleKey === "chats") return loadChatUserCandidates();
+      if (moduleKey === "agent") return loadAgent();
+      if (moduleKey === "config") return loadConfig();
+      if (moduleKey === "roadmap") return;
+      if (moduleKey === "advanced") return loadCollections().then(loadAdvanced);
+    }
+
+    async function handleGlobalSearch() {
+      const term = $("globalSearchInput").value.trim();
+      if (!term) return;
+      if (term.includes("@") || term.length > 18) {
+        await loadModule("membership");
+        $("membershipSearchInput").value = term;
+        await loadMembership(term);
+      } else {
+        await loadModule("users");
+        $("userSearchInput").value = term;
+        await loadUsers(term);
+      }
+    }
+
+    async function loadDashboard() {
+      setLoading($("dashboardMetrics"), "加载总览...");
+      try {
+        state.dashboard = await callFunction("/adminDashboardSummary?limit=8");
+        renderDashboard();
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
+    }
+
+    function renderDashboard() {
+      const summary = state.dashboard?.summary || {};
+      const metrics = [
+        ["注册用户", summary.users ?? 0, ""],
+        ["Pro 用户", summary.proUsers ?? 0, "ok"],
+        ["待处理反馈", summary.feedbackOpen ?? 0, summary.feedbackOpen ? "warn" : ""],
+        ["支付事件", summary.paymentEvents ?? 0, ""],
+      ];
+      $("dashboardMetrics").innerHTML = metrics.map(([label, value, tone]) => `
+        <div class="metric-card">
+          <div class="metric-label">${escapeHtml(label)}</div>
+          <div class="metric-value ${tone}">${escapeHtml(value)}</div>
+        </div>
+      `).join("");
+
+      const recent = state.dashboard?.recent || {};
+      $("dashboardRecent").innerHTML = `
+        ${renderRecentGroup("最近用户", recent.users || [], "users")}
+        ${renderRecentGroup("最近反馈", recent.feedback || [], "feedback")}
+        ${renderRecentGroup("最近支付事件", recent.paymentEvents || [], "payment")}
+      `;
+    }
+
+    function renderRecentGroup(title, items, type) {
+      return `
+        <div class="stack">
+          <div class="strong">${escapeHtml(title)}</div>
+          ${items.length ? items.map((item) => renderCompactRow(item, type)).join("") : `<div class="empty">暂无数据</div>`}
+        </div>
+      `;
+    }
+
+    async function loadUsers(term = "") {
+      setLoading($("usersTable"), "加载用户...");
+      try {
+        if (term) {
+          const params = new URLSearchParams({ q: term, limit: "50" });
+          const data = await callFunction(`/adminUserSearch?${params.toString()}`);
+          state.users = data.items || [];
+        } else {
+          const params = new URLSearchParams({
+            collectionKey: "users",
+            orderBy: "createdAt",
+            orderDirection: "desc",
+            limit: "50",
+          });
+          const data = await callFunction(`/adminDataList?${params.toString()}`);
+          state.users = data.items || [];
+      }
+        renderUsers();
+        if (!state.userDetail) renderUserDetail(null);
+      } catch (error) {
+        setInlineError($("usersTable"), error.message || "加载用户失败");
+        showMessage(error.message, "warn");
+      }
+    }
+
+    function renderUsers() {
+      if (!state.users.length) {
+        $("usersTable").innerHTML = `<div class="empty">没有找到用户</div>`;
+        return;
+      }
+      $("usersTable").innerHTML = `
+        <table class="table">
+          <thead>
+            <tr>
+              <th>用户</th>
+              <th class="hide-mobile">出生资料</th>
+              <th>会员</th>
+              <th class="hide-mobile">在线</th>
+              <th class="hide-mobile">最近登录</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${state.users.map((item) => renderUserRow(item)).join("")}
+          </tbody>
+        </table>
+      `;
+      $("usersTable").querySelectorAll("[data-user-uid]").forEach((row) => {
+        row.addEventListener("click", (event) => {
+          if (event.target.closest("button")) return;
+          openUserDetail(row.dataset.userUid);
+        });
+      });
+      $("usersTable").querySelectorAll("[data-grant-uid]").forEach((button) => {
+        button.addEventListener("click", () => openGrantDialog(button.dataset.grantUid, button.dataset.grantName));
+      });
+    }
+
+    function renderUserRow(item) {
+      const data = item.data || {};
+      const uid = item.id;
+      const membership = getMembership(data);
+      const presence = getPresenceInfo(data);
+      const name = pick(data, ["displayName", "name", "nickname", "email"]) || uid;
+      return `
+        <tr class="clickable-row" data-user-uid="${escapeAttr(uid)}">
+          <td>${renderPerson(data, uid)}</td>
+          <td class="hide-mobile">
+            <div>${escapeHtml(data.birthday || "未填")}</div>
+            <div class="muted">${escapeHtml([data.birthTime, data.city].filter(Boolean).join(" · ") || "无时间 / 地址")}</div>
+          </td>
+          <td><span class="pill ${membership.tone}">${escapeHtml(membership.label)}</span></td>
+          <td class="hide-mobile">${renderPresencePill(presence)}</td>
+          <td class="hide-mobile">${escapeHtml(formatDate(pick(data, ["lastSignInAt", "updatedAt", "createdAt"])))}</td>
+          <td><button type="button" class="secondary" data-grant-uid="${escapeAttr(uid)}" data-grant-name="${escapeAttr(name)}">赋予 Pro</button></td>
+        </tr>
+      `;
+    }
+
+    async function openUserDetail(uid) {
+      renderUserDetail({ loading: true });
+      try {
+        state.userDetail = await callFunction(`/adminUserDetail?uid=${encodeURIComponent(uid)}&limit=12`);
+        renderUserDetail(state.userDetail);
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
+    }
+
+    function renderUserDetail(detail) {
+      if (!detail) {
+        $("userDetail").innerHTML = `<div class="empty">选择一个用户</div>`;
+        return;
+      }
+      if (detail.loading) {
+        $("userDetail").innerHTML = `<div class="empty">加载用户详情...</div>`;
+        return;
+      }
+      const data = detail.user?.data || {};
+      const membership = detail.membership || getMembership(data);
+      const presence = getPresenceInfo(data);
+      $("userDetail").innerHTML = `
+        <div class="detail-head">
+          ${renderAvatar(data, "large")}
+          ${renderIdentityBlock(data, detail.uid, {
+            email: data.email || detail.auth?.email || "",
+            largeName: true
+          })}
+        </div>
+        <div class="row">
+          <span class="pill ${membership.isPro ? "ok" : ""}">${escapeHtml(membership.status === "pro" || membership.isPro ? "Pro 会员" : "免费用户")}</span>
+          ${renderPresencePill(presence)}
+          ${data.isAdmin === true || data.role === "admin" ? `<span class="pill warn">admin</span>` : ""}
+        </div>
+        <div class="detail-grid">
+          ${kv("生日", data.birthday || "未填")}
+          ${kv("出生时间", data.birthTime || "未填")}
+          ${kv("地址/地区", data.city || "未填")}
+          ${kv("Pro 到期", formatDate(membership.proExpiresAt || data.proExpiresAt) || "无")}
+          ${kv("在线状态", presence.detail)}
+          ${kv("最近活跃", presence.timeLabel)}
+          ${kv("个人简介", data.bio || "未填")}
+          ${kv("登录类型", data.loginType || "无")}
+          ${kv("最近登录", formatDate(data.lastSignInAt || detail.auth?.lastSignInAt) || "无")}
+        </div>
+        <div class="row">
+          <button type="button" id="detailEditButton" class="ghost">编辑资料</button>
+          <button type="button" id="detailGrantButton">赋予 Pro</button>
+          <button type="button" id="detailRevokeButton" class="secondary">取消人工 Pro</button>
+          <button type="button" id="detailPaymentButton" class="ghost">查看支付</button>
+        </div>
+        ${renderFriendChatSection(detail.social)}
+        <div class="stack">
+          <div class="strong">相关反馈</div>
+          ${renderMiniDocs(detail.feedback || [], "feedback")}
+          <div class="strong">最近支付</div>
+          ${renderMiniDocs([...(detail.receipts || []), ...(detail.paymentEvents || [])].slice(0, 5), "payment")}
+        </div>
+      `;
+      $("detailEditButton").addEventListener("click", () => openEditUserDialog(detail));
+      $("detailGrantButton").addEventListener("click", () => openGrantDialog(detail.uid, pick(data, ["displayName", "email"]) || detail.uid));
+      $("detailRevokeButton").addEventListener("click", () => revokePro(detail.uid));
+      $("detailPaymentButton").addEventListener("click", async () => {
+        await loadModule("membership");
+        $("membershipSearchInput").value = detail.uid;
+        await loadMembership(detail.uid);
+      });
+      $("addRealFriendButton")?.addEventListener("click", () => openAddRealFriendDialog(detail));
+      $("addVirtualFriendButton")?.addEventListener("click", () => openAddVirtualFriendDialog(detail));
+      const friends = getSocialFriends(detail.social);
+      $("userDetail").querySelectorAll("[data-friend-index]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const index = Number(button.dataset.friendIndex);
+          const friend = friends[index];
+          if (!friend) return;
+          $("userDetail").querySelectorAll("[data-friend-index]").forEach((item) => {
+            item.classList.toggle("active", item === button);
+          });
+          $("friendChatPanel").innerHTML = renderFriendChatMessages(friend);
+        });
+      });
+    }
+
+    function getSocialFriends(social = {}) {
+      return [
+        ...(social.realFriends || []),
+        ...(social.virtualFriends || []),
+      ];
+    }
+
+    function renderFriendChatSection(social = {}) {
+      const friends = getSocialFriends(social);
+      const realCount = (social.realFriends || []).length;
+      const virtualCount = (social.virtualFriends || []).length;
+      const pendingRequests = social.pendingRequests || [];
+      const actions = `
+        <div class="row">
+          <button type="button" id="addRealFriendButton" class="ghost">添加真实好友</button>
+          <button type="button" id="addVirtualFriendButton" class="ghost">添加虚拟好友</button>
+        </div>
+      `;
+      if (!friends.length && !pendingRequests.length) {
+        return `
+          <div class="stack">
+            <div class="section-title-row">
+              <div class="strong">好友与聊天</div>
+              <span class="pill">真实 0 / 虚拟 0 / 待处理 0</span>
+            </div>
+            ${actions}
+            <div class="empty">暂无好友记录</div>
+          </div>
+        `;
+      }
+      return `
+        <div class="stack">
+          <div class="section-title-row">
+            <div class="strong">好友与聊天</div>
+            <span class="pill">真实 ${escapeHtml(realCount)} / 虚拟 ${escapeHtml(virtualCount)} / 待处理 ${escapeHtml(pendingRequests.length)}</span>
+          </div>
+          ${actions}
+          ${pendingRequests.length ? renderPendingFriendRequests(pendingRequests) : ""}
+          ${friends.length ? `<div class="friend-list">${friends.map((friend, index) => renderFriendCard(friend, index)).join("")}</div>` : `<div class="empty">暂无正式好友</div>`}
+          <div id="friendChatPanel" class="chat-thread">
+            <div class="empty">选择一个好友查看匹配到的聊天记录</div>
+          </div>
+        </div>
+      `;
+    }
+
+    function openAddRealFriendDialog(detail) {
+      const data = detail.user?.data || {};
+      const name = pick(data, ["displayName", "email"]) || detail.uid;
+      const form = $("addRealFriendForm");
+      form.reset();
+      form.elements.uid.value = detail.uid;
+      form.elements.mode.value = "force";
+      form.elements.note.value = "管理员手动添加真实好友";
+      renderRealFriendUserOptions(detail.uid);
+      updateAddRealFriendModeHint();
+      $("addRealFriendTarget").textContent = `${name} · ${detail.uid}`;
+      $("addRealFriendDialog").showModal();
+    }
+
+    function renderRealFriendUserOptions(currentUid = "") {
+      const seen = new Set([currentUid]);
+      const options = [];
+      for (const item of state.users || []) {
+        const uid = item.id || item.uid;
+        if (!uid || seen.has(uid)) continue;
+        seen.add(uid);
+        const data = item.data || {};
+        const name = pick(data, ["displayName", "name", "nickname"]) || "未命名用户";
+        const email = data.email || "";
+        const label = [name, email].filter(Boolean).join(" · ");
+        options.push(`<option value="${escapeAttr(uid)}" label="${escapeAttr(label)}"></option>`);
+      }
+      $("realFriendUserOptions").innerHTML = options.join("");
+    }
+
+    function updateAddRealFriendModeHint() {
+      const mode = $("addRealFriendMode").value;
+      $("addRealFriendModeHint").textContent = mode === "invite"
+        ? "邀请模式：系统会向当前用户发送好友邀请，玩家同意后才会成为好友。"
+        : "强制模式：系统会立即把双方写成正式好友，并清理双方待处理邀请。";
+    }
+
+    function renderPendingFriendRequests(requests = []) {
+      return `
+        <div class="stack">
+          <div class="strong">待处理邀请</div>
+          ${requests.map((request) => {
+            const direction = request.direction === "sent" ? "已发出" : "待用户确认";
+            const title = request.displayName || request.email || request.uid || "未知用户";
+            return `
+              <div class="list-row">
+                <div class="section-title-row">
+                  <span class="strong">${escapeHtml(title)}</span>
+                  <span class="pill warn">${escapeHtml(direction)}</span>
+                </div>
+                <div class="friend-meta-grid">
+                  <span>UID</span><span>${escapeHtml(request.uid || "无")}</span>
+                  <span>邮箱</span><span>${escapeHtml(request.email || "未绑定")}</span>
+                  <span>来源</span><span>${escapeHtml(request.source || "friendRequest")}</span>
+                  <span>时间</span><span>${escapeHtml(formatDate(request.updatedAt) || "无")}</span>
+                </div>
+                ${request.note ? `<div class="muted">${escapeHtml(request.note)}</div>` : ""}
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `;
+    }
+
+    function openAddVirtualFriendDialog(detail) {
+      const data = detail.user?.data || {};
+      const name = pick(data, ["displayName", "email"]) || detail.uid;
+      const form = $("addVirtualFriendForm");
+      form.reset();
+      form.elements.uid.value = detail.uid;
+      form.elements.relationship.value = "好友";
+      $("addVirtualFriendTarget").textContent = `${name} · ${detail.uid}`;
+      $("addVirtualFriendDialog").showModal();
+    }
+
+    function renderFriendCard(friend, index) {
+      const isVirtual = friend.type === "virtual";
+      const chatCount = friend.chat?.matchedCount || 0;
+      const title = friend.displayName || friend.name || friend.email || friend.id || "未命名好友";
+      const identifier = isVirtual ? (friend.virtualFriendId || friend.id) : (friend.uid || friend.id);
+      const metaRows = isVirtual
+        ? [
+            ["类型", "虚拟好友"],
+            ["关系", friend.relationship || "未填"],
+            ["生日", friend.birthday || "未填"],
+            ["城市", friend.city || "未填"],
+          ]
+        : [
+            ["类型", "真实好友"],
+            ["状态", friend.status || "friend"],
+            ["邮箱", friend.email || "未绑定"],
+            ["UID", identifier || "无"],
+          ];
+      return `
+        <button type="button" class="friend-card" data-friend-index="${escapeAttr(index)}">
+          <div class="friend-card-head">
+            <span class="strong">${escapeHtml(title)}</span>
+            <span class="pill ${isVirtual ? "warn" : "ok"}">${escapeHtml(isVirtual ? "虚拟" : "真实")}</span>
+          </div>
+          <div class="friend-meta-grid">
+            ${metaRows.map(([label, value]) => `
+              <span>${escapeHtml(label)}</span>
+              <span>${escapeHtml(value)}</span>
+            `).join("")}
+            <span>聊天</span>
+            <span>${escapeHtml(chatCount ? `${chatCount} 条匹配` : "未匹配到")}</span>
+          </div>
+        </button>
+      `;
+    }
+
+    function renderFriendChatMessages(friend) {
+      const messages = friend.chat?.messages || [];
+      const title = friend.displayName || friend.name || friend.email || friend.id || "好友";
+      if (!messages.length) {
+        return `<div class="empty">${escapeHtml(title)} 暂无匹配到的聊天记录</div>`;
+      }
+      return `
+        <div class="section-title-row">
+          <div class="strong">${escapeHtml(title)} 的聊天记录</div>
+          <span class="pill">${escapeHtml(messages.length)} 条</span>
+        </div>
+        ${messages.map((message) => {
+          const role = String(message.role || "").toLowerCase();
+          const roleClass = role.includes("user") ? "user" : role.includes("ai") || role.includes("assistant") ? "ai" : "";
+          const roleLabel = role.includes("user") ? "用户" : role.includes("ai") || role.includes("assistant") ? "AI" : (message.role || "消息");
+          return `
+            <div class="chat-message ${roleClass}">
+              <div class="muted">${escapeHtml(roleLabel)} · ${escapeHtml(message.sessionId || "default")} · #${escapeHtml(message.index ?? "")}</div>
+              <div class="chat-message-text">${escapeHtml(message.content || message.friendContext || "无内容")}</div>
+            </div>
+          `;
+        }).join("")}
+      `;
+    }
+
+    async function loadMembership(term) {
+      if (!term) {
+        renderMembership();
+        return;
+      }
+      setLoading($("membershipContent"), "查询会员支付...");
+      try {
+        const params = new URLSearchParams({ q: term, limit: "20" });
+        state.membership = await callFunction(`/adminMembershipOverview?${params.toString()}`);
+        renderMembership();
+      } catch (error) {
+        showMessage(error.message, "warn");
+        renderMembership();
+      }
+    }
+
+    function clearMembership() {
+      $("membershipSearchInput").value = "";
+      state.membership = null;
+      renderMembership();
+    }
+
+    function renderMembership() {
+      const bundle = state.membership;
+      if (!bundle) {
+        $("membershipContent").innerHTML = `<div class="empty">输入 UID、邮箱或交易号后查询</div>`;
+        $("membershipDetail").innerHTML = `<div class="empty">暂无会员详情</div>`;
+        return;
+      }
+      const data = bundle.user?.data || {};
+      const membership = bundle.membership || getMembership(data);
+      $("membershipContent").innerHTML = `
+        <div class="grid-4">
+          <div class="metric-card"><div class="metric-label">当前会员</div><div class="metric-value">${escapeHtml(membership.status === "pro" || membership.isPro ? "Pro" : "Free")}</div></div>
+          <div class="metric-card"><div class="metric-label">Pro 到期</div><div class="strong">${escapeHtml(formatDate(membership.proExpiresAt || data.proExpiresAt) || "无")}</div></div>
+          <div class="metric-card"><div class="metric-label">收据</div><div class="metric-value">${escapeHtml((bundle.receipts || []).length)}</div></div>
+          <div class="metric-card"><div class="metric-label">支付事件</div><div class="metric-value">${escapeHtml((bundle.paymentEvents || []).length)}</div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title"><h2>IAP 收据</h2></div>
+          ${renderDocsTable(bundle.receipts || [], "payment")}
+        </div>
+        <div class="panel">
+          <div class="panel-title"><h2>支付事件</h2></div>
+          ${renderDocsTable(bundle.paymentEvents || [], "payment")}
+        </div>
+        <div class="panel">
+          <div class="panel-title"><h2>用量</h2></div>
+          ${renderDocsTable(bundle.usage || [], "usage")}
+        </div>
+      `;
+      $("membershipDetail").innerHTML = `
+        <div class="detail-head">
+          ${renderAvatar(data, "large")}
+          ${renderIdentityBlock(data, bundle.uid, {
+            email: data.email || "",
+            largeName: true
+          })}
+        </div>
+        <div class="detail-grid">
+          ${kv("会员状态", membership.status === "pro" || membership.isPro ? "Pro" : "Free")}
+          ${kv("到期时间", formatDate(membership.proExpiresAt || data.proExpiresAt) || "无")}
+          ${kv("来源", membership.provider || data.membershipProvider || "无")}
+          ${kv("商品", membership.productId || data.membershipProductId || "无")}
+        </div>
+        <div class="row">
+          <button type="button" id="membershipGrantButton">延长 Pro</button>
+          <button type="button" id="membershipRevokeButton" class="secondary">取消人工 Pro</button>
+        </div>
+      `;
+      $("membershipGrantButton").addEventListener("click", () => openGrantDialog(bundle.uid, pick(data, ["displayName", "email"]) || bundle.uid));
+      $("membershipRevokeButton").addEventListener("click", () => revokePro(bundle.uid));
+    }
+
+    async function loadChatUserCandidates() {
+      if (!$("chatUserCandidates")) return;
+      setLoading($("chatUserCandidates"), "加载已有用户...");
+      try {
+        const params = new URLSearchParams({
+          collectionKey: "users",
+          orderBy: "createdAt",
+          orderDirection: "desc",
+          limit: "50",
+        });
+        const data = await callFunction(`/adminDataList?${params.toString()}`);
+        state.chatUserCandidates = data.items || [];
+        state.chatUsersLoaded = true;
+        renderChats();
+      } catch (error) {
+        state.chatUsersLoaded = true;
+        setInlineError($("chatUserCandidates"), error.message || "加载已有用户失败");
+        showMessage(error.message, "warn");
+      }
+    }
+
+    function renderChatUserCandidates() {
+      if (!$("chatUserCandidates")) return;
+      if (!state.chatUsersLoaded) {
+        $("chatUserCandidates").innerHTML = `<div class="empty">进入模块后加载已有用户</div>`;
+        return;
+      }
+      if (!state.chatUserCandidates.length) {
+        $("chatUserCandidates").innerHTML = `<div class="empty">暂无已有用户</div>`;
+        return;
+      }
+
+      $("chatUserCandidates").innerHTML = state.chatUserCandidates
+        .map((item) => renderChatUserCandidate(item))
+        .join("");
+      $("chatUserCandidates").querySelectorAll("[data-chat-user-uid]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const uid = button.dataset.chatUserUid;
+          $("chatSearchInput").value = uid;
+          loadChats(uid);
+        });
+      });
+    }
+
+    function renderChatUserCandidate(item) {
+      const data = item.data || {};
+      const uid = item.id || data.uid || "";
+      const active = state.chatUser?.uid === uid;
+      return `
+        <button type="button" class="session-card ${active ? "active" : ""}" data-chat-user-uid="${escapeAttr(uid)}">
+          ${renderPerson(data, uid)}
+          <div class="muted">UID ${escapeHtml(uid || "无")}</div>
+        </button>
+      `;
+    }
+
+    async function loadChats(term) {
+      const query = String(term || "").trim();
+      if (!query) {
+        clearChats();
+        return;
+      }
+
+      setLoading($("chatSessionsList"), "读取聊天会话...");
+      $("chatThreadDetail").innerHTML = `<div class="empty">加载聊天记录...</div>`;
+      try {
+        const userParams = new URLSearchParams({ search: query, limit: "1" });
+        const userDetail = await callFunction(`/adminUserDetail?${userParams.toString()}`);
+        const params = new URLSearchParams({
+          collectionKey: "user_dialog_sessions",
+          parentUid: userDetail.uid,
+          orderBy: "__name__",
+          orderDirection: "asc",
+          limit: "30",
+        });
+        const sessions = await callFunction(`/adminDataList?${params.toString()}`);
+        state.chatUser = userDetail;
+        state.chatSessions = sessions.items || [];
+        state.chatSelectedSessionId = state.chatSessions[0]?.id || "";
+        renderChats();
+      } catch (error) {
+        setInlineError($("chatSessionsList"), error.message || "读取聊天失败");
+        $("chatThreadDetail").innerHTML = `<div class="empty warn">${escapeHtml(error.message || "读取聊天失败")}</div>`;
+        showMessage(error.message, "warn");
+      }
+    }
+
+    function clearChats() {
+      $("chatSearchInput").value = "";
+      state.chatUser = null;
+      state.chatSessions = [];
+      state.chatSelectedSessionId = "";
+      renderChats();
+    }
+
+    function renderChats() {
+      renderChatUserCandidates();
+      if (!state.chatUser) {
+        $("chatUserSummary").innerHTML = `<div class="empty">输入 UID、邮箱或用户名后查询</div>`;
+        $("chatSessionsList").innerHTML = "";
+        $("chatThreadDetail").innerHTML = `<div class="empty">选择用户后查看聊天记录</div>`;
+        return;
+      }
+
+      const data = state.chatUser.user?.data || {};
+      $("chatUserSummary").innerHTML = `
+        <div class="panel" style="padding: 12px;">
+          ${renderIdentityBlock(data, state.chatUser.uid, {
+            email: data.email || state.chatUser.auth?.email || "",
+            largeName: false
+          })}
+        </div>
+      `;
+
+      if (!state.chatSessions.length) {
+        $("chatSessionsList").innerHTML = `<div class="empty">暂无聊天会话</div>`;
+        $("chatThreadDetail").innerHTML = `<div class="empty">该用户还没有云端聊天记录</div>`;
+        return;
+      }
+
+      if (!state.chatSessions.some((item) => item.id === state.chatSelectedSessionId)) {
+        state.chatSelectedSessionId = state.chatSessions[0].id;
+      }
+
+      $("chatSessionsList").innerHTML = state.chatSessions
+        .map((session) => renderChatSessionCard(session, session.id === state.chatSelectedSessionId))
+        .join("");
+      $("chatSessionsList").querySelectorAll("[data-chat-session]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.chatSelectedSessionId = button.dataset.chatSession;
+          renderChats();
+        });
+      });
+
+      const selected = state.chatSessions.find((item) => item.id === state.chatSelectedSessionId);
+      $("chatThreadDetail").innerHTML = renderChatThread(selected);
+    }
+
+    function getSessionMessages(session) {
+      const data = session?.data || {};
+      if (Array.isArray(data.messages) && data.messages.length) return data.messages;
+      if (Array.isArray(data.apiMessages)) {
+        return data.apiMessages.map((message, index) => ({
+          ...message,
+          id: message?.id ?? `api-${index}`,
+          messageType: message?.messageType || "API",
+        }));
+      }
+      return [];
+    }
+
+    function getSessionUpdatedAt(session) {
+      const data = session?.data || {};
+      return data.updatedAt || data.savedAt || data.savedAtLocal || session?.updateTime || session?.createTime;
+    }
+
+    function getChatMessageText(message = {}) {
+      return pick(message, [
+        "content",
+        "text",
+        "message",
+        "divinationQuestion",
+        "shortVerdict",
+        "judgeContent",
+        "adviceContent",
+        "friendContext",
+      ]) || "";
+    }
+
+    function getChatRoleInfo(message = {}) {
+      const role = String(message.roleType || message.role || "").toLowerCase();
+      const diviner = String(message.divinerType || "").toLowerCase();
+      if (role.includes("user")) return { label: "用户", className: "user" };
+      if (diviner.includes("tarot")) return { label: "塔罗师", className: "ai" };
+      if (diviner.includes("astro")) return { label: "占星师", className: "ai" };
+      if (role.includes("ai") || role.includes("assistant")) return { label: "AI", className: "ai" };
+      return { label: message.roleType || message.role || "系统", className: "system" };
+    }
+
+    function renderChatSessionCard(session, active) {
+      const messages = getSessionMessages(session);
+      const lastMessage = [...messages].reverse().find((message) => getChatMessageText(message));
+      const preview = getChatMessageText(lastMessage || {}) || "暂无文本消息";
+      const data = session.data || {};
+      return `
+        <button type="button" class="session-card ${active ? "active" : ""}" data-chat-session="${escapeAttr(session.id)}">
+          <div class="section-title-row">
+            <span class="strong">${escapeHtml(session.id || "default")}</span>
+            <span class="pill">${escapeHtml(messages.length)} 条</span>
+          </div>
+          <div class="session-meta">
+            ${data.activeReadingId ? `<span class="pill warn">占卜 ${escapeHtml(data.activeReadingId)}</span>` : ""}
+            ${data.activeRelationshipId ? `<span class="pill">关系 ${escapeHtml(data.activeRelationshipId)}</span>` : ""}
+            <span class="pill">${escapeHtml(formatDate(getSessionUpdatedAt(session)) || "无时间")}</span>
+          </div>
+          <div class="muted">${escapeHtml(preview.slice(0, 110))}</div>
+        </button>
+      `;
+    }
+
+    function renderChatThread(session) {
+      if (!session) return `<div class="empty">选择一个会话</div>`;
+      const data = session.data || {};
+      const messages = getSessionMessages(session);
+      return `
+        <div class="section-title-row">
+          <div>
+            <div class="strong">会话 ${escapeHtml(session.id || "default")}</div>
+            <div class="muted">${escapeHtml(formatDate(getSessionUpdatedAt(session)) || "无更新时间")}</div>
+          </div>
+          <span class="pill">${escapeHtml(messages.length)} 条消息</span>
+        </div>
+        ${data.activeFriendContext ? `<div class="chat-bubble system"><div class="muted">当前好友上下文</div><div class="chat-bubble-text">${escapeHtml(data.activeFriendContext)}</div></div>` : ""}
+        ${messages.length ? `
+          <div class="chat-transcript">
+            ${messages.map((message, index) => renderChatBubble(message, index)).join("")}
+          </div>
+        ` : `<div class="empty">该会话暂无消息</div>`}
+      `;
+    }
+
+    function renderChatBubble(message, index) {
+      const role = getChatRoleInfo(message);
+      const text = getChatMessageText(message) || "无内容";
+      const meta = [
+        role.label,
+        message.messageType || "",
+        message.divinationScene || message.oracleScene || "",
+        message.readingId ? `reading ${message.readingId}` : "",
+        `#${message.id ?? index}`,
+      ].filter(Boolean).join(" · ");
+      return `
+        <article class="chat-bubble ${role.className}">
+          <div class="muted">${escapeHtml(meta)}</div>
+          <div class="chat-bubble-text">${escapeHtml(text)}</div>
+        </article>
+      `;
+    }
+
+    async function agentCall(action, params = {}, options = {}) {
+      const payload = {
+        action,
+        productId: state.agent.productId,
+        environment: state.agent.environment,
+        ...params,
+      };
+      if ((options.method || "GET") === "POST") {
+        return callFunction("/adminAgentConsole", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+      }
+      const query = new URLSearchParams();
+      Object.entries(payload).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && String(value) !== "") {
+          query.set(key, String(value));
+        }
+      });
+      return callFunction(`/adminAgentConsole?${query.toString()}`);
+    }
+
+    function resetAgentProductState() {
+      Object.assign(state.agent, {
+        users: [],
+        selectedUid: "",
+        categories: [],
+        selectedCategoryKey: "",
+        records: [],
+        selectedRecordId: "",
+        turns: [],
+        selectedTurnId: "",
+        turnDetail: null,
+        promptFiles: [],
+        selectedPromptPath: "",
+        promptFile: null,
+        drafts: [],
+        releases: [],
+        usage: null,
+      });
+    }
+
+    async function loadAgent(options = {}) {
+      setLoading($("agentContent"), "加载 AI 上下文模块...");
+      try {
+        if (!state.agent.initialized || options.forceProducts) {
+          await loadAgentProducts();
+        }
+        renderAgentTabs();
+        await loadAgentActiveTab({ force: options.force });
+      } catch (error) {
+        setInlineError($("agentContent"), error.message || "加载 AI 上下文失败");
+        showMessage(error.message, "warn");
+      }
+    }
+
+    async function loadAgentProducts() {
+      const data = await agentCall("products", {}, {});
+      state.agent.products = data.products || [];
+      state.agent.productId = state.agent.productId || data.defaultProductId || state.agent.products[0]?.productId || "";
+      state.agent.initialized = true;
+      $("agentProductSelect").innerHTML = state.agent.products.map((product) => `
+        <option value="${escapeAttr(product.productId)}" ${product.productId === state.agent.productId ? "selected" : ""}>${escapeHtml(product.displayName || product.productId)}</option>
+      `).join("");
+      renderAgentEnvironmentOptions();
+    }
+
+    function getActiveAgentProduct() {
+      return state.agent.products.find((product) => product.productId === state.agent.productId) || state.agent.products[0] || {};
+    }
+
+    function renderAgentEnvironmentOptions() {
+      const product = getActiveAgentProduct();
+      const environments = product.environments?.length ? product.environments : ["production", "local"];
+      if (!environments.includes(state.agent.environment)) state.agent.environment = environments[0];
+      $("agentEnvironmentSelect").innerHTML = environments.map((env) => `
+        <option value="${escapeAttr(env)}" ${env === state.agent.environment ? "selected" : ""}>${escapeHtml(env)}</option>
+      `).join("");
+    }
+
+    function renderAgentTabs() {
+      document.querySelectorAll("[data-agent-tab]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.agentTab === state.agent.tab);
+      });
+    }
+
+    async function loadAgentActiveTab(options = {}) {
+      renderAgentTabs();
+      if (state.agent.tab === "context") {
+        if (options.force || !state.agent.users.length) return loadAgentUsers("");
+        renderAgentContext();
+        return;
+      }
+      if (state.agent.tab === "prompts") {
+        if (options.force || !state.agent.promptFiles.length) return loadAgentPromptFiles();
+        renderAgentPrompts();
+        return;
+      }
+      if (state.agent.tab === "releases") {
+        return loadAgentDrafts();
+      }
+      if (state.agent.tab === "map") {
+        if (options.force || !state.agent.usage) return loadAgentUsage();
+        renderAgentMap();
+      }
+    }
+
+    async function loadAgentUsers(term = "") {
+      state.agent.loading = "users";
+      renderAgentContext();
+      try {
+        const data = await agentCall("contextUsers", { search: term, limit: 50 });
+        state.agent.users = data.users || [];
+        if (!state.agent.users.some((user) => user.uid === state.agent.selectedUid)) {
+          state.agent.selectedUid = state.agent.users[0]?.uid || "";
+        }
+        if (state.agent.selectedUid) {
+          await loadAgentUserContext();
+        } else {
+          state.agent.loading = "";
+          renderAgentContext();
+        }
+      } catch (error) {
+        state.agent.loading = "";
+        setInlineError($("agentContent"), error.message || "加载上下文用户失败");
+        showMessage(error.message, "warn");
+      }
+    }
+
+    async function loadAgentUserContext() {
+      if (!state.agent.selectedUid) return;
+      state.agent.loading = "records";
+      renderAgentContext();
+      try {
+        const data = await agentCall("contextCategories", { uid: state.agent.selectedUid, limit: 80 });
+        state.agent.categories = data.categories || [];
+        const hasSelectedCategory = state.agent.categories.some((category) => category.key === state.agent.selectedCategoryKey);
+        if (!hasSelectedCategory) {
+          state.agent.selectedCategoryKey = state.agent.categories.find((category) => category.count > 0)?.key
+            || state.agent.categories.find((category) => category.key === "chat_companion")?.key
+            || state.agent.categories[0]?.key
+            || "";
+        }
+        await loadAgentRecords();
+      } catch (error) {
+        state.agent.loading = "";
+        setInlineError($("agentContent"), error.message || "加载用户上下文失败");
+        showMessage(error.message, "warn");
+      }
+    }
+
+    async function loadAgentRecords() {
+      if (!state.agent.selectedUid) return;
+      state.agent.loading = "records";
+      renderAgentContext();
+      try {
+        const data = await agentCall("contextRecords", {
+          uid: state.agent.selectedUid,
+          categoryKey: state.agent.selectedCategoryKey,
+          limit: 80,
+        });
+        state.agent.records = data.records || [];
+        if (!state.agent.records.some((record) => record.recordId === state.agent.selectedRecordId)) {
+          state.agent.selectedRecordId = state.agent.records[0]?.recordId || "";
+        }
+        if (state.agent.selectedRecordId) {
+          await loadAgentTurns();
+        } else {
+          state.agent.turns = [];
+          state.agent.selectedTurnId = "";
+          state.agent.turnDetail = null;
+          state.agent.loading = "";
+          renderAgentContext();
+        }
+      } catch (error) {
+        state.agent.loading = "";
+        showMessage(error.message, "warn");
+        renderAgentContext();
+      }
+    }
+
+    async function loadAgentTurns() {
+      if (!state.agent.selectedRecordId) return;
+      state.agent.loading = "turns";
+      renderAgentContext();
+      try {
+        const data = await agentCall("contextTurns", { recordId: state.agent.selectedRecordId });
+        state.agent.turns = data.turns || [];
+        if (!state.agent.turns.some((turn) => turn.turnId === state.agent.selectedTurnId)) {
+          state.agent.selectedTurnId = state.agent.turns[0]?.turnId || "";
+        }
+        if (state.agent.selectedTurnId) {
+          await loadAgentTurnDetail(state.agent.selectedTurnId);
+        } else {
+          state.agent.turnDetail = null;
+          state.agent.loading = "";
+          renderAgentContext();
+        }
+      } catch (error) {
+        state.agent.loading = "";
+        showMessage(error.message, "warn");
+        renderAgentContext();
+      }
+    }
+
+    async function loadAgentTurnDetail(turnId) {
+      state.agent.selectedTurnId = turnId;
+      state.agent.loading = "detail";
+      renderAgentContext();
+      try {
+        state.agent.turnDetail = await agentCall("contextTurn", { turnId });
+        state.agent.loading = "";
+        renderAgentContext();
+      } catch (error) {
+        state.agent.loading = "";
+        showMessage(error.message, "warn");
+        renderAgentContext();
+      }
+    }
+
+    function renderAgentContext() {
+      const selectedUser = state.agent.users.find((user) => user.uid === state.agent.selectedUid);
+      $("agentContent").innerHTML = `
+        <div class="agent-workbench">
+          <aside class="panel stack">
+            <div class="toolbar">
+              <input id="agentUserSearchInput" placeholder="UID / 邮箱 / 用户名">
+              <div class="row">
+                <button id="agentUserSearchButton" type="button">查询</button>
+                <button id="agentUserClearButton" type="button" class="secondary">清空</button>
+              </div>
+            </div>
+            <div class="section-title-row">
+              <div>
+                <div class="strong">用户</div>
+                <div class="muted">选择用户后查看 AI 上下文</div>
+              </div>
+              <span class="pill">${escapeHtml(state.agent.users.length)} 个</span>
+            </div>
+            <div id="agentUsersList" class="section-list agent-scroll">
+              ${state.agent.loading === "users" ? `<div class="empty">加载用户...</div>` : renderAgentUsersList()}
+            </div>
+          </aside>
+          <aside class="panel stack">
+            ${selectedUser ? `
+              <div class="section-title-row">
+                <div>
+                  <div class="strong">${escapeHtml(selectedUser.displayName || selectedUser.uid)}</div>
+                  <div class="muted mono">${escapeHtml(selectedUser.uid || "")}</div>
+                </div>
+                <span class="pill ${selectedUser.membershipStatus === "pro" ? "ok" : ""}">${escapeHtml(selectedUser.membershipStatus === "pro" ? "Pro" : "Free")}</span>
+              </div>
+            ` : `<div class="empty">请选择用户</div>`}
+            <div>
+              <div class="strong" style="margin-bottom: 8px;">调用分类</div>
+              <div id="agentCategoryList" class="section-list">
+                ${state.agent.loading === "records" ? `<div class="empty">加载分类...</div>` : renderAgentCategoriesList()}
+              </div>
+            </div>
+            <div>
+              <div class="strong" style="margin-bottom: 8px;">记录</div>
+              <div id="agentRecordsList" class="section-list agent-scroll">
+                ${state.agent.loading === "records" ? `<div class="empty">加载记录...</div>` : renderAgentRecordsList()}
+              </div>
+            </div>
+          </aside>
+          <section class="panel stack">
+            <div class="section-title-row">
+              <div>
+                <div class="strong">轮次详情</div>
+                <div class="muted">历史记录会标明 Prompt 是否可用</div>
+              </div>
+              <span class="pill">${escapeHtml(state.agent.turns.length)} 轮</span>
+            </div>
+            <div class="tabs" id="agentTurnsList">
+              ${state.agent.loading === "turns" ? `<div class="empty">加载轮次...</div>` : renderAgentTurnsList()}
+            </div>
+            <div id="agentTurnDetail" class="agent-turn-detail">
+              ${state.agent.loading === "detail" ? `<div class="empty">加载轮次详情...</div>` : renderAgentTurnDetail()}
+            </div>
+          </section>
+        </div>
+      `;
+      bindAgentContextEvents();
+    }
+
+    function renderAgentUsersList() {
+      if (!state.agent.users.length) return `<div class="empty">暂无用户</div>`;
+      return state.agent.users.map((user) => `
+        <button type="button" class="session-card ${user.uid === state.agent.selectedUid ? "active" : ""}" data-agent-user-uid="${escapeAttr(user.uid)}">
+          ${renderPerson(user, user.uid)}
+          <div class="session-meta">
+            <span class="pill">${escapeHtml(user.membershipStatus === "pro" ? "Pro" : "Free")}</span>
+            <span class="pill ${getPresenceInfo(user).tone}">${escapeHtml(getPresenceInfo(user).label)}</span>
+          </div>
+        </button>
+      `).join("");
+    }
+
+    function renderAgentCategoriesList() {
+      if (!state.agent.selectedUid) return `<div class="empty">选择用户后加载分类</div>`;
+      if (!state.agent.categories.length) return `<div class="empty">暂无分类</div>`;
+      return state.agent.categories.map((category) => `
+        <button type="button" class="session-card ${category.key === state.agent.selectedCategoryKey ? "active" : ""}" data-agent-category="${escapeAttr(category.key)}">
+          <div class="section-title-row">
+            <span class="strong">${escapeHtml(category.label || category.key)}</span>
+            <span class="pill ${category.count ? "ok" : ""}">${escapeHtml(category.count || 0)}</span>
+          </div>
+          <div class="muted">${escapeHtml(category.description || "")}</div>
+        </button>
+      `).join("");
+    }
+
+    function renderAgentRecordsList() {
+      if (!state.agent.selectedUid) return `<div class="empty">选择用户后加载记录</div>`;
+      if (!state.agent.records.length) return `<div class="empty">当前分类没有记录</div>`;
+      return state.agent.records.map((record) => `
+        <button type="button" class="session-card ${record.recordId === state.agent.selectedRecordId ? "active" : ""}" data-agent-record-id="${escapeAttr(record.recordId)}">
+          <div class="section-title-row">
+            <span class="strong">${escapeHtml(record.title || record.sessionId || "记录")}</span>
+            <span class="pill ${record.hasTrace ? "ok" : "warn"}">${escapeHtml(record.hasTrace ? "Trace" : "历史")}</span>
+          </div>
+          <div class="session-meta">
+            <span class="pill">${escapeHtml(record.categoryLabel || record.categoryKey || "分类")}</span>
+            <span class="pill">${escapeHtml(record.turnCount || 0)} 条</span>
+            <span class="pill">${escapeHtml(formatDate(record.updatedAt) || "无时间")}</span>
+          </div>
+          <div class="muted">${escapeHtml(record.preview || "")}</div>
+        </button>
+      `).join("");
+    }
+
+    function renderAgentTurnsList() {
+      if (!state.agent.selectedRecordId) return `<div class="empty">选择记录后加载轮次</div>`;
+      if (!state.agent.turns.length) return `<div class="empty">当前记录没有轮次</div>`;
+      return state.agent.turns.map((turn) => `
+        <button type="button" class="tab ${turn.turnId === state.agent.selectedTurnId ? "active" : ""}" data-agent-turn-id="${escapeAttr(turn.turnId)}">
+          #${escapeHtml((turn.index ?? 0) + 1)}
+        </button>
+      `).join("");
+    }
+
+    function renderAgentTurnDetail() {
+      const detail = state.agent.turnDetail;
+      if (!detail?.turn) return `<div class="empty">选择一个轮次</div>`;
+      const turn = detail.turn;
+      return `
+        <div class="detail-grid">
+          ${kv("分类", turn.categoryLabel || turn.categoryKey || "无")}
+          ${kv("来源", turn.source || "无")}
+          ${kv("时间", formatDate(turn.createdAt) || "无")}
+          ${kv("Prompt", detail.prompt?.available ? "已保存" : "历史缺失")}
+        </div>
+        <div class="split" style="grid-template-columns: 1fr 1fr;">
+          <div>
+            <div class="strong" style="margin-bottom: 6px;">用户输入</div>
+            <div class="code-block">${escapeHtml(turn.userInput || "无")}</div>
+          </div>
+          <div>
+            <div class="strong" style="margin-bottom: 6px;">AI 回复</div>
+            <div class="code-block">${escapeHtml(turn.assistantOutput || "无")}</div>
+          </div>
+        </div>
+        <div>
+          <div class="strong" style="margin-bottom: 6px;">实际 Prompt</div>
+          ${detail.prompt?.available
+            ? `<div class="code-block">${escapeHtml(detail.prompt.content || JSON.stringify(detail.prompt.messages || [], null, 2))}</div>`
+            : `<div class="empty warn">${escapeHtml(detail.prompt?.reason || "这条记录没有保存实际 Prompt")}</div>`}
+        </div>
+        <div>
+          <div class="strong" style="margin-bottom: 6px;">关联 Prompt 层</div>
+          ${renderAgentPromptLayerList(detail.promptLayers || [])}
+        </div>
+        <div>
+          <div class="strong" style="margin-bottom: 6px;">附近消息</div>
+          ${(detail.messages || []).length ? `<div class="chat-transcript">${(detail.messages || []).map((message) => `
+            <article class="chat-bubble ${message.role === "user" ? "user" : message.role === "assistant" ? "ai" : "system"}">
+              <div class="muted">#${escapeHtml(message.index)} · ${escapeHtml(message.role || "system")}</div>
+              <div class="chat-bubble-text">${escapeHtml(message.content || JSON.stringify(message, null, 2))}</div>
+            </article>
+          `).join("")}</div>` : `<div class="empty">暂无消息</div>`}
+        </div>
+        <div>
+          <div class="strong" style="margin-bottom: 6px;">质量标记</div>
+          <div class="row">
+            ${[
+              ["good", "可用"],
+              ["unclear", "不清楚"],
+              ["bad", "效果差"],
+              ["unsafe", "有风险"],
+              ["bug", "数据异常"],
+            ].map(([value, label]) => `<button type="button" class="${detail.rating?.rating === value ? "" : "secondary"}" data-agent-rating="${value}">${label}</button>`).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderAgentPromptLayerList(layers) {
+      if (!layers.length) return `<div class="empty">暂无关联 Prompt 层</div>`;
+      return layers.map((layer) => `
+        <div class="list-row">
+          <div class="section-title-row">
+            <span class="strong mono">${escapeHtml(layer.path || layer.name || "Prompt")}</span>
+            ${layer.usedBy?.length ? `<span class="pill">${escapeHtml(layer.usedBy.join(" / "))}</span>` : ""}
+          </div>
+          <div class="muted">${escapeHtml(layer.purpose || layer.description || "")}</div>
+        </div>
+      `).join("");
+    }
+
+    function bindAgentContextEvents() {
+      $("agentUserSearchButton")?.addEventListener("click", () => loadAgentUsers($("agentUserSearchInput").value.trim()));
+      $("agentUserClearButton")?.addEventListener("click", () => loadAgentUsers(""));
+      $("agentUserSearchInput")?.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") loadAgentUsers($("agentUserSearchInput").value.trim());
+      });
+      $("agentUsersList")?.querySelectorAll("[data-agent-user-uid]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.agent.selectedUid = button.dataset.agentUserUid;
+          state.agent.selectedCategoryKey = "";
+          state.agent.selectedRecordId = "";
+          state.agent.selectedTurnId = "";
+          state.agent.turnDetail = null;
+          loadAgentUserContext();
+        });
+      });
+      $("agentCategoryList")?.querySelectorAll("[data-agent-category]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.agent.selectedCategoryKey = button.dataset.agentCategory;
+          state.agent.selectedRecordId = "";
+          state.agent.selectedTurnId = "";
+          state.agent.turnDetail = null;
+          loadAgentRecords();
+        });
+      });
+      $("agentRecordsList")?.querySelectorAll("[data-agent-record-id]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.agent.selectedRecordId = button.dataset.agentRecordId;
+          state.agent.selectedTurnId = "";
+          state.agent.turnDetail = null;
+          loadAgentTurns();
+        });
+      });
+      $("agentTurnsList")?.querySelectorAll("[data-agent-turn-id]").forEach((button) => {
+        button.addEventListener("click", () => loadAgentTurnDetail(button.dataset.agentTurnId));
+      });
+      $("agentTurnDetail")?.querySelectorAll("[data-agent-rating]").forEach((button) => {
+        button.addEventListener("click", () => rateAgentTurn(button.dataset.agentRating));
+      });
+    }
+
+    async function rateAgentTurn(rating) {
+      if (!state.agent.selectedTurnId) return;
+      try {
+        await agentCall("rateTurn", {
+          turnId: state.agent.selectedTurnId,
+          rating,
+        }, { method: "POST" });
+        await loadAgentTurnDetail(state.agent.selectedTurnId);
+        showMessage("轮次评分已保存", "ok");
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
+    }
+
+    async function loadAgentPromptFiles() {
+      state.agent.loading = "prompts";
+      renderAgentPrompts();
+      try {
+        const data = await agentCall("prompts");
+        state.agent.promptFiles = data.files || [];
+        if (!state.agent.promptFiles.some((file) => file.path === state.agent.selectedPromptPath)) {
+          state.agent.selectedPromptPath = state.agent.promptFiles[0]?.path || "";
+        }
+        if (state.agent.selectedPromptPath) {
+          await loadAgentPromptFile(state.agent.selectedPromptPath);
+        } else {
+          state.agent.loading = "";
+          renderAgentPrompts();
+        }
+      } catch (error) {
+        state.agent.loading = "";
+        setInlineError($("agentContent"), error.message || "加载 Prompt 失败");
+        showMessage(error.message, "warn");
+      }
+    }
+
+    async function loadAgentPromptFile(promptPath) {
+      state.agent.selectedPromptPath = promptPath;
+      state.agent.loading = "promptFile";
+      renderAgentPrompts();
+      try {
+        const data = await agentCall("promptFile", { path: promptPath });
+        state.agent.promptFile = data.file || null;
+        state.agent.drafts = data.drafts || [];
+        state.agent.releases = data.releases || [];
+        state.agent.loading = "";
+        renderAgentPrompts();
+      } catch (error) {
+        state.agent.loading = "";
+        showMessage(error.message, "warn");
+        renderAgentPrompts();
+      }
+    }
+
+    function renderAgentPrompts() {
+      $("agentContent").innerHTML = `
+        <div class="agent-prompt-layout">
+          <aside class="panel stack">
+            <div class="section-title-row">
+              <div>
+                <div class="strong">Prompt 文件</div>
+                <div class="muted">来自解压包并支持发布覆盖</div>
+              </div>
+              <span class="pill">${escapeHtml(state.agent.promptFiles.length)} 个</span>
+            </div>
+            <div id="agentPromptFilesList" class="section-list agent-scroll">
+              ${state.agent.loading === "prompts" ? `<div class="empty">加载 Prompt...</div>` : renderAgentPromptFilesList()}
+            </div>
+          </aside>
+          <section class="panel stack">
+            ${renderAgentPromptEditor()}
+          </section>
+          <aside class="panel stack">
+            ${renderAgentDraftReleasePanel()}
+          </aside>
+        </div>
+      `;
+      bindAgentPromptEvents();
+    }
+
+    function renderAgentPromptFilesList() {
+      if (!state.agent.promptFiles.length) return `<div class="empty">暂无 Prompt 文件</div>`;
+      return state.agent.promptFiles.map((file) => `
+        <button type="button" class="session-card ${file.path === state.agent.selectedPromptPath ? "active" : ""}" data-agent-prompt-path="${escapeAttr(file.path)}">
+          <div class="section-title-row">
+            <span class="strong mono">${escapeHtml(file.path)}</span>
+            <span class="pill ${file.source?.includes("firestore") ? "ok" : ""}">${escapeHtml(file.source || "bundle")}</span>
+          </div>
+          <div class="muted">${escapeHtml([file.size ? `${file.size} bytes` : "", formatDate(file.updatedAt) || ""].filter(Boolean).join(" · "))}</div>
+        </button>
+      `).join("");
+    }
+
+    function renderAgentPromptEditor() {
+      if (state.agent.loading === "promptFile") return `<div class="empty">读取 Prompt 文件...</div>`;
+      if (!state.agent.promptFile) return `<div class="empty">选择一个 Prompt 文件</div>`;
+      return `
+        <div class="section-title-row">
+          <div>
+            <div class="strong mono">${escapeHtml(state.agent.promptFile.path || state.agent.selectedPromptPath)}</div>
+            <div class="muted">来源：${escapeHtml(state.agent.promptFile.source || "bundle")} · ${escapeHtml(formatDate(state.agent.promptFile.updatedAt) || "无时间")}</div>
+          </div>
+          <div class="row">
+            <button id="saveAgentPromptDraftButton" type="button">保存为草稿</button>
+            <button id="reloadAgentPromptButton" type="button" class="secondary">重载</button>
+          </div>
+        </div>
+        <textarea id="agentPromptEditor" class="prompt-editor">${escapeHtml(state.agent.promptFile.content || "")}</textarea>
+      `;
+    }
+
+    function renderAgentDraftReleasePanel() {
+      return `
+        <div>
+          <div class="strong" style="margin-bottom: 8px;">草稿</div>
+          <div id="agentDraftsList" class="section-list">${renderAgentDraftsList(state.agent.drafts)}</div>
+        </div>
+        <div>
+          <div class="strong" style="margin-bottom: 8px;">发布记录</div>
+          <div id="agentReleasesList" class="section-list">${renderAgentReleasesList(state.agent.releases)}</div>
+        </div>
+      `;
+    }
+
+    function renderAgentDraftsList(drafts) {
+      if (!drafts?.length) return `<div class="empty">暂无草稿</div>`;
+      return drafts.map((draft) => `
+        <div class="list-row">
+          <div class="section-title-row">
+            <span class="strong mono">${escapeHtml(draft.path || "")}</span>
+            <span class="pill ${draft.status === "approved" ? "ok" : draft.status === "published" ? "ok" : "warn"}">${escapeHtml(draft.status || "draft")}</span>
+          </div>
+          <div class="muted">${escapeHtml([draft.note, draft.createdBy, formatDate(draft.updatedAt || draft.createdAt)].filter(Boolean).join(" · "))}</div>
+          <div class="row">
+            ${draft.status === "draft" ? `<button type="button" class="secondary" data-agent-draft-action="approve" data-agent-draft-id="${escapeAttr(draft.draftId)}">审批通过</button>` : ""}
+            ${draft.status === "approved" ? `<button type="button" data-agent-draft-action="publish" data-agent-draft-id="${escapeAttr(draft.draftId)}">发布</button>` : ""}
+            ${draft.status !== "published" ? `<button type="button" class="ghost" data-agent-draft-action="delete" data-agent-draft-id="${escapeAttr(draft.draftId)}">删除</button>` : ""}
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function renderAgentReleasesList(releases) {
+      if (!releases?.length) return `<div class="empty">暂无发布记录</div>`;
+      return releases.map((release) => `
+        <div class="list-row">
+          <div class="section-title-row">
+            <span class="strong">${escapeHtml(release.type === "rollback" ? "回滚" : "发布")}</span>
+            <span class="pill">${escapeHtml(formatDate(release.createdAt) || "无时间")}</span>
+          </div>
+          <div class="mono">${escapeHtml(release.path || "")}</div>
+          <div class="muted">${escapeHtml([release.releasedBy, release.note].filter(Boolean).join(" · "))}</div>
+          ${release.type !== "rollback" ? `<button type="button" class="secondary" data-agent-release-rollback="${escapeAttr(release.releaseId)}">回滚到发布前</button>` : ""}
+        </div>
+      `).join("");
+    }
+
+    function bindAgentPromptEvents() {
+      $("agentPromptFilesList")?.querySelectorAll("[data-agent-prompt-path]").forEach((button) => {
+        button.addEventListener("click", () => loadAgentPromptFile(button.dataset.agentPromptPath));
+      });
+      $("reloadAgentPromptButton")?.addEventListener("click", () => loadAgentPromptFile(state.agent.selectedPromptPath));
+      $("saveAgentPromptDraftButton")?.addEventListener("click", saveAgentPromptDraft);
+      $("agentDraftsList")?.querySelectorAll("[data-agent-draft-action]").forEach((button) => {
+        button.addEventListener("click", () => handleAgentDraftAction(button.dataset.agentDraftId, button.dataset.agentDraftAction));
+      });
+      $("agentReleasesList")?.querySelectorAll("[data-agent-release-rollback]").forEach((button) => {
+        button.addEventListener("click", () => rollbackAgentRelease(button.dataset.agentReleaseRollback));
+      });
+    }
+
+    async function saveAgentPromptDraft() {
+      if (!state.agent.selectedPromptPath) return;
+      const note = prompt("草稿备注", "后台调整 Prompt");
+      if (note === null) return;
+      try {
+        await agentCall("createPromptDraft", {
+          path: state.agent.selectedPromptPath,
+          content: $("agentPromptEditor").value,
+          note,
+        }, { method: "POST" });
+        await loadAgentPromptFile(state.agent.selectedPromptPath);
+        showMessage("Prompt 草稿已保存", "ok");
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
+    }
+
+    async function handleAgentDraftAction(draftId, draftAction) {
+      const labels = { approve: "审批通过", publish: "发布", delete: "删除" };
+      if (!confirm(`${labels[draftAction] || draftAction}这个 Prompt 草稿？`)) return;
+      try {
+        await agentCall("draftAction", { draftId, draftAction }, { method: "POST" });
+        if (state.agent.tab === "prompts" && state.agent.selectedPromptPath) {
+          await loadAgentPromptFile(state.agent.selectedPromptPath);
+        } else {
+          await loadAgentDrafts();
+        }
+        showMessage("草稿状态已更新", "ok");
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
+    }
+
+    async function rollbackAgentRelease(releaseId) {
+      if (!confirm("确认回滚到这次发布之前的内容？")) return;
+      try {
+        await agentCall("rollbackRelease", { releaseId }, { method: "POST" });
+        if (state.agent.tab === "prompts" && state.agent.selectedPromptPath) {
+          await loadAgentPromptFile(state.agent.selectedPromptPath);
+        } else {
+          await loadAgentDrafts();
+        }
+        showMessage("Prompt 已回滚", "ok");
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
+    }
+
+    async function loadAgentDrafts() {
+      state.agent.loading = "drafts";
+      renderAgentReleases();
+      try {
+        const data = await agentCall("promptDrafts");
+        state.agent.drafts = data.drafts || [];
+        state.agent.releases = data.releases || [];
+        state.agent.loading = "";
+        renderAgentReleases();
+      } catch (error) {
+        state.agent.loading = "";
+        setInlineError($("agentContent"), error.message || "加载发布流失败");
+        showMessage(error.message, "warn");
+      }
+    }
+
+    function renderAgentReleases() {
+      $("agentContent").innerHTML = `
+        <div class="split">
+          <section class="panel stack">
+            <div class="section-title-row">
+              <div>
+                <div class="strong">Prompt 草稿</div>
+                <div class="muted">草稿需要先审批，再发布为线上覆盖版本</div>
+              </div>
+              <span class="pill">${escapeHtml(state.agent.drafts.length)} 条</span>
+            </div>
+            <div id="agentDraftsList" class="section-list">${state.agent.loading === "drafts" ? `<div class="empty">加载草稿...</div>` : renderAgentDraftsList(state.agent.drafts)}</div>
+          </section>
+          <aside class="panel stack">
+            <div class="section-title-row">
+              <div>
+                <div class="strong">发布记录</div>
+                <div class="muted">发布和回滚会写入审计记录</div>
+              </div>
+              <span class="pill">${escapeHtml(state.agent.releases.length)} 条</span>
+            </div>
+            <div id="agentReleasesList" class="section-list">${state.agent.loading === "drafts" ? `<div class="empty">加载发布记录...</div>` : renderAgentReleasesList(state.agent.releases)}</div>
+          </aside>
+        </div>
+      `;
+      bindAgentPromptEvents();
+    }
+
+    async function loadAgentUsage() {
+      state.agent.loading = "usage";
+      renderAgentMap();
+      try {
+        state.agent.usage = await agentCall("promptUsage");
+        state.agent.loading = "";
+        renderAgentMap();
+      } catch (error) {
+        state.agent.loading = "";
+        setInlineError($("agentContent"), error.message || "加载拼接地图失败");
+        showMessage(error.message, "warn");
+      }
+    }
+
+    function renderAgentMap() {
+      if (state.agent.loading === "usage") {
+        $("agentContent").innerHTML = `<div class="panel"><div class="empty">加载拼接地图...</div></div>`;
+        return;
+      }
+      const usage = state.agent.usage || {};
+      $("agentContent").innerHTML = `
+        <div class="agent-map-grid">
+          <section class="panel stack">
+            <div class="panel-title"><h2>Prompt 用途</h2></div>
+            ${(usage.promptUsage || []).map((item) => `
+              <div class="list-row">
+                <div class="section-title-row">
+                  <span class="strong mono">${escapeHtml(item.path || "")}</span>
+                  <span class="pill">${escapeHtml((item.usedBy || []).length)} 处</span>
+                </div>
+                <div>${escapeHtml(item.purpose || "")}</div>
+                <div class="muted">${escapeHtml((item.usedBy || []).join(" / "))}</div>
+              </div>
+            `).join("") || `<div class="empty">暂无 Prompt 用途</div>`}
+          </section>
+          <section class="panel stack">
+            <div class="panel-title"><h2>上下文流转</h2></div>
+            ${(usage.contextFlows || []).map((flow) => `
+              <div class="list-row">
+                <div class="strong">${escapeHtml(flow.label || flow.key || "")}</div>
+                <div class="compact-fields">
+                  <div class="compact-line"><span class="compact-label">输入</span><span class="compact-value">${escapeHtml(flow.input || "")}</span></div>
+                  <div class="compact-line"><span class="compact-label">上下文</span><span class="compact-value">${escapeHtml(flow.context || "")}</span></div>
+                  <div class="compact-line"><span class="compact-label">输出</span><span class="compact-value">${escapeHtml(flow.output || "")}</span></div>
+                  <div class="compact-line"><span class="compact-label">影响</span><span class="compact-value">${escapeHtml(flow.effect || "")}</span></div>
+                </div>
+              </div>
+            `).join("") || `<div class="empty">暂无上下文流转</div>`}
+          </section>
+          <section class="panel stack">
+            <div class="panel-title"><h2>数据说明</h2></div>
+            ${(usage.contextExplainers || []).map((item) => `
+              <div class="list-row">
+                <div class="strong">${escapeHtml(item.label || "")}</div>
+                <div class="muted">${escapeHtml(item.description || "")}</div>
+              </div>
+            `).join("") || `<div class="empty">暂无说明</div>`}
+          </section>
+          <section class="panel stack">
+            <div class="panel-title"><h2>调用分类</h2></div>
+            ${(usage.categories || []).map((category) => `
+              <div class="list-row">
+                <div class="strong">${escapeHtml(category.label || category.key || "")}</div>
+                <div class="muted">${escapeHtml(category.description || "")}</div>
+                <div class="session-meta">${(category.patterns || []).map((pattern) => `<span class="pill">${escapeHtml(pattern)}</span>`).join("")}</div>
+              </div>
+            `).join("") || `<div class="empty">暂无分类</div>`}
+          </section>
+        </div>
+      `;
+    }
+
+    async function loadFeedback() {
+      renderFeedbackTabs();
+      setLoading($("feedbackList"), "加载反馈...");
+      try {
+        const params = new URLSearchParams({ status: state.feedbackStatus, limit: "100" });
+        const data = await callFunction(`/adminFeedbackList?${params.toString()}`);
+        state.feedbackItems = data.items || [];
+        renderFeedback();
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
+    }
+
+    function renderFeedbackTabs() {
+      $("feedbackTabs").innerHTML = feedbackStatuses.map(([status, label]) => `
+        <button type="button" class="tab ${state.feedbackStatus === status ? "active" : ""}" data-feedback-status="${status}">${label}</button>
+      `).join("");
+      $("feedbackTabs").querySelectorAll("[data-feedback-status]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.feedbackStatus = button.dataset.feedbackStatus;
+          loadFeedback();
+        });
+      });
+    }
+
+    function renderFeedback() {
+      if (!state.feedbackItems.length) {
+        $("feedbackList").innerHTML = `<div class="empty">当前状态没有反馈</div>`;
+        $("feedbackDetail").innerHTML = `<div class="empty">选择一条反馈</div>`;
+        return;
+      }
+      $("feedbackList").innerHTML = state.feedbackItems.map((item) => `
+        <button type="button" class="list-row" data-feedback-id="${escapeAttr(item.feedbackId)}">
+          <div class="row" style="justify-content: space-between;">
+            <span class="strong">${escapeHtml(item.displayName || item.email || item.uid || "未知用户")}</span>
+            <span class="pill ${statusTone(item.status)}">${escapeHtml(statusLabel(item.status))}</span>
+          </div>
+          <div>${escapeHtml((item.content || "").slice(0, 160))}</div>
+          <div class="muted">${escapeHtml([item.category, item.platform, formatDate(item.createdAt)].filter(Boolean).join(" · "))}</div>
+        </button>
+      `).join("");
+      $("feedbackList").querySelectorAll("[data-feedback-id]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.feedbackDetail = state.feedbackItems.find((item) => item.feedbackId === button.dataset.feedbackId);
+          renderFeedbackDetail();
+        });
+      });
+      if (!state.feedbackDetail) {
+        state.feedbackDetail = state.feedbackItems[0];
+      }
+      renderFeedbackDetail();
+    }
+
+    function renderFeedbackDetail() {
+      const item = state.feedbackDetail;
+      if (!item) {
+        $("feedbackDetail").innerHTML = `<div class="empty">选择一条反馈</div>`;
+        return;
+      }
+      $("feedbackDetail").innerHTML = `
+        <div class="stack">
+          <div>
+            <div class="strong">${escapeHtml(item.displayName || item.email || item.uid || "未知用户")}</div>
+            <div class="muted">${escapeHtml(item.email || item.uid || "")}</div>
+          </div>
+          <div class="detail-grid">
+            ${kv("状态", statusLabel(item.status))}
+            ${kv("分类", item.category || item.tag || "无")}
+            ${kv("平台", item.platform || "无")}
+            ${kv("版本", item.appVersion || "无")}
+          </div>
+          <label>反馈内容<textarea readonly>${escapeHtml(item.content || "")}</textarea></label>
+          <label>处理备注<textarea id="feedbackNote">${escapeHtml(item.adminNote || "")}</textarea></label>
+          <label>状态<select id="feedbackStatusSelect">${feedbackStatuses.map(([status, label]) => `<option value="${status}" ${item.status === status ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+          <button id="saveFeedbackButton" type="button">保存处理状态</button>
+        </div>
+      `;
+      $("saveFeedbackButton").addEventListener("click", saveFeedback);
+    }
+
+    async function saveFeedback() {
+      const item = state.feedbackDetail;
+      if (!item) return;
+      try {
+        await callFunction("/adminFeedbackUpdate", {
+          method: "POST",
+          body: JSON.stringify({
+            feedbackId: item.feedbackId,
+            status: $("feedbackStatusSelect").value,
+            adminNote: $("feedbackNote").value,
+          }),
+        });
+        showMessage("反馈已更新", "ok");
+        state.feedbackStatus = $("feedbackStatusSelect").value;
+        state.feedbackDetail = null;
+        await loadFeedback();
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
+    }
+
+    async function loadConfig() {
+      setLoading($("configContent"), "加载配置...");
+      try {
+        state.config = await callFunction("/adminConfigOverview?limit=80");
+        renderConfig();
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
+    }
+
+    function renderConfig() {
+      if (!state.config) {
+        $("configContent").innerHTML = `<div class="empty">暂无配置</div>`;
+        return;
+      }
+      document.querySelectorAll("[data-config-section]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.configSection === state.configSection);
+        button.onclick = () => {
+          state.configSection = button.dataset.configSection;
+          renderConfig();
+        };
+      });
+
+      if (state.configSection === "quick") {
+        $("configContent").innerHTML = `
+          <div class="panel-title"><h2>快速占卜</h2></div>
+          ${renderDocsTable(state.config.quickReading || [], "config")}
+        `;
+        return;
+      }
+
+      const config = state.config.publicConfig || {};
+      const social = config.socialLinks || {};
+      const products = config.iapProducts || {};
+      if (state.configSection === "iap") {
+        $("configContent").innerHTML = `
+          <div class="panel-title"><h2>IAP 商品</h2><span class="pill ${state.config.readiness?.iapProductsConfigured ? "ok" : "warn"}">${state.config.readiness?.iapProductsConfigured ? "已配置" : "待检查"}</span></div>
+          <form id="iapConfigForm" class="form-grid">
+            ${iapFields("proMonthly", products.proMonthly || {})}
+            ${iapFields("proYearly", products.proYearly || {})}
+            <div class="row full"><button type="submit">保存 IAP 配置</button></div>
+          </form>
+        `;
+        $("iapConfigForm").addEventListener("submit", saveConfig);
+        return;
+      }
+
+      $("configContent").innerHTML = `
+        <div class="panel-title"><h2>公开配置</h2><span class="pill ${state.config.readiness?.configured ? "ok" : "warn"}">${state.config.readiness?.configured ? "可用" : "待完善"}</span></div>
+        <form id="publicConfigForm" class="form-grid">
+          ${["instagram", "facebook", "x", "tiktok", "pinterest"].map((key) => `
+            <label>${key}<input name="social.${key}" value="${escapeAttr(social[key] || "")}"></label>
+          `).join("")}
+          <div class="row full"><button type="submit">保存公开配置</button></div>
+        </form>
+      `;
+      $("publicConfigForm").addEventListener("submit", saveConfig);
+    }
+
+    function iapFields(key, product) {
+      const title = key === "proMonthly" ? "月度会员" : "年度会员";
+      return `
+        <div class="full strong">${title}</div>
+        <label>Product ID<input name="iap.${key}.productId" value="${escapeAttr(product.productId || "")}"></label>
+        <label>展示名<input name="iap.${key}.displayName" value="${escapeAttr(product.displayName || "")}"></label>
+        <label>价格标签<input name="iap.${key}.priceLabel" value="${escapeAttr(product.priceLabel || "")}"></label>
+        <label>渠道<input name="iap.${key}.store" value="${escapeAttr(product.store || "app_store_google_play")}"></label>
+      `;
+    }
+
+    async function saveConfig(event) {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const socialLinks = {};
+      const iapProducts = {};
+      for (const [key, value] of form.entries()) {
+        if (key.startsWith("social.")) {
+          socialLinks[key.slice(7)] = value;
+        } else if (key.startsWith("iap.")) {
+          const [, productKey, field] = key.split(".");
+          iapProducts[productKey] ||= {};
+          iapProducts[productKey][field] = value;
+        }
+      }
+      try {
+        await callFunction("/adminPublicConfigUpdate", {
+          method: "POST",
+          body: JSON.stringify({
+            ...(Object.keys(socialLinks).length ? { socialLinks } : {}),
+            ...(Object.keys(iapProducts).length ? { iapProducts } : {}),
+          }),
+        });
+        showMessage("配置已保存", "ok");
+        await loadConfig();
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
+    }
 
     async function loadCollections() {
-      if (!idToken) return;
-      setMessage("加载集合...");
-      try {
-        const data = await callFunction("/adminDataCollections", { method: "GET" });
-        collections = Array.isArray(data.items) ? data.items : [];
-      renderCollections();
-      applySelectedCollectionDefaults();
-      updateCollectionUi();
-      renderGuideTools();
-      setMessage(`已加载 ${collections.length} 个集合`, "ok");
-      } catch (error) {
-        setMessage(error.message, "warn");
-      }
+      if (state.collections.length) return;
+      const data = await callFunction("/adminDataCollections");
+      state.collections = data.items || [];
+      renderCollectionSelect();
     }
 
-    async function loadDocuments() {
-      if (!idToken) {
-        renderList();
-        setMessage("请先登录");
-        return;
-      }
+    function renderCollectionSelect() {
+      $("advancedCollectionSelect").innerHTML = state.collections.map((item) => `
+        <option value="${escapeAttr(item.key)}">${escapeHtml(item.label || item.key)}</option>
+      `).join("");
+      const selected = getSelectedCollection();
+      $("advancedParentUidWrap").hidden = selected?.scope !== "user";
+      $("advancedOrderBy").value = selected?.orderBy || "__name__";
+    }
 
-      const payload = buildCollectionPayload();
-      if (!payload) return;
-
-      setMessage("读取文档...");
+    async function loadAdvanced() {
+      if (!state.collections.length) await loadCollections();
+      const selected = getSelectedCollection();
+      if (!selected) return;
       const params = new URLSearchParams({
-        limit: $("limitSelect").value,
-        orderBy: $("orderByInput").value.trim() || "__name__",
-        orderDirection: $("orderDirectionSelect").value
+        collectionKey: selected.key,
+        orderBy: $("advancedOrderBy").value || selected.orderBy || "__name__",
+        orderDirection: "desc",
+        limit: $("advancedLimit").value || "50",
       });
-      for (const [key, value] of Object.entries(payload)) {
-        if (value) params.set(key, value);
-      }
-      const docId = $("docIdFilterInput").value.trim();
+      if (selected.scope === "user") params.set("parentUid", $("advancedParentUidInput").value.trim());
+      const docId = $("advancedDocIdFilter").value.trim();
       if (docId) params.set("docId", docId);
-      const whereField = $("whereFieldInput").value.trim();
-      if (whereField) {
-        params.set("whereField", whereField);
-        params.set("whereOp", $("whereOpSelect").value);
-        params.set("whereValue", $("whereValueInput").value.trim());
-      }
-
+      setLoading($("advancedList"), "读取数据...");
       try {
-        const data = await callFunction(`/adminDataList?${params.toString()}`, { method: "GET" });
-        items = Array.isArray(data.items) ? data.items : [];
-        renderList();
-        setMessage(`已读取 ${items.length} 条`, "ok");
+        const data = await callFunction(`/adminDataList?${params.toString()}`);
+        state.advancedItems = data.items || [];
+        renderAdvanced();
       } catch (error) {
-        setMessage(error.message, "warn");
+        showMessage(error.message, "warn");
       }
     }
 
-    async function saveDocument() {
-      if (!idToken) {
-        setMessage("请先登录", "warn");
+    function renderAdvanced() {
+      if (!state.advancedItems.length) {
+        $("advancedList").innerHTML = `<div class="empty">没有数据</div>`;
         return;
       }
+      $("advancedList").innerHTML = state.advancedItems.map((item) => `
+        <button type="button" class="list-row" data-advanced-path="${escapeAttr(item.path)}">
+          <span class="strong">${escapeHtml(item.id)}</span>
+          <span class="muted">${escapeHtml(item.summary || item.path)}</span>
+          <span class="mono">${escapeHtml(item.path)}</span>
+        </button>
+      `).join("");
+      $("advancedList").querySelectorAll("[data-advanced-path]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.advancedSelected = state.advancedItems.find((item) => item.path === button.dataset.advancedPath);
+          renderAdvancedEditor();
+        });
+      });
+    }
 
+    function renderAdvancedEditor() {
+      const item = state.advancedSelected;
+      $("advancedPathInput").value = item?.path || "";
+      $("advancedJsonEditor").value = JSON.stringify(item?.data || {}, null, 2);
+    }
+
+    function startAdvancedNew() {
+      state.advancedSelected = null;
+      $("advancedPathInput").value = "";
+      $("advancedJsonEditor").value = "{}";
+    }
+
+    async function saveAdvanced() {
       let data;
       try {
-        data = JSON.parse(jsonEditor.value);
+        data = JSON.parse($("advancedJsonEditor").value || "{}");
       } catch (error) {
-        setMessage(`JSON 格式错误: ${error.message}`, "warn");
+        showMessage(`JSON 格式错误：${error.message}`, "warn");
         return;
       }
-
+      const selected = getSelectedCollection();
       const payload = {
         data,
-        merge: mergeToggle.checked
+        merge: $("advancedMergeSelect").value === "true",
       };
-
-      if (selectedDoc?.path) {
-        payload.documentPath = selectedDoc.path;
-      } else {
-        Object.assign(payload, buildCollectionPayload());
-        const docId = docIdInput.value.trim();
-        if (docId) payload.docId = docId;
+      if (state.advancedSelected?.path) {
+        payload.documentPath = state.advancedSelected.path;
+      } else if (selected) {
+        payload.collectionKey = selected.key;
+        if (selected.scope === "user") payload.parentUid = $("advancedParentUidInput").value.trim();
       }
-
-      if (!payload.documentPath && !payload.collectionKey && !payload.collectionPath) return;
-
-      setSaveState("保存中...");
       try {
         const result = await callFunction("/adminDataUpsert", {
           method: "POST",
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
         });
-        selectedDoc = result.doc || null;
-        renderEditor();
-        await loadDocuments();
-        setSaveState("已保存", "ok");
-        setMessage("保存成功", "ok");
+        state.advancedSelected = result.doc;
+        renderAdvancedEditor();
+        await loadAdvanced();
+        showMessage("数据已保存", "ok");
       } catch (error) {
-        setSaveState(error.message, "warn");
-        setMessage(error.message, "warn");
+        showMessage(error.message, "warn");
       }
     }
 
-    async function deleteDocument() {
-      if (!selectedDoc?.path) {
-        setMessage("没有选中文档", "warn");
-        return;
-      }
-
-      const recursive = $("recursiveDeleteToggle").checked;
-      const confirmed = window.confirm(`删除 ${selectedDoc.path}${recursive ? " 及其子集合" : ""}？`);
-      if (!confirmed) return;
-
-      setSaveState("删除中...");
+    async function deleteAdvanced() {
+      if (!state.advancedSelected?.path) return;
+      if (!confirm(`删除 ${state.advancedSelected.path}？`)) return;
       try {
         await callFunction("/adminDataDelete", {
           method: "POST",
-          body: JSON.stringify({
-            documentPath: selectedDoc.path,
-            recursive
-          })
+          body: JSON.stringify({ documentPath: state.advancedSelected.path }),
         });
-        selectedDoc = null;
-        renderEditor();
-        await loadDocuments();
-        setSaveState("已删除", "ok");
+        state.advancedSelected = null;
+        renderAdvancedEditor();
+        await loadAdvanced();
+        showMessage("数据已删除", "ok");
       } catch (error) {
-        setSaveState(error.message, "warn");
-        setMessage(error.message, "warn");
+        showMessage(error.message, "warn");
       }
-    }
-
-    async function callFunction(path, options) {
-      const response = await fetch(functionsBaseUrl + path, {
-        ...options,
-        headers: {
-          Authorization: `Bearer ${idToken}`,
-          "Content-Type": "application/json",
-          ...(options.headers || {})
-        }
-      });
-      const text = await response.text();
-      const data = text ? JSON.parse(text) : {};
-      if (!response.ok) {
-        throw new Error(data.error || `HTTP ${response.status}`);
-      }
-      return data;
-    }
-
-    function renderCollections() {
-      collectionSelect.innerHTML = "";
-      if (!collections.length) {
-        collectionSelect.innerHTML = `<option value="">暂无集合</option>`;
-        return;
-      }
-
-      const rootGroup = document.createElement("optgroup");
-      rootGroup.label = "根集合";
-      const userGroup = document.createElement("optgroup");
-      userGroup.label = "用户子集合";
-      const customGroup = document.createElement("optgroup");
-      customGroup.label = "已发现";
-
-      for (const item of collections) {
-        const option = document.createElement("option");
-        option.value = item.key;
-        option.textContent = item.exists === false ? `${item.label} (未发现)` : item.label;
-        if (item.scope === "user") {
-          userGroup.appendChild(option);
-        } else if (item.custom) {
-          customGroup.appendChild(option);
-        } else {
-          rootGroup.appendChild(option);
-        }
-      }
-
-      collectionSelect.appendChild(rootGroup);
-      collectionSelect.appendChild(userGroup);
-      if (customGroup.children.length) collectionSelect.appendChild(customGroup);
-      renderGuideTools();
-    }
-
-    function applySelectedCollectionDefaults() {
-      const selected = getSelectedCollection();
-      if (!selected) return;
-      $("orderByInput").value = selected.orderBy || "__name__";
-      $("orderDirectionSelect").value = selected.orderDirection || "desc";
-    }
-
-    function renderList() {
-      const selected = getSelectedCollection();
-      const collectionPath = customPathInput.value.trim() || resolveSelectedCollectionPath();
-      collectionTitle.textContent = selected?.label || "自定义集合";
-      collectionPathLabel.textContent = collectionPath || "";
-
-      if (!idToken) {
-        docList.innerHTML = `<div class="empty">登录管理员账号后加载数据。</div>`;
-        return;
-      }
-      if (!items.length) {
-        docList.innerHTML = `<div class="empty">没有文档。</div>`;
-        return;
-      }
-
-      docList.innerHTML = "";
-      for (const item of items) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = `doc-row ${selectedDoc?.path === item.path ? "active" : ""}`;
-        button.innerHTML = `
-          <div>
-            <div class="doc-id">${escapeHtml(item.id)}</div>
-            <div class="doc-summary">${escapeHtml(item.summary || summarizeData(item.data))}</div>
-            <div class="doc-summary">${escapeHtml(item.path || "")}</div>
-          </div>
-          <span class="pill">${escapeHtml(formatDate(item.updateTime) || "no time")}</span>
-        `;
-        button.addEventListener("click", () => {
-          selectedDoc = item;
-          if (item.parentPath === "users") {
-            parentUidInput.value = item.id;
-          }
-          renderList();
-          renderEditor();
-        });
-        docList.appendChild(button);
-      }
-    }
-
-    function renderEditor() {
-      if (!selectedDoc) {
-        editorTitle.textContent = "新增文档";
-        editorMeta.textContent = "";
-        editorPath.textContent = resolveSelectedCollectionPath();
-        docIdInput.disabled = false;
-        $("deleteButton").disabled = true;
-        return;
-      }
-
-      editorTitle.textContent = selectedDoc.id;
-      editorMeta.textContent = `updated ${formatDate(selectedDoc.updateTime) || ""}`;
-      editorPath.textContent = selectedDoc.path || "";
-      docIdInput.value = selectedDoc.id || "";
-      docIdInput.disabled = true;
-      jsonEditor.value = JSON.stringify(selectedDoc.data || {}, null, 2);
-      $("deleteButton").disabled = false;
-    }
-
-    function startNewDocument() {
-      selectedDoc = null;
-      docIdInput.value = "";
-      jsonEditor.value = "{}";
-      mergeToggle.checked = true;
-      renderList();
-      renderEditor();
-      setSaveState("");
-    }
-
-    function updateCollectionUi() {
-      const selected = getSelectedCollection();
-      parentUidField.style.display = selected?.scope === "user" ? "grid" : "none";
-      renderEditor();
-      renderGuideTools();
-    }
-
-    function renderGuideTools() {
-      const selected = getSelectedCollection();
-      const customPath = customPathInput.value.trim();
-      const title = selected?.label || (customPath ? "自定义集合" : "等待选择集合");
-      const guidePage = selected?.guidePage ? `第 ${selected.guidePage} 页` : "自定义路径";
-      const description = selected?.description || (customPath
-        ? "手动输入 Firestore 集合路径后，可以使用同一套读取、新增、修改、删除能力。"
-        : "登录后选择集合，后台会按手册显示对应的数据管理功能。");
-      const readable = selected?.readable || "按集合路径读取文档列表或精确文档 ID。";
-      const writable = selected?.writable || "以 JSON 形式新增、合并更新、覆盖更新或删除文档。";
-      const risk = selected?.risk || "自定义路径没有手册约束，保存或删除前请先确认路径。";
-      const pathText = customPath || resolveSelectedCollectionPath() || selected?.collectionPath || "";
-
-      guidePanel.innerHTML = `
-        <div class="guide-title">${escapeHtml(title)} · ${escapeHtml(guidePage)}</div>
-        <div>${escapeHtml(description)}</div>
-        <div class="meta-row">
-          <span class="meta-label">路径</span>
-          <span>${escapeHtml(pathText || "未选择")}</span>
-        </div>
-        <div class="meta-row">
-          <span class="meta-label">可获取</span>
-          <span>${escapeHtml(readable)}</span>
-        </div>
-        <div class="meta-row">
-          <span class="meta-label">可修改</span>
-          <span>${escapeHtml(writable)}</span>
-        </div>
-        <div class="danger-note">${escapeHtml(risk)}</div>
-      `;
-
-      quickActions.innerHTML = "";
-      const presets = Array.isArray(selected?.presets) ? selected.presets : [];
-      for (const preset of presets) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent = preset.label || "快捷查询";
-        button.addEventListener("click", () => applyPreset(preset));
-        quickActions.appendChild(button);
-      }
-      if (!presets.length) {
-        quickActions.innerHTML = `<span class="status">可使用文档 ID、where 条件和排序字段自由查询。</span>`;
-      }
-
-      renderTemplateActions();
-    }
-
-    function renderTemplateActions() {
-      const selected = getSelectedCollection();
-      const templates = Array.isArray(selected?.templates) ? selected.templates : [];
-      templateActions.innerHTML = "";
-
-      for (const template of templates) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent = template.label || "模板";
-        button.addEventListener("click", () => applyTemplate(template));
-        templateActions.appendChild(button);
-      }
-
-      if (!templates.length) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent = "更新时间模板";
-        button.addEventListener("click", () => applyTemplate({
-          label: "更新时间模板",
-          merge: true,
-          data: {
-            updatedAt: { __type: "serverTimestamp" }
-          }
-        }));
-        templateActions.appendChild(button);
-      }
-
-      templateHint.textContent = selectedDoc
-        ? "套用模板会替换编辑器内容，保存时合并到当前选中文档。"
-        : "未选中文档时，模板用于新增文档；可填写文档 ID 后保存。";
-    }
-
-    function applyPreset(preset) {
-      if (Object.prototype.hasOwnProperty.call(preset, "docId")) {
-        $("docIdFilterInput").value = preset.docId || "";
-      } else {
-        $("docIdFilterInput").value = "";
-      }
-
-      if (Object.prototype.hasOwnProperty.call(preset, "whereField")) {
-        $("whereFieldInput").value = preset.whereField || "";
-        $("whereOpSelect").value = preset.whereOp || "==";
-        $("whereValueInput").value = preset.whereValue ?? "";
-      } else {
-        $("whereFieldInput").value = "";
-        $("whereValueInput").value = "";
-      }
-
-      if (preset.orderBy) $("orderByInput").value = preset.orderBy;
-      if (preset.orderDirection) $("orderDirectionSelect").value = preset.orderDirection;
-      if (preset.limit) $("limitSelect").value = String(preset.limit);
-
-      selectedDoc = null;
-      renderList();
-      renderEditor();
-      setMessage(`已应用快捷查询：${preset.label || "未命名"}`, "ok");
-      if (idToken) loadDocuments();
-    }
-
-    function applyTemplate(template) {
-      if (!selectedDoc) {
-        startNewDocument();
-        if (template.docId) docIdInput.value = template.docId;
-      }
-      mergeToggle.checked = template.merge !== false;
-      jsonEditor.value = JSON.stringify(template.data || {}, null, 2);
-      setSaveState(`已套用模板：${template.label || "未命名"}`, "ok");
-      renderTemplateActions();
-    }
-
-    function buildCollectionPayload() {
-      const customPath = customPathInput.value.trim();
-      if (customPath) {
-        return { collectionPath: customPath };
-      }
-
-      const selected = getSelectedCollection();
-      if (!selected?.key) {
-        setMessage("请选择集合", "warn");
-        return null;
-      }
-
-      if (selected.custom) {
-        return { collectionPath: selected.collectionPath };
-      }
-
-      const payload = { collectionKey: selected.key };
-      if (selected.scope === "user") {
-        const parentUid = parentUidInput.value.trim();
-        if (!parentUid) {
-          setMessage("请填写用户 UID", "warn");
-          return null;
-        }
-        payload.parentUid = parentUid;
-      }
-      return payload;
-    }
-
-    function resolveSelectedCollectionPath() {
-      const customPath = customPathInput.value.trim();
-      if (customPath) return customPath;
-      const selected = getSelectedCollection();
-      if (!selected) return "";
-      if (selected.scope === "user") {
-        return parentUidInput.value.trim()
-          ? `users/${parentUidInput.value.trim()}/${selected.collectionId}`
-          : `users/{uid}/${selected.collectionId}`;
-      }
-      return selected.collectionPath || "";
     }
 
     function getSelectedCollection() {
-      const key = collectionSelect.value;
-      return collections.find((item) => item.key === key) || null;
+      const key = $("advancedCollectionSelect").value || state.collections[0]?.key;
+      return state.collections.find((item) => item.key === key);
     }
 
-    function formatEditorJson() {
+    function openEditUserDialog(detail) {
+      const data = detail.user?.data || {};
+      const form = $("editUserForm");
+      form.reset();
+      form.elements.uid.value = detail.uid;
+      form.elements.displayName.value = pick(data, ["displayName", "name", "nickname"]) || detail.auth?.displayName || "";
+      form.elements.photoUrl.value = data.photoUrl || data.photoURL || detail.auth?.photoUrl || "";
+      form.elements.birthday.value = data.birthday || "";
+      form.elements.birthTime.value = data.birthTime || "";
+      form.elements.city.value = data.city || data.address || "";
+      form.elements.bio.value = data.bio || "";
+      const label = [
+        pick(data, ["displayName", "email"]) || detail.auth?.email || "未命名用户",
+        detail.uid,
+      ].filter(Boolean).join(" · ");
+      $("editUserTarget").textContent = label;
+      $("editUserDialog").showModal();
+    }
+
+    function openGrantDialog(uid, name) {
+      $("grantProForm").elements.uid.value = uid;
+      $("grantProTarget").textContent = `${name || uid} · ${uid}`;
+      $("grantProDialog").showModal();
+    }
+
+    async function revokePro(uid) {
+      const reason = prompt("取消人工 Pro 的原因", "客服调整");
+      if (reason === null) return;
       try {
-        jsonEditor.value = JSON.stringify(JSON.parse(jsonEditor.value), null, 2);
-        setSaveState("已格式化", "ok");
+        await callFunction("/adminRevokePro", {
+          method: "POST",
+          body: JSON.stringify({ uid, reason }),
+        });
+        await refreshCurrentDetail(uid);
+        showMessage("已取消人工 Pro", "ok");
       } catch (error) {
-        setSaveState(error.message, "warn");
+        showMessage(error.message, "warn");
       }
     }
 
-    async function copyCurrentPath() {
-      const path = selectedDoc?.path || editorPath.textContent || "";
-      if (!path) return;
-      await navigator.clipboard.writeText(path);
-      setSaveState("已复制", "ok");
-    }
-
-    function exportJson() {
-      if (!items.length) {
-        setMessage("没有可导出的数据", "warn");
-        return;
+    async function refreshCurrentDetail(uid) {
+      if (state.activeModule === "users") {
+        await openUserDetail(uid);
+        await loadUsers($("userSearchInput").value.trim());
       }
-      const blob = new Blob([JSON.stringify(items, null, 2)], { type: "application/json;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `moonly-data-${new Date().toISOString().slice(0, 10)}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
+      if (state.activeModule === "membership") {
+        await loadMembership(uid);
+      }
     }
 
-    function summarizeData(data) {
-      const keys = Object.keys(data || {});
-      return keys.slice(0, 6).join(", ");
+    async function callFunction(path, options = {}) {
+      const response = await fetch(`${functionsBaseUrl}${path}`, {
+        method: options.method || "GET",
+        headers: {
+          Authorization: `Bearer ${state.token}`,
+          "Content-Type": "application/json",
+          ...(options.headers || {}),
+        },
+        body: options.body,
+      });
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      return data;
+    }
+
+    function renderPerson(data, uid = "") {
+      return `
+        <div class="person">
+          ${renderAvatar(data)}
+          ${renderIdentityBlock(data, uid)}
+        </div>
+      `;
+    }
+
+    function renderIdentityBlock(data = {}, uid = "", options = {}) {
+      const displayName = pick(data, ["displayName", "name", "nickname"]) || "未命名用户";
+      const email = options.email || data.email || "";
+      const cleanUid = uid || data.uid || "";
+      const nameClass = options.largeName ? "identity-value primary" : "identity-value";
+      return `
+        <div class="identity-list">
+          <div class="identity-line">
+            <span class="identity-label">用户名</span>
+            <span class="${nameClass}">${escapeHtml(displayName)}</span>
+          </div>
+          <div class="identity-line">
+            <span class="identity-label">邮箱</span>
+            <span class="identity-value">${escapeHtml(email || "未绑定")}</span>
+          </div>
+          <div class="identity-line">
+            <span class="identity-label">UID</span>
+            <span class="identity-value mono">${escapeHtml(cleanUid || "无")}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderAvatar(data, size = "") {
+      const name = pick(data || {}, ["displayName", "name", "nickname", "email"]) || "?";
+      const letter = String(name).trim().slice(0, 1).toUpperCase() || "?";
+      const url = data?.photoUrl || data?.photoURL || "";
+      if (url) {
+        return `<img class="avatar ${size}" src="${escapeAttr(url)}" alt="">`;
+      }
+      return `<span class="avatar ${size}">${escapeHtml(letter)}</span>`;
+    }
+
+    function renderCompactRow(item, type) {
+      const data = item.data || item;
+      const fields = getCompactFields(item, type);
+      const status = pick(data, ["status", "membershipStatus", "valid", "enabled"]) ?? "";
+      const title = getCompactTitle(item, type);
+      return `
+        <div class="list-row">
+          <div class="row" style="justify-content: space-between;">
+            <div class="strong">${escapeHtml(title)}</div>
+            ${status !== "" ? `<span class="pill ${statusTone(status)}">${escapeHtml(formatCompactStatus(status))}</span>` : ""}
+          </div>
+          <div class="compact-fields">
+            ${fields.map(([label, value]) => `
+              <div class="compact-line">
+                <span class="compact-label">${escapeHtml(label)}</span>
+                <span class="compact-value">${escapeHtml(value || "无")}</span>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    function getCompactTitle(item, type) {
+      const data = item.data || item;
+      if (type === "users") return "用户记录";
+      if (type === "feedback") return "反馈记录";
+      if (type === "payment") return pick(data, ["type", "eventName"]) ? "支付事件" : "支付记录";
+      if (type === "usage") return "用量记录";
+      return item.id || "记录";
+    }
+
+    function getCompactFields(item, type) {
+      const data = item.data || item;
+      if (type === "users") {
+        return [
+          ["用户名", pick(data, ["displayName", "name", "nickname"]) || item.id],
+          ["邮箱", data.email || ""],
+          ["UID", data.uid || item.id || ""],
+          ["时间", formatDate(data.createdAt || data.updatedAt || item.updateTime)],
+        ];
+      }
+      if (type === "feedback") {
+        return [
+          ["内容", pick(data, ["content", "summary", "title"]) || item.summary || ""],
+          ["邮箱", data.email || ""],
+          ["UID", data.uid || ""],
+          ["时间", formatDate(data.createdAt || data.updatedAt || item.updateTime)],
+        ];
+      }
+      if (type === "payment") {
+        return [
+          ["类型", pick(data, ["type", "eventName", "status"]) || item.id || ""],
+          ["商品", pick(data, ["productId", "membershipProductId", "rawProductId"]) || ""],
+          ["UID", data.uid || ""],
+          ["时间", formatDate(data.createdAt || data.updatedAt || data.proExpiresAt || item.updateTime)],
+        ];
+      }
+      if (type === "usage") {
+        return [
+          ["功能", pick(data, ["action", "type", "feature"]) || ""],
+          ["已用/上限", [data.count ?? data.used, data.limit].filter((value) => value !== undefined && value !== null && value !== "").join(" / ")],
+          ["日期", data.day || ""],
+          ["UID", data.uid || ""],
+        ];
+      }
+      return [
+        ["文档", item.id || ""],
+        ["摘要", item.summary || ""],
+        ["路径", item.path || ""],
+        ["时间", formatDate(data.createdAt || data.updatedAt || item.updateTime)],
+      ];
+    }
+
+    function formatCompactStatus(status) {
+      if (typeof status === "boolean") return status ? "有效" : "无效";
+      return statusLabel(status) || String(status);
+    }
+
+    function renderMiniDocs(items, type) {
+      if (!items.length) return `<div class="empty">暂无数据</div>`;
+      return items.slice(0, 5).map((item) => renderCompactRow(item, type)).join("");
+    }
+
+    function renderDocsTable(items, type) {
+      if (!items.length) return `<div class="empty">暂无数据</div>`;
+      return `
+        <table class="table">
+          <tbody>
+            ${items.map((item) => {
+              const data = item.data || {};
+              const title = type === "usage"
+                ? pick(data, ["action", "type"]) || item.id
+                : type === "config"
+                  ? item.id
+                  : pick(data, ["productId", "type", "status"]) || item.id;
+              const status = pick(data, ["status", "membershipStatus", "valid", "enabled"]) ?? "";
+              return `
+                <tr>
+                  <td>
+                    <div class="strong">${escapeHtml(title)}</div>
+                    <div class="muted">${escapeHtml(item.summary || item.path || "")}</div>
+                  </td>
+                  <td><span class="pill ${statusTone(status)}">${escapeHtml(String(status || "记录"))}</span></td>
+                  <td class="hide-mobile">${escapeHtml(formatDate(data.updatedAt || data.createdAt || item.updateTime))}</td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function kv(label, value) {
+      return `
+        <div class="kv">
+          <div class="kv-label">${escapeHtml(label)}</div>
+          <div class="kv-value">${escapeHtml(value ?? "无")}</div>
+        </div>
+      `;
+    }
+
+    function getMembership(data = {}) {
+      const raw = String(data.membershipStatus || data.plan || "free").toLowerCase();
+      const expiry = parseDate(data.proExpiresAt);
+      const isPro = raw === "pro" && (!expiry || expiry.getTime() > Date.now());
+      return {
+        label: isPro ? "Pro 会员" : raw === "pro" ? "Pro 已过期" : "免费用户",
+        tone: isPro ? "ok" : raw === "pro" ? "warn" : "",
+      };
+    }
+
+    function pick(data, keys) {
+      for (const key of keys) {
+        const value = data?.[key];
+        if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+      }
+      return "";
+    }
+
+    function parseDate(value) {
+      if (!value) return null;
+      if (value.value) return parseDate(value.value);
+      if (typeof value === "object" && value.seconds) return new Date(value.seconds * 1000);
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date;
     }
 
     function formatDate(value) {
-      if (!value) return "";
-      const date = new Date(value);
-      return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+      const date = parseDate(value);
+      if (!date) return "";
+      return date.toLocaleString("zh-CN", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
     }
 
-    function setMessage(message, tone = "") {
-      messageBox.textContent = message || "";
-      messageBox.className = `status ${tone}`;
+    function getPresenceInfo(data = {}) {
+      const hasPresence = Object.prototype.hasOwnProperty.call(data, "isOnline")
+        || Object.prototype.hasOwnProperty.call(data, "lastActiveUnixMs")
+        || Object.prototype.hasOwnProperty.call(data, "lastActiveAt")
+        || Object.prototype.hasOwnProperty.call(data, "presenceUpdatedAt");
+      const explicitOnline = data.isOnline === true;
+      const lastActiveDate = getPresenceDate(data);
+      const lastActiveMs = lastActiveDate?.getTime() || 0;
+      const isRecent = lastActiveMs > 0 && Date.now() - lastActiveMs <= onlinePresenceTimeoutMs;
+
+      if (!hasPresence) {
+        return {
+          status: "unknown",
+          label: "未知",
+          tone: "warn",
+          detail: "未知",
+          timeLabel: "无在线记录",
+        };
+      }
+
+      const online = explicitOnline && isRecent;
+      const label = online ? "在线" : "离线";
+      const timeLabel = lastActiveDate ? formatDate(lastActiveDate) : "无";
+      return {
+        status: online ? "online" : "offline",
+        label,
+        tone: online ? "ok" : "",
+        detail: lastActiveDate ? `${label} · ${timeLabel}` : label,
+        timeLabel,
+      };
     }
 
-    function setSaveState(message, tone = "") {
-      saveState.textContent = message || "";
-      saveState.className = `status ${tone}`;
+    function getPresenceDate(data = {}) {
+      const unixMs = Number(data.lastActiveUnixMs || 0);
+      if (Number.isFinite(unixMs) && unixMs > 0) return new Date(unixMs);
+      return parseDate(data.lastActiveAt)
+        || parseDate(data.presenceUpdatedAt)
+        || parseDate(data.lastSignInAt)
+        || parseDate(data.updatedAt);
+    }
+
+    function renderPresencePill(presence) {
+      return `<span class="pill ${presence.tone}">${escapeHtml(presence.label)}</span>`;
+    }
+
+    function statusLabel(status) {
+      return ({
+        new: "新反馈",
+        triaged: "已分诊",
+        in_progress: "处理中",
+        resolved: "已解决",
+        closed: "已关闭",
+      })[status] || status || "未知";
+    }
+
+    function statusTone(value) {
+      const normalized = String(value).toLowerCase();
+      if (["true", "verified", "active", "pro", "resolved"].includes(normalized)) return "ok";
+      if (["new", "triaged", "in_progress", "pending", "pending_configuration"].includes(normalized)) return "warn";
+      if (["false", "failed", "invalid", "closed", "expired"].includes(normalized)) return "danger";
+      return "";
+    }
+
+    function setLoading(element, message) {
+      element.innerHTML = `<div class="empty">${escapeHtml(message)}</div>`;
+    }
+
+    function setInlineError(element, message) {
+      element.innerHTML = `<div class="empty warn">${escapeHtml(message)}</div>`;
+    }
+
+    function showAuthMessage(message, tone = "") {
+      $("authMessage").textContent = message || "";
+      $("authMessage").className = `status ${tone}`;
+    }
+
+    function showMessage(message, tone = "") {
+      const box = $("messageBox");
+      box.hidden = !message;
+      box.textContent = message || "";
+      box.className = `message-box ${tone}`;
+      if (message) setTimeout(() => { box.hidden = true; }, 4200);
+    }
+
+    function getFriendlyAuthError(error) {
+      const code = String(error?.code || "");
+      const message = String(error?.message || error || "");
+      if (message.includes("Admin permission required")) {
+        return adminAccessMessage;
+      }
+      if (
+        code.includes("invalid-credential") ||
+        code.includes("invalid-email") ||
+        code.includes("user-disabled") ||
+        code.includes("user-not-found") ||
+        code.includes("wrong-password") ||
+        message.includes("auth/invalid-credential") ||
+        message.includes("wrong-password")
+      ) {
+        return invalidLoginMessage;
+      }
+      if (message.includes("unauthorized-domain")) {
+        return "当前域名没有加入 Firebase Auth 授权域名。";
+      }
+      return "登录失败，请检查账号密码，或让管理员确认后台权限。";
     }
 
     function escapeHtml(value) {
@@ -1139,8 +4053,13 @@
         .replaceAll("'", "&#039;");
     }
 
-    renderCollections();
-    renderEditor();
+    function escapeAttr(value) {
+      return escapeHtml(value);
+    }
+
+    renderFeedbackTabs();
+    renderUserDetail(null);
+    renderMembership();
   </script>
 </body>
 </html>

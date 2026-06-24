@@ -12,6 +12,7 @@ using GamerFrameWork.UIFrameWork;
 public class ChooseGuideUI : WindowBase
 {
 	public ChooseGuideUIComponent uiComponent;
+	private int selectedRoleId = (int)CharacterType.TarotReader;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -26,6 +27,10 @@ public class ChooseGuideUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		selectedRoleId = RoleManager.Instance != null
+			? RoleManager.Instance.CurrentRoleId
+			: (int)CharacterType.TarotReader;
+		RefreshGuideButtons();
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -50,16 +55,48 @@ public class ChooseGuideUI : WindowBase
 	}
 	public void OnAstrologerButtonClick()
 	{
+		SelectGuide(CharacterType.Astrologer);
 	}
 	public void OnSageButtonClick()
 	{
+		SelectGuide(CharacterType.Meditator);
 	}
 	public void OnTarotButtonClick()
 	{
+		SelectGuide(CharacterType.TarotReader);
 	}
 	public void OnContinueButtonClick()
 	{
+		ApplySelectedGuide();
 		UIModule.Instance.PopUpWindow<RegisterFindFriendsUI>();
+	}
+
+	private void SelectGuide(CharacterType type)
+	{
+		selectedRoleId = (int)type;
+		ApplySelectedGuide();
+		RefreshGuideButtons();
+	}
+
+	private void ApplySelectedGuide()
+	{
+		if (RoleManager.Instance != null)
+			RoleManager.Instance.ChangeRole(selectedRoleId);
+	}
+
+	private void RefreshGuideButtons()
+	{
+		SetGuideButtonState(uiComponent?.TarotButton, selectedRoleId == (int)CharacterType.TarotReader);
+		SetGuideButtonState(uiComponent?.AstrologerButton, selectedRoleId == (int)CharacterType.Astrologer);
+		SetGuideButtonState(uiComponent?.SageButton, selectedRoleId == (int)CharacterType.Meditator);
+	}
+
+	private void SetGuideButtonState(Button button, bool selected)
+	{
+		if (button == null) return;
+		button.interactable = !selected;
+		if (button.image != null)
+			button.image.color = selected ? new Color(0.74f, 0.60f, 1f, 1f) : Color.white;
 	}
 	#endregion
 }

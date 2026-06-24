@@ -6,6 +6,18 @@ using YooAsset;
 public class PatchEventDefine
 {
     /// <summary>
+    /// 需要显示补丁窗口
+    /// </summary>
+    public class PatchWindowRequired : IEventMessage
+    {
+        public static void SendEventMessage()
+        {
+            var msg = new PatchWindowRequired();
+            UniEvent.SendMessage(msg);
+        }
+    }
+
+    /// <summary>
     /// 补丁包初始化失败
     /// </summary>
     public class InitializeFailed : IEventMessage

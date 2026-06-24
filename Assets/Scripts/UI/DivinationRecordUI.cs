@@ -452,6 +452,8 @@ public class DivinationRecordUI : WindowBase
 		}
 
 		Debug.Log($"[DivinationRecordUI] 保存到日记: {_currentRecord.readingId}");
+		DivinationRecordFirestore.SaveRecordLocal(_currentRecord);
+		DivinationHistoryCacheService.Instance.UpsertRecord(_currentRecord);
 
 		var firestore = DivinationRecordFirestore.Instance;
 		if (firestore == null)

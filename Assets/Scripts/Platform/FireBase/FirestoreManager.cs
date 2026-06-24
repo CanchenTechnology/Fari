@@ -52,6 +52,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     private const int FIRESTORE_DELETE_BATCH_LIMIT = 450;
     private const float USER_SEARCH_STORE_READY_TIMEOUT_SECONDS = 5f;
     private const float USER_SEARCH_STORE_READY_POLL_SECONDS = 0.2f;
+    private const long ONLINE_PRESENCE_TIMEOUT_MS = 90L * 1000L;
 
     private FirebaseFirestore _db;
     private bool _isInitialized = false;
@@ -1385,6 +1386,8 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                     string email = GetString(data, "email", string.Empty);
                     string photoUrl = GetString(data, "photoUrl", string.Empty);
                     string handle = string.IsNullOrEmpty(email) ? $"@{doc.Id}" : $"@{email.Split('@')[0]}";
+                    long lastLoginUnixMs = GetPresenceUnixMs(data);
+                    bool isOnline = ResolvePresenceOnline(data, lastLoginUnixMs);
 
                     FriendDataManager.Instance.UpsertRealFriendFromFirebase(
                         doc.Id,
@@ -1393,10 +1396,47 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                         GetFriendStatusText(status),
                         null,
                         "Firebase",
-                        photoUrl);
+                        photoUrl,
+                        isOnline,
+                        lastLoginUnixMs);
+                    LoadFriendPublicProfile(doc.Id, displayName, handle, photoUrl, lastLoginUnixMs);
                 }
 
                 onComplete?.Invoke(true);
+            });
+    }
+
+    private void LoadFriendPublicProfile(string friendUid, string fallbackName, string fallbackHandle, string fallbackPhotoUrl, long fallbackLastLoginUnixMs)
+    {
+        if (!_isInitialized || _db == null || string.IsNullOrWhiteSpace(friendUid))
+            return;
+
+        _db.Collection("public_profiles")
+            .Document(friendUid)
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled || task.Result == null || !task.Result.Exists)
+                    return;
+
+                Dictionary<string, object> data = task.Result.ToDictionary();
+                string displayName = GetString(data, "displayName", fallbackName);
+                string email = GetString(data, "email", string.Empty);
+                string photoUrl = GetString(data, "photoUrl", fallbackPhotoUrl);
+                string handle = string.IsNullOrEmpty(email) ? fallbackHandle : $"@{email.Split('@')[0]}";
+
+                long lastLoginUnixMs = GetPresenceUnixMs(data, fallbackLastLoginUnixMs);
+                bool isOnline = ResolvePresenceOnline(data, lastLoginUnixMs);
+                FriendDataManager.Instance.UpsertRealFriendFromFirebase(
+                    friendUid,
+                    displayName,
+                    handle,
+                    isOnline ? "online" : "offline",
+                    null,
+                    "Firebase",
+                    photoUrl,
+                    isOnline,
+                    lastLoginUnixMs);
             });
     }
 
@@ -1694,6 +1734,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             { "avatarKey", string.Empty },
             { "avatarUrl", virtualFriend.photoUrl ?? string.Empty },
             { "avatarStoragePath", virtualFriend.avatarStoragePath ?? string.Empty },
+            { "lastOperatedUnixMs", virtualFriend.virtualFriendLastOperatedUnixMs },
             { "isDeleted", false },
             { "updatedAt", FieldValue.ServerTimestamp },
         };
@@ -1769,7 +1810,8 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                         GetString(data, "notes", string.Empty),
                         null,
                         GetString(data, "avatarUrl", string.Empty),
-                        GetString(data, "avatarStoragePath", string.Empty));
+                        GetString(data, "avatarStoragePath", string.Empty),
+                        GetLong(data, "lastOperatedUnixMs", GetUnixMs(data, "updatedAt")));
                 }
 
                 onComplete?.Invoke(true);
@@ -2778,6 +2820,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         var ud = UserDataManager.Instance;
         if (string.IsNullOrEmpty(ud.FirebaseUid)) return;
         string facebookProviderId = GetFacebookProviderIdForCurrentUser(ud);
+        long nowUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
         Dictionary<string, object> data = new Dictionary<string, object>
         {
@@ -2791,6 +2834,11 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             { "avatarStoragePath", ud.AvatarStoragePath },
             { "bio", ud.ProfileBio },
             { "facebookProviderId", facebookProviderId },
+            { "isOnline", true },
+            { "lastActiveUnixMs", nowUnixMs },
+            { "lastActiveAt", FieldValue.ServerTimestamp },
+            { "lastSignInUnixMs", ud.LastSignInTimestamp },
+            { "lastSignInAt", FieldValue.ServerTimestamp },
             { "updatedAt", FieldValue.ServerTimestamp },
         };
 
@@ -3435,6 +3483,70 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         }
 
         return fallback;
+    }
+
+    private static long GetLong(Dictionary<string, object> data, string key, long fallback)
+    {
+        if (data == null || !data.TryGetValue(key, out object value) || value == null)
+            return fallback;
+
+        try
+        {
+            if (value is long longValue) return longValue;
+            if (value is int intValue) return intValue;
+            if (value is double doubleValue) return (long)doubleValue;
+            if (value is float floatValue) return (long)floatValue;
+            if (long.TryParse(value.ToString(), out long parsed)) return parsed;
+        }
+        catch
+        {
+            return fallback;
+        }
+
+        return fallback;
+    }
+
+    private static long GetUnixMs(Dictionary<string, object> data, string key)
+    {
+        if (data == null || !data.TryGetValue(key, out object value) || value == null)
+            return 0;
+
+        if (value is Timestamp timestamp)
+            return new DateTimeOffset(timestamp.ToDateTime().ToUniversalTime()).ToUnixTimeMilliseconds();
+
+        if (value is DateTime dateTime)
+            return new DateTimeOffset(dateTime.ToUniversalTime()).ToUnixTimeMilliseconds();
+
+        return GetLong(data, key, 0);
+    }
+
+    private static long GetPresenceUnixMs(Dictionary<string, object> data, long fallback = 0)
+    {
+        long value = GetUnixMs(data, "lastActiveAt");
+        if (value <= 0) value = GetLong(data, "lastActiveUnixMs", 0);
+        if (value <= 0) value = GetUnixMs(data, "presenceUpdatedAt");
+        if (value <= 0) value = GetUnixMs(data, "lastSignInAt");
+        if (value <= 0) value = GetLong(data, "lastSignInUnixMs", 0);
+        if (value <= 0) value = GetUnixMs(data, "updatedAt");
+        return value > 0 ? value : fallback;
+    }
+
+    private static bool ResolvePresenceOnline(Dictionary<string, object> data, long lastActiveUnixMs)
+    {
+        if (data != null && data.ContainsKey("isOnline"))
+        {
+            bool explicitOnline = GetBool(data, "isOnline", false);
+            return explicitOnline && (lastActiveUnixMs <= 0 || IsRecentlyOnline(lastActiveUnixMs));
+        }
+
+        return IsRecentlyOnline(lastActiveUnixMs);
+    }
+
+    private static bool IsRecentlyOnline(long unixMs)
+    {
+        if (unixMs <= 0) return false;
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        return now - unixMs <= ONLINE_PRESENCE_TIMEOUT_MS;
     }
 
     private static void AddUserSearchResults(
@@ -4133,19 +4245,19 @@ public class IapProductConfig
 
     public static IapProductConfig MonthlyDefault => new IapProductConfig
     {
-        productId = "fair.pro.monthly",
+        productId = "fari.pro.monthly",
         type = "subscription",
         store = "app_store_google_play",
-        displayName = "Moonly Pro Monthly",
+        displayName = "Fari Pro 月度会员",
         priceLabel = string.Empty,
     };
 
     public static IapProductConfig YearlyDefault => new IapProductConfig
     {
-        productId = "fair.pro.yearly",
+        productId = "fari.pro.yearly",
         type = "subscription",
         store = "app_store_google_play",
-        displayName = "Moonly Pro Yearly",
+        displayName = "Fari Pro 年度会员",
         priceLabel = string.Empty,
     };
 }

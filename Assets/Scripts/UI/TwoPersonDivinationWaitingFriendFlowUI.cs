@@ -94,6 +94,7 @@ public class TwoPersonDivinationWaitingFriendFlowUI : WindowBase
 
 		RelationshipDivinationFlow.SetButtonText(uiComponent.RemindFriendButton, "提醒好友");
 		ApplyAvatar(uiComponent.FriendStateAvatarImage, ResolveFriendAvatar(currentFriend));
+		LoadFriendRemoteAvatarIfNeeded();
 		LoadUserAvatar();
 
 		if (RelationshipDivinationFlow.IsMyCardRevealed(currentRecord))
@@ -178,24 +179,29 @@ public class TwoPersonDivinationWaitingFriendFlowUI : WindowBase
 
 	private void ApplyAvatar(Image target, Sprite sprite)
 	{
-		if (target != null && sprite != null)
-			target.sprite = sprite;
+		FriendAvatarImageUtility.ApplyAvatar(target, sprite);
 	}
 
 	private Sprite ResolveFriendAvatar(FriendDataManager.FriendData friend)
 	{
-		if (friend == null) return null;
-		if (friend.headSprite != null) return friend.headSprite;
-		if (!string.IsNullOrWhiteSpace(friend.avatarImagePath))
+		return FriendAvatarImageUtility.ResolveFriendAvatar(friend, uiComponent?.FriendStateAvatarImage);
+	}
+
+	private void LoadFriendRemoteAvatarIfNeeded()
+	{
+		if (currentFriend == null
+			|| currentFriend.headSprite != null
+			|| string.IsNullOrWhiteSpace(currentFriend.photoUrl)
+			|| uiComponent == null)
+			return;
+
+		FriendDataManager.FriendData friend = currentFriend;
+		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadSpriteFromUrlCoroutine(currentFriend.photoUrl, sprite =>
 		{
-			Sprite sprite = FriendAvatarImageUtility.LoadSpriteFromPath(friend.avatarImagePath);
-			if (sprite != null)
-			{
-				friend.headSprite = sprite;
-				return sprite;
-			}
-		}
-		return null;
+			if (currentFriend != friend || sprite == null) return;
+			currentFriend.headSprite = sprite;
+			ApplyAvatar(uiComponent.FriendStateAvatarImage, sprite);
+		}));
 	}
 
 	private void LoadUserAvatar()

@@ -41,6 +41,7 @@ public static class AppReadinessDiagnostics
             $"Functions readiness endpoint: {BackendMembershipClient.ReadinessStatusFunctionUrl}",
             $"Unity IAP: manifest={FormatBool(ManifestHasPackage(IapPackageName))}, packageResolved={FormatBool(IsUnityIapPackageResolved())}, bridgeCompiled={FormatBool(IsUnityPurchasingSymbolCompiled())}",
             $"Mobile Notifications: manifest={FormatBool(ManifestHasPackage(NotificationsPackageName))}, apiResolved={FormatBool(IsMobileNotificationsApiResolved())}, androidPostPermission={FormatBool(AndroidManifestHasPermission(AndroidPostNotificationsPermission))}",
+            $"Remote Push: firebaseMessagingResolved={FormatBool(IsFirebaseMessagingApiResolved())}, tokenUid={BuildRemotePushTokenUidLine()}",
             $"Notification settings: {BuildNotificationSettingsLine()}",
             $"Scheduled notifications: {BuildScheduledNotificationsLine()}",
             $"Backend blockers: {BuildBackendBlockersLine()}",
@@ -73,6 +74,13 @@ public static class AppReadinessDiagnostics
     public static bool IsGameCenterAuthProviderResolved()
     {
         return HasAnyType("Firebase.Auth.GameCenterAuthProvider, Firebase.Auth");
+    }
+
+    public static bool IsFirebaseMessagingApiResolved()
+    {
+        return HasAnyType(
+            "Firebase.Messaging.FirebaseMessaging, Firebase.Messaging",
+            "Firebase.Messaging.FirebaseMessaging");
     }
 
     public static bool ManifestHasPackage(string packageName)
@@ -153,6 +161,20 @@ public static class AppReadinessDiagnostics
         }
     }
 
+    private static string BuildRemotePushTokenUidLine()
+    {
+        try
+        {
+            RemotePushManager manager = RemotePushManager.Instance;
+            string uid = manager != null ? manager.LastRegisteredUid : string.Empty;
+            return string.IsNullOrEmpty(uid) ? "not registered in this session" : uid;
+        }
+        catch (Exception ex)
+        {
+            return "unavailable (" + ex.GetType().Name + ": " + ex.Message + ")";
+        }
+    }
+
     private static string BuildBackendBlockersLine()
     {
         List<string> blockers = new List<string>();
@@ -163,6 +185,8 @@ public static class AppReadinessDiagnostics
             blockers.Add("Unity IAP package not resolved in Editor");
         if (!IsMobileNotificationsApiResolved())
             blockers.Add("Mobile Notifications API not resolved in Editor");
+        if (!IsFirebaseMessagingApiResolved())
+            blockers.Add("Firebase Messaging SDK missing");
         if (!AndroidManifestHasPermission(AndroidPostNotificationsPermission))
             blockers.Add("Android POST_NOTIFICATIONS permission missing");
 

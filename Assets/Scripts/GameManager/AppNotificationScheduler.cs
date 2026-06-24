@@ -2,15 +2,21 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Reflection;
 using GamerFrameWork.UIFrameWork;
 using GamerFrameWork.OracleRuntime;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 using XFGameFrameWork;
+#if UNITY_ANDROID
+using Unity.Notifications.Android;
+#endif
+#if UNITY_IOS
+using Unity.Notifications.iOS;
+#endif
 
 /// <summary>
-/// 通知调度入口。未安装 Unity Mobile Notifications 时会安全降级为本地记录和调试提示；
-/// 包解析完成后会通过反射调用统一通知 API，避免当前工程在包未解析时编译失败。
+/// 通知调度入口。Editor 中会降级为本地记录和调试提示；
+/// Android/iOS 真机上会通过 Unity Mobile Notifications 调度本地系统通知。
 /// </summary>
 public class AppNotificationScheduler : MonoSingleton<AppNotificationScheduler>
 {
@@ -44,8 +50,38 @@ public class AppNotificationScheduler : MonoSingleton<AppNotificationScheduler>
 
     private bool notificationApiInitialized;
     private bool permissionRequested;
+    private bool notificationOpenHandled;
+    private string lastHandledNotificationPayload;
 
     public string LastSyncSummary => PlayerPrefs.GetString(LastSyncSummaryKey, string.Empty);
+
+    protected override void Awake()
+    {
+        base.Awake();
+        InitializeUnityNotificationsApi();
+        StartCoroutine(HandleLaunchNotificationNextFrame());
+    }
+
+    private void OnApplicationPause(bool pause)
+    {
+        if (pause)
+        {
+            SyncFromCurrentSettings();
+        }
+    }
+
+    private void OnApplicationFocus(bool hasFocus)
+    {
+        if (hasFocus)
+        {
+            StartCoroutine(HandleLaunchNotificationNextFrame());
+        }
+    }
+
+    private void OnDestroy()
+    {
+        UnsubscribeNotificationCallbacks();
+    }
 
     public bool ScheduleDiagnosticNotification(int delaySeconds = 10)
     {
@@ -53,7 +89,7 @@ public class AppNotificationScheduler : MonoSingleton<AppNotificationScheduler>
         RequestPermissionIfNeeded();
         return ScheduleNotification(
             DiagnosticNotificationId,
-            "Moonly 通知测试",
+            "FariApp 通知测试",
             "如果你看到这条通知，系统通知链路已经可以工作。",
             DateTime.Now.AddSeconds(delaySeconds),
             false,
@@ -140,7 +176,7 @@ public class AppNotificationScheduler : MonoSingleton<AppNotificationScheduler>
             DateTime fireTime = NextWeeklyActivityTime();
             ScheduleNotification(
                 ActivitySystemNotificationId,
-                "Moonly 有新的能量更新",
+                "FariApp 有新的能量更新",
                 "查看最新动态、好友同步和系统消息。",
                 fireTime,
                 true,
@@ -229,6 +265,15 @@ public class AppNotificationScheduler : MonoSingleton<AppNotificationScheduler>
         ScheduleImmediate(TomorrowHookNotificationBaseId, "明日线索已到期", text, "tomorrow_hook_due");
     }
 
+    public void HandleRemotePushData(IDictionary<string, string> data)
+    {
+        if (data == null || data.Count == 0)
+            return;
+
+        NotificationRoute route = NotificationRoute.FromDictionary(data);
+        HandleNotificationRoute(route);
+    }
+
     public void ScheduleTomorrowHookReminder(TomorrowHook hook)
     {
         if (hook == null || string.IsNullOrWhiteSpace(hook.hookId)) return;
@@ -279,38 +324,15 @@ public class AppNotificationScheduler : MonoSingleton<AppNotificationScheduler>
 
     private bool TryScheduleWithUnityNotifications(int id, string title, string text, DateTime fireTime, bool repeatDaily, string payload)
     {
-        if (!InitializeUnityNotificationsApi())
-            return false;
-
-        Type notificationType = ResolveUnityNotificationType("Unity.Notifications.Notification");
-        Type dateScheduleType = ResolveUnityNotificationType("Unity.Notifications.NotificationDateTimeSchedule");
-        Type intervalScheduleType = ResolveUnityNotificationType("Unity.Notifications.NotificationIntervalSchedule");
-        Type centerType = ResolveUnityNotificationType("Unity.Notifications.NotificationCenter");
-        if (notificationType == null || centerType == null)
-            return false;
-
         try
         {
-            object notification = Activator.CreateInstance(notificationType);
-            SetMember(notification, "Identifier", id);
-            SetMember(notification, "Title", title);
-            SetMember(notification, "Text", text);
-            SetMember(notification, "Body", text);
-            SetMember(notification, "Data", payload ?? string.Empty);
-
-            object schedule = CreateDateSchedule(dateScheduleType, fireTime, repeatDaily);
-            if (schedule == null && intervalScheduleType != null)
-                schedule = CreateIntervalSchedule(intervalScheduleType, fireTime, repeatDaily);
-
-            if (schedule == null)
-                return false;
-
-            MethodInfo scheduleMethod = FindScheduleMethod(centerType, schedule.GetType());
-            if (scheduleMethod == null)
-                return false;
-
-            scheduleMethod.Invoke(null, new[] { notification, schedule });
-            return true;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            return TryScheduleAndroidNotification(id, title, text, fireTime, repeatDaily, payload);
+#elif UNITY_IOS && !UNITY_EDITOR
+            return TryScheduleIOSNotification(id, title, text, fireTime, repeatDaily, payload);
+#else
+            return false;
+#endif
         }
         catch (Exception ex)
         {
@@ -323,32 +345,32 @@ public class AppNotificationScheduler : MonoSingleton<AppNotificationScheduler>
     {
         if (notificationApiInitialized) return true;
 
-        Type centerType = ResolveUnityNotificationType("Unity.Notifications.NotificationCenter");
-        if (centerType == null)
-            return false;
-
         try
         {
-            Type argsType = ResolveUnityNotificationType("Unity.Notifications.NotificationCenterArgs");
-            if (argsType != null)
-            {
-                object args = Activator.CreateInstance(argsType);
-                SetMember(args, "AndroidChannelId", ChannelId);
-                SetMember(args, "AndroidChannelName", "Moonly Reminders");
-                SetMember(args, "AndroidChannelDescription", "每日神谕、好友互动和系统提醒");
-                SetMember(args, "IOSNotificationCategories", null);
-                SetFlagsMember(args, "PresentationOptions", "Alert", "Sound", "Badge", "Vibrate");
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (!AndroidNotificationCenter.Initialize())
+                return false;
 
-                MethodInfo initialize = centerType.GetMethod("Initialize", BindingFlags.Public | BindingFlags.Static);
-                initialize?.Invoke(null, new[] { args });
-            }
-
+            AndroidNotificationCenter.RegisterNotificationChannel(new AndroidNotificationChannel(
+                ChannelId,
+                "FariApp Reminders",
+                "每日神谕、好友互动和系统提醒",
+                Importance.Default));
+            AndroidNotificationCenter.OnNotificationReceived += OnAndroidNotificationReceived;
             notificationApiInitialized = true;
             return true;
+#elif UNITY_IOS && !UNITY_EDITOR
+            iOSNotificationCenter.OnNotificationReceived += OnIOSNotificationReceived;
+            notificationApiInitialized = true;
+            return true;
+#else
+            return false;
+#endif
         }
         catch (Exception ex)
         {
             Debug.LogWarning($"[AppNotificationScheduler] 初始化通知 API 失败: {ex.Message}");
+            UnsubscribeNotificationCallbacks();
             notificationApiInitialized = false;
             return false;
         }
@@ -359,15 +381,13 @@ public class AppNotificationScheduler : MonoSingleton<AppNotificationScheduler>
         if (permissionRequested) return;
         permissionRequested = true;
 
-        Type centerType = ResolveUnityNotificationType("Unity.Notifications.NotificationCenter");
-        if (centerType == null) return;
-
         try
         {
-            MethodInfo method = centerType.GetMethod("RequestPermission", BindingFlags.Public | BindingFlags.Static, null, Type.EmptyTypes, null);
-            object request = method?.Invoke(null, null);
-            if (request is IEnumerator routine)
-                StartCoroutine(routine);
+#if UNITY_ANDROID && !UNITY_EDITOR
+            StartCoroutine(RequestAndroidPermission());
+#elif UNITY_IOS && !UNITY_EDITOR
+            StartCoroutine(RequestIOSPermission());
+#endif
         }
         catch (Exception ex)
         {
@@ -375,121 +395,310 @@ public class AppNotificationScheduler : MonoSingleton<AppNotificationScheduler>
         }
     }
 
-    private MethodInfo FindScheduleMethod(Type centerType, Type scheduleType)
+#if UNITY_ANDROID && !UNITY_EDITOR
+    private bool TryScheduleAndroidNotification(int id, string title, string text, DateTime fireTime, bool repeatDaily, string payload)
     {
-        foreach (MethodInfo method in centerType.GetMethods(BindingFlags.Public | BindingFlags.Static))
+        if (!InitializeUnityNotificationsApi())
+            return false;
+
+        DateTime normalizedFireTime = NormalizeFireTime(fireTime);
+        AndroidNotification notification = new AndroidNotification(title, text, normalizedFireTime)
         {
-            if (method.Name != "ScheduleNotification") continue;
-            ParameterInfo[] parameters = method.GetParameters();
-            if (parameters.Length != 2) continue;
+            IntentData = payload ?? string.Empty,
+            ShouldAutoCancel = true,
+            ShowInForeground = false,
+            ShowTimestamp = true,
+        };
 
-            if (method.IsGenericMethodDefinition)
-                return method.MakeGenericMethod(scheduleType);
-
-            if (parameters[1].ParameterType.IsAssignableFrom(scheduleType))
-                return method;
-        }
-
-        return null;
-    }
-
-    private object CreateIntervalSchedule(Type scheduleType, DateTime firstFireTime, bool repeatDaily)
-    {
-        if (scheduleType == null) return null;
-
-        TimeSpan delay = firstFireTime - DateTime.Now;
-        if (delay.TotalSeconds < 5)
-            delay = delay.Add(TimeSpan.FromDays(1));
-
-        object schedule = TryCreate(scheduleType, delay, repeatDaily);
-        if (schedule == null)
-            schedule = TryCreate(scheduleType, delay);
-        if (schedule == null)
-            schedule = Activator.CreateInstance(scheduleType);
-
-        SetMember(schedule, "Interval", delay);
-        SetMember(schedule, "TimeInterval", delay);
-        SetMember(schedule, "Repeats", repeatDaily);
-        return schedule;
-    }
-
-    private object CreateDateSchedule(Type scheduleType, DateTime fireTime, bool repeatDaily)
-    {
-        if (scheduleType == null) return null;
-
-        object schedule = TryCreate(scheduleType, fireTime, repeatDaily ? EnumValue(scheduleType, "RepeatInterval", "Daily") : null);
-        if (schedule == null)
-            schedule = TryCreate(scheduleType, fireTime);
-        if (schedule == null)
-            schedule = Activator.CreateInstance(scheduleType);
-
-        SetMember(schedule, "DateTime", fireTime);
-        SetMember(schedule, "FireTime", fireTime);
-        SetMember(schedule, "DeliveryTime", fireTime);
         if (repeatDaily)
-            SetMember(schedule, "RepeatInterval", "Daily");
-        return schedule;
+            notification.RepeatInterval = TimeSpan.FromDays(1);
+
+        AndroidNotificationCenter.SendNotificationWithExplicitID(notification, ChannelId, id);
+        return true;
     }
 
-    private object EnumValue(Type hostType, string memberName, string valueName)
+    private IEnumerator RequestAndroidPermission()
     {
-        Type memberType = GetMemberType(hostType, memberName);
-        if (memberType == null) return null;
+        if (!InitializeUnityNotificationsApi())
+            yield break;
 
-        Type enumType = Nullable.GetUnderlyingType(memberType) ?? memberType;
-        if (!enumType.IsEnum) return null;
+        PermissionStatus current = AndroidNotificationCenter.UserPermissionToPost;
+        if (current == PermissionStatus.Allowed)
+            yield break;
 
-        try
+        PermissionRequest request = new PermissionRequest();
+        while (request.Status == PermissionStatus.RequestPending)
+            yield return null;
+
+        Debug.Log($"[AppNotificationScheduler] Android 通知权限：{request.Status}");
+    }
+
+    private void OnAndroidNotificationReceived(AndroidNotificationIntentData data)
+    {
+        string payload = data?.Notification.IntentData;
+        HandleNotificationPayload(payload);
+    }
+#endif
+
+#if UNITY_IOS && !UNITY_EDITOR
+    private bool TryScheduleIOSNotification(int id, string title, string text, DateTime fireTime, bool repeatDaily, string payload)
+    {
+        InitializeUnityNotificationsApi();
+
+        DateTime normalizedFireTime = NormalizeFireTime(fireTime);
+        iOSNotification notification = new iOSNotification
         {
-            return Enum.Parse(enumType, valueName, true);
-        }
-        catch
+            Identifier = id.ToString(CultureInfo.InvariantCulture),
+            Title = title,
+            Body = text,
+            Data = payload ?? string.Empty,
+            ShowInForeground = false,
+            ForegroundPresentationOption = PresentationOption.Alert | PresentationOption.Sound,
+            SoundType = NotificationSoundType.Default,
+            ThreadIdentifier = "moonly_reminders",
+            Trigger = repeatDaily
+                ? BuildDailyIOSTrigger(normalizedFireTime)
+                : BuildOneShotIOSTrigger(normalizedFireTime),
+        };
+
+        iOSNotificationCenter.ScheduleNotification(notification);
+        return true;
+    }
+
+    private IEnumerator RequestIOSPermission()
+    {
+        using (AuthorizationRequest request = new AuthorizationRequest(
+                   AuthorizationOption.Alert | AuthorizationOption.Badge | AuthorizationOption.Sound,
+                   false))
         {
-            return null;
+            while (!request.IsFinished)
+                yield return null;
+
+            Debug.Log($"[AppNotificationScheduler] iOS 通知权限：granted={request.Granted}, error={request.Error}");
         }
     }
 
-    private object TryCreate(Type type, params object[] args)
+    private iOSNotificationCalendarTrigger BuildDailyIOSTrigger(DateTime fireTime)
     {
-        try
+        return new iOSNotificationCalendarTrigger
         {
-            return Activator.CreateInstance(type, args);
-        }
-        catch
+            Hour = fireTime.Hour,
+            Minute = fireTime.Minute,
+            Second = fireTime.Second,
+            Repeats = true,
+            UtcTime = false,
+        };
+    }
+
+    private iOSNotificationCalendarTrigger BuildOneShotIOSTrigger(DateTime fireTime)
+    {
+        return new iOSNotificationCalendarTrigger
         {
+            Year = fireTime.Year,
+            Month = fireTime.Month,
+            Day = fireTime.Day,
+            Hour = fireTime.Hour,
+            Minute = fireTime.Minute,
+            Second = fireTime.Second,
+            Repeats = false,
+            UtcTime = false,
+        };
+    }
+
+    private void OnIOSNotificationReceived(iOSNotification notification)
+    {
+        HandleNotificationPayload(notification?.Data);
+    }
+#endif
+
+    private IEnumerator HandleLaunchNotificationNextFrame()
+    {
+        yield return null;
+
+        string payload = GetLastRespondedNotificationPayload();
+        if (string.IsNullOrWhiteSpace(payload))
+            yield break;
+
+        if (notificationOpenHandled && payload == lastHandledNotificationPayload)
+            yield break;
+
+        notificationOpenHandled = true;
+        lastHandledNotificationPayload = payload;
+        HandleNotificationPayload(payload);
+    }
+
+    private string GetLastRespondedNotificationPayload()
+    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        if (!InitializeUnityNotificationsApi())
             return null;
+
+        AndroidNotificationIntentData intentData = AndroidNotificationCenter.GetLastNotificationIntent();
+        return intentData?.Notification.IntentData;
+#elif UNITY_IOS && !UNITY_EDITOR
+        iOSNotification notification = iOSNotificationCenter.GetLastRespondedNotification();
+        return notification?.Data;
+#else
+        return null;
+#endif
+    }
+
+    private void HandleNotificationPayload(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+            return;
+
+        HandleNotificationRoute(NotificationRoute.FromPayload(payload));
+        Debug.Log($"[AppNotificationScheduler] 通过通知进入/收到通知：{payload}");
+    }
+
+    private void HandleNotificationRoute(NotificationRoute route)
+    {
+        if (route == null || string.IsNullOrWhiteSpace(route.RawPayload))
+            return;
+
+        NotificationUnreadState.MarkUnread(route.RawPayload);
+        StartCoroutine(RouteNotificationNextFrame(route));
+    }
+
+    private IEnumerator RouteNotificationNextFrame(NotificationRoute route)
+    {
+        yield return null;
+
+        string action = route.Action;
+        if (string.IsNullOrWhiteSpace(action))
+            yield break;
+
+        NavigationUI navigation = UIModule.Instance?.GetWindow<NavigationUI>();
+        if (navigation == null)
+            navigation = UIModule.Instance?.PopUpWindow<NavigationUI>();
+
+        switch (action)
+        {
+            case "daily_oracle":
+                navigation?.OpenTodayOracleUI();
+                break;
+            case "dialogue_reply":
+            case "chat_reply":
+            case "ai_chat":
+            case "tomorrow_hook":
+            case "tomorrow_hook_due":
+            case "divination_return":
+                navigation?.OpenDialogUI();
+                break;
+            case "friend_request":
+                navigation?.OpenFriendUI();
+                OpenFriendRequestWindow(route.RequesterUid);
+                break;
+            case "relationship_invite":
+                navigation?.OpenFriendUI();
+                OpenRelationshipInvite(route.ReadingId);
+                break;
+            case "friend_daily_oracle":
+                navigation?.OpenFriendUI();
+                break;
+            case "diagnostic":
+            case "diagnostic_test":
+            case "activity_system":
+            case "remote_notification":
+                UIModule.Instance?.PopUpWindow<NotionUI>();
+                break;
         }
+
+        if (!string.IsNullOrWhiteSpace(route.Toast))
+            ToastManager.ShowToast(route.Toast);
+    }
+
+    private void OpenFriendRequestWindow(string requesterUid)
+    {
+        FriendRequestUI window = UIModule.Instance?.PopUpWindow<FriendRequestUI>();
+        if (window != null)
+            window.FocusRequester(requesterUid);
+    }
+
+    private void OpenRelationshipInvite(string readingId)
+    {
+        if (string.IsNullOrWhiteSpace(readingId))
+            return;
+
+        StartCoroutine(OpenRelationshipInviteWhenReady(readingId));
+    }
+
+    private IEnumerator OpenRelationshipInviteWhenReady(string readingId)
+    {
+        RelationshipDivinationFirestore service = RelationshipDivinationFlow.GetOrCreateService();
+        const int maxAttempts = 20;
+        for (int i = 0; i < maxAttempts; i++)
+        {
+            if (service != null && service.IsReady)
+                break;
+
+            yield return new WaitForSeconds(0.5f);
+            service = RelationshipDivinationFlow.GetOrCreateService();
+        }
+
+        if (service == null || !service.IsReady)
+        {
+            ToastManager.ShowToast("关系占卜服务初始化中，请稍后再试");
+            yield break;
+        }
+
+        service.LoadReading(readingId, record =>
+        {
+            if (record == null)
+            {
+                ToastManager.ShowToast("双人占卜邀请不存在或已失效");
+                return;
+            }
+
+            RelationshipDivinationFlow.ShowRecord(record);
+        });
+    }
+
+    private DateTime NormalizeFireTime(DateTime fireTime)
+    {
+        DateTime minimum = DateTime.Now.AddSeconds(5);
+        return fireTime <= minimum ? minimum : fireTime;
+    }
+
+    private void UnsubscribeNotificationCallbacks()
+    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        AndroidNotificationCenter.OnNotificationReceived -= OnAndroidNotificationReceived;
+#elif UNITY_IOS && !UNITY_EDITOR
+        iOSNotificationCenter.OnNotificationReceived -= OnIOSNotificationReceived;
+#endif
     }
 
     private void CancelKnownScheduledNotifications()
     {
-        TryCancelNativeNotifications();
+        TryCancelNativeNotifications(KnownNotificationIds);
         foreach (int id in KnownNotificationIds)
             PlayerPrefs.DeleteKey(ScheduledPrefix + id);
         WriteScheduledIds(ReadScheduledIds().FindAll(id => Array.IndexOf(KnownNotificationIds, id) < 0));
         PlayerPrefs.Save();
     }
 
-    private void TryCancelNativeNotifications()
+    private void TryCancelNativeNotifications(IEnumerable<int> ids)
     {
-        Type centerType = ResolveUnityNotificationType("Unity.Notifications.NotificationCenter");
-        if (centerType == null) return;
-
         try
         {
-            InvokeStaticIfExists(centerType, "CancelAllScheduledNotifications");
-            InvokeStaticIfExists(centerType, "DismissAllDisplayedNotifications");
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (!InitializeUnityNotificationsApi())
+                return;
+
+            foreach (int id in ids)
+                AndroidNotificationCenter.CancelScheduledNotification(id);
+#elif UNITY_IOS && !UNITY_EDITOR
+            InitializeUnityNotificationsApi();
+            foreach (int id in ids)
+                iOSNotificationCenter.RemoveScheduledNotification(id.ToString(CultureInfo.InvariantCulture));
+#endif
         }
         catch (Exception ex)
         {
             Debug.LogWarning($"[AppNotificationScheduler] 清理已排程通知失败: {ex.Message}");
         }
-    }
-
-    private void InvokeStaticIfExists(Type type, string methodName)
-    {
-        MethodInfo method = type.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static, null, Type.EmptyTypes, null);
-        method?.Invoke(null, null);
     }
 
     private void RecordScheduledNotification(int id, string title, string text, DateTime fireTime, bool repeatDaily, bool nativeScheduled)
@@ -540,104 +749,6 @@ public class AppNotificationScheduler : MonoSingleton<AppNotificationScheduler>
     {
         ids.RemoveAll(id => string.IsNullOrWhiteSpace(PlayerPrefs.GetString(ScheduledPrefix + id, string.Empty)));
         PlayerPrefs.SetString(ScheduledIdListKey, string.Join(",", ids));
-    }
-
-    private Type ResolveUnityNotificationType(string fullName)
-    {
-        string[] assemblyNames =
-        {
-            "Unity.Notifications",
-            "Unity.Notifications.Unified",
-            "Unity.Notifications.Android",
-            "Unity.Notifications.iOS"
-        };
-
-        foreach (string assemblyName in assemblyNames)
-        {
-            Type type = Type.GetType($"{fullName}, {assemblyName}");
-            if (type != null) return type;
-        }
-
-        return Type.GetType(fullName);
-    }
-
-    private void SetMember(object target, string name, object value)
-    {
-        if (target == null || string.IsNullOrEmpty(name)) return;
-
-        Type type = target.GetType();
-        PropertyInfo property = type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
-        if (property != null && property.CanWrite)
-        {
-            property.SetValue(target, ConvertValue(value, property.PropertyType));
-            return;
-        }
-
-        FieldInfo field = type.GetField(name, BindingFlags.Public | BindingFlags.Instance);
-        if (field != null)
-            field.SetValue(target, ConvertValue(value, field.FieldType));
-    }
-
-    private void SetFlagsMember(object target, string name, params string[] flags)
-    {
-        if (target == null) return;
-
-        Type memberType = GetMemberType(target.GetType(), name);
-        if (memberType == null) return;
-
-        Type enumType = Nullable.GetUnderlyingType(memberType) ?? memberType;
-        if (!enumType.IsEnum) return;
-
-        int combined = 0;
-        foreach (string flag in flags)
-        {
-            try
-            {
-                object parsed = Enum.Parse(enumType, flag, true);
-                combined |= Convert.ToInt32(parsed, CultureInfo.InvariantCulture);
-            }
-            catch
-            {
-                // 某些包版本没有 Badge 等选项，跳过即可。
-            }
-        }
-
-        if (combined == 0) return;
-        SetMember(target, name, Enum.ToObject(enumType, combined));
-    }
-
-    private Type GetMemberType(Type type, string name)
-    {
-        PropertyInfo property = type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
-        if (property != null) return property.PropertyType;
-        FieldInfo field = type.GetField(name, BindingFlags.Public | BindingFlags.Instance);
-        return field?.FieldType;
-    }
-
-    private object ConvertValue(object value, Type targetType)
-    {
-        if (targetType == null) return value;
-        if (value == null) return null;
-
-        Type nullableType = Nullable.GetUnderlyingType(targetType);
-        Type realType = nullableType ?? targetType;
-
-        if (realType.IsInstanceOfType(value)) return value;
-        if (realType.IsEnum)
-        {
-            if (value is string textValue)
-                return Enum.Parse(realType, textValue, true);
-            return Enum.ToObject(realType, value);
-        }
-
-        try
-        {
-            return Convert.ChangeType(value, realType, CultureInfo.InvariantCulture);
-        }
-        catch
-        {
-            return value;
-        }
     }
 
     private DateTime NextTimeTodayOrTomorrow(string hhmm)
@@ -734,5 +845,164 @@ public class AppNotificationScheduler : MonoSingleton<AppNotificationScheduler>
         if (!string.IsNullOrWhiteSpace(text))
             ToastManager.ShowToast(text);
 #endif
+    }
+
+    private class NotificationRoute
+    {
+        public string RawPayload { get; private set; }
+        public string Action { get; private set; }
+        public string Toast { get; private set; }
+        public string ReadingId { get; private set; }
+        public string RequesterUid { get; private set; }
+        public string NotificationId { get; private set; }
+
+        public static NotificationRoute FromPayload(string payload)
+        {
+            string normalizedAction = NormalizeAction(payload);
+            NotificationRoute route = new NotificationRoute
+            {
+                RawPayload = payload ?? string.Empty,
+                Action = normalizedAction,
+                Toast = BuildToast(normalizedAction),
+                ReadingId = normalizedAction == "relationship_invite" ? ExtractActionSuffix(payload) : string.Empty,
+                RequesterUid = normalizedAction == "friend_request" ? ExtractActionSuffix(payload) : string.Empty
+            };
+
+            if (!string.IsNullOrWhiteSpace(payload) && payload.TrimStart().StartsWith("{", StringComparison.Ordinal))
+            {
+                try
+                {
+                    JObject obj = JObject.Parse(payload);
+                    string action = FirstNonEmpty(
+                        GetValue(obj, "clickAction"),
+                        GetValue(obj, "type"),
+                        GetValue(obj, "source"));
+                    route.Action = NormalizeAction(action);
+                    route.Toast = BuildToast(route.Action);
+                    route.ReadingId = FirstNonEmpty(
+                        GetValue(obj, "readingId"),
+                        GetValue(obj, "relationshipReadingId"),
+                        GetValue(obj, "relationshipId"),
+                        route.Action == "relationship_invite" ? ExtractActionSuffix(action) : route.ReadingId);
+                    route.RequesterUid = FirstNonEmpty(
+                        GetValue(obj, "requesterUid"),
+                        GetValue(obj, "senderUid"),
+                        GetValue(obj, "friendUid"),
+                        route.Action == "friend_request" ? ExtractActionSuffix(action) : route.RequesterUid);
+                    route.NotificationId = FirstNonEmpty(
+                        GetValue(obj, "notificationId"),
+                        GetValue(obj, "id"));
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning("[AppNotificationScheduler] 通知 payload JSON 解析失败: " + ex.Message);
+                }
+            }
+
+            return route;
+        }
+
+        public static NotificationRoute FromDictionary(IDictionary<string, string> data)
+        {
+            string action = GetValue(data, "clickAction");
+            if (string.IsNullOrWhiteSpace(action)) action = GetValue(data, "type");
+            if (string.IsNullOrWhiteSpace(action)) action = GetValue(data, "source");
+
+            JObject obj = new JObject();
+            foreach (KeyValuePair<string, string> entry in data)
+                obj[entry.Key] = entry.Value ?? string.Empty;
+
+            string normalized = NormalizeAction(action);
+            return new NotificationRoute
+            {
+                RawPayload = obj.ToString(Newtonsoft.Json.Formatting.None),
+                Action = normalized,
+                Toast = BuildToast(normalized),
+                ReadingId = FirstNonEmpty(
+                    GetValue(data, "readingId"),
+                    GetValue(data, "relationshipReadingId"),
+                    GetValue(data, "relationshipId"),
+                    normalized == "relationship_invite" ? ExtractActionSuffix(action) : string.Empty),
+                RequesterUid = FirstNonEmpty(
+                    GetValue(data, "requesterUid"),
+                    GetValue(data, "senderUid"),
+                    GetValue(data, "friendUid"),
+                    normalized == "friend_request" ? ExtractActionSuffix(action) : string.Empty),
+                NotificationId = FirstNonEmpty(
+                    GetValue(data, "notificationId"),
+                    GetValue(data, "id"))
+            };
+        }
+
+        private static string NormalizeAction(string action)
+        {
+            if (string.IsNullOrWhiteSpace(action)) return string.Empty;
+
+            string normalized = action.Trim();
+            int separatorIndex = normalized.IndexOf(':');
+            if (separatorIndex > 0)
+                normalized = normalized.Substring(0, separatorIndex);
+
+            return normalized.ToLowerInvariant();
+        }
+
+        private static string ExtractActionSuffix(string action)
+        {
+            if (string.IsNullOrWhiteSpace(action)) return string.Empty;
+
+            string trimmed = action.Trim();
+            int separatorIndex = trimmed.IndexOf(':');
+            if (separatorIndex < 0 || separatorIndex >= trimmed.Length - 1)
+                return string.Empty;
+
+            return trimmed.Substring(separatorIndex + 1).Trim();
+        }
+
+        private static string BuildToast(string action)
+        {
+            return action switch
+            {
+                "friend_request" => "已打开好友请求",
+                "relationship_invite" => "已打开双人占卜邀请",
+                "dialogue_reply" => "已打开对话",
+                "chat_reply" => "已打开对话",
+                "tomorrow_hook_due" => "已打开明日线索",
+                "friend_daily_oracle" => "已打开好友每日牌动态",
+                _ => string.Empty
+            };
+        }
+
+        private static string GetValue(IDictionary<string, string> data, string key)
+        {
+            if (data == null || string.IsNullOrWhiteSpace(key)) return string.Empty;
+            foreach (KeyValuePair<string, string> entry in data)
+            {
+                if (string.Equals(entry.Key, key, StringComparison.OrdinalIgnoreCase))
+                    return entry.Value;
+            }
+            return string.Empty;
+        }
+
+        private static string GetValue(JObject obj, string key)
+        {
+            if (obj == null || string.IsNullOrWhiteSpace(key)) return string.Empty;
+            foreach (JProperty property in obj.Properties())
+            {
+                if (string.Equals(property.Name, key, StringComparison.OrdinalIgnoreCase))
+                    return property.Value?.ToString() ?? string.Empty;
+            }
+            return string.Empty;
+        }
+
+        private static string FirstNonEmpty(params string[] values)
+        {
+            if (values == null) return string.Empty;
+            foreach (string value in values)
+            {
+                if (!string.IsNullOrWhiteSpace(value))
+                    return value;
+            }
+            return string.Empty;
+        }
     }
 }

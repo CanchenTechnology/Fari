@@ -330,7 +330,7 @@ public class TTSManager : MonoBehaviour
                 IsSynthesizing = false;
                 _currentTextHash = null;
 
-                string errorMsg = $"TTS API 错误: {request.error}, 响应: {request.downloadHandler.text}";
+                string errorMsg = BuildTTSFunctionErrorMessage(request.responseCode, request.error, request.downloadHandler.text);
                 Debug.LogError($"[TTSManager] {errorMsg}");
                 onError?.Invoke(errorMsg);
                 OnSynthesisError?.Invoke(text, errorMsg);
@@ -573,6 +573,71 @@ public class TTSManager : MonoBehaviour
         return message;
     }
 #endif
+
+    private string BuildTTSFunctionErrorMessage(long httpStatus, string requestError, string responseText)
+    {
+        string responseError = "";
+        string responseCode = "";
+
+        if (!string.IsNullOrWhiteSpace(responseText))
+        {
+            try
+            {
+                TTSResponse resp = JsonUtility.FromJson<TTSResponse>(responseText);
+                responseError = resp?.error ?? "";
+                responseCode = ExtractJsonString(responseText, "code");
+            }
+            catch
+            {
+                responseError = responseText.Length > 240 ? responseText.Substring(0, 240) : responseText;
+            }
+        }
+
+        string detail = !string.IsNullOrWhiteSpace(responseError) ? responseError : requestError;
+        string code = string.IsNullOrWhiteSpace(responseCode) ? "" : $" code={responseCode},";
+        return $"TTS API 错误: http={httpStatus},{code} error={detail}";
+    }
+
+    private static string ExtractJsonString(string json, string key)
+    {
+        if (string.IsNullOrWhiteSpace(json) || string.IsNullOrWhiteSpace(key))
+            return string.Empty;
+
+        Match match = Regex.Match(json, $"\"{Regex.Escape(key)}\"\\s*:\\s*\"(?<value>(?:\\\\.|[^\"])*)\"");
+        if (!match.Success)
+            return string.Empty;
+
+        return match.Groups["value"].Value
+            .Replace("\\/", "/")
+            .Replace("\\\"", "\"")
+            .Replace("\\n", "\n")
+            .Replace("\\r", "\r")
+            .Replace("\\t", "\t");
+    }
+
+    public static string ToUserFacingError(string technicalError)
+    {
+        if (string.IsNullOrWhiteSpace(technicalError))
+            return "语音生成失败，请稍后再试";
+
+        string normalized = technicalError.ToLowerInvariant();
+        if (normalized.Contains("用户未登录") || normalized.Contains("unauthorized") || normalized.Contains("auth"))
+            return "请先登录后使用语音";
+
+        if (normalized.Contains("quota-exceeded") || normalized.Contains("http=429") || normalized.Contains("daily limit"))
+            return "今日语音额度已用完";
+
+        if (normalized.Contains("volc_tts_api_key") || normalized.Contains("not configured"))
+            return "语音服务配置未完成，请稍后再试";
+
+        if (normalized.Contains("文本过长") || normalized.Contains("text is too long"))
+            return "这段文字太长，暂时无法生成语音";
+
+        if (normalized.Contains("connection") || normalized.Contains("network") || normalized.Contains("timeout") || normalized.Contains("http=0"))
+            return "网络异常，语音生成失败";
+
+        return "语音生成失败，请稍后再试";
+    }
 
     // ---- 响应解析 ----
 

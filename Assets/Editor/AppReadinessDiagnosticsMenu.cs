@@ -145,6 +145,24 @@ public static class AppReadinessDiagnosticsMenu
         Debug.Log("[Moonly] Scheduled notifications:\n" + AppNotificationScheduler.Instance.BuildScheduledDebugSummary());
     }
 
+    [MenuItem("Tools/Moonly/Send Remote Push Test")]
+    public static void SendRemotePushTest()
+    {
+        if (!Application.isPlaying)
+        {
+            Debug.LogWarning("[Moonly] Send Remote Push Test 需要先进入 Play Mode，并确保当前 Firebase 用户已登录。");
+            return;
+        }
+
+        RemotePushManager.Instance.SendDiagnosticPush((success, message) =>
+        {
+            if (success)
+                Debug.Log("[Moonly] Remote push test sent: " + message);
+            else
+                Debug.LogWarning("[Moonly] Remote push test failed: " + message);
+        });
+    }
+
     [MenuItem("Tools/Moonly/Log Scheduled Notifications")]
     public static void LogScheduledNotifications()
     {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Moonly Feedback Admin</title>
+  <title>Fari Feedback Admin</title>
   <style>
     :root {
       color-scheme: light;
@@ -241,7 +241,7 @@
 </head>
 <body>
   <header>
-    <h1>Moonly Feedback Admin</h1>
+    <h1>Fari Feedback Admin</h1>
     <div class="row">
       <span id="accountLabel" class="status">未登录</span>
       <button id="signOutButton" class="ghost" type="button">退出</button>
@@ -512,7 +512,7 @@
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `moonly-feedback-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.download = `fari-feedback-${new Date().toISOString().slice(0, 10)}.csv`;
       link.click();
       URL.revokeObjectURL(url);
     }

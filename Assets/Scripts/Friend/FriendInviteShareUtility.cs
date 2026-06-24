@@ -4,7 +4,7 @@ using GamerFrameWork.UIFrameWork;
 
 public static class FriendInviteShareUtility
 {
-    private const string AppName = "Moonly";
+    private const string AppName = "FariApp";
 
     public static string BuildInviteText()
     {
@@ -26,6 +26,17 @@ public static class FriendInviteShareUtility
     public static void ShareInviteText(string title = "邀请好友")
     {
         string text = BuildInviteText();
+        ShareText(text, title, "邀请文案已复制");
+    }
+
+    public static void ShareText(string text, string title = "分享", string copiedToast = "内容已复制")
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            ToastManager.ShowToast("暂无可分享内容");
+            return;
+        }
+
         GUIUtility.systemCopyBuffer = text;
 
 #if UNITY_IOS && !UNITY_EDITOR
@@ -35,7 +46,7 @@ public static class FriendInviteShareUtility
         ShareTextToAndroid(text, title);
         ToastManager.ShowToast("已打开系统分享");
 #else
-        ToastManager.ShowToast("邀请文案已复制");
+        ToastManager.ShowToast(copiedToast);
 #endif
     }
 

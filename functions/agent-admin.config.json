@@ -1,0 +1,154 @@
+{
+  "version": 1,
+  "defaultProductId": "nocturne-oracle",
+  "products": [
+    {
+      "productId": "nocturne-oracle",
+      "displayName": "Fari / Nocturne Oracle",
+      "description": "Fari AI context and prompt administration module.",
+      "environments": ["production", "local"],
+      "promptRoot": "agent-prompts/nocturne-oracle",
+      "dynamicPromptPrefixes": ["user_memory/"],
+      "releasePolicy": {
+        "draftsRequired": true,
+        "approvalRequired": true,
+        "rollbackCreatesRelease": true
+      },
+      "redactionKeys": ["password", "token", "authorization", "apiKey", "secret", "phone", "email"],
+      "categories": [
+        {
+          "key": "daily_oracle",
+          "label": "每日神谕",
+          "description": "每日牌、今日星象、今日重置等自动生成或首次打开即见的每日结果。",
+          "patterns": ["daily", "today_oracle", "daily_oracle", "daily-card", "today-card"]
+        },
+        {
+          "key": "chat_companion",
+          "label": "普通对话",
+          "description": "用户在输入框中主动发起的聊天回合，重点看用户输入、实际 Prompt 和 AI 回复。",
+          "patterns": ["chat_companion", "model_call", "conversation", "dialog", "message"]
+        },
+        {
+          "key": "chat_entry",
+          "label": "对话入口",
+          "description": "从今日卡、详情页、好友 @ 等入口进入对话时生成的承接开场。",
+          "patterns": ["chat_entry", "entry_source", "daily_entry", "friend_context_entry", "chat-open", "chat_open"]
+        },
+        {
+          "key": "spread_invitation",
+          "label": "牌阵邀请",
+          "description": "模型或工具判断问题适合占卜后，解释为什么要启动牌阵或工具。",
+          "patterns": ["spread_invitation", "prepare_spread", "divination_planner", "reading_invitation", "start_spread_card"]
+        },
+        {
+          "key": "card_reveal",
+          "label": "单牌揭示",
+          "description": "牌阵流程中每翻开一张牌时，只解释当前牌位和当前卡。",
+          "patterns": ["card_reveal", "reveal_card", "single_card_reveal", "position_index"]
+        },
+        {
+          "key": "reading_result",
+          "label": "完整占卜结果",
+          "description": "牌阵、星象或重置完成后的总结、行动建议与结果卡沉淀。",
+          "patterns": ["three_card", "reading_result", "full_reading", "spread_result", "verdict", "attach_to_chat"]
+        },
+        {
+          "key": "oracle_tool",
+          "label": "占星/冥想工具",
+          "description": "占星师、冥想师的专属工具准备、启动、完成与结果。",
+          "patterns": ["astro", "astrolog", "meditation", "reset", "oracle_tool", "tool_complete", "tool_start", "tool_prepare"]
+        },
+        {
+          "key": "test",
+          "label": "测测功能",
+          "description": "测测式入口、答题、结果卡、分享链接与测试记忆候选。",
+          "patterns": ["test_", "tests", "quiz", "测测", "share_test"]
+        },
+        {
+          "key": "memory_summary",
+          "label": "记忆总结",
+          "description": "对话或占卜结束后自动提炼的长期记忆，不是原始聊天全文。",
+          "patterns": ["memory", "user_memory", "summary_memory", "memory_patch"]
+        },
+        {
+          "key": "system_profile",
+          "label": "系统/资料收集",
+          "description": "渐进资料卡、生日城市手机号、系统状态与无法归类的辅助流程。",
+          "patterns": ["profile", "onboarding", "phone", "birth", "city", "collect", "system"]
+        }
+      ],
+      "promptUsage": [
+        {
+          "path": "persona/nocturne_oracle.md",
+          "purpose": "基础人格：Nocturne Oracle 的表达基调、边界和仪式感。",
+          "usedBy": ["每日神谕", "对话入口", "普通对话", "牌阵邀请", "单牌揭示", "完整占卜结果", "记忆总结"]
+        },
+        {
+          "path": "policies/safety_boundaries.md",
+          "purpose": "安全边界：禁止诊断、治疗承诺、绝对预测、恐吓和未经授权的第三方心理断言。",
+          "usedBy": ["普通对话", "牌阵邀请", "完整占卜结果", "占星/冥想工具", "记忆总结"]
+        },
+        {
+          "path": "skills/tarot_skill.md",
+          "purpose": "塔罗技能：定义每日单牌、三牌/动态牌阵、牌位解释和结果组织方法。",
+          "usedBy": ["每日神谕", "牌阵邀请", "单牌揭示", "完整占卜结果"]
+        },
+        {
+          "path": "scenes/*.md",
+          "purpose": "场景提示词：每日、对话、入口、牌阵、揭牌、完整结果、记忆总结等功能的具体 prompt。",
+          "usedBy": ["每日神谕", "对话入口", "普通对话", "牌阵邀请", "单牌揭示", "完整占卜结果", "记忆总结"]
+        },
+        {
+          "path": "output_schemas/*.json",
+          "purpose": "输出结构：约束每日神谕和牌阵结果 JSON 字段，方便前端稳定渲染。",
+          "usedBy": ["每日神谕", "完整占卜结果"]
+        },
+        {
+          "path": "user_memory/u_{userId}.md",
+          "purpose": "动态用户记忆：按账号生成的运行时上下文来源，默认不可直接发布。",
+          "usedBy": ["普通对话", "对话入口", "记忆总结", "占星/冥想工具"]
+        }
+      ],
+      "contextExplainers": [
+        {
+          "label": "现有聊天记录",
+          "description": "后台会先从 users/{uid}/dialog_sessions 读取已有消息，并合成为可复盘的 AI 调用轮次；历史消息没有保存实际 Prompt 时会明确显示缺失。"
+        },
+        {
+          "label": "Trace 采集预留",
+          "description": "后续客户端或服务端可以调用 adminAgentConsole?action=traceIngest 写入 agent_traces，用于保存完整 user input、messages、assistant output、模型和 prompt 文件。"
+        },
+        {
+          "label": "Prompt 发布流",
+          "description": "Prompt 文件的草稿、审批、发布和回滚会写入 Firestore；默认文件来自 functions/agent-prompts/nocturne-oracle。"
+        }
+      ],
+      "contextFlows": [
+        {
+          "key": "chat_companion",
+          "label": "普通对话",
+          "input": "用户在聊天页输入问题，或从好友上下文继续追问。",
+          "context": "角色人格、安全边界、塔罗技能、当前用户资料、好友上下文、历史消息和相关记忆共同组成实际 Prompt。",
+          "output": "AI / 塔罗师 / 占星师回复，并写回 dialog_sessions.messages。",
+          "effect": "后台可按用户、会话和轮次查看消息；接入 trace 后可查看实际 Prompt 和模型参数。"
+        },
+        {
+          "key": "reading_result",
+          "label": "完整占卜结果",
+          "input": "用户问题、牌阵、抽到的牌、牌位和好友或个人上下文。",
+          "context": "塔罗技能 prompt、结果 schema、问题背景与当前会话状态。",
+          "output": "完整占卜解释、短结论、行动建议和可沉淀的结果卡。",
+          "effect": "结果会出现在聊天记录和占卜记录中，可用于后续复盘与 Prompt 调优。"
+        },
+        {
+          "key": "memory_summary",
+          "label": "记忆总结",
+          "input": "对话片段、占卜结果或用户长期偏好。",
+          "context": "记忆总结 prompt 与安全边界，筛掉敏感或不应长期保存的内容。",
+          "output": "可召回的长期记忆或记忆候选。",
+          "effect": "后续普通对话、入口开场和工具流程可以召回相关用户记忆。"
+        }
+      ]
+    }
+  ]
+}

@@ -42,6 +42,7 @@ public class FsmRequestPackageVersion : IStateNode
         if (operation.Status != EOperationStatus.Succeed)
         {
             Debug.LogWarning(operation.Error);
+            PatchEventDefine.PatchWindowRequired.SendEventMessage();
             PatchEventDefine.PackageVersionRequestFailed.SendEventMessage();
         }
         else

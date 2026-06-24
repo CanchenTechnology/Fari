@@ -26,4 +26,4 @@ FIREBASE_ONLY=functions:readinessStatus,functions:submitIapReceipt \
 echo
 echo "IAP Functions deploy finished."
 echo "Next real receipt smoke example:"
-echo "  IAP_SMOKE_MODE=real IAP_PRODUCT_ID=fair.pro.monthly IAP_STORE=AppleAppStore IAP_RECEIPT='<receipt>' ./scripts/smoke-submit-iap-receipt.sh"
+echo "  IAP_SMOKE_MODE=real IAP_PRODUCT_ID=fari.pro.monthly IAP_STORE=AppleAppStore IAP_RECEIPT='<receipt>' ./scripts/smoke-submit-iap-receipt.sh"

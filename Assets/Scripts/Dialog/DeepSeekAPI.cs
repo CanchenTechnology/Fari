@@ -149,12 +149,22 @@ public class DeepSeekAPI : MonoBehaviour
     /// <param name="messages">对话历史消息列表</param>
     /// <param name="onSuccess">成功回调</param>
     /// <param name="onError">错误回调</param>
-    public void SendChatRequest(List<Message> messages, Action<string> onSuccess, Action<string> onError)
+    public void SendChatRequest(
+        List<Message> messages,
+        Action<string> onSuccess,
+        Action<string> onError,
+        bool notifyOnComplete = false,
+        string clientRequestId = null)
     {
-        StartCoroutine(SendChatRequestCoroutine(messages, onSuccess, onError));
+        StartCoroutine(SendChatRequestCoroutine(messages, onSuccess, onError, notifyOnComplete, clientRequestId));
     }
 
-    private IEnumerator SendChatRequestCoroutine(List<Message> messages, Action<string> onSuccess, Action<string> onError)
+    private IEnumerator SendChatRequestCoroutine(
+        List<Message> messages,
+        Action<string> onSuccess,
+        Action<string> onError,
+        bool notifyOnComplete,
+        string clientRequestId)
     {
         RequestBody requestBody = new RequestBody
         {
@@ -180,6 +190,7 @@ public class DeepSeekAPI : MonoBehaviour
         sb.Append("],");
         sb.Append("\"temperature\":0.7,");
         sb.Append("\"max_tokens\":2000");
+        AppendNotificationOptions(sb, notifyOnComplete, clientRequestId);
         sb.Append("}");
 
         jsonBody = sb.ToString();
@@ -264,14 +275,19 @@ public class DeepSeekAPI : MonoBehaviour
     /// <param name="onChunk">每收到一个 token 的回调</param>
     /// <param name="onComplete">流式完成时的回调（传入完整文本）</param>
     /// <param name="onError">错误回调</param>
-    public void SendChatRequestStream(List<Message> messages,
-        Action<string> onChunk, Action<string> onComplete, Action<string> onError)
+    public void SendChatRequestStream(
+        List<Message> messages,
+        Action<string> onChunk,
+        Action<string> onComplete,
+        Action<string> onError,
+        bool notifyOnComplete = false,
+        string clientRequestId = null)
     {
-        StartCoroutine(SendChatRequestStreamCoroutine(messages, onChunk, onComplete, onError));
+        StartCoroutine(SendChatRequestStreamCoroutine(messages, onChunk, onComplete, onError, notifyOnComplete, clientRequestId));
     }
 
     private IEnumerator SendChatRequestStreamCoroutine(List<Message> messages,
-        Action<string> onChunk, Action<string> onComplete, Action<string> onError)
+        Action<string> onChunk, Action<string> onComplete, Action<string> onError, bool notifyOnComplete, string clientRequestId)
     {
         // 构建请求 JSON（比非流式多 "stream": true）
         StringBuilder sb = new StringBuilder();
@@ -288,6 +304,7 @@ public class DeepSeekAPI : MonoBehaviour
         sb.Append("\"temperature\":0.7,");
         sb.Append("\"max_tokens\":2000,");
         sb.Append("\"stream\":true");
+        AppendNotificationOptions(sb, notifyOnComplete, clientRequestId);
         sb.Append("}");
 
         string jsonBody = sb.ToString();
@@ -457,6 +474,19 @@ public class DeepSeekAPI : MonoBehaviour
     }
 
     #endregion
+
+    private void AppendNotificationOptions(StringBuilder sb, bool notifyOnComplete, string clientRequestId)
+    {
+        if (!notifyOnComplete || sb == null)
+            return;
+
+        sb.Append(",\"notifyOnComplete\":true");
+        sb.Append(",\"notificationType\":\"dialogue_reply\"");
+        sb.Append(",\"notificationTitle\":\"神谕师回复了你\"");
+        sb.Append(",\"clientRequestId\":\"")
+            .Append(string.IsNullOrWhiteSpace(clientRequestId) ? Guid.NewGuid().ToString("N") : EscapeJsonString(clientRequestId))
+            .Append("\"");
+    }
 
 #if UNITY_EDITOR
     private bool ShouldUseEditorDirectDeepSeek()

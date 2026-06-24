@@ -178,8 +178,9 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
 
         if (friend.isVirtual)
         {
-            ToastManager.ShowToast("自己创建的好友暂不支持双人占卜，请选择真实好友");
-            onComplete?.Invoke(null);
+            RelationshipDivinationRecord localRecord = CreatedFriendRelationshipDivinationLocalFlow.CreateRecord(friend, question);
+            ToastManager.ShowToast($"已为 {localRecord.receiverName} 生成本地关系占卜");
+            onComplete?.Invoke(localRecord);
             return;
         }
 

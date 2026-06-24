@@ -44,6 +44,7 @@ public class FriendProfileUI : WindowBase
 		uiComponent.InitComponent(this);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		defaultAvatarSprite = uiComponent.FriendAvatarImage != null ? uiComponent.FriendAvatarImage.sprite : null;
+		defaultAvatarSprite = FriendAvatarImageUtility.ResolveAvatar(defaultAvatarSprite);
 		InitHistoryListView();
 		base.OnAwake();
 	}
@@ -103,7 +104,7 @@ public class FriendProfileUI : WindowBase
 	{
 		if (currentFriend == null || uiComponent == null) return;
 
-		ApplyAvatar(currentFriend.headSprite != null ? currentFriend.headSprite : defaultAvatarSprite);
+		ApplyAvatar(FriendAvatarImageUtility.ResolveFriendAvatar(currentFriend, uiComponent.FriendAvatarImage, defaultAvatarSprite));
 
 		string displayName = string.IsNullOrWhiteSpace(currentFriend.name) ? "好友" : currentFriend.name;
 		if (uiComponent.FriendNameText != null)
@@ -181,9 +182,9 @@ public class FriendProfileUI : WindowBase
 
 	private void ApplyAvatar(Sprite avatar)
 	{
-		if (avatar == null) return;
+		avatar = FriendAvatarImageUtility.ResolveAvatar(avatar, uiComponent?.FriendAvatarImage, defaultAvatarSprite);
 		if (uiComponent.FriendAvatarImage != null)
-			uiComponent.FriendAvatarImage.sprite = avatar;
+			FriendAvatarImageUtility.ApplyAvatar(uiComponent.FriendAvatarImage, avatar, defaultAvatarSprite);
 		SetImagesByName("AvatarThumb", avatar);
 	}
 

@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 using YooAsset;
@@ -9,13 +10,17 @@ public class GameStart : MonoBehaviour
     /// <summary>
     /// 资源系统运行模式
     /// </summary>
-    public EPlayMode PlayMode = EPlayMode.EditorSimulateMode;
+    public EPlayMode PlayMode = EPlayMode.OfflinePlayMode;
 
     [Header("Startup Splash")]
     [SerializeField] private GameObject startupSplashPrefab;
     [SerializeField] private bool showStartupSplash = true;
     [SerializeField] private float minimumSplashSeconds = 2.5f;
     [SerializeField] private float splashFadeSeconds = 0.35f;
+
+    private readonly EventGroup _patchEventGroup = new EventGroup();
+    private GameObject _patchWindowObject;
+    private bool _patchWindowRequired;
 
     private void Awake()
     {
@@ -24,28 +29,31 @@ public class GameStart : MonoBehaviour
         Application.runInBackground = true;
         DontDestroyOnLoad(this.gameObject);
     }
+
+    private void OnDestroy()
+    {
+        _patchEventGroup.RemoveAllListener();
+    }
+
     // Start is called before the first frame update
     IEnumerator Start()
     {
-        if (showStartupSplash)
-            yield return PlayStartupSplash();
-
         // 游戏管理器
         YooManager.Instance.Behaviour = this;
         // 初始化事件系统
         UniEvent.Initalize();
+        _patchEventGroup.AddListener<PatchEventDefine.PatchWindowRequired>(OnHandlePatchEventMessage);
 
         //初始化资源系统
         YooAssets.Initialize();
 
-        // 加载更新页面
-        var go = Resources.Load<GameObject>("PatchWindow");
-        GameObject.Instantiate(go);
-
-
-        // 开始补丁更新流程
+        // 启动资源检查流程：无更新时保持静默，有更新/错误时再显示 PatchWindow。
         var operation = new PatchOperation("DefaultPackage", PlayMode);
         YooAssets.StartOperation(operation);
+
+        if (showStartupSplash)
+            yield return PlayStartupSplash(() => operation.IsDone || _patchWindowRequired);
+
         yield return operation;
 
         // 设置默认的资源包
@@ -57,15 +65,19 @@ public class GameStart : MonoBehaviour
 
     }
 
-    private IEnumerator PlayStartupSplash()
+    private IEnumerator PlayStartupSplash(Func<bool> canCloseSplash)
     {
         GameObject splashObject = GetStartupSplashObject();
         if (splashObject == null)
             yield break;
 
-        CanvasGroup splash = PrepareStartupSplash(splashObject);
+        CanvasGroup splashRoot = PrepareStartupSplash(splashObject);
+        CanvasGroup splashContent = PrepareStartupSplashFadeContent(splashObject, splashRoot);
         if (minimumSplashSeconds > 0f)
             yield return new WaitForSecondsRealtime(minimumSplashSeconds);
+
+        while (canCloseSplash != null && !canCloseSplash())
+            yield return null;
 
         if (splashFadeSeconds > 0f)
         {
@@ -73,12 +85,40 @@ public class GameStart : MonoBehaviour
             while (timer < splashFadeSeconds)
             {
                 timer += Time.unscaledDeltaTime;
-                splash.alpha = 1f - Mathf.Clamp01(timer / splashFadeSeconds);
+                if (timer >= splashFadeSeconds)
+                    break;
+
+                splashContent.alpha = 1f - Mathf.Clamp01(timer / splashFadeSeconds);
                 yield return null;
             }
         }
 
-        Destroy(splash.gameObject);
+        splashContent.alpha = 0f;
+        Destroy(splashRoot.gameObject);
+    }
+
+    private void OnHandlePatchEventMessage(IEventMessage message)
+    {
+        if (message is PatchEventDefine.PatchWindowRequired)
+        {
+            _patchWindowRequired = true;
+            EnsurePatchWindow();
+        }
+    }
+
+    private void EnsurePatchWindow()
+    {
+        if (_patchWindowObject != null)
+            return;
+
+        var patchWindowPrefab = Resources.Load<GameObject>("PatchWindow");
+        if (patchWindowPrefab == null)
+        {
+            Debug.LogError("[GameStart] PatchWindow prefab not found in Resources.");
+            return;
+        }
+
+        _patchWindowObject = Instantiate(patchWindowPrefab);
     }
 
     private GameObject GetStartupSplashObject()
@@ -133,6 +173,22 @@ public class GameStart : MonoBehaviour
         canvasGroup.interactable = true;
         canvasGroup.blocksRaycasts = true;
         return canvasGroup;
+    }
+
+    private static CanvasGroup PrepareStartupSplashFadeContent(GameObject splashObject, CanvasGroup rootCanvasGroup)
+    {
+        Transform content = splashObject.transform.Find("UIContent");
+        if (content == null)
+            return rootCanvasGroup;
+
+        CanvasGroup contentCanvasGroup = content.GetComponent<CanvasGroup>();
+        if (contentCanvasGroup == null)
+            contentCanvasGroup = content.gameObject.AddComponent<CanvasGroup>();
+
+        contentCanvasGroup.alpha = 1f;
+        contentCanvasGroup.interactable = false;
+        contentCanvasGroup.blocksRaycasts = false;
+        return contentCanvasGroup;
     }
 
 }

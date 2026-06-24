@@ -93,6 +93,7 @@ public class FsmInitializePackage : IStateNode
         if (initializationOperation.Status != EOperationStatus.Succeed)
         {
             Debug.LogWarning($"{initializationOperation.Error}");
+            PatchEventDefine.PatchWindowRequired.SendEventMessage();
             PatchEventDefine.InitializeFailed.SendEventMessage();
         }
         else

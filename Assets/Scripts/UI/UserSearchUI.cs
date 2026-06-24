@@ -20,6 +20,7 @@ public class UserSearchUI : WindowBase
 	private const int SearchResultLimit = 20;
 	private const int SearchHistoryLimit = 5;
 	private const int RecommendationLimit = 3;
+	private const float DuplicateSearchSuppressSeconds = 0.35f;
 	private const string SearchHistoryPrefsKey = "UserSearchUI_SearchHistory_v1";
 
 	public UserSearchUIComponent uiComponent;
@@ -34,10 +35,14 @@ public class UserSearchUI : WindowBase
 	private bool searchFriendListViewInited;
 	private int searchRequestVersion;
 	private int recommendationRequestVersion;
+	private string lastSubmittedSearchKeyword = string.Empty;
+	private float lastSubmittedSearchTime = -1000f;
 
 	private TMP_Text[] fallbackResultNameTexts;
 	private TMP_Text[] fallbackResultHandleTexts;
+	private Image[] fallbackResultHeadImages;
 	private Button[] fallbackInviteButtons;
+	private GameObject[] fallbackResultRoots;
 	private InviteItem[] recommendationItems;
 	private SearchHistoryItem[] searchHistoryItems;
 	private GameObject friendRecommendRoot;
@@ -68,6 +73,7 @@ public class UserSearchUI : WindowBase
 
 			ResolveSearchModeViews();
 			ResolveSearchFriendListView();
+			ResolveFallbackResultViews();
 			InitSearchFriendListView();
 			SetSearchResultMode(false);
 			ResolveRecommendationViews();
@@ -88,6 +94,7 @@ public class UserSearchUI : WindowBase
 		currentSearchText = uiComponent.SearchInputInputField != null ? uiComponent.SearchInputInputField.text : string.Empty;
 			ResolveSearchModeViews();
 			ResolveSearchFriendListView();
+			ResolveFallbackResultViews();
 			InitSearchFriendListView();
 			currentResults.Clear();
 			SetSearchResultMode(false);
@@ -147,31 +154,44 @@ public class UserSearchUI : WindowBase
 	public void OnSearchInputInputEnd(string text)
 	{
 		currentSearchText = text ?? string.Empty;
+		SubmitSearch(false);
 	}
 	public void OnSearchFriendsButtonClick()
+	{
+		SubmitSearch(true);
+	}
+
+	private void SubmitSearch(bool showValidationToast)
 	{
 		string keyword = (currentSearchText ?? string.Empty).Trim();
 		if (string.IsNullOrWhiteSpace(keyword))
 		{
-			ToastManager.ShowToast("请输入用户名再搜索");
+			if (showValidationToast)
+				ToastManager.ShowToast("请输入用户名再搜索");
 			return;
 		}
+
+		if (IsDuplicateSearch(keyword))
+			return;
 
 		if (FirestoreManager.Instance == null)
 		{
-			ToastManager.ShowToast("用户搜索服务未初始化");
+			if (showValidationToast)
+				ToastManager.ShowToast("用户搜索服务未初始化");
 			return;
 		}
 
-			int requestVersion = ++searchRequestVersion;
-			SetSearchButtonInteractable(false);
-			SetSearchResultMode(true);
-			currentResults.Clear();
-			RefreshResultViews();
-			SaveSearchHistory(keyword);
-			RefreshSearchHistoryViews();
+		lastSubmittedSearchKeyword = keyword;
+		lastSubmittedSearchTime = Time.unscaledTime;
+		int requestVersion = ++searchRequestVersion;
+		SetSearchButtonInteractable(false);
+		SetSearchResultMode(true);
+		currentResults.Clear();
+		RefreshResultViews();
+		SaveSearchHistory(keyword);
+		RefreshSearchHistoryViews();
 
-			ToastManager.ShowToast($"正在搜索：{keyword}");
+		ToastManager.ShowToast($"正在搜索：{keyword}");
 		FirestoreManager.Instance.SearchUsersByName(keyword, results =>
 		{
 			if (requestVersion != searchRequestVersion)
@@ -207,6 +227,12 @@ public class UserSearchUI : WindowBase
 			RefreshResultViews();
 			ShowSearchResultToast(hasSelfMatch);
 		}, SearchResultLimit);
+	}
+
+	private bool IsDuplicateSearch(string keyword)
+	{
+		return string.Equals(keyword, lastSubmittedSearchKeyword, StringComparison.Ordinal)
+			&& Time.unscaledTime - lastSubmittedSearchTime <= DuplicateSearchSuppressSeconds;
 	}
 	public void OnInvite1ButtonClick()
 	{
@@ -367,6 +393,8 @@ public class UserSearchUI : WindowBase
 		InviteItem inviteItem = itemObject.GetComponent<InviteItem>();
 		if (inviteItem != null)
 		{
+			ApplySearchResultAvatar(result, inviteItem.headImage);
+
 			if (inviteItem.nameText != null)
 			{
 				inviteItem.nameText.text = GetDisplayName(result);
@@ -383,6 +411,7 @@ public class UserSearchUI : WindowBase
 
 		TMP_Text nameText = FindTextByName(itemObject.transform, "NameText", "NameText1");
 		TMP_Text handleText = FindTextByName(itemObject.transform, "HandleText", "HandleText1");
+		Image headImage = FindImageByName(itemObject.transform, "AvatarImage1", "headImage", "HeadImage", "AvatarImage");
 		Button inviteButton = FindButtonByName(itemObject.transform, "[Button]Invite", "[Button]Invite1");
 
 		if (nameText != null)
@@ -396,6 +425,31 @@ public class UserSearchUI : WindowBase
 		}
 
 		BindInviteButton(inviteButton, index);
+		ApplySearchResultAvatar(result, headImage);
+	}
+
+	private void ApplySearchResultAvatar(FirestoreManager.UserSearchResult result, Image target)
+	{
+		if (target == null) return;
+
+		string token = result == null ? string.Empty : $"{result.uid}|{result.photoUrl}";
+		FriendAvatarImageUtility.SetAvatarTargetToken(target, token);
+		FriendAvatarImageUtility.ApplyAvatar(target, null, FriendAvatarImageUtility.DefaultAvatarSprite);
+
+		if (result == null || string.IsNullOrWhiteSpace(result.photoUrl) || uiComponent == null)
+		{
+			return;
+		}
+
+		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadSpriteFromUrlCoroutine(result.photoUrl, sprite =>
+		{
+			if (sprite == null || !FriendAvatarImageUtility.IsAvatarTargetTokenValid(target, token))
+			{
+				return;
+			}
+
+			FriendAvatarImageUtility.ApplyAvatar(target, sprite, FriendAvatarImageUtility.DefaultAvatarSprite);
+		}));
 	}
 
 		private void BindInviteButton(Button button, int index)
@@ -811,6 +865,8 @@ public class UserSearchUI : WindowBase
 		{
 			if (item == null || result == null) return;
 
+			ApplySearchResultAvatar(result, item.headImage);
+
 			if (item.nameText != null)
 				item.nameText.text = GetDisplayName(result);
 
@@ -995,6 +1051,7 @@ public class UserSearchUI : WindowBase
 
 	private void RefreshFallbackResultViews()
 	{
+		ResolveFallbackResultViews();
 		if (fallbackInviteButtons == null)
 		{
 			return;
@@ -1003,6 +1060,11 @@ public class UserSearchUI : WindowBase
 		for (int i = 0; i < fallbackInviteButtons.Length; i++)
 		{
 			bool hasResult = i < currentResults.Count;
+			if (fallbackResultRoots != null && i < fallbackResultRoots.Length && fallbackResultRoots[i] != null)
+			{
+				fallbackResultRoots[i].SetActive(hasResult);
+			}
+
 			BindInviteButton(fallbackInviteButtons[i], hasResult ? i : -1);
 
 			if (fallbackResultNameTexts != null && i < fallbackResultNameTexts.Length && fallbackResultNameTexts[i] != null)
@@ -1014,7 +1076,102 @@ public class UserSearchUI : WindowBase
 			{
 				fallbackResultHandleTexts[i].text = hasResult ? currentResults[i].Handle : string.Empty;
 			}
+
+			if (fallbackResultHeadImages != null && i < fallbackResultHeadImages.Length)
+			{
+				ApplySearchResultAvatar(hasResult ? currentResults[i] : null, fallbackResultHeadImages[i]);
+			}
 		}
+	}
+
+	private void ResolveFallbackResultViews()
+	{
+		if (fallbackInviteButtons != null)
+		{
+			return;
+		}
+
+		ResolveSearchModeViews();
+		ResolveRecommendationViews();
+
+		Transform root = searchResultRoot != null ? searchResultRoot.transform : gameObject.transform;
+		List<InviteItem> resultItems = new List<InviteItem>();
+		InviteItem[] candidates = root.GetComponentsInChildren<InviteItem>(true);
+		foreach (InviteItem candidate in candidates)
+		{
+			if (candidate == null || IsRecommendationItem(candidate))
+			{
+				continue;
+			}
+
+			resultItems.Add(candidate);
+		}
+
+		resultItems.Sort((left, right) => left.transform.GetSiblingIndex().CompareTo(right.transform.GetSiblingIndex()));
+		if (resultItems.Count > 0)
+		{
+			fallbackResultRoots = new GameObject[resultItems.Count];
+			fallbackResultNameTexts = new TMP_Text[resultItems.Count];
+			fallbackResultHandleTexts = new TMP_Text[resultItems.Count];
+			fallbackResultHeadImages = new Image[resultItems.Count];
+			fallbackInviteButtons = new Button[resultItems.Count];
+
+			for (int i = 0; i < resultItems.Count; i++)
+			{
+				InviteItem item = resultItems[i];
+				fallbackResultRoots[i] = item.gameObject;
+				fallbackResultNameTexts[i] = item.nameText != null ? item.nameText : FindTextByName(item.transform, "NameText", "NameText1");
+				fallbackResultHandleTexts[i] = item.infoText != null ? item.infoText : FindTextByName(item.transform, "HandleText", "HandleText1");
+				fallbackResultHeadImages[i] = item.headImage != null ? item.headImage : FindImageByName(item.transform, "AvatarImage1", "headImage", "HeadImage", "AvatarImage");
+				fallbackInviteButtons[i] = item.infoBtn != null ? item.infoBtn : FindButtonByName(item.transform, "[Button]Invite", "[Button]Invite1", "Invite1");
+			}
+
+			return;
+		}
+
+		Button[] buttons = root.GetComponentsInChildren<Button>(true);
+		List<Button> inviteButtons = new List<Button>();
+		foreach (Button button in buttons)
+		{
+			if (button != null && button.transform.name.Contains("Invite", StringComparison.OrdinalIgnoreCase))
+			{
+				inviteButtons.Add(button);
+			}
+		}
+
+		inviteButtons.Sort((left, right) => left.transform.GetSiblingIndex().CompareTo(right.transform.GetSiblingIndex()));
+		fallbackInviteButtons = inviteButtons.ToArray();
+		fallbackResultRoots = new GameObject[fallbackInviteButtons.Length];
+		fallbackResultNameTexts = new TMP_Text[fallbackInviteButtons.Length];
+		fallbackResultHandleTexts = new TMP_Text[fallbackInviteButtons.Length];
+		fallbackResultHeadImages = new Image[fallbackInviteButtons.Length];
+
+		for (int i = 0; i < fallbackInviteButtons.Length; i++)
+		{
+			Transform itemRoot = fallbackInviteButtons[i].transform.parent;
+			fallbackResultRoots[i] = itemRoot != null ? itemRoot.gameObject : fallbackInviteButtons[i].gameObject;
+			fallbackResultNameTexts[i] = FindTextByName(itemRoot, "NameText", "NameText1");
+			fallbackResultHandleTexts[i] = FindTextByName(itemRoot, "HandleText", "HandleText1");
+			fallbackResultHeadImages[i] = FindImageByName(itemRoot, "AvatarImage1", "headImage", "HeadImage", "AvatarImage");
+		}
+	}
+
+	private bool IsRecommendationItem(InviteItem item)
+	{
+		if (recommendationItems == null || item == null)
+		{
+			return false;
+		}
+
+		foreach (InviteItem recommendationItem in recommendationItems)
+		{
+			if (recommendationItem == item)
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	private static TMP_Text FindTextByName(Transform root, params string[] targetNames)
@@ -1032,6 +1189,28 @@ public class UserSearchUI : WindowBase
 				if (text.transform.name == targetName)
 				{
 					return text;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	private static Image FindImageByName(Transform root, params string[] targetNames)
+	{
+		if (root == null)
+		{
+			return null;
+		}
+
+		Image[] images = root.GetComponentsInChildren<Image>(true);
+		foreach (Image image in images)
+		{
+			foreach (string targetName in targetNames)
+			{
+				if (image.transform.name == targetName)
+				{
+					return image;
 				}
 			}
 		}

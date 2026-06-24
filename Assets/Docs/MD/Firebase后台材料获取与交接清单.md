@@ -81,14 +81,14 @@ GOOGLE_SERVICE_ACCOUNT_JSON_FILE=/你的本机路径/google-play-service-account
 当前项目默认商品 ID：
 
 ```text
-fair.pro.monthly
-fair.pro.yearly
+fari.pro.monthly
+fari.pro.yearly
 ```
 
 你需要在两个商店后台都确认：
 
-- 月订阅商品存在：`fair.pro.monthly`
-- 年订阅商品存在：`fair.pro.yearly`
+- 月订阅商品存在：`fari.pro.monthly`
+- 年订阅商品存在：`fari.pro.yearly`
 - 商品状态可用于沙盒测试
 - 价格、地区、订阅组配置完成
 - 测试账号可以购买
@@ -107,7 +107,7 @@ fair.pro.yearly
 你需要：
 
 1. 用真机或商店沙盒环境登录。
-2. 在 app 里购买 `fair.pro.monthly` 或 `fair.pro.yearly`。
+2. 在 app 里购买 `fari.pro.monthly` 或 `fari.pro.yearly`。
 3. 确认 Unity IAP 返回 receipt。
 4. 把 receipt 用于 smoke test。
 

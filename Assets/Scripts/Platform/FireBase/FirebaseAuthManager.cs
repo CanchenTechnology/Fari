@@ -112,7 +112,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
     {
         Debug.Log("[FirebaseAuthManager] 开始初始化 Firebase...");
 
-        FirebaseApp.CheckAndFixDependenciesAsync().ContinueWith(task =>
+        FirebaseApp.CheckAndFixDependenciesAsync().ContinueWithOnMainThread(task =>
         {
             _dependencyStatus = task.Result;
             if (_dependencyStatus == DependencyStatus.Available)
@@ -132,6 +132,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
                 }
 
                 OnFirebaseInitialized?.Invoke();
+                FriendOnlinePresenceManager.Instance.StartPresence();
             }
             else
             {
@@ -201,6 +202,13 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
     {
         if (!CheckFirebaseReady()) return;
         if (CheckAlreadyLoggingIn()) return;
+
+#if !UNITY_EDITOR && !UNITY_IOS
+        const string unsupported = "Apple 登录仅支持 iOS 设备";
+        Debug.LogWarning("[FirebaseAuthManager] " + unsupported);
+        OnLoginFailed?.Invoke(AuthProvider.Apple, unsupported);
+        return;
+#endif
 
         CurrentAuthProvider = AuthProvider.Apple;
         IsLoggingIn = true;
@@ -468,6 +476,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
             });
 
             OnLoginSuccess?.Invoke(AuthProvider.Anonymous, newUser);
+            FriendOnlinePresenceManager.Instance.StartPresence();
             AppReadinessDiagnostics.LogCurrentState("Anonymous login success");
         });
     }
@@ -489,6 +498,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
         });
 
         OnLoginSuccess?.Invoke(AuthProvider.Email, newUser);
+        FriendOnlinePresenceManager.Instance.StartPresence();
         AppReadinessDiagnostics.LogCurrentState(actionName + " success");
     }
 
@@ -541,6 +551,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
             });
 
             OnLoginSuccess?.Invoke(provider, newUser);
+            FriendOnlinePresenceManager.Instance.StartPresence();
             AppReadinessDiagnostics.LogCurrentState(provider + " login success");
         });
 #endif
@@ -575,6 +586,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
 
         // Editor 下没有真实 FirebaseUser 对象，传 null
         OnLoginSuccess?.Invoke(provider, null);
+        FriendOnlinePresenceManager.Instance.StartPresence();
         AppReadinessDiagnostics.LogCurrentState("Editor simulated " + provider + " login");
     }
 
@@ -618,6 +630,8 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
     public void SignOut()
     {
         if (_auth == null) return;
+
+        FriendOnlinePresenceManager.Instance.StopPresence(true);
 
         // 登出对应的第三方 SDK
         switch (CurrentAuthProvider)
@@ -893,6 +907,9 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
                 break;
 
             case AuthProvider.Apple:
+#if !UNITY_EDITOR && !UNITY_IOS
+                Debug.LogWarning("[FirebaseAuthManager] Apple 账号关联仅支持 iOS 设备");
+#else
                 AppleSignInHelper.Instance.SignIn(
                     onSuccess: (idToken, authCode, nonce) =>
                     {
@@ -904,6 +921,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
                         Debug.LogError($"[FirebaseAuthManager] 关联 Apple 账号失败: {error}");
                     }
                 );
+#endif
                 break;
 
             case AuthProvider.Facebook:

@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fari 隐私权政策</title>
+  <meta name="description" content="Fari 隐私权政策，说明应用如何收集、使用、保存和保护用户数据。">
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f5f2;
+      --panel: #ffffff;
+      --panel-soft: #fbfaf7;
+      --line: #d9d5cc;
+      --text: #1f2328;
+      --muted: #687076;
+      --primary: #176b87;
+      --primary-dark: #0f5268;
+      --accent: #8c5a22;
+      --ok: #287a52;
+      --shadow: 0 14px 32px rgba(31, 35, 40, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.68;
+    }
+
+    a { color: var(--primary); }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .topbar {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .mark {
+      width: 42px;
+      height: 42px;
+      flex: 0 0 auto;
+    }
+
+    .brand-title {
+      margin: 0;
+      font-size: 19px;
+      font-weight: 780;
+      letter-spacing: 0;
+    }
+
+    .brand-subtitle {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .nav {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .nav a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 12px;
+      background: transparent;
+      color: var(--primary);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 720;
+    }
+
+    .nav a:hover { background: #eef4f4; }
+
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 34px 24px 56px;
+      display: grid;
+      gap: 22px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+      gap: 28px;
+      align-items: center;
+      padding: 30px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      margin: 16px 0 0;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .meta-grid {
+      display: grid;
+      gap: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      padding: 16px;
+    }
+
+    .meta-row {
+      display: grid;
+      grid-template-columns: 96px minmax(0, 1fr);
+      gap: 12px;
+      font-size: 13px;
+    }
+
+    .meta-row span:first-child {
+      color: var(--muted);
+      font-weight: 720;
+    }
+
+    .flow {
+      display: grid;
+      gap: 12px;
+    }
+
+    .flow-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 14px;
+    }
+
+    .flow-card strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--primary-dark);
+    }
+
+    .toc {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .toc a {
+      min-height: 34px;
+      border-radius: 6px;
+      padding: 6px 9px;
+      text-decoration: none;
+      color: var(--text);
+      background: #f4f1eb;
+      font-size: 13px;
+      font-weight: 690;
+    }
+
+    .toc a:hover { background: #ebe6dc; }
+
+    section {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 24px;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 22px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 20px 0 8px;
+      font-size: 16px;
+      letter-spacing: 0;
+    }
+
+    p { margin: 0 0 12px; }
+    ul { margin: 0 0 12px; padding-left: 22px; }
+    li { margin: 5px 0; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--line);
+      padding: 10px;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      background: #eee9df;
+      font-weight: 760;
+    }
+
+    .note {
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+      background: #fff8ec;
+      padding: 12px 14px;
+      color: #634212;
+    }
+
+    .muted { color: var(--muted); }
+
+    footer {
+      border-top: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .footer-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 20px 24px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 860px) {
+      .topbar,
+      .hero {
+        grid-template-columns: 1fr;
+      }
+
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .nav { justify-content: flex-start; }
+      .toc { grid-template-columns: 1fr; }
+      h1 { font-size: 29px; }
+      .meta-row { grid-template-columns: 1fr; gap: 2px; }
+      table { font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 64 64" role="img" aria-label="Fari privacy shield">
+          <defs>
+            <linearGradient id="shieldGradient" x1="12" x2="54" y1="8" y2="58">
+              <stop offset="0" stop-color="#176b87"/>
+              <stop offset="1" stop-color="#8c5a22"/>
+            </linearGradient>
+          </defs>
+          <path d="M32 6 52 14v15c0 14.7-8 24.2-20 29C20 53.2 12 43.7 12 29V14L32 6Z" fill="url(#shieldGradient)"/>
+          <path d="M24 32.4 29.4 38 42 25" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div>
+          <p class="brand-title">Fari</p>
+          <p class="brand-subtitle">隐私权政策</p>
+        </div>
+      </div>
+      <nav class="nav" aria-label="页面链接">
+        <a href="delete-account.html">删除账号</a>
+        <a href="data-admin.html">数据后台</a>
+        <a href="feedback-admin.html">反馈后台</a>
+        <a href="fari-firebase-data-admin-guide.md">管理手册</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="hero">
+      <div>
+        <h1>隐私权政策</h1>
+        <p class="lead">本政策说明 Fari 如何收集、使用、保存、共享和保护你的信息，以及你可以如何管理或删除这些信息。</p>
+        <p class="lead">我们会尽量只收集提供服务所需的数据，并为账号、记忆、通知、反馈和删除账号等功能提供对应控制。</p>
+      </div>
+      <div class="meta-grid" aria-label="政策基本信息">
+        <div class="meta-row"><span>生效日期</span><span>2026 年 6 月 24 日</span></div>
+        <div class="meta-row"><span>应用名称</span><span>Fari</span></div>
+        <div class="meta-row"><span>包名</span><span>com.canchentechnology.fari</span></div>
+        <div class="meta-row"><span>运营主体</span><span>canchentechnology（以应用商店开发者信息为准）</span></div>
+        <div class="meta-row"><span>联系渠道</span><span><a href="mailto:dev@medrixai.com">dev@medrixai.com</a></span></div>
+      </div>
+    </div>
+
+    <div class="flow" aria-label="数据处理概览">
+      <div class="flow-card">
+        <strong>你提供的信息</strong>
+        账号资料、登录信息、占卜问题、对话内容、反馈、好友资料和可选通讯录邀请信息。
+      </div>
+      <div class="flow-card">
+        <strong>用于提供服务</strong>
+        登录同步、AI 对话、每日神谕、好友互动、通知提醒、订阅权益、客服支持和安全维护。
+      </div>
+      <div class="flow-card">
+        <strong>由你控制</strong>
+        你可以在应用内管理记忆、通知、反馈和账号数据；也可以请求删除账号相关数据。
+      </div>
+    </div>
+
+    <nav class="toc" aria-label="目录">
+      <a href="#scope">1. 适用范围</a>
+      <a href="#data">2. 我们收集的信息</a>
+      <a href="#use">3. 信息用途</a>
+      <a href="#share">4. 共享与第三方</a>
+      <a href="#permissions">5. 设备权限</a>
+      <a href="#ai">6. AI 与记忆</a>
+      <a href="#payments">7. 订阅与支付</a>
+      <a href="#retention">8. 保存与删除</a>
+      <a href="#rights">9. 你的选择</a>
+      <a href="#security">10. 安全</a>
+      <a href="#children">11. 未成年人</a>
+      <a href="#contact">12. 联系我们</a>
+    </nav>
+
+    <section id="scope">
+      <h2>1. 适用范围</h2>
+      <p>本隐私权政策适用于 Fari 移动应用、相关 Firebase 后端服务、网页后台和我们提供的支持服务。</p>
+      <p>如果你通过 Apple、Google、Facebook、Game Center、Firebase 或其他第三方服务登录、支付或使用功能，第三方服务也会按照其自己的隐私政策处理你的数据。</p>
+    </section>
+
+    <section id="data">
+      <h2>2. 我们收集的信息</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>类别</th>
+            <th>示例</th>
+            <th>来源</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>账号与个人资料</td>
+            <td>用户 ID、邮箱、昵称、头像、登录方式、公开资料、时区、生日或城市等你主动填写的信息。</td>
+            <td>你输入的信息，或第三方登录服务返回的信息。</td>
+          </tr>
+          <tr>
+            <td>占卜、对话与记忆</td>
+            <td>每日神谕、占卜问题、卡牌结果、AI 对话内容、长期记忆、明日提醒和偏好设置。</td>
+            <td>你在应用内创建、发送或确认保存的内容。</td>
+          </tr>
+          <tr>
+            <td>好友与社交互动</td>
+            <td>公开资料、好友关系、好友请求、拉黑记录、关系占卜参与信息、虚拟好友资料。</td>
+            <td>你使用好友、邀请、关系占卜或虚拟好友功能时产生。</td>
+          </tr>
+          <tr>
+            <td>通讯录邀请信息</td>
+            <td>联系人姓名、电话号码。我们使用这些信息帮助你选择邀请对象，不会自动发送消息。</td>
+            <td>仅在你授权访问通讯录并主动选择联系人时处理。</td>
+          </tr>
+          <tr>
+            <td>订阅和支付信息</td>
+            <td>商品 ID、交易 ID、收据校验状态、订阅过期时间、支付平台返回的必要校验信息。</td>
+            <td>Apple App Store、Google Play、Unity IAP 或支付校验流程。</td>
+          </tr>
+          <tr>
+            <td>设备、日志和诊断</td>
+            <td>平台、应用版本、设备型号、崩溃或错误信息、功能使用次数、用量限制计数。</td>
+            <td>应用运行、后端请求、安全检查和客服排查。</td>
+          </tr>
+          <tr>
+            <td>反馈与客服信息</td>
+            <td>反馈内容、分类、截图或你提供的设备信息、管理员备注、处理状态。</td>
+            <td>你提交反馈或联系我们时提供。</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note">请避免在占卜问题、AI 对话或反馈中提交身份证件、银行卡、密码、一次性验证码或其他不必要的敏感信息。</p>
+    </section>
+
+    <section id="use">
+      <h2>3. 我们如何使用信息</h2>
+      <ul>
+        <li>创建、登录和同步你的账号资料。</li>
+        <li>提供每日神谕、占卜记录、AI 对话、TTS 语音、好友互动和虚拟好友功能。</li>
+        <li>保存你选择启用的记忆和偏好，以便提供更连续的体验。</li>
+        <li>处理订阅、恢复购买、校验收据和判断 Pro 权益。</li>
+        <li>发送你启用的本地或系统通知提醒。</li>
+        <li>处理反馈、排查错误、防止滥用、维护系统安全和稳定性。</li>
+        <li>生成不直接识别个人身份的统计信息，用于改进产品体验。</li>
+      </ul>
+    </section>
+
+    <section id="share">
+      <h2>4. 我们如何共享信息</h2>
+      <p>我们不会出售你的个人信息。为了提供服务，我们可能与下列服务提供方处理必要数据：</p>
+      <table>
+        <thead>
+          <tr>
+            <th>服务方</th>
+            <th>用途</th>
+            <th>可能处理的数据</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Firebase / Google Cloud</td>
+            <td>登录、数据库、云函数、托管、日志和安全。</td>
+            <td>账号资料、应用数据、请求日志、反馈和配置。</td>
+          </tr>
+          <tr>
+            <td>Apple、Google、Facebook、Game Center</td>
+            <td>第三方登录、账号认证、订阅和支付。</td>
+            <td>登录标识、邮箱、昵称、交易或收据校验信息。</td>
+          </tr>
+          <tr>
+            <td>AI / TTS 服务提供方</td>
+            <td>生成对话回复、占卜解读或语音合成。</td>
+            <td>为生成结果所需的提示词、上下文、文本或语音请求。</td>
+          </tr>
+          <tr>
+            <td>应用商店和系统服务</td>
+            <td>分发应用、崩溃报告、通知权限和订阅管理。</td>
+            <td>设备、应用版本、购买状态和系统级诊断。</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>在法律要求、保护用户安全、处理争议或执行服务条款所必要的情况下，我们也可能披露相关信息。</p>
+    </section>
+
+    <section id="permissions">
+      <h2>5. 设备权限</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>权限</th>
+            <th>使用目的</th>
+            <th>你的控制</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>通知</td>
+            <td>发送每日提醒、好友互动、测试通知或你启用的提醒。</td>
+            <td>可在系统设置或应用内设置中关闭。</td>
+          </tr>
+          <tr>
+            <td>通讯录</td>
+            <td>帮助你选择想邀请的联系人。应用不会自动群发消息。</td>
+            <td>可拒绝授权或在系统设置中撤回。</td>
+          </tr>
+          <tr>
+            <td>网络访问</td>
+            <td>同步账号、调用 Firebase、AI、TTS、支付校验和反馈服务。</td>
+            <td>网络访问是核心服务所必需。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="ai">
+      <h2>6. AI 对话、占卜与记忆</h2>
+      <p>Fari 包含 AI 对话、占卜解读、TTS 和记忆功能。为了生成更符合上下文的结果，应用可能会把你的问题、对话历史、好友上下文、占卜结果和你启用的记忆发送到后端或 AI 服务。</p>
+      <p>记忆功能用于保存你选择保留的偏好、主题或情绪模式。你可以在应用内管理记忆隐私设置、停用某类记忆或删除不希望继续使用的内容。</p>
+      <p class="note">AI 生成内容可能并不准确，也不应替代医疗、法律、财务、心理治疗或其他专业意见。请不要在对话中输入不必要的高度敏感信息。</p>
+    </section>
+
+    <section id="payments">
+      <h2>7. 订阅与支付</h2>
+      <p>如果你购买 Fari Pro 或其他付费项目，支付由 Apple App Store、Google Play 或相应应用商店处理。我们不会接收或保存完整银行卡信息。</p>
+      <p>为了验证订阅权益，我们可能保存商品 ID、交易 ID、收据校验结果、订阅状态和到期时间。这些信息用于开通权益、恢复购买、处理退款或客服排查。</p>
+    </section>
+
+    <section id="retention">
+      <h2>8. 信息保存与删除</h2>
+      <p>我们会在提供服务、履行法律义务、解决争议、防止滥用和维护安全所需期间保存信息。不同数据的保存时间可能不同，例如账号资料、占卜历史、对话、反馈和支付校验记录有不同用途。</p>
+      <p>你可以通过应用内账号功能请求删除账号数据。删除后，账号资料和用户拥有的数据会被删除或匿名化；但在法律、支付争议、安全审计或备份恢复所需范围内，部分记录可能会保留一段时间。</p>
+    </section>
+
+    <section id="rights">
+      <h2>9. 你的选择和权利</h2>
+      <ul>
+        <li>你可以更新昵称、头像、公开资料和部分偏好设置。</li>
+        <li>你可以管理通知、通讯录、登录方式和系统权限。</li>
+        <li>你可以管理记忆隐私设置、删除部分记忆或关闭相关功能。</li>
+        <li>你可以提交反馈，请求访问、更正或删除与你账号相关的数据。</li>
+        <li>你可以通过应用商店管理订阅、取消续订或查看支付记录。</li>
+      </ul>
+      <p>根据你所在地区适用法律，你可能拥有访问、更正、删除、限制处理、撤回同意或数据可携带等权利。我们会在合理范围内响应你的请求。</p>
+    </section>
+
+    <section id="security">
+      <h2>10. 信息安全</h2>
+      <p>我们使用 Firebase Authentication、Firestore 安全规则、Cloud Functions 权限校验和管理员权限控制来保护数据访问。后台管理功能仅允许经过授权的管理员使用。</p>
+      <p>尽管我们采取合理措施保护信息，互联网传输和电子存储无法保证绝对安全。请妥善保管你的账号和设备，避免与他人共享验证码、密码或登录状态。</p>
+    </section>
+
+    <section id="children">
+      <h2>11. 未成年人</h2>
+      <p>Fari 不面向低于适用法律规定年龄的儿童提供服务。如果你是未成年人，请在监护人同意和指导下使用本应用。</p>
+      <p>如果监护人认为未成年人向我们提供了个人信息，可以通过本政策中的联系渠道与我们联系，我们会在合理范围内处理相关请求。</p>
+    </section>
+
+    <section id="international">
+      <h2>12. 跨境处理</h2>
+      <p>我们的服务提供方可能在你所在地区以外处理或存储数据。使用本应用即表示你理解相关数据可能会被传输到其他地区，并按照本政策和服务提供方安全措施进行处理。</p>
+    </section>
+
+    <section id="changes">
+      <h2>13. 政策更新</h2>
+      <p>我们可能会因产品功能、服务提供方、法律法规或安全要求变化而更新本政策。更新后，我们会在本页面标注新的生效日期；重大变更可能会通过应用内通知、页面提示或其他合理方式告知。</p>
+    </section>
+
+    <section id="contact">
+      <h2>14. 联系我们</h2>
+      <p>如你对本政策或个人信息处理有疑问，或希望行使访问、更正、删除等权利，请通过以下方式联系：</p>
+      <ul>
+        <li>邮箱：<a href="mailto:dev@medrixai.com">dev@medrixai.com</a>。</li>
+        <li>应用内反馈入口。</li>
+      </ul>
+      <p class="muted">为保护账号安全，我们可能需要你提供必要信息以验证请求人与相关账号的关系。</p>
+    </section>
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+      © 2026 canchentechnology. Fari Privacy Policy.
+    </div>
+  </footer>
+</body>
+</html>

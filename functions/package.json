@@ -1,0 +1,19 @@
+{
+  "name": "fari-functions",
+  "description": "Firebase Cloud Functions for Fari / Nocturne Oracle",
+  "engines": {
+    "node": "22"
+  },
+  "main": "index.js",
+  "scripts": {
+    "lint": "node --check index.js",
+    "config:set": "node scripts/set-public-config.js public-config.example.json",
+    "serve": "firebase emulators:start --only functions",
+    "deploy": "firebase deploy --only functions"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.5.0",
+    "firebase-functions": "^6.5.0"
+  },
+  "devDependencies": {}
+}

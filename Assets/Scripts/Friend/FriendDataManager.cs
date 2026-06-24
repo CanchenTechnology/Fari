@@ -37,6 +37,9 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         public string photoUrl;
         public string avatarImagePath;
         public string avatarStoragePath;
+        public bool isOnline;
+        public long lastLoginUnixMs;
+        public long virtualFriendLastOperatedUnixMs;
         public bool isVirtual;
     }
 
@@ -73,6 +76,9 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         public string avatarImagePath;
         public string avatarStoragePath;
         public Sprite headSprite;
+        public bool isOnline;
+        public long lastLoginUnixMs;
+        public long virtualFriendLastOperatedUnixMs;
         public bool isVirtual; // true=虚拟好友, false=真实好友
 
         public string BuildOracleContext()
@@ -244,6 +250,9 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
             relationship = "好友",
             source = source,
             headSprite = headSprite,
+            isOnline = false,
+            lastLoginUnixMs = 0,
+            virtualFriendLastOperatedUnixMs = 0,
             isVirtual = false
         };
         realFriendList.Add(data);
@@ -293,6 +302,9 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
                 photoUrl = string.Empty,
                 avatarImagePath = string.Empty,
                 avatarStoragePath = string.Empty,
+                isOnline = realFriendList.Count == 0,
+                lastLoginUnixMs = CurrentUnixMs() - realFriendList.Count * 60L * 60L * 1000L,
+                virtualFriendLastOperatedUnixMs = 0,
                 isVirtual = false
             });
             return true;
@@ -306,6 +318,11 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         changed |= SetIfDifferent(ref existing.info, info);
         changed |= SetIfDifferent(ref existing.relationship, relationship);
         changed |= SetIfDifferent(ref existing.source, "本地测试数据");
+        if (existing.lastLoginUnixMs <= 0)
+        {
+            existing.lastLoginUnixMs = CurrentUnixMs();
+            changed = true;
+        }
         if (existing.isVirtual)
         {
             existing.isVirtual = false;
@@ -358,6 +375,9 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
             avatarImagePath = avatarImagePath ?? string.Empty,
             avatarStoragePath = string.Empty,
             headSprite = headSprite,
+            isOnline = false,
+            lastLoginUnixMs = 0,
+            virtualFriendLastOperatedUnixMs = CurrentUnixMs(),
             isVirtual = true
         };
         virtualFriendList.Add(data);
@@ -490,6 +510,7 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
             existing.avatarStoragePath = avatarStoragePath;
         if (headSprite != null)
             existing.headSprite = headSprite;
+        existing.virtualFriendLastOperatedUnixMs = CurrentUnixMs();
 
         virtualFriend.name = existing.name;
         virtualFriend.relationship = existing.relationship;
@@ -503,6 +524,7 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         virtualFriend.photoUrl = existing.photoUrl;
         virtualFriend.avatarStoragePath = existing.avatarStoragePath;
         virtualFriend.headSprite = existing.headSprite;
+        virtualFriend.virtualFriendLastOperatedUnixMs = existing.virtualFriendLastOperatedUnixMs;
 
         SaveAndNotify();
         return true;
@@ -526,10 +548,12 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         existing.photoUrl = photoUrl ?? string.Empty;
         existing.avatarStoragePath = avatarStoragePath ?? string.Empty;
         if (previewSprite != null) existing.headSprite = previewSprite;
+        existing.virtualFriendLastOperatedUnixMs = CurrentUnixMs();
 
         virtualFriend.photoUrl = existing.photoUrl;
         virtualFriend.avatarStoragePath = existing.avatarStoragePath;
         if (previewSprite != null) virtualFriend.headSprite = previewSprite;
+        virtualFriend.virtualFriendLastOperatedUnixMs = existing.virtualFriendLastOperatedUnixMs;
 
         SaveAndNotify();
         return true;
@@ -545,7 +569,8 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         string notes,
         Sprite headSprite = null,
         string photoUrl = "",
-        string avatarStoragePath = "")
+        string avatarStoragePath = "",
+        long lastOperatedUnixMs = 0)
     {
         FriendData existing = FindVirtualFriendById(virtualFriendId);
         if (existing == null)
@@ -567,6 +592,9 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
                 photoUrl = photoUrl ?? string.Empty,
                 avatarStoragePath = avatarStoragePath ?? string.Empty,
                 headSprite = headSprite,
+                isOnline = false,
+                lastLoginUnixMs = 0,
+                virtualFriendLastOperatedUnixMs = lastOperatedUnixMs,
                 isVirtual = true
             };
             virtualFriendList.Add(existing);
@@ -584,11 +612,29 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
             existing.photoUrl = photoUrl ?? string.Empty;
             existing.avatarStoragePath = avatarStoragePath ?? string.Empty;
             if (headSprite != null) existing.headSprite = headSprite;
+            if (lastOperatedUnixMs > 0)
+                existing.virtualFriendLastOperatedUnixMs = lastOperatedUnixMs;
             existing.isVirtual = true;
         }
 
         SaveAndNotify();
         return existing;
+    }
+
+    public bool RecordVirtualFriendOperated(FriendData virtualFriend)
+    {
+        if (virtualFriend == null || !virtualFriend.isVirtual) return false;
+
+        FriendData existing = FindVirtualFriendById(virtualFriend.virtualFriendId);
+        if (existing == null)
+            existing = virtualFriendList.Find(d => d.id == virtualFriend.id);
+        if (existing == null) return false;
+
+        long now = CurrentUnixMs();
+        existing.virtualFriendLastOperatedUnixMs = now;
+        virtualFriend.virtualFriendLastOperatedUnixMs = now;
+        SaveAndNotify();
+        return true;
     }
 
     /// <summary>
@@ -640,6 +686,33 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         return blockedUserIdList.Exists(uid => NormalizeKey(uid) == normalizedUid);
     }
 
+    public bool SetRealFriendPresence(string firebaseUid, bool isOnline, long lastLoginUnixMs)
+    {
+        FriendData existing = FindRealFriendByFirebaseUid(firebaseUid);
+        if (existing == null) return false;
+
+        bool changed = false;
+        bool statusChanged = existing.isOnline != isOnline;
+        if (existing.isOnline != isOnline)
+        {
+            existing.isOnline = isOnline;
+            changed = true;
+        }
+
+        bool shouldUpdateTime = lastLoginUnixMs > 0
+            && (!isOnline || statusChanged || existing.lastLoginUnixMs <= 0);
+        if (shouldUpdateTime && existing.lastLoginUnixMs != lastLoginUnixMs)
+        {
+            existing.lastLoginUnixMs = lastLoginUnixMs;
+            changed = true;
+        }
+
+        if (changed)
+            SaveAndNotify();
+
+        return changed;
+    }
+
     public FriendData UpsertRealFriendFromFirebase(
         string firebaseUid,
         string name,
@@ -647,7 +720,9 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         string info,
         Sprite headSprite = null,
         string source = "Firebase",
-        string photoUrl = "")
+        string photoUrl = "",
+        bool isOnline = false,
+        long lastLoginUnixMs = 0)
     {
         FriendData existing = FindRealFriendByFirebaseUid(firebaseUid);
         if (existing == null)
@@ -668,6 +743,9 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
                 source = source,
                 photoUrl = photoUrl ?? string.Empty,
                 headSprite = headSprite,
+                isOnline = isOnline,
+                lastLoginUnixMs = lastLoginUnixMs,
+                virtualFriendLastOperatedUnixMs = 0,
                 isVirtual = false
             };
             realFriendList.Add(existing);
@@ -681,6 +759,9 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
             existing.source = source;
             if (!string.IsNullOrWhiteSpace(photoUrl)) existing.photoUrl = photoUrl;
             if (headSprite != null) existing.headSprite = headSprite;
+            existing.isOnline = isOnline;
+            if (lastLoginUnixMs > 0)
+                existing.lastLoginUnixMs = lastLoginUnixMs;
             existing.isVirtual = false;
         }
 
@@ -863,6 +944,9 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
                 photoUrl = friend.photoUrl,
                 avatarImagePath = friend.avatarImagePath,
                 avatarStoragePath = friend.avatarStoragePath,
+                isOnline = friend.isOnline,
+                lastLoginUnixMs = friend.lastLoginUnixMs,
+                virtualFriendLastOperatedUnixMs = friend.virtualFriendLastOperatedUnixMs,
                 isVirtual = friend.isVirtual
             });
         }
@@ -915,6 +999,9 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
                 avatarImagePath = record.avatarImagePath,
                 avatarStoragePath = record.avatarStoragePath,
                 headSprite = FriendAvatarImageUtility.LoadSpriteFromPath(record.avatarImagePath),
+                isOnline = record.isOnline,
+                lastLoginUnixMs = record.lastLoginUnixMs,
+                virtualFriendLastOperatedUnixMs = record.virtualFriendLastOperatedUnixMs,
                 isVirtual = record.isVirtual
             });
         }
@@ -952,6 +1039,11 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         foreach (FriendData friend in virtualFriendList) maxId = Mathf.Max(maxId, friend.id);
         foreach (InviteData invite in inviteList) maxId = Mathf.Max(maxId, invite.id);
         return maxId;
+    }
+
+    private static long CurrentUnixMs()
+    {
+        return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     }
 
     #endregion

@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "required": ["title", "oracle_sentence", "detail", "do", "dont", "full_reading", "chat_prompts", "cta"],
+  "properties": {
+    "title": { "type": "string" },
+    "oracle_sentence": { "type": "string" },
+    "detail": { "type": "string" },
+    "do": { "type": "array", "items": { "type": "string" } },
+    "dont": { "type": "array", "items": { "type": "string" } },
+    "full_reading": {
+      "type": "object",
+      "required": ["core_meaning", "today_meaning", "deeper_reminder", "micro_action"],
+      "properties": {
+        "core_meaning": { "type": "string" },
+        "today_meaning": { "type": "string" },
+        "deeper_reminder": { "type": "string" },
+        "micro_action": { "type": "string" }
+      }
+    },
+    "chat_prompts": { "type": "array", "items": { "type": "string" } },
+    "cta": { "type": "object" }
+  }
+}

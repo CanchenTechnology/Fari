@@ -175,7 +175,7 @@ validate_iap_secret_inputs() {
 validate_real_iap_receipt_inputs() {
   local receipt="${IAP_RECEIPT:-${REAL_IAP_RECEIPT:-}}"
   local store="${IAP_STORE:-AppleAppStore}"
-  local product_id="${IAP_PRODUCT_ID:-fair.pro.monthly}"
+  local product_id="${IAP_PRODUCT_ID:-fari.pro.monthly}"
 
   if [[ -z "$receipt" ]]; then
     block "IAP_RECEIPT or REAL_IAP_RECEIPT is required when CHECK_IAP_REAL_RECEIPT=1 or IAP_SMOKE_MODE=real"

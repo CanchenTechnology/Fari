@@ -10,6 +10,47 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
+    function protectedUserFields() {
+      return [
+        "isAdmin",
+        "role",
+        "membershipStatus",
+        "proExpiresAt",
+        "membershipProvider",
+        "membershipProductId",
+        "membershipUpdatedAt",
+        "manualProGrantedBy",
+        "manualProGrantedAt",
+        "manualProGrantReason",
+        "manualProRevokedBy",
+        "manualProRevokedAt",
+        "manualProRevokeReason"
+      ];
+    }
+
+    function userCreateDataIsSafe() {
+      return !request.resource.data.keys().hasAny([
+          "isAdmin",
+          "role",
+          "proExpiresAt",
+          "membershipProvider",
+          "membershipProductId",
+          "membershipUpdatedAt",
+          "manualProGrantedBy",
+          "manualProGrantedAt",
+          "manualProGrantReason",
+          "manualProRevokedBy",
+          "manualProRevokedAt",
+          "manualProRevokeReason"
+        ])
+        && (!request.resource.data.keys().hasAny(["membershipStatus"])
+          || request.resource.data.membershipStatus == "free");
+    }
+
+    function userUpdateDataIsSafe() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedUserFields());
+    }
+
     function isAdmin() {
       return signedIn()
         && (request.auth.token.admin == true
@@ -38,7 +79,9 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow read, create, update, delete: if isOwner(uid);
+      allow read, delete: if isOwner(uid);
+      allow create: if isOwner(uid) && userCreateDataIsSafe();
+      allow update: if isOwner(uid) && userUpdateDataIsSafe();
 
       match /daily_oracles/{date} {
         allow read, create, update, delete: if isOwner(uid);
@@ -50,6 +93,11 @@ service cloud.firestore {
 
       match /dialog_sessions/{sessionId} {
         allow read, create, update, delete: if isOwner(uid);
+      }
+
+      match /dialog_reply_jobs/{jobId} {
+        allow read, create, delete: if isOwner(uid);
+        allow update: if false;
       }
 
       match /memories/{memoryId} {
@@ -91,6 +139,15 @@ service cloud.firestore {
 
       match /settings/{settingId} {
         allow read, create, update, delete: if isOwner(uid);
+      }
+
+      match /push_tokens/{tokenId} {
+        allow read, create, update, delete: if isOwner(uid);
+      }
+
+      match /remote_notifications/{notificationId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if false;
       }
     }
 

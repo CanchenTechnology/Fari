@@ -30,6 +30,7 @@ public class LoginUI : WindowBase
 		uiComponent.InitComponent(this);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		BindOptionalRuntimeButtons();
+		ApplyPlatformButtonVisibility();
 		base.OnAwake();
 	}
 	// 物体显示时执行
@@ -38,6 +39,7 @@ public class LoginUI : WindowBase
 		base.OnShow();
 		RegisterFirebaseEvents();
 		BindOptionalRuntimeButtons();
+		ApplyPlatformButtonVisibility();
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -168,6 +170,36 @@ public class LoginUI : WindowBase
 		gameCenterSignInButton = BindButton(gameCenterSignInButton, OnGameCenterSignInButtonClick, "[Button]GameCenterLogin", "GameCenterLogin", "GameCenterSignInButton");
 		anonymousSignInButton = BindButton(anonymousSignInButton, OnAnonymousSignInButtonClick, "[Button]AnonymousLogin", "AnonymousLogin", "AnonymousSignInButton");
 		dontSignInButton = BindButton(dontSignInButton, OnDontSignInButtonClick, "[Button]DontSignIn", "DontSignInButton", "SkipLoginButton");
+	}
+
+	private void ApplyPlatformButtonVisibility()
+	{
+		SetOptionalButtonVisible(uiComponent?.AppleSignInButton, IsAppleSignInVisible());
+		SetOptionalButtonVisible(gameCenterSignInButton, IsGameCenterSignInVisible());
+	}
+
+	private static void SetOptionalButtonVisible(Button button, bool visible)
+	{
+		if (button != null)
+			button.gameObject.SetActive(visible);
+	}
+
+	private static bool IsAppleSignInVisible()
+	{
+#if UNITY_IOS || UNITY_EDITOR
+		return true;
+#else
+		return false;
+#endif
+	}
+
+	private static bool IsGameCenterSignInVisible()
+	{
+#if UNITY_IOS || UNITY_TVOS
+		return true;
+#else
+		return false;
+#endif
 	}
 
 	private Button BindButton(Button cached, UnityEngine.Events.UnityAction action, params string[] names)

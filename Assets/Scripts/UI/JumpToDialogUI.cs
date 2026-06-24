@@ -97,13 +97,32 @@ public class JumpToDialogUI : WindowBase
 		SetText(friendInfoText, BuildFriendSubtitle());
 		SetText(autoHintText, $"✦  塔罗师将自动结合 @{friendName} 的相关信息与你们的连接能量进行解读");
 
-		if (uiComponent.FriendAvatarImage != null && currentFriend != null && currentFriend.headSprite != null)
-		{
-			uiComponent.FriendAvatarImage.sprite = currentFriend.headSprite;
-			uiComponent.FriendAvatarImage.preserveAspect = true;
-		}
+		ApplyAvatar(FriendAvatarImageUtility.ResolveFriendAvatar(currentFriend, uiComponent.FriendAvatarImage));
+		LoadRemoteAvatarIfNeeded();
 
 		SetActionButtonsInteractable(currentFriend != null);
+	}
+
+	private void ApplyAvatar(Sprite avatar)
+	{
+		FriendAvatarImageUtility.ApplyAvatar(uiComponent?.FriendAvatarImage, avatar);
+	}
+
+	private void LoadRemoteAvatarIfNeeded()
+	{
+		if (currentFriend == null
+			|| currentFriend.headSprite != null
+			|| string.IsNullOrWhiteSpace(currentFriend.photoUrl)
+			|| uiComponent == null)
+			return;
+
+		FriendDataManager.FriendData friend = currentFriend;
+		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadSpriteFromUrlCoroutine(currentFriend.photoUrl, sprite =>
+		{
+			if (currentFriend != friend || sprite == null) return;
+			currentFriend.headSprite = sprite;
+			ApplyAvatar(sprite);
+		}));
 	}
 
 	private string GetFriendName()

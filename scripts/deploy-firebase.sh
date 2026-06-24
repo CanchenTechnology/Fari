@@ -6,6 +6,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 READINESS_URL="${READINESS_URL:-https://us-central1-$PROJECT_ID.cloudfunctions.net/readinessStatus}"
 DEPLOY_INCOMPLETE_FUNCTIONS="${MOONLY_DEPLOY_INCOMPLETE_FUNCTIONS:-0}"
 SECRET_BINDINGS_FILE="$ROOT_DIR/functions/.moonly-secret-bindings.json"
+RESOLVED_SECRET_NAMES=()
+DEPLOY_TARGETS=()
+SKIPPED_TARGETS=()
 
 cleanup_secret_bindings() {
   rm -f "$SECRET_BINDINGS_FILE"
@@ -62,9 +65,21 @@ build_default_targets() {
     "functions:publicConfig"
     "functions:submitFeedback"
     "functions:adminPublicConfigUpdate"
+    "functions:adminDashboardSummary"
+    "functions:adminConfigOverview"
+    "functions:adminUserSearch"
+    "functions:adminUserDetail"
+    "functions:adminMembershipOverview"
+    "functions:adminCreateRegisteredUser"
+    "functions:adminGrantPro"
+    "functions:adminRevokePro"
     "functions:adminFeedbackList"
     "functions:adminFeedbackUpdate"
     "functions:deleteMyAccountData"
+    "functions:sendTestPush"
+    "functions:friendRequestRemotePush"
+    "functions:relationshipInviteRemotePush"
+    "functions:remoteNotificationOutboxPush"
   )
   SKIPPED_TARGETS=()
 
@@ -73,9 +88,9 @@ build_default_targets() {
   fi
 
   if secret_enabled DEEPSEEK_API_KEY || [[ "$DEPLOY_INCOMPLETE_FUNCTIONS" == "1" ]]; then
-    DEPLOY_TARGETS+=("functions:aiChat" "functions:aiChatStream")
+    DEPLOY_TARGETS+=("functions:aiChat" "functions:aiChatStream" "functions:processStaleDialogueReplyJobs")
   else
-    SKIPPED_TARGETS+=("aiChat/aiChatStream need DEEPSEEK_API_KEY")
+    SKIPPED_TARGETS+=("aiChat/aiChatStream/processStaleDialogueReplyJobs need DEEPSEEK_API_KEY")
   fi
 
   if secret_enabled VOLC_TTS_API_KEY || [[ "$DEPLOY_INCOMPLETE_FUNCTIONS" == "1" ]]; then
@@ -102,10 +117,21 @@ build_default_targets() {
 }
 
 write_secret_bindings_file() {
-  node - "$SECRET_BINDINGS_FILE" "${RESOLVED_SECRET_NAMES[@]}" <<'NODE'
+  node - "$SECRET_BINDINGS_FILE" "${MOONLY_DEPLOYED_SECRETS:-}" <<'NODE'
 const fs = require("fs");
 const path = process.argv[2];
-const secrets = process.argv.slice(3).filter(Boolean);
+const raw = String(process.argv[3] || "").trim();
+const allSecrets = [
+  "DEEPSEEK_API_KEY",
+  "VOLC_TTS_API_KEY",
+  "PAYMENT_WEBHOOK_SECRET",
+  "APPLE_SHARED_SECRET",
+  "GOOGLE_PACKAGE_NAME",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+];
+const secrets = raw === "all"
+  ? allSecrets
+  : raw.split(",").map((name) => name.trim()).filter(Boolean);
 fs.writeFileSync(path, `${JSON.stringify({ secrets }, null, 2)}\n`);
 NODE
 }
@@ -163,6 +189,12 @@ process.exit(data.result === expectedProject ? 0 : 1);
 NODE
 then
   echo "Firebase active project is not $PROJECT_ID. Run: firebase use $PROJECT_ID" >&2
+  exit 2
+fi
+
+if ! firebase projects:list --json >/tmp/moonly_firebase_projects.json 2>/tmp/moonly_firebase_projects.err; then
+  echo "Firebase CLI credentials could not access Firebase projects. Run: firebase login --reauth" >&2
+  echo "Details: /tmp/moonly_firebase_projects.err" >&2
   exit 2
 fi
 

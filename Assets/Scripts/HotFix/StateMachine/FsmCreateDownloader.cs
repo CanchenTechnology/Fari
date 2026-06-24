@@ -44,6 +44,7 @@ public class FsmCreateDownloader : IStateNode
             // 注意：开发者需要在下载前检测磁盘空间不足
             int totalDownloadCount = downloader.TotalDownloadCount;
             long totalDownloadBytes = downloader.TotalDownloadBytes;
+            PatchEventDefine.PatchWindowRequired.SendEventMessage();
             PatchEventDefine.FoundUpdateFiles.SendEventMessage(totalDownloadCount, totalDownloadBytes); //在ui面板中显示是否下载，点击确定的时候开始下一步
         }
     }
