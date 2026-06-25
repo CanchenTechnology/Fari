@@ -444,6 +444,30 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         });
     }
 
+    public string BuildTodayCardMessageContent()
+    {
+        if (todayCardPayload == null)
+            return "今日神谕已加入对话。";
+
+        string displayName = FirstNonEmpty(todayCardPayload.displayName, todayCardPayload.nameZh, todayCardPayload.cardName, "今日牌");
+        string orientation = todayCardPayload.orientation == "reversed" ? "逆位" : "正位";
+        string title = FirstNonEmpty(todayCardPayload.title, "今日塔罗");
+        var lines = new List<string>
+        {
+            $"{title}：{displayName}（{orientation}）"
+        };
+
+        if (!string.IsNullOrWhiteSpace(todayCardPayload.oracleText))
+            lines.Add("今日神谕：" + todayCardPayload.oracleText.Trim());
+        else if (!string.IsNullOrWhiteSpace(todayCardPayload.cardId))
+            lines.Add("牌ID：" + todayCardPayload.cardId.Trim());
+
+        if (!string.IsNullOrWhiteSpace(todayCardPayload.generatedAt))
+            lines.Add("生成时间：" + todayCardPayload.generatedAt.Trim());
+
+        return string.Join("\n", lines.Where(line => !string.IsNullOrWhiteSpace(line)));
+    }
+
     public void AddReadingChatContext(string readingId, string title, string preview, string payload, string source = "reading")
     {
         if (string.IsNullOrWhiteSpace(readingId) && string.IsNullOrWhiteSpace(title)) return;
@@ -628,6 +652,8 @@ public class DialogSystem : MonoSingleton<DialogSystem>
 
     public ChatMessageData AddTodayDivinationMessage(string content)
     {
+        content = string.IsNullOrWhiteSpace(content) ? BuildTodayCardMessageContent() : content.Trim();
+
          ChatMessageData data = new ChatMessageData
         {
             id = mMessageIdCounter++,
@@ -1238,7 +1264,31 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         CaptureDivinationSnapshot(target);
         AddReadingContextFromMessage(target);
         SaveCloudDialogHistory();
-        DivinationRecordFirestore.Instance?.SaveRecord(DivinationRecordBuilder.FromChatMessage(target));
+        SaveDivinationReplyRecord(target);
+    }
+
+    private void SaveDivinationReplyRecord(ChatMessageData target)
+    {
+        var record = DivinationRecordBuilder.FromChatMessage(target);
+        bool localSaved = DivinationRecordFirestore.SaveRecordLocal(record);
+        DivinationRecordFirestore store = DivinationRecordFirestore.Instance;
+        if (store == null)
+        {
+            Debug.LogWarning(localSaved
+                ? "[DialogSystem] 占卜回复记录已保存到本地缓存，云端稍后同步"
+                : "[DialogSystem] 占卜回复记录本地保存失败");
+            return;
+        }
+
+        store.SaveRecord(record, success =>
+        {
+            if (!success)
+            {
+                Debug.LogWarning(localSaved
+                    ? "[DialogSystem] 占卜回复记录云端保存失败，记录已保存到本地缓存"
+                    : "[DialogSystem] 占卜回复记录保存失败");
+            }
+        });
     }
 
     public void ActivateReadingFromRecord(DivinationRecordData record, DivinationPhase phase = DivinationPhase.FollowUp)
@@ -2425,7 +2475,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         });
 
         TrimMemoryCandidates();
-        FirestoreManager.Instance?.SaveMemorySource(memorySource);
+        MemoryUiStore.SaveCurrent();
         Debug.Log($"[OracleRuntime] Memory candidate saved: {normalized}");
     }
 

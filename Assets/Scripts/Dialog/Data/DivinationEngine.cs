@@ -435,12 +435,22 @@ public class DivinationEngine : MonoBehaviour
                 if (success)
                     Debug.Log($"[DivinationEngine] 占卜记录已同步至 Firestore: {CurrentSession.readingId}");
                 else
-                    Debug.LogWarning($"[DivinationEngine] Firestore 暂未同步，占卜记录未保存: {CurrentSession.readingId}");
+                    Debug.LogWarning($"[DivinationEngine] 占卜记录已保存到本地缓存，云端稍后同步: {CurrentSession.readingId}");
             });
         }
         else
         {
-            Debug.LogWarning("[DivinationEngine] 历史服务不可用，跳过自动保存");
+            DivinationRecordData record = DivinationRecordBuilder.FromSession();
+            if (record != null)
+            {
+                record.shortVerdict = shortVerdict ?? record.shortVerdict;
+                DivinationRecordFirestore.SaveRecordLocal(record);
+                Debug.LogWarning($"[DivinationEngine] 历史服务不可用，已保存占卜记录到本地缓存: {record.readingId}");
+            }
+            else
+            {
+                Debug.LogWarning("[DivinationEngine] 历史服务不可用，且当前会话无法构建历史记录");
+            }
         }
     }
 

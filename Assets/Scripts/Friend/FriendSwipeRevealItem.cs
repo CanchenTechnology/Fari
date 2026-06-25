@@ -20,6 +20,7 @@ public class FriendSwipeRevealItem : MonoBehaviour, IBeginDragHandler, IDragHand
     [SerializeField] private float openThreshold = 0.45f;
     [SerializeField] private float dragDecisionThreshold = 10f;
     [SerializeField] private float animationDuration = 0.14f;
+    [SerializeField] private float clickBlockDuration = 0.25f;
 
     private static FriendSwipeRevealItem currentOpenItem;
 
@@ -35,6 +36,7 @@ public class FriendSwipeRevealItem : MonoBehaviour, IBeginDragHandler, IDragHand
     private bool dragDecided;
     private bool horizontalDrag;
     private bool forwardedListBeginDrag;
+    private float blockClickUntilTime;
 
     private float RevealWidth
     {
@@ -47,6 +49,15 @@ public class FriendSwipeRevealItem : MonoBehaviour, IBeginDragHandler, IDragHand
     }
 
     public bool IsOpen => currentOffset <= -RevealWidth + 0.5f;
+
+    public bool ConsumeClickBlock()
+    {
+        if (Time.unscaledTime > blockClickUntilTime)
+            return false;
+
+        blockClickUntilTime = 0f;
+        return true;
+    }
 
     public static bool CloseCurrentOpen(FriendSwipeRevealItem except = null, bool immediate = false)
     {
@@ -154,6 +165,9 @@ public class FriendSwipeRevealItem : MonoBehaviour, IBeginDragHandler, IDragHand
             {
                 currentOpenItem.Close();
             }
+
+            if (horizontalDrag)
+                BlockClickAfterSwipe();
         }
 
         if (!horizontalDrag)
@@ -181,6 +195,7 @@ public class FriendSwipeRevealItem : MonoBehaviour, IBeginDragHandler, IDragHand
         if (!dragDecided || !horizontalDrag)
             return;
 
+        BlockClickAfterSwipe();
         float revealWidth = RevealWidth;
         float openLine = -revealWidth * openThreshold;
         bool shouldOpen = currentOffset <= openLine;
@@ -205,6 +220,11 @@ public class FriendSwipeRevealItem : MonoBehaviour, IBeginDragHandler, IDragHand
     {
         Close();
         deleteRequested?.Invoke();
+    }
+
+    private void BlockClickAfterSwipe()
+    {
+        blockClickUntilTime = Mathf.Max(blockClickUntilTime, Time.unscaledTime + clickBlockDuration);
     }
 
     private void EnsureLayout()

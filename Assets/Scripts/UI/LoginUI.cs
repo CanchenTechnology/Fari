@@ -174,7 +174,9 @@ public class LoginUI : WindowBase
 
 	private void ApplyPlatformButtonVisibility()
 	{
+		SetOptionalButtonVisible(uiComponent?.GooglePlaySignInButton, IsGoogleSignInVisible());
 		SetOptionalButtonVisible(uiComponent?.AppleSignInButton, IsAppleSignInVisible());
+		SetOptionalButtonVisible(uiComponent?.FaceBookSignInButton, IsFacebookSignInVisible());
 		SetOptionalButtonVisible(gameCenterSignInButton, IsGameCenterSignInVisible());
 	}
 
@@ -187,6 +189,24 @@ public class LoginUI : WindowBase
 	private static bool IsAppleSignInVisible()
 	{
 #if UNITY_IOS || UNITY_EDITOR
+		return true;
+#else
+		return false;
+#endif
+	}
+
+	private static bool IsGoogleSignInVisible()
+	{
+#if UNITY_ANDROID || UNITY_IOS || UNITY_EDITOR
+		return true;
+#else
+		return false;
+#endif
+	}
+
+	private static bool IsFacebookSignInVisible()
+	{
+#if UNITY_ANDROID || UNITY_IOS || UNITY_EDITOR
 		return true;
 #else
 		return false;

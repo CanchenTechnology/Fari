@@ -53,6 +53,9 @@ public struct MemoryEditResult
 
 public static class MemoryUiStore
 {
+	private const string MemoryCacheKey = "MemoryUiStore_LocalSource_v1";
+	private const string PendingCloudSaveKey = "MemoryUiStore_PendingCloudSave";
+	private const string PendingCloudDeleteKey = "MemoryUiStore_PendingCloudDelete";
 	private static readonly MemorySource FallbackSource = new MemorySource();
 
 	public static MemorySource Source
@@ -73,9 +76,27 @@ public static class MemoryUiStore
 
 	public static void LoadLatest(Action<MemorySource> onComplete)
 	{
+		MemorySource local = LoadLocalSource();
+		if (HasPendingCloudDelete())
+		{
+			DialogSystem.Instance?.SetMemorySource(new MemorySource());
+			TrySyncPendingCloudDelete(_ => onComplete?.Invoke(Source));
+			return;
+		}
+
+		if (HasPendingCloudSave())
+		{
+			if (local != null)
+				DialogSystem.Instance?.SetMemorySource(local);
+			TrySyncPendingCloudSave(_ => onComplete?.Invoke(Source));
+			return;
+		}
+
 		var firestore = FirestoreManager.Instance;
 		if (firestore == null || !firestore.IsInitialized)
 		{
+			if (local != null)
+				DialogSystem.Instance?.SetMemorySource(local);
 			onComplete?.Invoke(Source);
 			return;
 		}
@@ -86,6 +107,7 @@ public static class MemoryUiStore
 			{
 				Normalize(source);
 				DialogSystem.Instance?.SetMemorySource(source);
+				SaveLocalSource(source);
 			}
 
 			onComplete?.Invoke(Source);
@@ -96,29 +118,50 @@ public static class MemoryUiStore
 	{
 		Normalize(Source);
 		DialogSystem.Instance?.SetMemorySource(Source);
+		SaveLocalSource(Source);
+		MarkCloudSavePending();
+		MarkCloudDeleteComplete();
 
 		var firestore = FirestoreManager.Instance;
 		if (firestore == null || !firestore.IsInitialized)
 		{
-			onComplete?.Invoke(true);
+			onComplete?.Invoke(false);
 			return;
 		}
 
-		firestore.SaveMemorySource(Source, onComplete);
+		firestore.SaveMemorySource(Source, success =>
+		{
+			if (success)
+				MarkCloudSaveComplete();
+			onComplete?.Invoke(success);
+		});
 	}
 
 	public static void ClearAll(Action<bool> onComplete = null)
 	{
 		DialogSystem.Instance?.SetMemorySource(new MemorySource());
+		SaveLocalSource(Source);
+		MarkCloudSaveComplete();
+		MarkCloudDeletePending();
 
 		var firestore = FirestoreManager.Instance;
 		if (firestore == null || !firestore.IsInitialized)
 		{
-			onComplete?.Invoke(true);
+			onComplete?.Invoke(false);
 			return;
 		}
 
-		firestore.DeleteMemorySource(onComplete);
+		firestore.DeleteMemorySource(success =>
+		{
+			if (success)
+				MarkCloudDeleteComplete();
+			onComplete?.Invoke(success);
+		});
+	}
+
+	public static bool HasPendingCloudSync()
+	{
+		return HasPendingCloudSave() || HasPendingCloudDelete();
 	}
 
 	public static List<MemoryUiItem> GetItems(MemoryUiCategory category = MemoryUiCategory.All, string keyword = null)
@@ -514,6 +557,106 @@ public static class MemoryUiStore
 		if (string.IsNullOrEmpty(candidate.id))
 			candidate.id = NewId();
 		return $"candidate:{candidate.id}";
+	}
+
+	private static MemorySource LoadLocalSource()
+	{
+		string json = PlayerPrefs.GetString(MemoryCacheKey, string.Empty);
+		if (string.IsNullOrWhiteSpace(json)) return null;
+
+		try
+		{
+			MemorySource source = JsonUtility.FromJson<MemorySource>(json);
+			Normalize(source);
+			return source;
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning($"[MemoryUiStore] 本地记忆缓存读取失败，已重置。{ex.Message}");
+			PlayerPrefs.DeleteKey(MemoryCacheKey);
+			PlayerPrefs.Save();
+			return null;
+		}
+	}
+
+	private static void SaveLocalSource(MemorySource source)
+	{
+		source ??= new MemorySource();
+		Normalize(source);
+		PlayerPrefs.SetString(MemoryCacheKey, JsonUtility.ToJson(source));
+		PlayerPrefs.Save();
+	}
+
+	private static bool HasPendingCloudSave()
+	{
+		return PlayerPrefs.GetInt(PendingCloudSaveKey, 0) == 1;
+	}
+
+	private static bool HasPendingCloudDelete()
+	{
+		return PlayerPrefs.GetInt(PendingCloudDeleteKey, 0) == 1;
+	}
+
+	private static void MarkCloudSavePending()
+	{
+		PlayerPrefs.SetInt(PendingCloudSaveKey, 1);
+		PlayerPrefs.Save();
+	}
+
+	private static void MarkCloudSaveComplete()
+	{
+		PlayerPrefs.DeleteKey(PendingCloudSaveKey);
+		PlayerPrefs.Save();
+	}
+
+	private static void MarkCloudDeletePending()
+	{
+		PlayerPrefs.SetInt(PendingCloudDeleteKey, 1);
+		PlayerPrefs.Save();
+	}
+
+	private static void MarkCloudDeleteComplete()
+	{
+		PlayerPrefs.DeleteKey(PendingCloudDeleteKey);
+		PlayerPrefs.Save();
+	}
+
+	private static void TrySyncPendingCloudSave(Action<bool> onComplete)
+	{
+		MemorySource source = LoadLocalSource() ?? Source;
+		Normalize(source);
+		DialogSystem.Instance?.SetMemorySource(source);
+
+		var firestore = FirestoreManager.Instance;
+		if (firestore == null || !firestore.IsInitialized)
+		{
+			onComplete?.Invoke(false);
+			return;
+		}
+
+		firestore.SaveMemorySource(source, success =>
+		{
+			if (success)
+				MarkCloudSaveComplete();
+			onComplete?.Invoke(success);
+		});
+	}
+
+	private static void TrySyncPendingCloudDelete(Action<bool> onComplete)
+	{
+		var firestore = FirestoreManager.Instance;
+		if (firestore == null || !firestore.IsInitialized)
+		{
+			onComplete?.Invoke(false);
+			return;
+		}
+
+		firestore.DeleteMemorySource(success =>
+		{
+			if (success)
+				MarkCloudDeleteComplete();
+			onComplete?.Invoke(success);
+		});
 	}
 
 	private static string NewId()

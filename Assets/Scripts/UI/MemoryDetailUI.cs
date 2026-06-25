@@ -145,7 +145,7 @@ public class MemoryDetailUI : WindowBase
 			RefreshUI();
 			UIModule.Instance.GetWindow<MemoryManageListUI>()?.RefreshFromExternal();
 			UIModule.Instance.GetWindow<MemoryManageUI>()?.RefreshFromExternal();
-			ToastManager.ShowToast(success ? toast : "已保存到本地，云端同步失败");
+			ToastManager.ShowToast(success ? toast : "已保存到本地，云端稍后同步");
 		});
 	}
 
@@ -196,7 +196,7 @@ public class MemoryDetailUI : WindowBase
 		{
 			UIModule.Instance.GetWindow<MemoryManageListUI>()?.RefreshFromExternal();
 			UIModule.Instance.GetWindow<MemoryManageUI>()?.RefreshFromExternal();
-			ToastManager.ShowToast(success ? "记忆已删除" : "本地已删除，云端同步失败");
+			ToastManager.ShowToast(success ? "记忆已删除" : "本地已删除，云端稍后同步");
 			HideWindow();
 		});
 	}

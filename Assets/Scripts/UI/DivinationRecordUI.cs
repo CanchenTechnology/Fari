@@ -452,8 +452,7 @@ public class DivinationRecordUI : WindowBase
 		}
 
 		Debug.Log($"[DivinationRecordUI] 保存到日记: {_currentRecord.readingId}");
-		DivinationRecordFirestore.SaveRecordLocal(_currentRecord);
-		DivinationHistoryCacheService.Instance.UpsertRecord(_currentRecord);
+		bool localSaved = DivinationRecordFirestore.SaveRecordLocal(_currentRecord);
 
 		var firestore = DivinationRecordFirestore.Instance;
 		if (firestore == null)
@@ -473,7 +472,7 @@ public class DivinationRecordUI : WindowBase
 				}
 				else
 				{
-					ToastManager.ShowToast("保存失败，请稍后再试");
+					ToastManager.ShowToast("已保存到本地，云端稍后同步");
 					Debug.LogWarning("[DivinationRecordUI] 云端保存失败");
 				}
 				SetSaveToDiaryButtonState(true, "保存到历史");
@@ -481,9 +480,11 @@ public class DivinationRecordUI : WindowBase
 		}
 		else
 		{
-			ToastManager.ShowToast("历史服务暂不可用");
+			ToastManager.ShowToast(localSaved ? "已保存到本地，云端稍后同步" : "保存失败，请稍后再试");
 			SetSaveToDiaryButtonState(true, "保存到历史");
-			Debug.LogWarning("[DivinationRecordUI] 历史服务未就绪，未保存记录");
+			Debug.LogWarning(localSaved
+				? "[DivinationRecordUI] 历史服务未就绪，记录已保存到本地缓存"
+				: "[DivinationRecordUI] 历史服务未就绪，且本地保存失败");
 		}
 	}
 

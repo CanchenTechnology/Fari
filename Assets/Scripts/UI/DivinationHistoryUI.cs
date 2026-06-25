@@ -251,19 +251,25 @@ public class DivinationHistoryUI : WindowBase
 			return;
 		}
 
+		bool localSaved = DivinationRecordFirestore.SaveRecordLocal(_currentRecord);
 		DivinationRecordFirestore firestore = GetRecordStore();
 		if (firestore != null)
 		{
 			firestore.SaveRecord(_currentRecord, success =>
 			{
-				ToastManager.ShowToast(success ? "已保存到历史" : "保存失败，请稍后再试");
+				ToastManager.ShowToast(success ? "已保存到历史" : localSaved ? "已保存到本地，云端稍后同步" : "保存失败，请稍后再试");
 				if (!success)
-					Debug.LogWarning("[DivinationHistoryUI] 云端保存失败");
+					Debug.LogWarning(localSaved
+						? "[DivinationHistoryUI] 云端保存失败，记录已保存到本地缓存"
+						: "[DivinationHistoryUI] 云端保存失败，且本地保存失败");
 			});
 		}
 		else
 		{
-			ToastManager.ShowToast("历史服务暂不可用");
+			ToastManager.ShowToast(localSaved ? "已保存到本地，云端稍后同步" : "保存失败，请稍后再试");
+			Debug.LogWarning(localSaved
+				? "[DivinationHistoryUI] 历史服务未就绪，记录已保存到本地缓存"
+				: "[DivinationHistoryUI] 历史服务未就绪，且本地保存失败");
 		}
 	}
 	public void OnShareResultButtonClick()

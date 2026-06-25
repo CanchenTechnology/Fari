@@ -10,6 +10,7 @@ using SuperScrollView;
 using TMPro;
 using UnityEngine.UI;
 using UnityEngine;
+using System.Diagnostics.Contracts;
 
 public class FriendUIComponent : MonoBehaviour
 {
@@ -23,6 +24,9 @@ public class FriendUIComponent : MonoBehaviour
 	[Header("交互")]
 	public Button friendRequestBtn;
 	public Button alreadyReceiveInviteBtn;
+	public TMP_Text friendRequestText;
+	public TMP_Text friendInvitationNum;
+
 
 	public LoopListView2 friendListView;
 	public Button searchBtn;
@@ -70,6 +74,8 @@ public class FriendUIComponent : MonoBehaviour
 
 		if (friendRequestBtn == null) friendRequestBtn = FindButtonByName("FriendRequestBtn");
 		if (alreadyReceiveInviteBtn == null) alreadyReceiveInviteBtn = FindButtonByName("InvitationReceivedBtn");
+		if (friendRequestText == null) friendRequestText = FindTextByName("friendRequestNum", "friendRequestText", "FriendRequestNum", "FriendRequestText");
+		if (friendInvitationNum == null) friendInvitationNum = FindTextByName("friendInvitationNum", "friendInvitationText", "FriendInvitationNum", "InvitationReceivedNum");
 		if (searchBtn == null) searchBtn = FindButtonByName("[Button]search", "searchBtn", "SearchBtn");
 		if (addExpandBtn == null) addExpandBtn = FindButtonByName("[Button]Add", "addExpandBtn", "AddExpandBtn");
 		if (AddFriendButton == null) AddFriendButton = FindButtonByName("AddFriendBtn", "AddFriendButton");

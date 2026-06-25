@@ -99,6 +99,7 @@ public class DialogUI : WindowBase
         base.OnShow();
         OracleForegroundEffects.Attach(this.Canvas, OracleForegroundEffectStyle.Dialog);
         ClearAtFriendSelection(false, false);
+        RefreshSendButtonState();
         LoadCloudDialogState();
     }
     // 物体隐藏时执行
@@ -131,16 +132,27 @@ public class DialogUI : WindowBase
     private IEnumerator LoadCloudDialogStateRoutine()
     {
         bool memoryRequested = false;
+        bool memoryCloudRefreshRequested = false;
         bool historyCompleted = false;
         bool historyRequestInFlight = false;
         float elapsed = 0f;
 
         while (elapsed <= CLOUD_DIALOG_LOAD_RETRY_SECONDS)
         {
-            if (!memoryRequested && FirestoreManager.Instance != null && FirestoreManager.Instance.IsInitialized)
+            if (!memoryRequested)
             {
                 memoryRequested = true;
-                FirestoreManager.Instance.LoadMemorySource(source =>
+                memoryCloudRefreshRequested = FirestoreManager.Instance != null && FirestoreManager.Instance.IsInitialized;
+                MemoryUiStore.LoadLatest(source =>
+                {
+                    if (source != null)
+                        dialogSystem.SetMemorySource(source);
+                });
+            }
+            else if (!memoryCloudRefreshRequested && FirestoreManager.Instance != null && FirestoreManager.Instance.IsInitialized)
+            {
+                memoryCloudRefreshRequested = true;
+                MemoryUiStore.LoadLatest(source =>
                 {
                     if (source != null)
                         dialogSystem.SetMemorySource(source);
@@ -435,6 +447,17 @@ public class DialogUI : WindowBase
         return shownItem != null ? shownItem.GetComponent<ChatItem>() : null;
     }
 
+    private void RefreshChatItemLayoutAfterRuntimeSizeChange(int messageIndex, bool scrollIfLastMessage)
+    {
+        if (chatListView == null || dialogSystem == null || messageIndex < 0) return;
+
+        chatListView.OnItemSizeChanged(messageIndex);
+
+        bool isLastMessage = messageIndex == dialogSystem.GetMessageCount() - 1;
+        if (scrollIfLastMessage && isLastMessage)
+            chatListView.MovePanelToItemIndex(messageIndex, 0);
+    }
+
     private void PrepareTTSForCompletedAIMessage(int messageIndex)
     {
         if (!enableTTS || ttsManager == null || dialogSystem == null) return;
@@ -476,6 +499,7 @@ public class DialogUI : WindowBase
             item.UpdateTTSButtonAfterStream(msgData.content);
             item.ShowTTSLoading(false);
         }
+        RefreshChatItemLayoutAfterRuntimeSizeChange(messageIndex, true);
     }
 
     /// <summary>
@@ -531,9 +555,8 @@ public class DialogUI : WindowBase
     /// </summary>
     public void SendTodayOracleMessage()
     {
-        //todo:塔罗牌数据
-        //添加     
-        dialogSystem.AddTodayDivinationMessage("");
+        string content = dialogSystem != null ? dialogSystem.BuildTodayCardMessageContent() : string.Empty;
+        dialogSystem?.AddTodayDivinationMessage(content);
         UpdateChatScrollView();
     }
     public void SendAtFriendsMessage()
@@ -814,17 +837,25 @@ public class DialogUI : WindowBase
     {
         if (uiComponent.questionInputField == null) return;
 
-        string inputText = uiComponent.questionInputField.text;
-        if (string.IsNullOrEmpty(inputText))
+        string inputText = (uiComponent.questionInputField.text ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(inputText))
         {
             ToastManager.ShowToast("请写下你想问的问题。");
+            RefreshSendButtonState(inputText);
+            uiComponent.questionInputField.ActivateInputField();
+            return;
+        }
+
+        if (!MembershipGate.CanUse(MembershipFeature.DialogMessage))
+        {
+            RefreshSendButtonState(inputText);
             return;
         }
 
         if (mIsLoading)
         {
             SendUserMessage(inputText);
-            uiComponent.questionInputField.text = "";
+            ClearQuestionInput();
             ToastManager.ShowToast("AI正在回复，已为你排队发送。");
             return;
         }
@@ -833,7 +864,7 @@ public class DialogUI : WindowBase
         SendUserMessage(inputText);
 
         // 清空输入框
-        uiComponent.questionInputField.text = "";
+        ClearQuestionInput();
     }
     public void OncancelArtButtonClick()
     {
@@ -848,6 +879,7 @@ public class DialogUI : WindowBase
     /// </summary>
     public void OnquestionInputChange(string text)
     {
+        RefreshSendButtonState(text);
     }
 
     /// <summary>
@@ -855,7 +887,22 @@ public class DialogUI : WindowBase
     /// </summary>
     public void OnquestionInputEnd(string text)
     {
+        RefreshSendButtonState(text);
+    }
 
+    private void ClearQuestionInput()
+    {
+        if (uiComponent.questionInputField != null)
+            uiComponent.questionInputField.text = string.Empty;
+        RefreshSendButtonState(string.Empty);
+    }
+
+    private void RefreshSendButtonState(string text = null)
+    {
+        if (uiComponent?.sendButton == null) return;
+
+        string value = text ?? uiComponent.questionInputField?.text ?? string.Empty;
+        uiComponent.sendButton.interactable = !string.IsNullOrWhiteSpace(value);
     }
 
     #endregion
@@ -1166,6 +1213,7 @@ public class DialogUI : WindowBase
         _currentTTSMessageId = msgData.id;
         item.ShowTTSLoading(false);
         item.PrepareSyncedSpeech(displayText, prepared.totalDuration);
+        RefreshChatItemLayoutAfterRuntimeSizeChange(messageIndex, true);
 
         HideLoadingIndicator();
         _ttsPlaybackCoroutine = uiComponent.StartCoroutine(PlayPreparedTTSWithSyncedText(item, msgData.id, displayText, prepared,
@@ -1201,6 +1249,7 @@ public class DialogUI : WindowBase
         dialogSystem.SetAIMessageTTSInfo(messageIndex, prepared.totalDuration, true);
         item.SetTTSLength(prepared.totalDuration);
         item.UpdateTTSButtonAfterStream(msgData.content);
+        RefreshChatItemLayoutAfterRuntimeSizeChange(messageIndex, false);
         yield return uiComponent.StartCoroutine(PlayPreparedTTSOnly(item, msgData.id, prepared));
     }
 

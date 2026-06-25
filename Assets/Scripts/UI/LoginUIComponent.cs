@@ -16,6 +16,7 @@ public class LoginUIComponent:MonoBehaviour
 	public Button GooglePlaySignInButton;
 	public Button AppleSignInButton;
 	public Button FaceBookSignInButton;
+	public Button youkeLoginButton;
 	public void InitComponent(WindowBase target)
 	{
 	    //组件事件绑定

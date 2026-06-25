@@ -49,6 +49,8 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     private const string LEGACY_IAP_YEARLY_PRODUCT_ID = "moonly.pro.yearly";
     private const string PENDING_REAL_FRIEND_DELETE_KEY_PREFIX = "PendingRealFriendDeletes_";
     private const string PENDING_REAL_FRIEND_BLOCK_KEY_PREFIX = "PendingRealFriendBlocks_";
+    private const string PENDING_VIRTUAL_FRIEND_SAVE_KEY_PREFIX = "PendingVirtualFriendSaves_";
+    private const string PENDING_VIRTUAL_FRIEND_DELETE_KEY_PREFIX = "PendingVirtualFriendDeletes_";
     private const int FIRESTORE_DELETE_BATCH_LIMIT = 450;
     private const float USER_SEARCH_STORE_READY_TIMEOUT_SECONDS = 5f;
     private const float USER_SEARCH_STORE_READY_POLL_SECONDS = 0.2f;
@@ -136,6 +138,8 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             Debug.Log("[FirestoreManager] Firestore 初始化完成");
             SyncPendingRealFriendDeletes();
             SyncPendingRealFriendBlocks();
+            SyncPendingVirtualFriendSaves();
+            SyncPendingVirtualFriendDeletes();
         }
         catch (Exception e)
         {
@@ -869,6 +873,15 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
 
         CommitRemoveRealFriend(currentUid, friendUid, success =>
         {
+            if (!success)
+            {
+                QueuePendingRealFriendDelete(friendUid);
+                FriendDataManager.Instance?.RemoveRealFriendByFirebaseUid(friendUid);
+                Debug.LogWarning($"[FirestoreManager] 真实好友云端删除失败，已加入待同步删除队列: {friendUid}");
+                onComplete?.Invoke(true);
+                return;
+            }
+
             if (success)
             {
                 FriendDataManager.Instance?.RemoveRealFriendByFirebaseUid(friendUid);
@@ -917,6 +930,41 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         QueuePendingRealFriendBlock(friendUid);
     }
 
+    public static bool IsRealFriendDeleteQueuedLocal(string friendUid)
+    {
+        return IsRealFriendPendingDelete(friendUid);
+    }
+
+    public static bool IsRealFriendBlockQueuedLocal(string friendUid)
+    {
+        return IsRealFriendPendingBlock(friendUid);
+    }
+
+    public static void QueueVirtualFriendSaveLocal(FriendDataManager.FriendData virtualFriend)
+    {
+        if (virtualFriend == null || !virtualFriend.isVirtual) return;
+        EnsureVirtualFriendId(virtualFriend);
+        QueuePendingVirtualFriendSave(virtualFriend.virtualFriendId);
+    }
+
+    public static void QueueVirtualFriendDeleteLocal(FriendDataManager.FriendData virtualFriend)
+    {
+        if (virtualFriend == null || !virtualFriend.isVirtual) return;
+        QueueVirtualFriendDeleteLocal(virtualFriend.virtualFriendId);
+    }
+
+    public static void QueueVirtualFriendDeleteLocal(string virtualFriendId)
+    {
+        if (string.IsNullOrWhiteSpace(virtualFriendId)) return;
+        RemovePendingVirtualFriendSave(virtualFriendId);
+        QueuePendingVirtualFriendDelete(virtualFriendId);
+    }
+
+    public static bool IsVirtualFriendDeleteQueuedLocal(string virtualFriendId)
+    {
+        return IsVirtualFriendPendingDelete(virtualFriendId);
+    }
+
     private static void QueuePendingRealFriendDelete(string friendUid)
     {
         if (string.IsNullOrWhiteSpace(friendUid)) return;
@@ -941,6 +989,30 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         SavePendingRealFriendBlocks(key, pending);
     }
 
+    private static void QueuePendingVirtualFriendSave(string virtualFriendId)
+    {
+        if (string.IsNullOrWhiteSpace(virtualFriendId)) return;
+
+        string key = GetPendingVirtualFriendSaveKey();
+        List<string> pending = LoadPendingVirtualFriendSaves(key);
+        if (!pending.Exists(id => id == virtualFriendId))
+            pending.Add(virtualFriendId);
+
+        SavePendingVirtualFriendSaves(key, pending);
+    }
+
+    private static void QueuePendingVirtualFriendDelete(string virtualFriendId)
+    {
+        if (string.IsNullOrWhiteSpace(virtualFriendId)) return;
+
+        string key = GetPendingVirtualFriendDeleteKey();
+        List<string> pending = LoadPendingVirtualFriendDeletes(key);
+        if (!pending.Exists(id => id == virtualFriendId))
+            pending.Add(virtualFriendId);
+
+        SavePendingVirtualFriendDeletes(key, pending);
+    }
+
     private static void RemovePendingRealFriendDelete(string friendUid)
     {
         if (string.IsNullOrWhiteSpace(friendUid)) return;
@@ -962,6 +1034,30 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             List<string> pending = LoadPendingRealFriendBlocks(key);
             if (pending.RemoveAll(uid => uid == friendUid) > 0)
                 SavePendingRealFriendBlocks(key, pending);
+        }
+    }
+
+    private static void RemovePendingVirtualFriendSave(string virtualFriendId)
+    {
+        if (string.IsNullOrWhiteSpace(virtualFriendId)) return;
+
+        foreach (string key in GetPendingVirtualFriendSaveKeysForSync())
+        {
+            List<string> pending = LoadPendingVirtualFriendSaves(key);
+            if (pending.RemoveAll(id => id == virtualFriendId) > 0)
+                SavePendingVirtualFriendSaves(key, pending);
+        }
+    }
+
+    private static void RemovePendingVirtualFriendDelete(string virtualFriendId)
+    {
+        if (string.IsNullOrWhiteSpace(virtualFriendId)) return;
+
+        foreach (string key in GetPendingVirtualFriendDeleteKeysForSync())
+        {
+            List<string> pending = LoadPendingVirtualFriendDeletes(key);
+            if (pending.RemoveAll(id => id == virtualFriendId) > 0)
+                SavePendingVirtualFriendDeletes(key, pending);
         }
     }
 
@@ -1026,6 +1122,75 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         }
     }
 
+    private void SyncPendingVirtualFriendSaves()
+    {
+        if (!_isInitialized || _db == null) return;
+
+        string currentUid = GetCurrentFirebaseUid();
+        if (string.IsNullOrWhiteSpace(currentUid)) return;
+
+        foreach (string key in GetPendingVirtualFriendSaveKeysForSync())
+        {
+            List<string> pending = LoadPendingVirtualFriendSaves(key);
+            if (pending.Count == 0) continue;
+
+            foreach (string virtualFriendId in new List<string>(pending))
+            {
+                if (string.IsNullOrWhiteSpace(virtualFriendId) || IsVirtualFriendPendingDelete(virtualFriendId))
+                {
+                    RemovePendingVirtualFriendSave(virtualFriendId);
+                    continue;
+                }
+
+                FriendDataManager.FriendData friend = FriendDataManager.Instance?.FindVirtualFriendById(virtualFriendId);
+                if (friend == null)
+                {
+                    RemovePendingVirtualFriendSave(virtualFriendId);
+                    continue;
+                }
+
+                CommitSaveVirtualFriendWithAvatar(currentUid, friend, success =>
+                {
+                    if (!success) return;
+                    RemovePendingVirtualFriendSave(friend.virtualFriendId);
+                    Debug.Log($"[FirestoreManager] 已同步待保存虚拟好友: {friend.virtualFriendId}");
+                });
+            }
+        }
+    }
+
+    private void SyncPendingVirtualFriendDeletes()
+    {
+        if (!_isInitialized || _db == null) return;
+
+        string currentUid = GetCurrentFirebaseUid();
+        if (string.IsNullOrWhiteSpace(currentUid)) return;
+
+        foreach (string key in GetPendingVirtualFriendDeleteKeysForSync())
+        {
+            List<string> pending = LoadPendingVirtualFriendDeletes(key);
+            if (pending.Count == 0) continue;
+
+            foreach (string virtualFriendId in new List<string>(pending))
+            {
+                if (string.IsNullOrWhiteSpace(virtualFriendId))
+                {
+                    RemovePendingVirtualFriendDelete(virtualFriendId);
+                    continue;
+                }
+
+                CommitDeleteVirtualFriend(currentUid, virtualFriendId, success =>
+                {
+                    if (!success) return;
+                    RemovePendingVirtualFriendDelete(virtualFriendId);
+                    RemovePendingVirtualFriendSave(virtualFriendId);
+                    FriendDataManager.Instance?.RemoveVirtualFriendById(virtualFriendId);
+                    Debug.Log($"[FirestoreManager] 已同步待删除虚拟好友: {virtualFriendId}");
+                });
+            }
+        }
+    }
+
     private static string GetPendingRealFriendDeleteKey()
     {
         string currentUid = GetCurrentFirebaseUid();
@@ -1050,6 +1215,32 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             return BuildPendingRealFriendBlockKey(localUserId);
 
         return BuildPendingRealFriendBlockKey("local");
+    }
+
+    private static string GetPendingVirtualFriendSaveKey()
+    {
+        string currentUid = GetCurrentFirebaseUid();
+        if (!string.IsNullOrWhiteSpace(currentUid))
+            return BuildPendingVirtualFriendSaveKey(currentUid);
+
+        string localUserId = UserDataManager.Instance?.UserId ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(localUserId))
+            return BuildPendingVirtualFriendSaveKey(localUserId);
+
+        return BuildPendingVirtualFriendSaveKey("local");
+    }
+
+    private static string GetPendingVirtualFriendDeleteKey()
+    {
+        string currentUid = GetCurrentFirebaseUid();
+        if (!string.IsNullOrWhiteSpace(currentUid))
+            return BuildPendingVirtualFriendDeleteKey(currentUid);
+
+        string localUserId = UserDataManager.Instance?.UserId ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(localUserId))
+            return BuildPendingVirtualFriendDeleteKey(localUserId);
+
+        return BuildPendingVirtualFriendDeleteKey("local");
     }
 
     private static List<string> GetPendingRealFriendDeleteKeysForSync()
@@ -1088,6 +1279,42 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         return keys;
     }
 
+    private static List<string> GetPendingVirtualFriendSaveKeysForSync()
+    {
+        List<string> keys = new List<string>();
+
+        void AddKey(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            string key = BuildPendingVirtualFriendSaveKey(value);
+            if (!keys.Contains(key))
+                keys.Add(key);
+        }
+
+        AddKey(GetCurrentFirebaseUid());
+        AddKey(UserDataManager.Instance?.UserId);
+        AddKey("local");
+        return keys;
+    }
+
+    private static List<string> GetPendingVirtualFriendDeleteKeysForSync()
+    {
+        List<string> keys = new List<string>();
+
+        void AddKey(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            string key = BuildPendingVirtualFriendDeleteKey(value);
+            if (!keys.Contains(key))
+                keys.Add(key);
+        }
+
+        AddKey(GetCurrentFirebaseUid());
+        AddKey(UserDataManager.Instance?.UserId);
+        AddKey("local");
+        return keys;
+    }
+
     private static string GetCurrentFirebaseUid()
     {
         string uid = UserDataManager.Instance?.FirebaseUid ?? string.Empty;
@@ -1106,6 +1333,16 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     private static string BuildPendingRealFriendBlockKey(string userKey)
     {
         return PENDING_REAL_FRIEND_BLOCK_KEY_PREFIX + (string.IsNullOrWhiteSpace(userKey) ? "local" : userKey.Trim());
+    }
+
+    private static string BuildPendingVirtualFriendSaveKey(string userKey)
+    {
+        return PENDING_VIRTUAL_FRIEND_SAVE_KEY_PREFIX + (string.IsNullOrWhiteSpace(userKey) ? "local" : userKey.Trim());
+    }
+
+    private static string BuildPendingVirtualFriendDeleteKey(string userKey)
+    {
+        return PENDING_VIRTUAL_FRIEND_DELETE_KEY_PREFIX + (string.IsNullOrWhiteSpace(userKey) ? "local" : userKey.Trim());
     }
 
     private static List<string> LoadPendingRealFriendDeletes(string key)
@@ -1150,6 +1387,48 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         }
     }
 
+    private static List<string> LoadPendingVirtualFriendSaves(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return new List<string>();
+
+        string json = PlayerPrefs.GetString(key, string.Empty);
+        if (string.IsNullOrWhiteSpace(json)) return new List<string>();
+
+        try
+        {
+            PendingUidList data = JsonUtility.FromJson<PendingUidList>(json);
+            return data?.uids ?? new List<string>();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[FirestoreManager] 待同步虚拟好友保存队列读取失败，已重置。{ex.Message}");
+            PlayerPrefs.DeleteKey(key);
+            PlayerPrefs.Save();
+            return new List<string>();
+        }
+    }
+
+    private static List<string> LoadPendingVirtualFriendDeletes(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return new List<string>();
+
+        string json = PlayerPrefs.GetString(key, string.Empty);
+        if (string.IsNullOrWhiteSpace(json)) return new List<string>();
+
+        try
+        {
+            PendingUidList data = JsonUtility.FromJson<PendingUidList>(json);
+            return data?.uids ?? new List<string>();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[FirestoreManager] 待同步虚拟好友删除队列读取失败，已重置。{ex.Message}");
+            PlayerPrefs.DeleteKey(key);
+            PlayerPrefs.Save();
+            return new List<string>();
+        }
+    }
+
     private static void SavePendingRealFriendDeletes(string key, List<string> pending)
     {
         if (string.IsNullOrEmpty(key)) return;
@@ -1164,6 +1443,99 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         }
 
         PlayerPrefs.Save();
+    }
+
+    private static void SavePendingVirtualFriendSaves(string key, List<string> pending)
+    {
+        if (string.IsNullOrEmpty(key)) return;
+
+        if (pending == null || pending.Count == 0)
+        {
+            PlayerPrefs.DeleteKey(key);
+        }
+        else
+        {
+            PlayerPrefs.SetString(key, JsonUtility.ToJson(new PendingUidList { uids = pending }));
+        }
+
+        PlayerPrefs.Save();
+    }
+
+    private static void SavePendingVirtualFriendDeletes(string key, List<string> pending)
+    {
+        if (string.IsNullOrEmpty(key)) return;
+
+        if (pending == null || pending.Count == 0)
+        {
+            PlayerPrefs.DeleteKey(key);
+        }
+        else
+        {
+            PlayerPrefs.SetString(key, JsonUtility.ToJson(new PendingUidList { uids = pending }));
+        }
+
+        PlayerPrefs.Save();
+    }
+
+    private static bool IsVirtualFriendPendingSave(string virtualFriendId)
+    {
+        if (string.IsNullOrWhiteSpace(virtualFriendId)) return false;
+
+        foreach (string key in GetPendingVirtualFriendSaveKeysForSync())
+        {
+            if (LoadPendingVirtualFriendSaves(key).Exists(id => id == virtualFriendId))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsRealFriendPendingDelete(string friendUid)
+    {
+        if (string.IsNullOrWhiteSpace(friendUid)) return false;
+
+        foreach (string key in GetPendingRealFriendDeleteKeysForSync())
+        {
+            if (LoadPendingRealFriendDeletes(key).Exists(uid => uid == friendUid))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsRealFriendPendingBlock(string friendUid)
+    {
+        if (string.IsNullOrWhiteSpace(friendUid)) return false;
+
+        foreach (string key in GetPendingRealFriendBlockKeysForSync())
+        {
+            if (LoadPendingRealFriendBlocks(key).Exists(uid => uid == friendUid))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsVirtualFriendPendingDelete(string virtualFriendId)
+    {
+        if (string.IsNullOrWhiteSpace(virtualFriendId)) return false;
+
+        foreach (string key in GetPendingVirtualFriendDeleteKeysForSync())
+        {
+            if (LoadPendingVirtualFriendDeletes(key).Exists(id => id == virtualFriendId))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static void EnsureVirtualFriendId(FriendDataManager.FriendData virtualFriend)
+    {
+        if (virtualFriend == null || !virtualFriend.isVirtual) return;
+        if (!string.IsNullOrWhiteSpace(virtualFriend.virtualFriendId)) return;
+
+        virtualFriend.virtualFriendId = Guid.NewGuid().ToString("N");
+        FriendDataManager.Instance?.SaveLocalData();
     }
 
     private static void SavePendingRealFriendBlocks(string key, List<string> pending)
@@ -1266,6 +1638,15 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
 
         CommitBlockRealFriend(currentUid, friendUid, friend, success =>
         {
+            if (!success)
+            {
+                QueuePendingRealFriendBlock(friendUid);
+                FriendDataManager.Instance?.AddBlockedUser(friendUid);
+                Debug.LogWarning($"[FirestoreManager] 真实好友云端屏蔽失败，已加入待同步屏蔽队列: {friendUid}");
+                onComplete?.Invoke(true);
+                return;
+            }
+
             if (success)
             {
                 FriendDataManager.Instance?.AddBlockedUser(friendUid);
@@ -1702,26 +2083,77 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     /// </summary>
     public void SaveVirtualFriend(FriendDataManager.FriendData virtualFriend, Action<bool> onComplete = null)
     {
-        if (!CheckReady(onComplete)) return;
         if (virtualFriend == null || !virtualFriend.isVirtual)
         {
             onComplete?.Invoke(false);
             return;
         }
 
-        string currentUid = UserDataManager.Instance.FirebaseUid;
-        if (string.IsNullOrEmpty(currentUid))
+        EnsureVirtualFriendId(virtualFriend);
+
+        string currentUid = GetCurrentFirebaseUid();
+        if (string.IsNullOrEmpty(currentUid) || !_isInitialized || _db == null)
         {
+            QueuePendingVirtualFriendSave(virtualFriend.virtualFriendId);
             onComplete?.Invoke(false);
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(virtualFriend.virtualFriendId))
+        CommitSaveVirtualFriendWithAvatar(currentUid, virtualFriend, success =>
         {
-            virtualFriend.virtualFriendId = Guid.NewGuid().ToString("N");
-            FriendDataManager.Instance.SaveLocalData();
+            if (success)
+            {
+                RemovePendingVirtualFriendSave(virtualFriend.virtualFriendId);
+            }
+            else
+            {
+                QueuePendingVirtualFriendSave(virtualFriend.virtualFriendId);
+            }
+
+            onComplete?.Invoke(success);
+        });
+    }
+
+    private void CommitSaveVirtualFriendWithAvatar(string currentUid, FriendDataManager.FriendData virtualFriend, Action<bool> onComplete)
+    {
+        if (ShouldUploadPendingVirtualFriendAvatar(virtualFriend))
+        {
+            AvatarUploadManager.Instance.UploadVirtualFriendAvatarFromFile(
+                virtualFriend.virtualFriendId,
+                virtualFriend.avatarImagePath,
+                result =>
+                {
+                    FriendDataManager.Instance?.SetVirtualFriendCloudAvatar(
+                        virtualFriend,
+                        result.photoUrl,
+                        result.storagePath,
+                        result.previewSprite);
+                    CommitSaveVirtualFriend(currentUid, virtualFriend, onComplete);
+                },
+                error =>
+                {
+                    Debug.LogWarning("[FirestoreManager] 待同步虚拟好友头像上传失败，将先同步文字档案: " + error);
+                    CommitSaveVirtualFriend(currentUid, virtualFriend, onComplete);
+                });
+            return;
         }
 
+        CommitSaveVirtualFriend(currentUid, virtualFriend, onComplete);
+    }
+
+    private bool ShouldUploadPendingVirtualFriendAvatar(FriendDataManager.FriendData virtualFriend)
+    {
+        return virtualFriend != null
+            && AvatarUploadManager.Instance != null
+            && !string.IsNullOrWhiteSpace(virtualFriend.virtualFriendId)
+            && !string.IsNullOrWhiteSpace(virtualFriend.avatarImagePath)
+            && File.Exists(virtualFriend.avatarImagePath)
+            && (string.IsNullOrWhiteSpace(virtualFriend.photoUrl)
+                || string.IsNullOrWhiteSpace(virtualFriend.avatarStoragePath));
+    }
+
+    private void CommitSaveVirtualFriend(string currentUid, FriendDataManager.FriendData virtualFriend, Action<bool> onComplete)
+    {
         Dictionary<string, object> data = new Dictionary<string, object>
         {
             { "virtualFriendId", virtualFriend.virtualFriendId },
@@ -1772,6 +2204,8 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     public void LoadVirtualFriends(Action<bool> onComplete = null)
     {
         if (!CheckReady(onComplete)) return;
+        SyncPendingVirtualFriendSaves();
+        SyncPendingVirtualFriendDeletes();
 
         string currentUid = UserDataManager.Instance.FirebaseUid;
         if (string.IsNullOrEmpty(currentUid))
@@ -1796,6 +2230,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 foreach (DocumentSnapshot doc in task.Result.Documents)
                 {
                     if (!doc.Exists) continue;
+                    if (IsVirtualFriendPendingSave(doc.Id) || IsVirtualFriendPendingDelete(doc.Id)) continue;
 
                     Dictionary<string, object> data = doc.ToDictionary();
                     if (GetBool(data, "isDeleted", false)) continue;
@@ -1823,24 +2258,47 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     /// </summary>
     public void DeleteVirtualFriend(FriendDataManager.FriendData virtualFriend, Action<bool> onComplete = null)
     {
-        if (!CheckReady(onComplete)) return;
         if (virtualFriend == null || !virtualFriend.isVirtual || string.IsNullOrWhiteSpace(virtualFriend.virtualFriendId))
         {
             onComplete?.Invoke(false);
             return;
         }
 
-        string currentUid = UserDataManager.Instance.FirebaseUid;
-        if (string.IsNullOrEmpty(currentUid))
+        string virtualFriendId = virtualFriend.virtualFriendId;
+        string currentUid = GetCurrentFirebaseUid();
+        if (string.IsNullOrEmpty(currentUid) || !_isInitialized || _db == null)
         {
-            onComplete?.Invoke(false);
+            QueueVirtualFriendDeleteLocal(virtualFriendId);
+            FriendDataManager.Instance?.RemoveVirtualFriendById(virtualFriendId);
+            onComplete?.Invoke(true);
             return;
         }
 
+        CommitDeleteVirtualFriend(currentUid, virtualFriendId, success =>
+        {
+            if (!success)
+            {
+                QueueVirtualFriendDeleteLocal(virtualFriendId);
+                FriendDataManager.Instance?.RemoveVirtualFriendById(virtualFriendId);
+                Debug.LogWarning($"[FirestoreManager] 虚拟好友云端删除失败，已加入待同步删除队列: {virtualFriendId}");
+                onComplete?.Invoke(true);
+                return;
+            }
+
+            RemovePendingVirtualFriendDelete(virtualFriendId);
+            RemovePendingVirtualFriendSave(virtualFriendId);
+            FriendDataManager.Instance.RemoveVirtualFriendById(virtualFriendId);
+            Debug.Log($"[FirestoreManager] 已删除虚拟好友: {virtualFriendId}");
+            onComplete?.Invoke(true);
+        });
+    }
+
+    private void CommitDeleteVirtualFriend(string currentUid, string virtualFriendId, Action<bool> onComplete)
+    {
         DocumentReference docRef = _db.Collection("users")
             .Document(currentUid)
             .Collection("virtual_friends")
-            .Document(virtualFriend.virtualFriendId);
+            .Document(virtualFriendId);
 
         Dictionary<string, object> data = new Dictionary<string, object>
         {
@@ -1857,8 +2315,6 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 return;
             }
 
-            FriendDataManager.Instance.RemoveVirtualFriendById(virtualFriend.virtualFriendId);
-            Debug.Log($"[FirestoreManager] 已删除虚拟好友: {virtualFriend.virtualFriendId}");
             onComplete?.Invoke(true);
         });
     }

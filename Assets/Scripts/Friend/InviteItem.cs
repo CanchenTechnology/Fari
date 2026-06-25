@@ -20,7 +20,6 @@ public class InviteItem : MonoBehaviour
 
     private void OnEnable()
     {
-        EnsureRejectButton();
         ApplyCardVisualStyle();
         if (infoBtn != null) infoBtn.onClick.AddListener(OnActionButtonClick);
         if (rejectBtn != null) rejectBtn.onClick.AddListener(OnRejectButtonClick);
@@ -43,6 +42,8 @@ public class InviteItem : MonoBehaviour
     /// </summary>
     public void SetData(Sprite sprite, string info)
     {
+        data = null;
+        SetRejectButtonVisible(false);
         FriendAvatarImageUtility.ApplyAvatar(headImage, sprite, GetDefaultAvatarSprite());
 
         if (infoText != null) infoText.text = info;
@@ -55,7 +56,13 @@ public class InviteItem : MonoBehaviour
     {
         data = inviteData;
         EnsureRejectButton();
+        SetRejectButtonVisible(true);
         ApplyCardVisualStyle();
+        if (rejectBtn != null)
+        {
+            rejectBtn.onClick.RemoveListener(OnRejectButtonClick);
+            rejectBtn.onClick.AddListener(OnRejectButtonClick);
+        }
         isProcessing = false;
         SetButtonsInteractable(true);
 
@@ -78,6 +85,7 @@ public class InviteItem : MonoBehaviour
     {
         data = null;
         isProcessing = false;
+        SetRejectButtonVisible(false);
         FriendAvatarImageUtility.ApplyAvatar(headImage, GetDefaultAvatarSprite());
         if (nameText != null) nameText.text = string.Empty;
         if (infoText != null) infoText.text = string.Empty;
@@ -154,7 +162,12 @@ public class InviteItem : MonoBehaviour
         }
 
         SetButtonText(rejectBtn, "拒绝");
-        ApplyButtonVisual(rejectBtn, new Color(0.18f, 0.12f, 0.18f, 1f), new Color(0.96f, 0.70f, 0.74f, 1f));
+    }
+
+    public void SetRejectButtonVisible(bool visible)
+    {
+        if (rejectBtn != null)
+            rejectBtn.gameObject.SetActive(visible);
     }
 
     private void SetButtonText(Button button, string text)
@@ -176,36 +189,9 @@ public class InviteItem : MonoBehaviour
         if (rect != null && rect.sizeDelta.y < 104f)
             rect.sizeDelta = new Vector2(rect.sizeDelta.x, 104f);
 
-        Image bg = GetComponent<Image>();
-        if (bg != null)
-            bg.color = new Color(0.13f, 0.10f, 0.16f, 0.96f);
-
         if (nameText != null)
         {
-            nameText.color = new Color(1f, 0.82f, 0.50f, 1f);
             nameText.fontStyle = FontStyles.Bold;
-        }
-
-        if (infoText != null)
-            infoText.color = new Color(0.84f, 0.80f, 0.92f, 1f);
-
-        ApplyButtonVisual(infoBtn, new Color(0.30f, 0.10f, 0.48f, 1f), Color.white);
-        ApplyButtonVisual(rejectBtn, new Color(0.18f, 0.12f, 0.18f, 1f), new Color(0.96f, 0.70f, 0.74f, 1f));
-    }
-
-    private void ApplyButtonVisual(Button button, Color background, Color textColor)
-    {
-        if (button == null) return;
-
-        Image image = button.GetComponent<Image>();
-        if (image != null)
-            image.color = background;
-
-        TMP_Text text = button.GetComponentInChildren<TMP_Text>(true);
-        if (text != null)
-        {
-            text.color = textColor;
-            text.fontStyle = FontStyles.Bold;
         }
     }
 

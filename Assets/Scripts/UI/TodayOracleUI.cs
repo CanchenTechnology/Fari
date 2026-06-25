@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Collections;
 using UnityEngine.UI;
 using UnityEngine;
+using UnityEngine.Video;
 using GamerFrameWork.UIFrameWork;
 using GamerFrameWork.OracleRuntime;
 
@@ -30,15 +31,18 @@ public class TodayOracleUI : WindowBase
 	private LoadingTextUI _loadingTextUI;
 	private int _tomorrowHookRequestId;
 	private int _todayStateRequestId;
+	private int _idleVideoPlayRequestId;
 	private bool _isRestoringToday;
+	private bool _idleVideoHasStarted;
 
 	[SerializeField] private float flipRevealDelaySeconds = 1.2f;
 
 	#region 生命周期函数
 	public override void OnAwake()
 	{
-		uiComponent = gameObject.GetComponent<TodayOracleUIComponent>();
+		uiComponent = ResolveUiComponent();
 		uiComponent.InitComponent(this);
+		ConfigureIdleVideoPlayer();
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		base.OnAwake();
 
@@ -62,7 +66,6 @@ public class TodayOracleUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
-		OracleForegroundEffects.Attach(this.Canvas, OracleForegroundEffectStyle.DailyOracle);
 		PlayIdleVideo();
 		LoadDueTomorrowHooks();
 		RefreshTodayOracleState();
@@ -73,7 +76,6 @@ public class TodayOracleUI : WindowBase
 		_tomorrowHookRequestId++;
 		_todayStateRequestId++;
 		StopRestoreTodayCoroutine();
-		OracleForegroundEffects.Detach(this.Canvas);
 		PauseIdleVideo();
 		base.OnHide();
 	}
@@ -89,16 +91,57 @@ public class TodayOracleUI : WindowBase
 
 	#region API Function
 
+	private TodayOracleUIComponent ResolveUiComponent()
+	{
+		TodayOracleUIComponent[] components = gameObject.GetComponents<TodayOracleUIComponent>();
+		if (components == null || components.Length == 0)
+			return null;
+
+		foreach (TodayOracleUIComponent component in components)
+		{
+			if (component != null
+				&& component.idleVideoPlayer != null
+				&& component.flipCardButton != null
+				&& component.ReadingCardContainerTransform != null)
+			{
+				return component;
+			}
+		}
+
+		return components[0];
+	}
+
+	private void ConfigureIdleVideoPlayer()
+	{
+		VideoPlayer videoPlayer = uiComponent?.idleVideoPlayer;
+		if (videoPlayer == null) return;
+
+		videoPlayer.playOnAwake = false;
+		videoPlayer.waitForFirstFrame = true;
+		videoPlayer.skipOnDrop = false;
+		videoPlayer.isLooping = true;
+	}
+
 	private void PlayIdleVideo()
 	{
-		if (_idleVideoCoroutine != null)
-			uiComponent.StopCoroutine(_idleVideoCoroutine);
+		VideoPlayer videoPlayer = uiComponent?.idleVideoPlayer;
+		if (videoPlayer == null)
+		{
+			Debug.LogWarning("[TodayOracleUI] idleVideoPlayer is not assigned.");
+			return;
+		}
 
-		_idleVideoCoroutine = uiComponent.StartCoroutine(PlayIdleVideoRoutine());
+		ConfigureIdleVideoPlayer();
+
+		if (videoPlayer.isPlaying || _idleVideoCoroutine != null)
+			return;
+
+		_idleVideoCoroutine = uiComponent.StartCoroutine(PlayIdleVideoRoutine(++_idleVideoPlayRequestId));
 	}
 
 	private void PauseIdleVideo()
 	{
+		_idleVideoPlayRequestId++;
 		if (_idleVideoCoroutine != null)
 		{
 			uiComponent.StopCoroutine(_idleVideoCoroutine);
@@ -110,7 +153,7 @@ public class TodayOracleUI : WindowBase
 			videoPlayer.Pause();
 	}
 
-	private IEnumerator PlayIdleVideoRoutine()
+	private IEnumerator PlayIdleVideoRoutine(int requestId)
 	{
 		var videoPlayer = uiComponent?.idleVideoPlayer;
 		if (videoPlayer == null)
@@ -125,16 +168,34 @@ public class TodayOracleUI : WindowBase
 			yield break;
 		}
 
-		videoPlayer.isLooping = true;
+		ConfigureIdleVideoPlayer();
 
 		if (!videoPlayer.isPrepared)
 		{
 			videoPlayer.Prepare();
 			while (!videoPlayer.isPrepared)
+			{
+				if (requestId != _idleVideoPlayRequestId)
+				{
+					_idleVideoCoroutine = null;
+					yield break;
+				}
 				yield return null;
+			}
 		}
 
-		videoPlayer.time = 0;
+		if (requestId != _idleVideoPlayRequestId)
+		{
+			_idleVideoCoroutine = null;
+			yield break;
+		}
+
+		if (!_idleVideoHasStarted || (videoPlayer.length > 0 && videoPlayer.time >= videoPlayer.length - 0.05f))
+		{
+			videoPlayer.time = 0;
+			_idleVideoHasStarted = true;
+		}
+
 		videoPlayer.Play();
 		_idleVideoCoroutine = null;
 	}
@@ -196,7 +257,7 @@ public class TodayOracleUI : WindowBase
 		// 把今日牌数据同步到 DialogSystem
 		if (_divinationEngine?.TodayCard.HasValue == true)
 		{
-			var payload = _divinationEngine.GetTodayCardPayload();
+			var payload = BuildTodayCardPayloadForDialog();
 			DialogSystem.Instance?.SetTodayCardPayload(payload);
 			Debug.Log($"[TodayOracleUI] DeepChat 携带今日牌: {payload.displayName}");
 		}
@@ -244,7 +305,7 @@ public class TodayOracleUI : WindowBase
 		_currentCard = card;
 		_currentUpright = upright;
 		Debug.Log($"[TodayOracleUI] 翻牌准备: {card.nameZh} ({(upright ? "正位" : "逆位")})");
-		DailyOracleFirestore.SaveTodayLocal(card, upright, BuildLocalFallback(card, upright), DailyOracleService.CurrentLocale);
+		DailyOracleFirestore.SaveTodayLocalPending(card, upright, BuildLocalFallback(card, upright), DailyOracleService.CurrentLocale);
 		ShowLoadingText(card);
 
 		EnsureDailyOracleService();
@@ -449,7 +510,7 @@ public class TodayOracleUI : WindowBase
 			cardDescription = oraclePayload.detail,
 			cardMeaning = oraclePayload.oracle,
 			cardIcon = TarotSpriteLoader.Load(card.cardId),
-			cardPayload = _divinationEngine?.GetTodayCardPayload(),
+			cardPayload = BuildTodayCardPayloadForDialog(card, upright, oraclePayload),
 			oraclePayload = oraclePayload,
 			interpretationPayload = null,
 			preparedAt = System.DateTime.Now.ToString("o")
@@ -470,7 +531,9 @@ public class TodayOracleUI : WindowBase
 			PopulateOracleFields(preparedReading.oraclePayload);
 
 		DialogSystem.Instance?.SetTodayCardPayload(
-			preparedReading.cardPayload ?? _divinationEngine?.GetTodayCardPayload());
+			BuildTodayCardPayloadForDialog(preparedReading.card, preparedReading.upright, preparedReading.oraclePayload)
+			?? preparedReading.cardPayload
+			?? _divinationEngine?.GetTodayCardPayload());
 
 		SetFlipButtonVisible(false);
 		SetReadingContainerVisible(true);
@@ -598,7 +661,7 @@ public class TodayOracleUI : WindowBase
 			return false;
 
 		var (card, upright) = _divinationEngine.TodayCard.Value;
-		DailyOracleFirestore.SaveTodayLocal(card, upright, BuildLocalFallback(card, upright), DailyOracleService.CurrentLocale);
+		DailyOracleFirestore.SaveTodayLocalPending(card, upright, BuildLocalFallback(card, upright), DailyOracleService.CurrentLocale);
 		RevealPreparedReading(BuildLocalPreparedReading(card, upright), false);
 		return true;
 	}
@@ -612,7 +675,7 @@ public class TodayOracleUI : WindowBase
 			? _divinationEngine.TodayCard.Value
 			: _divinationEngine.DrawDailyCard();
 
-		DailyOracleFirestore.SaveTodayLocal(card, upright, BuildLocalFallback(card, upright), DailyOracleService.CurrentLocale);
+		DailyOracleFirestore.SaveTodayLocalPending(card, upright, BuildLocalFallback(card, upright), DailyOracleService.CurrentLocale);
 		RevealPreparedReading(BuildLocalPreparedReading(card, upright), openReadingWindow);
 		Debug.LogWarning($"[TodayOracleUI] 今日牌已用过但缓存缺失，已用本地模板重建: {card.nameZh} ({(upright ? "正位" : "逆位")})");
 		return true;
@@ -641,7 +704,7 @@ public class TodayOracleUI : WindowBase
 			cardDescription = FirstNonEmpty(safePayload.detail, fallback.detail),
 			cardMeaning = FirstNonEmpty(safePayload.oracle, fallback.oracle),
 			cardIcon = TarotSpriteLoader.Load(card.cardId),
-			cardPayload = _divinationEngine?.GetTodayCardPayload(),
+			cardPayload = BuildTodayCardPayloadForDialog(card, upright, safePayload),
 			oraclePayload = safePayload,
 			interpretationPayload = null,
 			preparedAt = System.DateTime.Now.ToString("o")
@@ -681,6 +744,72 @@ public class TodayOracleUI : WindowBase
 				return value;
 		}
 		return "";
+	}
+
+	private TodayCardPayload BuildTodayCardPayloadForDialog()
+	{
+		if (_currentCard != null)
+			return BuildTodayCardPayloadForDialog(_currentCard, _currentUpright, GetCachedOraclePayloadFor(_currentCard, _currentUpright));
+
+		if (_divinationEngine?.TodayCard.HasValue == true)
+		{
+			var (card, upright) = _divinationEngine.TodayCard.Value;
+			return BuildTodayCardPayloadForDialog(card, upright, GetCachedOraclePayloadFor(card, upright));
+		}
+
+		return null;
+	}
+
+	private TodayOraclePayload GetCachedOraclePayloadFor(TarotCard card, bool upright)
+	{
+		EnsureDailyOracleService();
+		if (_oracleService == null || card == null) return null;
+
+		if (_oracleService.IsCachedOracleFor(card, upright))
+			return _oracleService.CachedPayload;
+		if (_oracleService.IsCachedPreparedReadingFor(card, upright))
+			return _oracleService.CachedPreparedReading?.oraclePayload;
+
+		return null;
+	}
+
+	private TodayCardPayload BuildTodayCardPayloadForDialog(TarotCard card, bool upright, TodayOraclePayload oraclePayload)
+	{
+		if (card == null) return null;
+
+		EnsureDailyOracleService();
+		if (_oracleService != null && _oracleService.IsSameCurrentCard(card, upright))
+		{
+			TodayCardPayload servicePayload = _oracleService.GetTodayCardPayload();
+			if (servicePayload != null)
+				return servicePayload;
+		}
+
+		TodayCardPayload payload = null;
+		string orientation = upright ? "upright" : "reversed";
+		TodayCardPayload enginePayload = _divinationEngine?.GetTodayCardPayload();
+		if (enginePayload != null && enginePayload.cardId == card.cardId && enginePayload.orientation == orientation)
+		{
+			payload = enginePayload;
+		}
+
+		if (payload == null)
+		{
+			payload = new TodayCardPayload
+			{
+				cardId = card.cardId,
+				cardName = card.nameEn,
+				displayName = card.DisplayName(upright),
+				nameZh = card.nameZh,
+				orientation = orientation,
+				generatedAt = System.DateTime.Now.ToString("o"),
+				title = "今日塔罗"
+			};
+		}
+
+		payload.oracleText = FirstNonEmpty(payload.oracleText, oraclePayload?.oracle);
+		payload.title = FirstNonEmpty(payload.title, oraclePayload?.title, "今日塔罗");
+		return payload;
 	}
 
 	private void ShowLoadingText(TarotCard card)

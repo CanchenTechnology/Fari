@@ -64,8 +64,6 @@ public class ConfirmFriendInfoUI : WindowBase
 			return;
 		}
 		uiComponent.InitComponent(this);
-		Layer = WindowLayer.Popup;
-		this.Canvas.sortingOrder = (int)Layer;
 		base.OnAwake();
 	}
 	// 物体显示时执行
@@ -103,6 +101,7 @@ public class ConfirmFriendInfoUI : WindowBase
 			SetText(uiComponent.BirthdayValueText, "未填写");
 			SetText(uiComponent.BirthTimeValueText, "未填写");
 			SetText(uiComponent.BirthCityValueText, "未填写");
+			FriendAvatarImageUtility.ApplyAvatar(uiComponent?.AvatarImage, null);
 			return;
 		}
 
@@ -111,11 +110,12 @@ public class ConfirmFriendInfoUI : WindowBase
 		SetText(uiComponent.BirthTimeValueText, FormatOptionalValue(currentDraft.birthTime));
 		SetText(uiComponent.BirthCityValueText, FormatOptionalValue(currentDraft.city));
 
-		if (uiComponent.AvatarImage != null && currentDraft.avatarSprite != null)
+		if (currentDraft.avatarSprite == null && !string.IsNullOrWhiteSpace(currentDraft.avatarImagePath))
 		{
-			uiComponent.AvatarImage.sprite = currentDraft.avatarSprite;
-			uiComponent.AvatarImage.preserveAspect = true;
+			currentDraft.avatarSprite = FriendAvatarImageUtility.LoadSpriteFromPath(currentDraft.avatarImagePath);
 		}
+
+		FriendAvatarImageUtility.ApplyAvatar(uiComponent?.AvatarImage, currentDraft.avatarSprite);
 	}
 
 	private void SetCreateButtonInteractable(bool interactable)

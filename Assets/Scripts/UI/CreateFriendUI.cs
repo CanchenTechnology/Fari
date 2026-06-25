@@ -185,8 +185,14 @@ public class CreateFriendUI : WindowBase
 
 	private void SaveCreatedFriendToCloud(FriendDataManager.FriendData createdFriend)
 	{
-		if (createdFriend == null || FirestoreManager.Instance == null)
+		if (createdFriend == null)
 		{
+			return;
+		}
+
+		if (FirestoreManager.Instance == null)
+		{
+			FirestoreManager.QueueVirtualFriendSaveLocal(createdFriend);
 			return;
 		}
 
@@ -225,8 +231,15 @@ public class CreateFriendUI : WindowBase
 
 	private void SaveVirtualFriendDocument(FriendDataManager.FriendData friend)
 	{
-		if (friend == null || FirestoreManager.Instance == null)
+		if (friend == null)
 		{
+			return;
+		}
+
+		if (FirestoreManager.Instance == null)
+		{
+			FirestoreManager.QueueVirtualFriendSaveLocal(friend);
+			ToastManager.ShowToast("已保存到本地，稍后会同步云端");
 			return;
 		}
 

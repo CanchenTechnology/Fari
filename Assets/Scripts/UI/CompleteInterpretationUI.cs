@@ -499,6 +499,8 @@ public class CompleteInterpretationUI : WindowBase
     {
         if (string.IsNullOrEmpty(message)) return;
 
+        SyncTodayCardPayloadToDialogSystem();
+
         var navigationUI = UIModule.Instance?.GetWindow<NavigationUI>();
         if (navigationUI != null)
         {
@@ -536,6 +538,34 @@ public class CompleteInterpretationUI : WindowBase
         }
 
         NavigateToDialogAndSend(cardMsg);
+    }
+
+    private void SyncTodayCardPayloadToDialogSystem()
+    {
+        if (_currentCard == null) return;
+
+        var oracleService = DailyOracleService.Instance;
+        TodayCardPayload payload = null;
+        if (oracleService != null && oracleService.IsSameCurrentCard(_currentCard, _currentUpright))
+        {
+            payload = oracleService.GetTodayCardPayload();
+        }
+
+        if (payload == null)
+        {
+            payload = new TodayCardPayload
+            {
+                cardId = _currentCard.cardId,
+                cardName = _currentCard.nameEn,
+                displayName = _currentCard.DisplayName(_currentUpright),
+                nameZh = _currentCard.nameZh,
+                orientation = _currentUpright ? "upright" : "reversed",
+                generatedAt = System.DateTime.Now.ToString("o"),
+                title = "今日塔罗"
+            };
+        }
+
+        DialogSystem.Instance?.SetTodayCardPayload(payload);
     }
 
     #endregion

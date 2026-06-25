@@ -546,6 +546,8 @@ public class TodayCardUI : WindowBase
 	{
 		if (string.IsNullOrWhiteSpace(question)) return;
 
+		SyncTodayCardPayloadToDialogSystem();
+
 		var navigationUI = UIModule.Instance?.GetWindow<NavigationUI>();
 		if (navigationUI != null)
 			navigationUI.OpenDialogUI();
@@ -587,8 +589,10 @@ public class TodayCardUI : WindowBase
 	}
 	public void OnContinueChatButtonClick()
 	{
+		SyncTodayCardPayloadToDialogSystem();
 		HideWindow();
-		UIModule.Instance.GetWindow<NavigationUI>().OpenDialogUI();
+		UIModule.Instance.GetWindow<NavigationUI>()?.OpenDialogUI();
+		UIModule.Instance.GetWindow<DialogUI>()?.SendTodayOracleMessage();
 	}
 
 	private string BuildShareText(TarotCard card, bool upright, TodayCardDetailContent content)
@@ -610,6 +614,36 @@ public class TodayCardUI : WindowBase
 			builder.AppendLine($"不宜：{content.donts[0]}");
 
 		return builder.ToString().Trim();
+	}
+
+	private void SyncTodayCardPayloadToDialogSystem()
+	{
+		TodayCardPayload payload = BuildTodayCardPayloadForDialog();
+		if (payload != null)
+			DialogSystem.Instance?.SetTodayCardPayload(payload);
+	}
+
+	private TodayCardPayload BuildTodayCardPayloadForDialog()
+	{
+		if (DivinationEngine.Instance?.TodayCard.HasValue != true)
+			return null;
+
+		var (card, upright) = DivinationEngine.Instance.TodayCard.Value;
+		TodayCardPayload payload = DivinationEngine.Instance.GetTodayCardPayload() ?? new TodayCardPayload
+		{
+			cardId = card.cardId,
+			cardName = card.nameEn,
+			displayName = card.DisplayName(upright),
+			nameZh = card.nameZh,
+			orientation = upright ? "upright" : "reversed",
+			generatedAt = DateTime.Now.ToString("o"),
+			title = "今日塔罗"
+		};
+
+		TodayCardDetailContent content = BuildContent(card, upright);
+		payload.oracleText = FirstNonEmpty(payload.oracleText, content?.uprightMeaning, content?.todayState, content?.actionSuggestion);
+		payload.title = FirstNonEmpty(payload.title, "今日塔罗");
+		return payload;
 	}
 	#endregion
 }

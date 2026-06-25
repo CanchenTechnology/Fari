@@ -327,13 +327,12 @@ public class FeedbackUI : WindowBase
 		ToastManager.ShowToast($"已选择：{GetTagDisplay(_selectedTag)}");
 	}
 
-	private string GetPublishText()
+	private string GetCommunityPublishText()
 	{
-		if (uiComponent.SearchInputInputField != null && !string.IsNullOrWhiteSpace(uiComponent.SearchInputInputField.text))
-			return uiComponent.SearchInputInputField.text.Trim();
-		if (uiComponent.ChatInputInputField != null && !string.IsNullOrWhiteSpace(uiComponent.ChatInputInputField.text))
-			return uiComponent.ChatInputInputField.text.Trim();
-		return string.Empty;
+		TMP_InputField input = uiComponent.SearchInputInputField;
+		if (!IsCommunityPublishInput(input) || string.IsNullOrWhiteSpace(input.text))
+			return string.Empty;
+		return input.text.Trim();
 	}
 
 	private string GetChatInputText()
@@ -345,15 +344,46 @@ public class FeedbackUI : WindowBase
 		return string.Empty;
 	}
 
-	private void ClearFeedbackInputs()
+	private void ClearCommunityPublishInput()
 	{
-		if (uiComponent.SearchInputInputField != null)
+		if (IsCommunityPublishInput(uiComponent.SearchInputInputField))
 			uiComponent.SearchInputInputField.text = string.Empty;
+	}
+
+	private void ClearChatInputs()
+	{
 		if (uiComponent.ChatInputInputField != null)
 			uiComponent.ChatInputInputField.text = string.Empty;
 		if (uiComponent.ChatInputInputCaretInputField != null)
 			uiComponent.ChatInputInputCaretInputField.text = string.Empty;
-		_searchText = string.Empty;
+	}
+
+	private bool IsCommunityPublishInput(TMP_InputField input)
+	{
+		if (input == null) return false;
+
+		string placeholder = GetInputPlaceholderText(input);
+		if (string.IsNullOrWhiteSpace(placeholder))
+			return true;
+
+		if (placeholder.IndexOf("搜索", StringComparison.OrdinalIgnoreCase) >= 0 ||
+			placeholder.IndexOf("search", StringComparison.OrdinalIgnoreCase) >= 0)
+			return false;
+
+		return placeholder.IndexOf("反馈", StringComparison.OrdinalIgnoreCase) >= 0 ||
+			placeholder.IndexOf("建议", StringComparison.OrdinalIgnoreCase) >= 0 ||
+			placeholder.IndexOf("输入", StringComparison.OrdinalIgnoreCase) >= 0;
+	}
+
+	private string GetInputPlaceholderText(TMP_InputField input)
+	{
+		if (input == null || input.placeholder == null)
+			return string.Empty;
+		if (input.placeholder is TMP_Text placeholderText)
+			return placeholderText.text ?? string.Empty;
+
+		TMP_Text nestedText = input.placeholder.GetComponent<TMP_Text>();
+		return nestedText != null ? nestedText.text ?? string.Empty : string.Empty;
 	}
 
 	private void SubmitFeedback(string category, string tag, string content, string source, Action<bool> onComplete)
@@ -649,17 +679,23 @@ public class FeedbackUI : WindowBase
 	}
 	public void OnSearchInputInputChange(string text)
 	{
+		if (IsCommunityPublishInput(uiComponent.SearchInputInputField))
+			return;
+
 		_searchText = text ?? string.Empty;
 		RenderCommunityList();
 	}
 	public void OnSearchInputInputEnd(string text)
 	{
+		if (IsCommunityPublishInput(uiComponent.SearchInputInputField))
+			return;
+
 		_searchText = text ?? string.Empty;
 		RenderCommunityList();
 	}
 	public void OnPublishFeedbackButtonClick()
 	{
-		string content = GetPublishText();
+		string content = GetCommunityPublishText();
 		if (string.IsNullOrWhiteSpace(content))
 		{
 			ToastManager.ShowToast("先写下你的反馈内容");
@@ -670,7 +706,7 @@ public class FeedbackUI : WindowBase
 		{
 			ToastManager.ShowToast(success ? "反馈已提交" : "已暂存，登录后可同步");
 		});
-		ClearFeedbackInputs();
+		ClearCommunityPublishInput();
 		RenderCommunityList();
 	}
 	public void OnTagBugButtonClick()
@@ -712,7 +748,7 @@ public class FeedbackUI : WindowBase
 		{
 			ToastManager.ShowToast(success ? "反馈消息已发送" : "反馈已暂存");
 		});
-		ClearFeedbackInputs();
+		ClearChatInputs();
 		RenderChatList();
 	}
 	#endregion

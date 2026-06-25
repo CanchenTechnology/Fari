@@ -95,17 +95,8 @@ public class MemoryManagementUI : WindowBase
 
 	private void LoadCloudMemoryThenRender()
 	{
-		var firestore = FirestoreManager.Instance;
-		if (firestore == null || !firestore.IsInitialized)
+		MemoryUiStore.LoadLatest(_ =>
 		{
-			RenderMemoryList();
-			return;
-		}
-
-		firestore.LoadMemorySource(source =>
-		{
-			if (source != null)
-				DialogSystem.Instance?.SetMemorySource(source);
 			RenderMemoryList();
 		});
 	}
@@ -336,21 +327,11 @@ public class MemoryManagementUI : WindowBase
 	{
 		ResetClearConfirmation();
 
-		var firestore = FirestoreManager.Instance;
-		var source = DialogSystem.Instance?.GetMemorySource();
-		if (firestore != null && firestore.IsInitialized)
+		MemoryUiStore.SaveCurrent(success =>
 		{
-			firestore.SaveMemorySource(source, success =>
-			{
-				LoadCloudMemoryThenRender();
-				ToastManager.ShowToast(success ? "记忆已同步" : "记忆同步失败");
-			});
-		}
-		else
-		{
-			RenderMemoryList();
-			ToastManager.ShowToast("记忆已刷新");
-		}
+			LoadCloudMemoryThenRender();
+			ToastManager.ShowToast(success ? "记忆已同步" : "已保存到本地，云端稍后同步");
+		});
 	}
 	public void OnClearAllButtonClick()
 	{
@@ -367,25 +348,13 @@ public class MemoryManagementUI : WindowBase
 		ResetClearConfirmation(false);
 		SetClearTexts("正在清除记忆", "正在清空本地和云端 AI 记忆，请稍候。");
 
-		DialogSystem.Instance?.SetMemorySource(new MemorySource());
-		var firestore = FirestoreManager.Instance;
-		if (firestore != null && firestore.IsInitialized)
-		{
-			firestore.DeleteMemorySource(success =>
-			{
-				_isClearing = false;
-				ResetClearConfirmation();
-				RenderMemoryList();
-				ToastManager.ShowToast(success ? "AI 记忆已清空" : "本地记忆已清空，云端删除失败");
-			});
-		}
-		else
+		MemoryUiStore.ClearAll(success =>
 		{
 			_isClearing = false;
 			ResetClearConfirmation();
 			RenderMemoryList();
-			ToastManager.ShowToast("本地 AI 记忆已清空");
-		}
+			ToastManager.ShowToast(success ? "AI 记忆已清空" : "本地 AI 记忆已清空，云端稍后同步");
+		});
 	}
 	public void OnBottomNavToggleChange(bool state, Toggle toggle)
 	{

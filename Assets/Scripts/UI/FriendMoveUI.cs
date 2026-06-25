@@ -261,7 +261,7 @@ public class FriendMoveUI : WindowBase
 
     private void DeleteVirtualFriend(FriendDataManager.FriendData friend)
     {
-        if (FirestoreManager.Instance != null && FirestoreManager.Instance.IsInitialized)
+        if (FirestoreManager.Instance != null)
         {
             ToastManager.ShowToast($"正在删除 {FormatFriendName(friend)}");
             FirestoreManager.Instance.DeleteVirtualFriend(friend, success =>
@@ -270,20 +270,22 @@ public class FriendMoveUI : WindowBase
                 RefreshView();
                 if (!success)
                 {
-                    ToastManager.ShowToast("云端删除失败，已保留本地好友");
+                    ToastManager.ShowToast("删除失败");
                     return;
                 }
 
-                ToastManager.ShowToast("已删除创建的好友");
+                bool queued = FirestoreManager.IsVirtualFriendDeleteQueuedLocal(friend.virtualFriendId);
+                ToastManager.ShowToast(queued ? "已删除创建的好友，云端稍后同步" : "已删除创建的好友");
                 HideWindow();
             });
             return;
         }
 
+        FirestoreManager.QueueVirtualFriendDeleteLocal(friend);
         bool removed = FriendDataManager.Instance != null && FriendDataManager.Instance.RemoveVirtualFriend(friend.id);
         isProcessing = false;
         RefreshView();
-        ToastManager.ShowToast(removed ? "已删除本地创建好友" : "删除失败");
+        ToastManager.ShowToast(removed ? "已删除创建的好友，云端稍后同步" : "删除失败");
         if (removed)
             HideWindow();
     }
@@ -311,7 +313,8 @@ public class FriendMoveUI : WindowBase
             {
                 isProcessing = false;
                 RefreshView();
-                ToastManager.ShowToast(success ? BuildLocalDeleteToast(true, !string.IsNullOrWhiteSpace(friend.firebaseUid)) : "删除好友失败，请稍后再试");
+                bool queued = FirestoreManager.IsRealFriendDeleteQueuedLocal(friend.firebaseUid);
+                ToastManager.ShowToast(success ? BuildRealFriendDeleteSuccessToast(queued) : "删除好友失败，请稍后再试");
                 if (success)
                     CloseAfterFriendRelationEnded();
             });
@@ -323,7 +326,8 @@ public class FriendMoveUI : WindowBase
         {
             isProcessing = false;
             RefreshView();
-            ToastManager.ShowToast(success ? "已删除好友" : "删除好友失败，请稍后再试");
+            bool queued = FirestoreManager.IsRealFriendDeleteQueuedLocal(friend.firebaseUid);
+            ToastManager.ShowToast(success ? BuildRealFriendDeleteSuccessToast(queued) : "删除好友失败，请稍后再试");
             if (success)
                 CloseAfterFriendRelationEnded();
         });
@@ -361,7 +365,8 @@ public class FriendMoveUI : WindowBase
         {
             isProcessing = false;
             RefreshView();
-            string successText = FirestoreManager.Instance != null && FirestoreManager.Instance.IsInitialized ? "已屏蔽好友" : "已屏蔽好友，云端稍后同步";
+            bool queued = FirestoreManager.IsRealFriendBlockQueuedLocal(friend.firebaseUid);
+            string successText = queued ? "已屏蔽好友，云端稍后同步" : "已屏蔽好友";
             ToastManager.ShowToast(success ? successText : "屏蔽失败，请稍后再试");
             if (success)
                 CloseAfterFriendRelationEnded();
@@ -386,6 +391,11 @@ public class FriendMoveUI : WindowBase
         if (removed) return "已从本地好友列表移除";
         if (queued) return "已加入云端删除队列";
         return "删除好友失败，请稍后再试";
+    }
+
+    private string BuildRealFriendDeleteSuccessToast(bool queued)
+    {
+        return queued ? "已删除好友，云端稍后同步" : "已删除好友";
     }
 
     private bool CanOpenRealFriendProfile(FriendDataManager.FriendData friend)

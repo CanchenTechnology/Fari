@@ -28,6 +28,7 @@ public class CreateFriendInfoUI : WindowBase
 	private bool isRefreshingSyncSwitch;
 	private Sprite defaultAvatarSprite;
 	private int requestVersion;
+	private int syncSettingsVersion;
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -362,6 +363,7 @@ public class CreateFriendInfoUI : WindowBase
 
 	private void LoadSyncSettingsThenRefresh()
 	{
+		DailyDivinationSyncSettingsManager manager = DailyDivinationSyncSettingsManager.Instance;
 		FirestoreManager firestore = FirestoreManager.Instance;
 		if (firestore == null || !firestore.IsInitialized)
 		{
@@ -369,10 +371,20 @@ public class CreateFriendInfoUI : WindowBase
 			return;
 		}
 
+		if (manager.HasPendingCloudSync)
+		{
+			RefreshSyncSwitch();
+			SaveCurrentSyncSettings(false);
+			return;
+		}
+
+		int syncRequestId = ++syncSettingsVersion;
 		firestore.LoadDailyDivinationSyncSettings(cloud =>
 		{
-			if (cloud != null)
-				DailyDivinationSyncSettingsManager.Instance.ApplySettings(cloud.enabled, cloud.visibility);
+			if (syncRequestId != syncSettingsVersion)
+				return;
+			if (cloud != null && !manager.HasPendingCloudSync)
+				manager.ApplySettings(cloud.enabled, cloud.visibility);
 			RefreshSyncSwitch();
 		});
 	}
@@ -392,16 +404,25 @@ public class CreateFriendInfoUI : WindowBase
 	private void SaveSyncSettingFromProfile(bool enabled)
 	{
 		DailyDivinationSyncSettingsManager manager = DailyDivinationSyncSettingsManager.Instance;
+		syncSettingsVersion++;
 		manager.SetEnabled(enabled, false);
 		if (enabled && manager.Visibility == DailyDivinationSyncVisibility.OnlyMe)
 			manager.SetVisibility(DailyDivinationSyncVisibility.RealFriends, false);
 		manager.SaveLocal();
 
+		SaveCurrentSyncSettings(true);
+	}
+
+	private void SaveCurrentSyncSettings(bool showToast)
+	{
+		DailyDivinationSyncSettingsManager manager = DailyDivinationSyncSettingsManager.Instance;
+		manager.MarkCloudSyncPending();
 		DailyDivinationSyncSettings settings = manager.GetSettings();
 		FirestoreManager firestore = FirestoreManager.Instance;
 		if (firestore == null || !firestore.IsInitialized)
 		{
-			ToastManager.ShowToast("同步设置已保存到本地");
+			if (showToast)
+				ToastManager.ShowToast("同步设置已保存到本地，云端稍后同步");
 			return;
 		}
 
@@ -409,24 +430,29 @@ public class CreateFriendInfoUI : WindowBase
 		{
 			if (!success)
 			{
-				ToastManager.ShowToast("同步设置保存失败");
+				manager.MarkCloudSyncPending();
+				if (showToast)
+					ToastManager.ShowToast("同步设置已保存到本地，云端稍后同步");
 				return;
 			}
 
+			manager.MarkCloudSyncComplete();
 			DailyOracleFirestore store = DailyOracleFirestore.Instance;
 			if (store == null || !store.IsReady)
 			{
-				ToastManager.ShowToast("同步设置已保存");
+				if (showToast)
+					ToastManager.ShowToast("同步设置已保存");
 				return;
 			}
 
-			store.ApplySyncSettingsToPublishedSummaries(settings, 30, OnTodaySummarySyncUpdated);
+			store.ApplySyncSettingsToPublishedSummaries(settings, 30, summarySuccess => OnTodaySummarySyncUpdated(summarySuccess, showToast));
 		});
 	}
 
-	private void OnTodaySummarySyncUpdated(bool success)
+	private void OnTodaySummarySyncUpdated(bool success, bool showToast)
 	{
-		ToastManager.ShowToast(success ? "每日占卜动态同步已保存" : "设置已保存，今天还没有可同步的每日牌");
+		if (showToast)
+			ToastManager.ShowToast(success ? "每日占卜动态同步已保存" : "设置已保存，今天还没有可同步的每日牌");
 	}
 
 	private void SetText(TMP_Text text, string value)

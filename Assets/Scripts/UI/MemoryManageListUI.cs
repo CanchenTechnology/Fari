@@ -14,11 +14,14 @@ using TMPro;
 public class MemoryManageListUI : WindowBase
 {
 	public MemoryManageListUIComponent uiComponent;
+	private const float DeleteConfirmSeconds = 6f;
 	private readonly List<GameObject> _runtimeRows = new List<GameObject>();
 	private MemoryUiCategory _currentCategory = MemoryUiCategory.All;
 	private string _searchText = "";
 	private bool _isRefreshing;
 	private bool _templateChildrenHidden;
+	private string _pendingDeleteItemId;
+	private float _deleteConfirmDeadline;
 	private RectTransform _contentRect;
 
 	#region 生命周期函数
@@ -47,6 +50,7 @@ public class MemoryManageListUI : WindowBase
 	// 物体隐藏时执行
 	public override void OnHide()
 	{
+		ResetDeleteConfirm();
 		base.OnHide();
 	}
 	// 物体销毁时执行
@@ -60,12 +64,14 @@ public class MemoryManageListUI : WindowBase
 	#region API Function
 	public void SetCategory(MemoryUiCategory category)
 	{
+		ResetDeleteConfirm();
 		_currentCategory = category;
 		RefreshUI();
 	}
 
 	public void RefreshFromExternal()
 	{
+		ResetDeleteConfirm();
 		RefreshUI();
 	}
 
@@ -181,6 +187,7 @@ public class MemoryManageListUI : WindowBase
 
 	private void ToggleMemory(MemoryUiItem item)
 	{
+		ResetDeleteConfirm();
 		bool nextEnabled = item.PendingConfirm || !item.Enabled;
 		MemoryUiStore.SetEnabled(item.Id, nextEnabled);
 		SaveAndRefresh(item.PendingConfirm ? "记忆已确认" : item.Enabled ? "记忆已关闭" : "记忆已启用");
@@ -188,6 +195,7 @@ public class MemoryManageListUI : WindowBase
 
 	private void EditMemory(MemoryUiItem item)
 	{
+		ResetDeleteConfirm();
 		MemoryEditOverlay.Show(transform, item, result =>
 		{
 			MemoryUiStore.UpdateMemory(item.Id, result);
@@ -197,23 +205,44 @@ public class MemoryManageListUI : WindowBase
 
 	private void DeleteMemory(MemoryUiItem item)
 	{
+		if (item == null || string.IsNullOrWhiteSpace(item.Id))
+		{
+			ToastManager.ShowToast("记忆不存在");
+			return;
+		}
+
+		if (_pendingDeleteItemId != item.Id || Time.time > _deleteConfirmDeadline)
+		{
+			_pendingDeleteItemId = item.Id;
+			_deleteConfirmDeadline = Time.time + DeleteConfirmSeconds;
+			ToastManager.ShowToast("再次点击删除这条记忆");
+			return;
+		}
+
+		ResetDeleteConfirm();
 		if (!MemoryUiStore.DeleteMemory(item.Id))
 		{
 			ToastManager.ShowToast("记忆不存在");
 			return;
 		}
-		SaveAndRefresh("记忆已删除");
+		SaveAndRefresh("记忆已删除", "本地已删除，云端稍后同步");
 	}
 
-	private void SaveAndRefresh(string toast)
+	private void SaveAndRefresh(string toast, string offlineToast = "已保存到本地，云端稍后同步")
 	{
 		MemoryUiStore.SaveCurrent(success =>
 		{
 			RenderList();
 			UIModule.Instance.GetWindow<MemoryManageUI>()?.RefreshFromExternal();
 			UIModule.Instance.GetWindow<MemoryDetailUI>()?.RefreshFromExternal();
-			ToastManager.ShowToast(success ? toast : "已保存到本地，云端同步失败");
+			ToastManager.ShowToast(success ? toast : offlineToast);
 		});
+	}
+
+	private void ResetDeleteConfirm()
+	{
+		_pendingDeleteItemId = null;
+		_deleteConfirmDeadline = 0f;
 	}
 
 	private void ClearRuntimeRows()
@@ -312,11 +341,13 @@ public class MemoryManageListUI : WindowBase
 	}
 	public void OnMemorySearchInputInputChange(string text)
 	{
+		ResetDeleteConfirm();
 		_searchText = text ?? "";
 		RenderList();
 	}
 	public void OnMemorySearchInputInputEnd(string text)
 	{
+		ResetDeleteConfirm();
 		_searchText = text ?? "";
 		RenderList();
 	}
@@ -342,6 +373,7 @@ public class MemoryManageListUI : WindowBase
 	}
 	public void OnAddMemoryButtonClick()
 	{
+		ResetDeleteConfirm();
 		MemoryEditOverlay.Show(transform, null, result =>
 		{
 			MemoryUiStore.AddManualMemory(result);

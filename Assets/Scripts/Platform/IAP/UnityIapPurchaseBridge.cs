@@ -5,6 +5,7 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.Purchasing;
 using UnityEngine.Purchasing.Extension;
+using Unity.Services.Core;
 
 /// <summary>
 /// Unity IAP 购买桥。仅在安装 Unity Purchasing 包后参与编译。
@@ -18,6 +19,10 @@ public class UnityIapPurchaseBridge : MonoBehaviour, IDetailedStoreListener
     private IapProductConfig pendingProduct;
     private bool isInitializing;
     private bool pendingRestore;
+    private bool isRestoringTransactions;
+    private int restoreReceiptSubmissionsPending;
+    private int restoreReceiptSubmissionsSucceeded;
+    private string restoreReceiptSubmissionError;
     private readonly Dictionary<string, IapProductConfig> productsById = new Dictionary<string, IapProductConfig>();
 
     public bool IsReady => storeController != null && extensionProvider != null;
@@ -64,22 +69,58 @@ public class UnityIapPurchaseBridge : MonoBehaviour, IDetailedStoreListener
             return;
         }
 
-        SubmitOwnedReceipts();
+        pendingRestore = false;
+        BeginStoreRestoreTransactions();
     }
 
-    private void InitializeStore()
+    private async void InitializeStore()
     {
         if (isInitializing)
             return;
 
         isInitializing = true;
-        var builder = ConfigurationBuilder.Instance(StandardPurchasingModule.Instance());
-        foreach (var entry in productsById)
+
+        bool servicesReady = await EnsureUnityServicesInitialized();
+        if (!servicesReady)
         {
-            builder.AddProduct(entry.Key, ProductType.Subscription);
+            isInitializing = false;
+            CompletePurchase(false, "Unity Gaming Services 初始化失败，请确认 Unity Project ID 已关联并重试。");
+            return;
         }
 
-        UnityPurchasing.Initialize(this, builder);
+        try
+        {
+            var builder = ConfigurationBuilder.Instance(StandardPurchasingModule.Instance());
+            foreach (var entry in productsById)
+            {
+                builder.AddProduct(entry.Key, ProductType.Subscription);
+            }
+
+            UnityPurchasing.Initialize(this, builder);
+        }
+        catch (Exception e)
+        {
+            isInitializing = false;
+            Debug.LogError("[UnityIapPurchaseBridge] IAP 初始化启动失败: " + e.Message);
+            CompletePurchase(false, "IAP 初始化启动失败：" + e.Message);
+        }
+    }
+
+    private static async System.Threading.Tasks.Task<bool> EnsureUnityServicesInitialized()
+    {
+        try
+        {
+            if (UnityServices.State == ServicesInitializationState.Initialized)
+                return true;
+
+            await UnityServices.InitializeAsync();
+            return UnityServices.State == ServicesInitializationState.Initialized;
+        }
+        catch (Exception e)
+        {
+            Debug.LogError("[UnityIapPurchaseBridge] Unity Gaming Services 初始化失败: " + e.Message);
+            return false;
+        }
     }
 
     private void RegisterProducts(IapProductConfig requestedProduct, IapProductsConfig productConfig)
@@ -119,6 +160,88 @@ public class UnityIapPurchaseBridge : MonoBehaviour, IDetailedStoreListener
         storeController.InitiatePurchase(storeProduct);
     }
 
+    private void BeginStoreRestoreTransactions()
+    {
+        if (!IsReady)
+        {
+            CompletePurchase(false, "IAP 商品列表未就绪");
+            return;
+        }
+
+        if (IsAppleRestorePlatform())
+        {
+            StartAppleRestoreTransactions();
+            return;
+        }
+
+        if (IsGooglePlayRestorePlatform())
+        {
+            StartGooglePlayRestoreTransactions();
+            return;
+        }
+
+        SubmitOwnedReceipts();
+    }
+
+    private void StartAppleRestoreTransactions()
+    {
+        try
+        {
+            isRestoringTransactions = true;
+            extensionProvider.GetExtension<IAppleExtensions>()
+                .RestoreTransactions((success, message) => OnStoreRestoreTransactionsFinished("Apple", success, message));
+        }
+        catch (Exception e)
+        {
+            isRestoringTransactions = false;
+            CompletePurchase(false, $"Apple 恢复购买启动失败：{e.Message}");
+        }
+    }
+
+    private void StartGooglePlayRestoreTransactions()
+    {
+        try
+        {
+            isRestoringTransactions = true;
+            extensionProvider.GetExtension<IGooglePlayStoreExtensions>()
+                .RestoreTransactions((success, message) => OnStoreRestoreTransactionsFinished("Google Play", success, message));
+        }
+        catch (Exception e)
+        {
+            isRestoringTransactions = false;
+            CompletePurchase(false, $"Google Play 恢复购买启动失败：{e.Message}");
+        }
+    }
+
+    private void OnStoreRestoreTransactionsFinished(string storeName, bool success, string message)
+    {
+        isRestoringTransactions = false;
+        if (!success)
+        {
+            CompletePurchase(false, string.IsNullOrWhiteSpace(message) ? $"{storeName} 没有返回可恢复的购买" : message);
+            return;
+        }
+
+        SubmitOwnedReceipts();
+    }
+
+    private static bool IsAppleRestorePlatform()
+    {
+        return Application.platform == RuntimePlatform.IPhonePlayer
+            || Application.platform == RuntimePlatform.OSXPlayer
+            || Application.platform == RuntimePlatform.tvOS
+#if UNITY_VISIONOS
+            || Application.platform == RuntimePlatform.VisionOS
+#endif
+            ;
+    }
+
+    private static bool IsGooglePlayRestorePlatform()
+    {
+        return Application.platform == RuntimePlatform.Android
+            && StandardPurchasingModule.Instance().appStore == AppStore.GooglePlay;
+    }
+
     private void SubmitOwnedReceipts()
     {
         if (storeController?.products?.all == null)
@@ -128,19 +251,49 @@ public class UnityIapPurchaseBridge : MonoBehaviour, IDetailedStoreListener
         }
 
         int submitted = 0;
+        restoreReceiptSubmissionsPending = 0;
+        restoreReceiptSubmissionsSucceeded = 0;
+        restoreReceiptSubmissionError = "";
         foreach (Product product in storeController.products.all)
         {
             if (product == null || !product.hasReceipt || string.IsNullOrEmpty(product.receipt))
                 continue;
 
             submitted++;
-            SubmitReceipt(product, null);
+            restoreReceiptSubmissionsPending++;
+            SubmitReceipt(product, OnRestoreReceiptSubmitted);
         }
 
         if (submitted == 0)
             CompletePurchase(false, "没有找到可恢复的订阅");
-        else
+    }
+
+    private void OnRestoreReceiptSubmitted(bool success, string message)
+    {
+        if (success)
+        {
+            restoreReceiptSubmissionsSucceeded++;
+        }
+        else if (string.IsNullOrWhiteSpace(restoreReceiptSubmissionError))
+        {
+            restoreReceiptSubmissionError = string.IsNullOrWhiteSpace(message)
+                ? "可恢复订阅凭证校验失败"
+                : message;
+        }
+
+        restoreReceiptSubmissionsPending--;
+        if (restoreReceiptSubmissionsPending > 0)
+            return;
+
+        if (restoreReceiptSubmissionsSucceeded > 0)
+        {
             CompletePurchase(true, "已提交可恢复订阅，等待会员状态刷新");
+            return;
+        }
+
+        CompletePurchase(false, string.IsNullOrWhiteSpace(restoreReceiptSubmissionError)
+            ? "恢复购买失败，未能校验订阅凭证"
+            : restoreReceiptSubmissionError);
     }
 
     private void SubmitReceipt(Product product, Action<bool, string> callback)
@@ -173,7 +326,7 @@ public class UnityIapPurchaseBridge : MonoBehaviour, IDetailedStoreListener
         if (pendingRestore)
         {
             pendingRestore = false;
-            SubmitOwnedReceipts();
+            BeginStoreRestoreTransactions();
             return;
         }
 
@@ -208,6 +361,9 @@ public class UnityIapPurchaseBridge : MonoBehaviour, IDetailedStoreListener
             return PurchaseProcessingResult.Complete;
         }
 
+        if (isRestoringTransactions)
+            return PurchaseProcessingResult.Complete;
+
         SubmitReceipt(product, (success, message) =>
         {
             CompletePurchase(success, message);
@@ -236,6 +392,10 @@ public class UnityIapPurchaseBridge : MonoBehaviour, IDetailedStoreListener
         purchaseCallback = null;
         pendingProduct = null;
         pendingRestore = false;
+        isRestoringTransactions = false;
+        restoreReceiptSubmissionsPending = 0;
+        restoreReceiptSubmissionsSucceeded = 0;
+        restoreReceiptSubmissionError = "";
         callback?.Invoke(success, message);
     }
 

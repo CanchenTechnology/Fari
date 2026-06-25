@@ -25,12 +25,34 @@ public static class FacebookFriendDiscoveryManager
         string accessToken = GetCurrentAccessToken();
         if (string.IsNullOrWhiteSpace(accessToken))
         {
-            ToastManager.ShowToast("请先完成 Facebook 登录授权");
-            FriendInviteShareUtility.ShareFacebookInvite();
+            RequestFriendDiscoveryAccess(anchor, false);
             return;
         }
 
-        FacebookFriendDiscoveryRunner.Run(anchor, accessToken);
+        FacebookFriendDiscoveryRunner.Run(anchor, accessToken, false);
+    }
+
+    private static void RequestFriendDiscoveryAccess(Transform anchor, bool retriedAfterGraphFailure)
+    {
+        ToastManager.ShowToast("正在请求 Facebook 好友权限");
+        FacebookSignInHelper.Instance.RequestFriendDiscoveryAccess(
+            accessToken =>
+            {
+                if (string.IsNullOrWhiteSpace(accessToken))
+                {
+                    ToastManager.ShowToast("Facebook 授权未返回有效凭证，已改用分享邀请");
+                    FriendInviteShareUtility.ShareFacebookInvite();
+                    return;
+                }
+
+                FacebookFriendDiscoveryRunner.Run(anchor, accessToken, retriedAfterGraphFailure);
+            },
+            error =>
+            {
+                Debug.LogWarning($"[FacebookFriendDiscoveryManager] Facebook 好友权限授权失败: {error}");
+                ToastManager.ShowToast("Facebook 好友授权失败，已改用分享邀请");
+                FriendInviteShareUtility.ShareFacebookInvite();
+            });
     }
 
     private static string GetCurrentAccessToken()
@@ -52,7 +74,7 @@ public static class FacebookFriendDiscoveryManager
     {
         private static FacebookFriendDiscoveryRunner instance;
 
-        public static void Run(Transform anchor, string accessToken)
+        public static void Run(Transform anchor, string accessToken, bool retriedPermissionRequest)
         {
             if (instance == null)
             {
@@ -61,10 +83,10 @@ public static class FacebookFriendDiscoveryManager
                 instance = go.AddComponent<FacebookFriendDiscoveryRunner>();
             }
 
-            instance.StartCoroutine(instance.DiscoverCoroutine(anchor, accessToken));
+            instance.StartCoroutine(instance.DiscoverCoroutine(anchor, accessToken, retriedPermissionRequest));
         }
 
-        private IEnumerator DiscoverCoroutine(Transform anchor, string accessToken)
+        private IEnumerator DiscoverCoroutine(Transform anchor, string accessToken, bool retriedPermissionRequest)
         {
             ToastManager.ShowToast("正在发现 Facebook 好友");
             string encodedToken = Uri.EscapeDataString(accessToken);
@@ -77,6 +99,12 @@ public static class FacebookFriendDiscoveryManager
             if (request.result != UnityWebRequest.Result.Success)
             {
                 Debug.LogWarning($"[FacebookFriendDiscoveryManager] Graph API 失败: {request.error}, body={request.downloadHandler?.text}");
+                if (!retriedPermissionRequest && IsPermissionError(request.downloadHandler?.text))
+                {
+                    FacebookFriendDiscoveryManager.RequestFriendDiscoveryAccess(anchor, true);
+                    yield break;
+                }
+
                 ToastManager.ShowToast("Facebook 好友发现失败，已改用分享邀请");
                 FriendInviteShareUtility.ShareFacebookInvite();
                 yield break;
@@ -134,6 +162,16 @@ public static class FacebookFriendDiscoveryManager
             }
 
             return ids;
+        }
+
+        private static bool IsPermissionError(string body)
+        {
+            if (string.IsNullOrEmpty(body)) return false;
+            string text = body.ToLowerInvariant();
+            return text.Contains("permission")
+                || text.Contains("permissions")
+                || text.Contains("oauth")
+                || text.Contains("access token");
         }
     }
 }

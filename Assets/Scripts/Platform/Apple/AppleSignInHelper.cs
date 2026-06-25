@@ -108,10 +108,12 @@ public class AppleSignInHelper : MonoSingleton<AppleSignInHelper>
 #if UNITY_IOS && !UNITY_EDITOR
         // iOS 真机 → 原生插件
         StartAppleSignInNative();
-#else
-        // Editor / 其他平台 → 模拟模式
-        Debug.Log("[AppleSignInHelper] 非 iOS 平台，使用模拟模式");
+#elif UNITY_EDITOR
+        // Editor → 模拟模式
+        Debug.Log("[AppleSignInHelper] Editor 模拟模式");
         StartCoroutine(SimulateAppleSignInCoroutine());
+#else
+        FinishWithError("Apple 登录仅支持 iOS 设备");
 #endif
     }
 

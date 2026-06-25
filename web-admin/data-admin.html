@@ -318,6 +318,15 @@
       flex-wrap: wrap;
     }
 
+    .inline-check {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 780;
+    }
+
     .grid-4 {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1116,6 +1125,10 @@
             <span class="nav-icon">配</span>
             <span class="nav-label"><strong>配置管理</strong><span>公开配置和 IAP</span></span>
           </button>
+          <button class="nav-button" type="button" data-module="audit">
+            <span class="nav-icon">审</span>
+            <span class="nav-label"><strong>审计日志</strong><span>管理员操作追踪</span></span>
+          </button>
           <button class="nav-button" type="button" data-module="roadmap">
             <span class="nav-icon">图</span>
             <span class="nav-label"><strong>功能蓝图</strong><span>当前与未来能力</span></span>
@@ -1148,6 +1161,7 @@
               <button type="button" data-open-module="membership" class="secondary">查询会员支付</button>
               <button type="button" data-open-module="feedback" class="secondary">处理反馈</button>
               <button type="button" data-open-module="config" class="secondary">编辑配置</button>
+              <button type="button" data-open-module="audit" class="secondary">查看审计日志</button>
               <button type="button" data-open-module="roadmap" class="secondary">查看功能蓝图</button>
             </div>
           </div>
@@ -1176,6 +1190,21 @@
               <div id="usersTable"></div>
             </div>
             <aside id="userDetail" class="detail-card"></aside>
+          </div>
+          <div class="panel stack">
+            <div class="section-title-row">
+              <div>
+                <div class="strong">Auth 用户对账</div>
+                <div class="muted">检查 Firebase Auth 中存在、但 Firestore 用户资料缺失的账号。</div>
+              </div>
+              <div class="row">
+                <label class="inline-check"><input id="authOnlyMissingCheckbox" type="checkbox" checked> 只看缺资料</label>
+                <button id="scanAuthUsersButton" type="button">扫描 Auth 用户</button>
+                <button id="scanNextAuthUsersButton" type="button" class="secondary" disabled>继续下一页</button>
+              </div>
+            </div>
+            <div id="authReconcileSummary" class="status">尚未扫描 Auth 用户。</div>
+            <div id="authReconcileList" class="section-list"></div>
           </div>
         </section>
 
@@ -1296,6 +1325,33 @@
           </div>
         </section>
 
+        <section id="auditModule" class="module">
+          <div class="module-head">
+            <div>
+              <h1 class="module-title">审计日志</h1>
+              <p class="module-subtitle">追踪管理员对会员、用户资料、好友、Prompt、配置和原始数据的操作。</p>
+            </div>
+            <button id="refreshAuditButton" type="button">刷新</button>
+          </div>
+          <div class="split">
+            <div class="panel">
+              <div class="toolbar">
+                <input id="auditTargetInput" placeholder="目标 UID / 路径 / 文档 ID">
+                <div class="row">
+                  <button id="auditApplyButton" type="button">筛选</button>
+                  <button id="auditClearButton" type="button" class="secondary">清空</button>
+                </div>
+              </div>
+              <div class="form-grid" style="margin-bottom: 12px;">
+                <label>操作类型<input id="auditActionInput" placeholder="例如 membership / user / agent"></label>
+                <label>管理员<input id="auditAdminInput" placeholder="邮箱或 UID"></label>
+              </div>
+              <div id="auditList"></div>
+            </div>
+            <aside id="auditDetail" class="detail-card"></aside>
+          </div>
+        </section>
+
         <section id="roadmapModule" class="module">
           <div class="module-head">
             <div>
@@ -1307,10 +1363,10 @@
             </div>
           </div>
           <div class="grid-4">
-            <div class="metric-card"><div class="metric-label">已落地模块</div><div class="metric-value">6</div></div>
-            <div class="metric-card"><div class="metric-label">已上线后台服务</div><div class="metric-value">13</div></div>
+            <div class="metric-card"><div class="metric-label">已落地模块</div><div class="metric-value">8</div></div>
+            <div class="metric-card"><div class="metric-label">已上线后台服务</div><div class="metric-value">14</div></div>
             <div class="metric-card"><div class="metric-label">规划能力组</div><div class="metric-value">12</div></div>
-            <div class="metric-card"><div class="metric-label">高风险操作</div><div class="metric-value">4</div></div>
+            <div class="metric-card"><div class="metric-label">审计覆盖操作</div><div class="metric-value">12</div></div>
           </div>
           <div class="roadmap-grid">
             <article class="roadmap-card">
@@ -1370,11 +1426,11 @@
               </ul>
             </article>
             <article class="roadmap-card">
-              <div class="row"><h2>安全与审计</h2><span class="pill danger">高优先级</span></div>
+              <div class="row"><h2>安全与审计</h2><span class="pill ok">已落地</span></div>
               <ul class="roadmap-list">
                 <li>管理员权限字段保护已上线</li>
-                <li>未来：操作日志、角色分权、二次确认</li>
-                <li>高风险：会员、权限、删除、配置发布</li>
+                <li>操作日志覆盖会员、资料、好友、配置和 Prompt</li>
+                <li>未来：角色分权、二次确认、导出审批</li>
               </ul>
             </article>
             <article class="roadmap-card">
@@ -1571,11 +1627,22 @@
       currentUser: null,
       dashboard: null,
       users: [],
+      userListMeta: null,
       userDetail: null,
+      authReconcile: {
+        items: [],
+        loaded: false,
+        nextPageToken: "",
+        scannedCount: 0,
+        missingCount: 0,
+        onlyMissing: true,
+      },
       membership: null,
       feedbackStatus: "new",
       feedbackItems: [],
       feedbackDetail: null,
+      auditItems: [],
+      auditSelected: null,
       chatUser: null,
       chatSessions: [],
       chatSelectedSessionId: "",
@@ -1649,6 +1716,10 @@
         await signInWithEmailAndPassword(auth, $("emailInput").value.trim(), $("passwordInput").value);
         $("passwordInput").value = "";
       } catch (error) {
+        console.warn("[adminLogin] failed", {
+          code: error?.code || "",
+          message: error?.message || String(error || ""),
+        });
         showAuthMessage(getFriendlyAuthError(error), "warn");
       }
     });
@@ -1682,6 +1753,12 @@
       loadUsers("");
     });
     $("openCreateUserButton").addEventListener("click", () => $("createUserDialog").showModal());
+    $("scanAuthUsersButton").addEventListener("click", () => loadAuthReconcile({ reset: true }));
+    $("scanNextAuthUsersButton").addEventListener("click", () => loadAuthReconcile({
+      pageToken: state.authReconcile.nextPageToken,
+      append: true,
+    }));
+    $("authOnlyMissingCheckbox").addEventListener("change", () => loadAuthReconcile({ reset: true }));
     $("membershipSearchButton").addEventListener("click", () => loadMembership($("membershipSearchInput").value.trim()));
     $("membershipClearButton").addEventListener("click", clearMembership);
     $("refreshFeedbackButton").addEventListener("click", loadFeedback);
@@ -1710,6 +1787,20 @@
       });
     });
     $("refreshConfigButton").addEventListener("click", loadConfig);
+    $("refreshAuditButton").addEventListener("click", loadAuditLogs);
+    $("auditApplyButton").addEventListener("click", loadAuditLogs);
+    $("auditClearButton").addEventListener("click", () => {
+      $("auditTargetInput").value = "";
+      $("auditActionInput").value = "";
+      $("auditAdminInput").value = "";
+      state.auditSelected = null;
+      loadAuditLogs();
+    });
+    ["auditTargetInput", "auditActionInput", "auditAdminInput"].forEach((inputId) => {
+      $(inputId).addEventListener("keydown", (event) => {
+        if (event.key === "Enter") loadAuditLogs();
+      });
+    });
     $("refreshAdvancedButton").addEventListener("click", loadAdvanced);
     $("advancedApplyButton").addEventListener("click", loadAdvanced);
     $("advancedNewButton").addEventListener("click", startAdvancedNew);
@@ -1767,6 +1858,7 @@
       const form = new FormData(event.currentTarget);
       const payload = Object.fromEntries(form.entries());
       payload.days = Number(payload.days || 30);
+      if (!confirmSensitiveAction("赋予 Pro", `目标 UID：${payload.uid}\n有效天数：${payload.days}\n原因：${payload.reason || "无"}`)) return;
       try {
         await callFunction("/adminGrantPro", {
           method: "POST",
@@ -1785,6 +1877,7 @@
       const formElement = event.currentTarget;
       const form = new FormData(formElement);
       const payload = Object.fromEntries(form.entries());
+      if (payload.mode !== "invite" && !confirmSensitiveAction("强制添加真实好友", `当前用户：${payload.uid}\n好友：${payload.friendSearch || payload.friendUid || ""}`)) return;
       try {
         const result = await callFunction("/adminAddRealFriend", {
           method: "POST",
@@ -1839,6 +1932,7 @@
       if (moduleKey === "chats") return loadChatUserCandidates();
       if (moduleKey === "agent") return loadAgent();
       if (moduleKey === "config") return loadConfig();
+      if (moduleKey === "audit") return loadAuditLogs();
       if (moduleKey === "roadmap") return;
       if (moduleKey === "advanced") return loadCollections().then(loadAdvanced);
     }
@@ -1885,6 +1979,7 @@
       const recent = state.dashboard?.recent || {};
       $("dashboardRecent").innerHTML = `
         ${renderRecentGroup("最近用户", recent.users || [], "users")}
+        ${renderRecentGroup("最近审计", recent.auditLogs || [], "audit")}
         ${renderRecentGroup("最近反馈", recent.feedback || [], "feedback")}
         ${renderRecentGroup("最近支付事件", recent.paymentEvents || [], "payment")}
       `;
@@ -1903,19 +1998,21 @@
       setLoading($("usersTable"), "加载用户...");
       try {
         if (term) {
-          const params = new URLSearchParams({ q: term, limit: "50" });
+          const params = new URLSearchParams({ q: term, limit: "100" });
           const data = await callFunction(`/adminUserSearch?${params.toString()}`);
           state.users = data.items || [];
+          state.userListMeta = { mode: "search", count: data.count || state.users.length, total: null, truncated: false };
         } else {
-          const params = new URLSearchParams({
-            collectionKey: "users",
-            orderBy: "createdAt",
-            orderDirection: "desc",
-            limit: "50",
-          });
-          const data = await callFunction(`/adminDataList?${params.toString()}`);
+          const params = new URLSearchParams({ limit: "120" });
+          const data = await callFunction(`/adminUserList?${params.toString()}`);
           state.users = data.items || [];
-      }
+          state.userListMeta = {
+            mode: "list",
+            count: data.count || state.users.length,
+            total: data.total ?? null,
+            truncated: data.truncated === true,
+          };
+        }
         renderUsers();
         if (!state.userDetail) renderUserDetail(null);
       } catch (error) {
@@ -1930,6 +2027,7 @@
         return;
       }
       $("usersTable").innerHTML = `
+        ${renderUserListMeta()}
         <table class="table">
           <thead>
             <tr>
@@ -1955,6 +2053,130 @@
       $("usersTable").querySelectorAll("[data-grant-uid]").forEach((button) => {
         button.addEventListener("click", () => openGrantDialog(button.dataset.grantUid, button.dataset.grantName));
       });
+    }
+
+    function renderUserListMeta() {
+      const meta = state.userListMeta || {};
+      if (!state.users.length) return "";
+      const total = meta.total === null || meta.total === undefined ? "" : ` / 共 ${meta.total}`;
+      const mode = meta.mode === "search" ? "搜索结果" : "默认列表";
+      const hint = meta.truncated ? "，可用搜索精确查找更多用户" : "";
+      return `<div class="status">${escapeHtml(`${mode}：当前显示 ${state.users.length}${total} 个用户${hint}`)}</div>`;
+    }
+
+    async function loadAuthReconcile(options = {}) {
+      const reset = options.reset === true;
+      const append = options.append === true;
+      const pageToken = reset ? "" : (options.pageToken || "");
+      const onlyMissing = $("authOnlyMissingCheckbox").checked;
+      if (!pageToken && append) return;
+      setLoading($("authReconcileList"), "扫描 Auth 用户...");
+      $("scanAuthUsersButton").disabled = true;
+      $("scanNextAuthUsersButton").disabled = true;
+      try {
+        const params = new URLSearchParams({
+          limit: "100",
+          onlyMissing: String(onlyMissing),
+        });
+        if (pageToken) params.set("pageToken", pageToken);
+        const data = await callFunction(`/adminAuthUserReconcile?${params.toString()}`);
+        state.authReconcile = {
+          items: append ? [...state.authReconcile.items, ...(data.items || [])] : (data.items || []),
+          loaded: true,
+          nextPageToken: data.nextPageToken || "",
+          scannedCount: append
+            ? state.authReconcile.scannedCount + Number(data.scannedCount || 0)
+            : Number(data.scannedCount || 0),
+          missingCount: append
+            ? state.authReconcile.missingCount + Number(data.missingCount || 0)
+            : Number(data.missingCount || 0),
+          onlyMissing,
+        };
+        renderAuthReconcile();
+      } catch (error) {
+        setInlineError($("authReconcileList"), error.message || "Auth 对账失败");
+        showMessage(error.message, "warn");
+      } finally {
+        $("scanAuthUsersButton").disabled = false;
+        $("scanNextAuthUsersButton").disabled = !state.authReconcile.nextPageToken;
+      }
+    }
+
+    function renderAuthReconcile() {
+      const data = state.authReconcile;
+      $("scanNextAuthUsersButton").disabled = !data.nextPageToken;
+      if (!data.loaded) {
+        $("authReconcileSummary").textContent = "尚未扫描 Auth 用户。";
+        $("authReconcileList").innerHTML = "";
+        return;
+      }
+      $("authReconcileSummary").textContent = [
+        `已扫描 ${data.scannedCount} 个 Auth 账号`,
+        `本页缺资料 ${data.missingCount} 个`,
+        data.nextPageToken ? "还有下一页" : "已到最后一页",
+      ].join(" · ");
+      if (!data.items.length) {
+        $("authReconcileList").innerHTML = `<div class="empty">${data.onlyMissing ? "当前页没有缺资料账号" : "当前页没有 Auth 账号"}</div>`;
+        return;
+      }
+      $("authReconcileList").innerHTML = data.items.map(renderAuthReconcileRow).join("");
+      $("authReconcileList").querySelectorAll("[data-auth-view-uid]").forEach((button) => {
+        button.addEventListener("click", () => openUserDetail(button.dataset.authViewUid));
+      });
+      $("authReconcileList").querySelectorAll("[data-auth-repair-uid]").forEach((button) => {
+        button.addEventListener("click", () => repairAuthUserProfile(button.dataset.authRepairUid));
+      });
+    }
+
+    function renderAuthReconcileRow(item) {
+      const missingParts = [
+        item.missingUserDoc ? "users" : "",
+        item.missingPublicProfile ? "public_profiles" : "",
+      ].filter(Boolean);
+      const status = item.disabled ? "已停用" : item.needsRepair ? "缺资料" : "正常";
+      const tone = item.disabled ? "danger" : item.needsRepair ? "warn" : "ok";
+      return `
+        <div class="list-row">
+          <div class="section-title-row">
+            <div>
+              <div class="strong">${escapeHtml(item.displayName || item.email || item.uid)}</div>
+              <div class="muted mono">${escapeHtml(item.uid)}</div>
+            </div>
+            <span class="pill ${tone}">${escapeHtml(status)}</span>
+          </div>
+          <div class="compact-fields">
+            <div class="compact-line"><span class="compact-label">邮箱</span><span class="compact-value">${escapeHtml(item.email || "未绑定")}</span></div>
+            <div class="compact-line"><span class="compact-label">登录</span><span class="compact-value">${escapeHtml(item.loginType || "Unknown")}</span></div>
+            <div class="compact-line"><span class="compact-label">缺失</span><span class="compact-value">${escapeHtml(missingParts.join(" / ") || "无")}</span></div>
+            <div class="compact-line"><span class="compact-label">最近登录</span><span class="compact-value">${escapeHtml(formatDate(item.lastSignInAt) || "无")}</span></div>
+          </div>
+          <div class="row">
+            <button type="button" class="ghost" data-auth-view-uid="${escapeAttr(item.uid)}">查看详情</button>
+            ${item.needsRepair ? `<button type="button" data-auth-repair-uid="${escapeAttr(item.uid)}">补建资料</button>` : ""}
+          </div>
+        </div>
+      `;
+    }
+
+    async function repairAuthUserProfile(uid) {
+      if (!uid) return;
+      if (!confirmSensitiveAction("补建 Firestore 用户资料", `目标 UID：${uid}\n只会补建缺失的 users/public_profiles，不覆盖已有资料。`)) return;
+      try {
+        const result = await callFunction("/adminRepairAuthUserProfile", {
+          method: "POST",
+          body: JSON.stringify({ uid }),
+        });
+        showMessage(result.repaired ? "已补建 Firestore 用户资料" : "该账号资料已完整", "ok");
+        await loadUsers($("userSearchInput").value.trim());
+        if (state.authReconcile.loaded) {
+          await loadAuthReconcile({ reset: true });
+        }
+        if (state.userDetail?.uid === uid) {
+          await openUserDetail(uid);
+        }
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
     }
 
     function renderUserRow(item) {
@@ -2011,8 +2233,11 @@
         <div class="row">
           <span class="pill ${membership.isPro ? "ok" : ""}">${escapeHtml(membership.status === "pro" || membership.isPro ? "Pro 会员" : "免费用户")}</span>
           ${renderPresencePill(presence)}
+          ${data.authOnly ? `<span class="pill warn">仅 Auth</span>` : ""}
+          ${detail.auth && !detail.publicProfile ? `<span class="pill warn">缺公开资料</span>` : ""}
           ${data.isAdmin === true || data.role === "admin" ? `<span class="pill warn">admin</span>` : ""}
         </div>
+        ${renderAuthRepairNotice(detail)}
         <div class="detail-grid">
           ${kv("生日", data.birthday || "未填")}
           ${kv("出生时间", data.birthTime || "未填")}
@@ -2041,6 +2266,7 @@
       $("detailEditButton").addEventListener("click", () => openEditUserDialog(detail));
       $("detailGrantButton").addEventListener("click", () => openGrantDialog(detail.uid, pick(data, ["displayName", "email"]) || detail.uid));
       $("detailRevokeButton").addEventListener("click", () => revokePro(detail.uid));
+      $("detailRepairAuthButton")?.addEventListener("click", () => repairAuthUserProfile(detail.uid));
       $("detailPaymentButton").addEventListener("click", async () => {
         await loadModule("membership");
         $("membershipSearchInput").value = detail.uid;
@@ -2060,6 +2286,26 @@
           $("friendChatPanel").innerHTML = renderFriendChatMessages(friend);
         });
       });
+    }
+
+    function renderAuthRepairNotice(detail) {
+      const data = detail.user?.data || {};
+      if (!detail.auth || (!data.authOnly && detail.publicProfile)) return "";
+      const missing = [
+        data.authOnly ? "users 用户资料" : "",
+        !detail.publicProfile ? "public_profiles 公开资料" : "",
+      ].filter(Boolean).join("、");
+      return `
+        <div class="list-row">
+          <div class="section-title-row">
+            <div>
+              <div class="strong">Auth 账号资料不完整</div>
+              <div class="muted">缺失：${escapeHtml(missing || "无")}。可以从 Firebase Auth 补建最小 Firestore 资料。</div>
+            </div>
+            <button type="button" id="detailRepairAuthButton">补建资料</button>
+          </div>
+        </div>
+      `;
     }
 
     function getSocialFriends(social = {}) {
@@ -2322,13 +2568,8 @@
       if (!$("chatUserCandidates")) return;
       setLoading($("chatUserCandidates"), "加载已有用户...");
       try {
-        const params = new URLSearchParams({
-          collectionKey: "users",
-          orderBy: "createdAt",
-          orderDirection: "desc",
-          limit: "50",
-        });
-        const data = await callFunction(`/adminDataList?${params.toString()}`);
+        const params = new URLSearchParams({ limit: "120" });
+        const data = await callFunction(`/adminUserList?${params.toString()}`);
         state.chatUserCandidates = data.items || [];
         state.chatUsersLoaded = true;
         renderChats();
@@ -3198,7 +3439,11 @@
 
     async function handleAgentDraftAction(draftId, draftAction) {
       const labels = { approve: "审批通过", publish: "发布", delete: "删除" };
-      if (!confirm(`${labels[draftAction] || draftAction}这个 Prompt 草稿？`)) return;
+      const message = `${labels[draftAction] || draftAction}这个 Prompt 草稿？`;
+      const confirmed = draftAction === "publish" || draftAction === "delete"
+        ? confirmSensitiveAction(labels[draftAction] || draftAction, `Prompt 草稿 ID：${draftId}`)
+        : confirm(message);
+      if (!confirmed) return;
       try {
         await agentCall("draftAction", { draftId, draftAction }, { method: "POST" });
         if (state.agent.tab === "prompts" && state.agent.selectedPromptPath) {
@@ -3213,7 +3458,7 @@
     }
 
     async function rollbackAgentRelease(releaseId) {
-      if (!confirm("确认回滚到这次发布之前的内容？")) return;
+      if (!confirmSensitiveAction("回滚 Prompt 发布", `Release ID：${releaseId}\n这会把线上 Prompt 回到该发布前的内容。`)) return;
       try {
         await agentCall("rollbackRelease", { releaseId }, { method: "POST" });
         if (state.agent.tab === "prompts" && state.agent.selectedPromptPath) {
@@ -3528,6 +3773,7 @@
           iapProducts[productKey][field] = value;
         }
       }
+      if (!confirmSensitiveAction("保存后台配置", state.configSection === "iap" ? "将更新 IAP 商品展示配置。" : "将更新公开社交链接配置。")) return;
       try {
         await callFunction("/adminPublicConfigUpdate", {
           method: "POST",
@@ -3541,6 +3787,138 @@
       } catch (error) {
         showMessage(error.message, "warn");
       }
+    }
+
+    async function loadAuditLogs() {
+      setLoading($("auditList"), "加载审计日志...");
+      try {
+        const params = new URLSearchParams({ limit: "100" });
+        const action = $("auditActionInput").value.trim();
+        const admin = $("auditAdminInput").value.trim();
+        const target = $("auditTargetInput").value.trim();
+        if (action) params.set("action", action);
+        if (admin) params.set("admin", admin);
+        if (target) params.set("target", target);
+        const data = await callFunction(`/adminAuditLogs?${params.toString()}`);
+        state.auditItems = data.items || [];
+        if (state.auditSelected && !state.auditItems.some((item) => item.id === state.auditSelected.id)) {
+          state.auditSelected = null;
+        }
+        renderAuditLogs();
+      } catch (error) {
+        setInlineError($("auditList"), error.message || "加载审计日志失败");
+        showMessage(error.message, "warn");
+      }
+    }
+
+    function renderAuditLogs() {
+      if (!state.auditItems.length) {
+        $("auditList").innerHTML = `<div class="empty">暂无审计日志</div>`;
+        renderAuditDetail(null);
+        return;
+      }
+
+      $("auditList").innerHTML = `
+        <table class="table">
+          <thead>
+            <tr>
+              <th>操作</th>
+              <th class="hide-mobile">管理员</th>
+              <th>目标</th>
+              <th class="hide-mobile">时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${state.auditItems.map((item) => `
+              <tr class="clickable-row" data-audit-id="${escapeAttr(item.id)}">
+                <td>
+                  <div class="strong">${escapeHtml(auditActionLabel(item.action))}</div>
+                  <div class="muted">${escapeHtml(item.action || "unknown")}</div>
+                </td>
+                <td class="hide-mobile">
+                  <div>${escapeHtml(item.adminEmail || "无邮箱")}</div>
+                  <div class="muted mono">${escapeHtml(item.adminUid || "无 UID")}</div>
+                </td>
+                <td>
+                  <div class="strong">${escapeHtml(formatAuditTarget(item))}</div>
+                  <div class="muted">${escapeHtml(item.targetType || "target")}</div>
+                </td>
+                <td class="hide-mobile">${escapeHtml(formatDate(item.createdAt) || "无")}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+      $("auditList").querySelectorAll("[data-audit-id]").forEach((row) => {
+        row.addEventListener("click", () => {
+          state.auditSelected = state.auditItems.find((item) => item.id === row.dataset.auditId) || null;
+          renderAuditDetail(state.auditSelected);
+        });
+      });
+      renderAuditDetail(state.auditSelected || state.auditItems[0]);
+    }
+
+    function renderAuditDetail(item) {
+      if (!item) {
+        $("auditDetail").innerHTML = `<div class="empty">选择一条审计日志</div>`;
+        return;
+      }
+      state.auditSelected = item;
+      $("auditDetail").innerHTML = `
+        <div class="section-title-row">
+          <div>
+            <div class="strong">${escapeHtml(auditActionLabel(item.action))}</div>
+            <div class="muted">${escapeHtml(formatDate(item.createdAt) || "无时间")}</div>
+          </div>
+          <span class="pill ${auditActionTone(item.action)}">${escapeHtml(item.targetType || "操作")}</span>
+        </div>
+        <div class="detail-grid">
+          ${kv("操作代码", item.action || "无")}
+          ${kv("管理员", item.adminEmail || item.adminUid || "无")}
+          ${kv("目标 UID", item.targetUid || "无")}
+          ${kv("目标路径", item.targetPath || item.path || "无")}
+        </div>
+        <div class="stack">
+          <div class="strong">目标</div>
+          <pre class="code-block">${escapeHtml(JSON.stringify(item.target || {}, null, 2))}</pre>
+          <div class="strong">操作详情</div>
+          <pre class="code-block">${escapeHtml(JSON.stringify(item.details || {}, null, 2))}</pre>
+          <div class="strong">请求信息</div>
+          <pre class="code-block">${escapeHtml(JSON.stringify(item.request || {}, null, 2))}</pre>
+        </div>
+      `;
+    }
+
+    function auditActionLabel(action) {
+      return ({
+        "public_config.update": "更新公开配置",
+        "feedback.update": "更新反馈状态",
+        "user.create": "手动注册用户",
+        "user.profile_update": "编辑玩家资料",
+        "user.auth_repair": "补建 Auth 用户资料",
+        "friend.real_add": "添加真实好友",
+        "friend.virtual_add": "添加虚拟好友",
+        "data.upsert": "保存 Firestore 数据",
+        "data.delete": "删除 Firestore 数据",
+        "membership.grant_pro": "赋予 Pro",
+        "membership.revoke_pro": "取消 Pro",
+        "agent.turn_rate": "评价 AI 轮次",
+        "agent.prompt_draft.create": "创建 Prompt 草稿",
+        "agent.prompt_draft.action": "处理 Prompt 草稿",
+        "agent.prompt_release.rollback": "回滚 Prompt 发布",
+        "agent.trace_ingest": "导入 AI Trace",
+      })[action] || action || "未知操作";
+    }
+
+    function auditActionTone(action) {
+      const text = String(action || "");
+      if (text.includes("delete") || text.includes("revoke") || text.includes("rollback")) return "danger";
+      if (text.includes("grant") || text.includes("create") || text.includes("add") || text.includes("repair")) return "ok";
+      return "warn";
+    }
+
+    function formatAuditTarget(item) {
+      return item.targetPath || item.targetUid || item.targetId || item.targetType || item.id || "无目标";
     }
 
     async function loadCollections() {
@@ -3633,6 +4011,7 @@
         payload.collectionKey = selected.key;
         if (selected.scope === "user") payload.parentUid = $("advancedParentUidInput").value.trim();
       }
+      if (!confirmSensitiveAction("保存 Firestore 数据", `目标：${state.advancedSelected?.path || selected?.label || selected?.key || "新文档"}\n写入方式：${payload.merge ? "合并字段" : "覆盖文档"}`)) return;
       try {
         const result = await callFunction("/adminDataUpsert", {
           method: "POST",
@@ -3649,7 +4028,7 @@
 
     async function deleteAdvanced() {
       if (!state.advancedSelected?.path) return;
-      if (!confirm(`删除 ${state.advancedSelected.path}？`)) return;
+      if (!confirmSensitiveAction("删除 Firestore 数据", `文档路径：${state.advancedSelected.path}`)) return;
       try {
         await callFunction("/adminDataDelete", {
           method: "POST",
@@ -3697,6 +4076,7 @@
     async function revokePro(uid) {
       const reason = prompt("取消人工 Pro 的原因", "客服调整");
       if (reason === null) return;
+      if (!confirmSensitiveAction("取消人工 Pro", `目标 UID：${uid}\n原因：${reason || "无"}`)) return;
       try {
         await callFunction("/adminRevokePro", {
           method: "POST",
@@ -3717,6 +4097,16 @@
       if (state.activeModule === "membership") {
         await loadMembership(uid);
       }
+    }
+
+    function confirmSensitiveAction(title, detail = "") {
+      const input = prompt(`${title}\n${detail}\n\n这是高风险操作。请输入“确认”继续。`, "");
+      if (input === null) return false;
+      const ok = input.trim() === "确认";
+      if (!ok) {
+        showMessage("已取消：未输入“确认”。", "warn");
+      }
+      return ok;
     }
 
     async function callFunction(path, options = {}) {
@@ -3806,6 +4196,7 @@
       if (type === "feedback") return "反馈记录";
       if (type === "payment") return pick(data, ["type", "eventName"]) ? "支付事件" : "支付记录";
       if (type === "usage") return "用量记录";
+      if (type === "audit") return auditActionLabel(item.action || data.action);
       return item.id || "记录";
     }
 
@@ -3841,6 +4232,14 @@
           ["已用/上限", [data.count ?? data.used, data.limit].filter((value) => value !== undefined && value !== null && value !== "").join(" / ")],
           ["日期", data.day || ""],
           ["UID", data.uid || ""],
+        ];
+      }
+      if (type === "audit") {
+        return [
+          ["管理员", item.adminEmail || item.adminUid || ""],
+          ["目标", formatAuditTarget(item)],
+          ["操作码", item.action || ""],
+          ["时间", formatDate(item.createdAt)],
         ];
       }
       return [
@@ -4037,6 +4436,18 @@
         message.includes("wrong-password")
       ) {
         return invalidLoginMessage;
+      }
+      if (code.includes("network-request-failed") || message.includes("network-request-failed")) {
+        return "登录请求没有连上 Firebase，请检查网络或稍后重试。";
+      }
+      if (code.includes("operation-not-allowed") || message.includes("operation-not-allowed")) {
+        return "当前 Firebase 项目没有开启邮箱密码登录，请让管理员检查 Auth 登录方式。";
+      }
+      if (code.includes("too-many-requests") || message.includes("too-many-requests")) {
+        return "登录尝试过于频繁，请稍后再试，或让管理员检查账号状态。";
+      }
+      if (code.includes("api-key-not-valid") || message.includes("api-key-not-valid")) {
+        return "Firebase API Key 配置异常，请让管理员检查后台部署配置。";
       }
       if (message.includes("unauthorized-domain")) {
         return "当前域名没有加入 Firebase Auth 授权域名。";

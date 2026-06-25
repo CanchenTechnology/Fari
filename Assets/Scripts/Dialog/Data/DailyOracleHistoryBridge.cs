@@ -141,13 +141,14 @@ public static class DailyOracleHistoryBridge
             return record;
         }
 
+        DivinationRecordFirestore.SaveRecordLocal(record);
+
         DivinationRecordFirestore store = GetRecordStore();
         if (store != null)
         {
 #if UNITY_EDITOR
             if (Firebase.Auth.FirebaseAuth.DefaultInstance?.CurrentUser == null)
             {
-                DivinationRecordFirestore.SaveRecordLocal(record);
                 return record;
             }
 #endif
@@ -159,7 +160,7 @@ public static class DailyOracleHistoryBridge
         }
         else
         {
-            Debug.LogWarning($"[DailyOracleHistoryBridge] 历史服务不可用，未保存每日神谕历史: {record.readingId}");
+            Debug.LogWarning($"[DailyOracleHistoryBridge] 历史服务不可用，已保存每日神谕历史到本地缓存: {record.readingId}");
         }
 
         return record;
@@ -188,7 +189,7 @@ public static class DailyOracleHistoryBridge
 
         if (store == null || !store.IsReady || Firebase.Auth.FirebaseAuth.DefaultInstance?.CurrentUser == null)
         {
-            Debug.LogWarning($"[DailyOracleHistoryBridge] 历史服务暂未就绪，未保存每日神谕历史: {record?.readingId}");
+            Debug.LogWarning($"[DailyOracleHistoryBridge] 历史服务暂未就绪，每日神谕历史已保存到本地缓存，云端稍后同步: {record?.readingId}");
             yield break;
         }
 

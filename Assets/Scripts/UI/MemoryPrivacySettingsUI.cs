@@ -181,7 +181,7 @@ public class MemoryPrivacySettingsUI : WindowBase
 			UIModule.Instance.GetWindow<MemoryManageUI>()?.RefreshFromExternal();
 			UIModule.Instance.GetWindow<MemoryManageListUI>()?.RefreshFromExternal();
 			UIModule.Instance.GetWindow<MemoryDetailUI>()?.RefreshFromExternal();
-			ToastManager.ShowToast(success ? "记忆已清空" : "本地已清空，云端删除失败");
+			ToastManager.ShowToast(success ? "记忆已清空" : "本地已清空，云端稍后同步");
 		});
 	}
 

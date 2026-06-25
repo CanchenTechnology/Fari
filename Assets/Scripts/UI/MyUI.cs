@@ -163,7 +163,7 @@ public class MyUI : WindowBase
 		}
 		else if (uiComponent.StatTodaydesText != null && !cache.HasLoadedOnce)
 		{
-			uiComponent.StatTodaydesText.text = "最近占卜：加载中...";
+			uiComponent.StatTodaydesText.text = "加载中...";
 		}
 		else
 		{
@@ -184,13 +184,31 @@ public class MyUI : WindowBase
 
 		if (record == null)
 		{
-			uiComponent.StatTodaydesText.text = "最近占卜：暂无记录";
+			uiComponent.StatTodaydesText.text = "暂无记录";
 			return;
 		}
 
-		string title = string.IsNullOrEmpty(record.SpreadLabel) ? "占卜记录" : record.SpreadLabel;
-		string question = string.IsNullOrEmpty(record.QuestionPreview) ? "未命名问题" : record.QuestionPreview;
-		uiComponent.StatTodaydesText.text = $"最近占卜：{title} · {question}";
+		string title = GetDisplaySpreadTitle(record.SpreadLabel);
+		uiComponent.StatTodaydesText.text = string.IsNullOrEmpty(title) ? "占卜记录" : title;
+	}
+
+	private string GetDisplaySpreadTitle(string spreadLabel)
+	{
+		if (string.IsNullOrWhiteSpace(spreadLabel)) return "占卜记录";
+
+		string normalized = spreadLabel.Trim();
+		string lower = normalized.ToLowerInvariant();
+		if (lower == "daily_oracle" || lower == "today_oracle")
+		{
+			return "今日神谕";
+		}
+
+		if (lower.Contains("_"))
+		{
+			return "";
+		}
+
+		return normalized;
 	}
 
 	private void EnsureLatestRecordEntryClick()

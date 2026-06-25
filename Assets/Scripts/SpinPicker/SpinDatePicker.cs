@@ -3,6 +3,7 @@ using SuperScrollView;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using GamerFrameWork.UIFrameWork;
 
 public class SpinDatePicker : MonoBehaviour
 {
@@ -13,6 +14,8 @@ public class SpinDatePicker : MonoBehaviour
 	public Color mColorSelected = new Color(1f, 0.84f, 0.48f, 1f);
 	public TMP_Text CurSelect;
 	public Button ConfirmButton;
+	public Button CancelButton;
+	public Image onImage;
 
 	[SerializeField] private int mFirstYear = 1900;
 	[SerializeField] private int mYearCount = 201;
@@ -44,11 +47,18 @@ public class SpinDatePicker : MonoBehaviour
 		EnsureInitialized();
 		MoveToCurrentDate();
 		UpdateCurSelect();
+		RefreshAllWheelVisuals();
 	}
 
 	private void Awake()
 	{
 		BindReferences();
+	}
+
+	private void Update()
+	{
+		if (!mInitialized || !gameObject.activeInHierarchy) return;
+		RefreshAllWheelVisuals();
 	}
 
 	private void BindReferences()
@@ -79,34 +89,68 @@ public class SpinDatePicker : MonoBehaviour
 			if (item == null) item = transform.Find("[Button]Confirm");
 			if (item != null) ConfirmButton = item.GetComponent<Button>();
 		}
+		if (CancelButton == null)
+		{
+			Transform item = transform.Find("cancelBtn");
+			if (item == null) item = transform.Find("[Button]Cancel");
+			if (item == null) item = transform.Find("CancelButton");
+			if (item != null) CancelButton = item.GetComponent<Button>();
+		}
+		if (onImage == null)
+		{
+			Transform item = transform.Find("On");
+			if (item == null) item = transform.Find("onImage");
+			if (item == null) item = transform.Find("OnImage");
+			if (item != null) onImage = item.GetComponent<Image>();
+		}
 	}
 
 	private void EnsureInitialized()
 	{
-		if (mInitialized) return;
+		if (mInitialized)
+		{
+			BindButtonListeners();
+			return;
+		}
 		if (mLoopListViewYear == null || mLoopListViewMonth == null || mLoopListViewDay == null)
 		{
 			Debug.LogError("[SpinDatePicker] LoopListView2 reference is missing.");
 			return;
 		}
 
-		mLoopListViewYear.mOnSnapNearestChanged = OnYearSnapTargetChanged;
-		mLoopListViewMonth.mOnSnapNearestChanged = OnMonthSnapTargetChanged;
-		mLoopListViewDay.mOnSnapNearestChanged = OnDaySnapTargetChanged;
+		SpinPickerWheelUtility.ConfigureWheel(mLoopListViewYear);
+		SpinPickerWheelUtility.ConfigureWheel(mLoopListViewMonth);
+		SpinPickerWheelUtility.ConfigureWheel(mLoopListViewDay);
+
+		mLoopListViewYear.mOnSnapNearestChanged = OnSnapTargetChanged;
+		mLoopListViewMonth.mOnSnapNearestChanged = OnSnapTargetChanged;
+		mLoopListViewDay.mOnSnapNearestChanged = OnSnapTargetChanged;
 		mLoopListViewYear.mOnSnapItemFinished = OnYearSnapTargetFinished;
 		mLoopListViewMonth.mOnSnapItemFinished = OnMonthSnapTargetFinished;
+		mLoopListViewDay.mOnSnapItemFinished = OnDaySnapTargetFinished;
 
-		mLoopListViewYear.InitListView(-1, OnGetItemByIndexForYear);
-		mLoopListViewMonth.InitListView(-1, OnGetItemByIndexForMonth);
-		mLoopListViewDay.InitListView(-1, OnGetItemByIndexForDay);
+		mLoopListViewYear.InitListView(-1, OnGetItemByIndexForYear, SpinPickerWheelUtility.CreateInitParam(mLoopListViewYear));
+		mLoopListViewMonth.InitListView(-1, OnGetItemByIndexForMonth, SpinPickerWheelUtility.CreateInitParam(mLoopListViewMonth));
+		mLoopListViewDay.InitListView(-1, OnGetItemByIndexForDay, SpinPickerWheelUtility.CreateInitParam(mLoopListViewDay));
 
+		BindButtonListeners();
+
+		mInitialized = true;
+	}
+
+	private void BindButtonListeners()
+	{
 		if (ConfirmButton != null)
 		{
 			ConfirmButton.onClick.RemoveListener(OnConfirmButtonClicked);
 			ConfirmButton.onClick.AddListener(OnConfirmButtonClicked);
 		}
 
-		mInitialized = true;
+		if (CancelButton != null)
+		{
+			CancelButton.onClick.RemoveListener(OnCancelButtonClicked);
+			CancelButton.onClick.AddListener(OnCancelButtonClicked);
+		}
 	}
 
 	private DateTime ParseInitialDate(string value)
@@ -167,6 +211,7 @@ public class SpinDatePicker : MonoBehaviour
 		LoopListViewItem2 item = listView.NewListViewItem("ItemPrefab");
 		if (item == null) return null;
 		SpinPickerItem itemScript = item.GetComponent<SpinPickerItem>();
+		if (itemScript == null) return item;
 		if (item.IsInitHandlerCalled == false)
 		{
 			item.IsInitHandlerCalled = true;
@@ -175,7 +220,11 @@ public class SpinDatePicker : MonoBehaviour
 
 		int value = firstValue + NormalizeIndex(index, count);
 		itemScript.Value = value;
-		itemScript.mText.text = string.Format("{0:" + format + "}{1}", value, suffix);
+		if (itemScript.mText != null)
+		{
+			itemScript.mText.text = string.Format("{0:" + format + "}{1}", value, suffix);
+			itemScript.mText.color = mColorReserved;
+		}
 		return item;
 	}
 
@@ -186,47 +235,49 @@ public class SpinDatePicker : MonoBehaviour
 		return count + ((index + 1) % count) - 1;
 	}
 
-	private void OnYearSnapTargetChanged(LoopListView2 listView, LoopListViewItem2 item)
+	private void OnSnapTargetChanged(LoopListView2 listView, LoopListViewItem2 item)
 	{
-		if (!TryUpdateSelectedValue(listView, item, out int value)) return;
-		mCurSelectedYear = value;
-		UpdateCurSelect();
+		SpinPickerWheelUtility.RefreshWheelVisuals(listView, mColorReserved, mColorSelected);
 	}
 
-	private void OnMonthSnapTargetChanged(LoopListView2 listView, LoopListViewItem2 item)
-	{
-		if (!TryUpdateSelectedValue(listView, item, out int value)) return;
-		mCurSelectedMonth = value;
-		UpdateCurSelect();
-	}
-
-	private void OnDaySnapTargetChanged(LoopListView2 listView, LoopListViewItem2 item)
-	{
-		if (!TryUpdateSelectedValue(listView, item, out int value)) return;
-		mCurSelectedDay = value;
-		UpdateCurSelect();
-	}
-
-	private bool TryUpdateSelectedValue(LoopListView2 listView, LoopListViewItem2 item, out int value)
+	private bool TryGetItemValue(LoopListViewItem2 item, out int value)
 	{
 		value = 0;
-		int index = listView.GetIndexInShownItemList(item);
-		if (index < 0) return false;
+		if (item == null) return false;
 		SpinPickerItem itemScript = item.GetComponent<SpinPickerItem>();
 		if (itemScript == null) return false;
 		value = itemScript.Value;
-		OnListViewSnapTargetChanged(listView, index);
 		return true;
 	}
 
 	private void OnYearSnapTargetFinished(LoopListView2 listView, LoopListViewItem2 item)
 	{
+		if (TryGetItemValue(item, out int value))
+		{
+			mCurSelectedYear = value;
+		}
+		SpinPickerWheelUtility.RefreshWheelVisuals(listView, mColorReserved, mColorSelected);
 		RefreshDayColumn();
 	}
 
 	private void OnMonthSnapTargetFinished(LoopListView2 listView, LoopListViewItem2 item)
 	{
+		if (TryGetItemValue(item, out int value))
+		{
+			mCurSelectedMonth = value;
+		}
+		SpinPickerWheelUtility.RefreshWheelVisuals(listView, mColorReserved, mColorSelected);
 		RefreshDayColumn();
+	}
+
+	private void OnDaySnapTargetFinished(LoopListView2 listView, LoopListViewItem2 item)
+	{
+		if (TryGetItemValue(item, out int value))
+		{
+			mCurSelectedDay = value;
+		}
+		SpinPickerWheelUtility.RefreshWheelVisuals(listView, mColorReserved, mColorSelected);
+		UpdateCurSelect();
 	}
 
 	private void RefreshDayColumn()
@@ -236,24 +287,63 @@ public class SpinDatePicker : MonoBehaviour
 		mLoopListViewDay.RefreshAllShownItem();
 		MoveListToValue(mLoopListViewDay, mCurSelectedDay, mFirstDay);
 		UpdateCurSelect();
+		RefreshAllWheelVisuals();
 	}
 
-	private void OnListViewSnapTargetChanged(LoopListView2 listView, int targetIndex)
+	private void RefreshAllWheelVisuals()
 	{
-		int count = listView.ShownItemCount;
-		for (int i = 0; i < count; ++i)
+		SpinPickerWheelUtility.RefreshWheelVisuals(mLoopListViewYear, mColorReserved, mColorSelected);
+		SpinPickerWheelUtility.RefreshWheelVisuals(mLoopListViewMonth, mColorReserved, mColorSelected);
+		SpinPickerWheelUtility.RefreshWheelVisuals(mLoopListViewDay, mColorReserved, mColorSelected);
+		UpdateOnImagePosition();
+	}
+
+	private void UpdateOnImagePosition()
+	{
+		if (onImage == null) return;
+
+		LoopListViewItem2 centerItem = GetNearestCenterItem(mLoopListViewMonth)
+			?? GetNearestCenterItem(mLoopListViewYear)
+			?? GetNearestCenterItem(mLoopListViewDay);
+		if (centerItem == null) return;
+
+		RectTransform imageRect = onImage.rectTransform;
+		RectTransform itemRect = centerItem.CachedRectTransform;
+		Vector3 itemWorldCenter = itemRect.TransformPoint(itemRect.rect.center);
+		Vector3 imagePosition = imageRect.position;
+		imagePosition.y = itemWorldCenter.y;
+		imageRect.position = imagePosition;
+	}
+
+	private LoopListViewItem2 GetNearestCenterItem(LoopListView2 listView)
+	{
+		if (listView == null || !listView.ListViewInited) return null;
+
+		listView.UpdateAllShownItemSnapData();
+		LoopListViewItem2 nearestItem = null;
+		float nearestDistance = float.MaxValue;
+		for (int i = 0; i < listView.ShownItemCount; i++)
 		{
 			LoopListViewItem2 item = listView.GetShownItemByIndex(i);
-			SpinPickerItem itemScript = item != null ? item.GetComponent<SpinPickerItem>() : null;
-			if (itemScript != null && itemScript.mText != null)
-			{
-				itemScript.mText.color = i == targetIndex ? mColorSelected : mColorReserved;
-			}
+			if (item == null) continue;
+
+			float distance = Mathf.Abs(item.DistanceWithViewPortSnapCenter);
+			if (distance >= nearestDistance) continue;
+
+			nearestDistance = distance;
+			nearestItem = item;
 		}
+
+		return nearestItem;
 	}
 
 	private void OnConfirmButtonClicked()
 	{
 		mConfirmCallback?.Invoke(SelectedValue);
+	}
+
+	private void OnCancelButtonClicked()
+	{
+		UIModule.Instance.HideWindow<SpinPickerUI>();
 	}
 }

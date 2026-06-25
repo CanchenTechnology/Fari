@@ -104,7 +104,7 @@ public class TwoPersonDivinationResultFlowUI : WindowBase
 		store.SaveRecord(currentRecordData, success =>
 		{
 			SetSaveButtonState(true, "保存到历史");
-			ToastManager.ShowToast(success ? "已保存到历史" : "保存失败，请稍后再试");
+			ToastManager.ShowToast(success ? "已保存到历史" : "已保存到本地，云端稍后同步");
 			if (success)
 				Debug.Log("[TwoPersonDivinationResultFlowUI] 双人占卜历史已保存");
 			else

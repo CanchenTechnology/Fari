@@ -228,7 +228,7 @@ public class MemoryManageUI : WindowBase
 			ResetClearConfirm();
 			RefreshUI();
 			RefreshVisibleMemoryWindows();
-			ToastManager.ShowToast(success ? "记忆已清空" : "本地已清空，云端删除失败");
+			ToastManager.ShowToast(success ? "记忆已清空" : "本地已清空，云端稍后同步");
 		});
 	}
 	#endregion

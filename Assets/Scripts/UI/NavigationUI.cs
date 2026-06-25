@@ -32,9 +32,10 @@ public class NavigationUI : WindowBase
 		uiComponent.InitComponent(this);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		base.OnAwake();
+		ConfigureNavigationToggleGroup();
 		CacheNavigationLabelColors();
 		uiComponent.todayOracleToggle.isOn = true;
-		UpdateNavigationLabelColors();
+		UpdateNavigationVisuals();
 		mCurrentActiveWindow = nameof(TodayOracleUI);
 		UIModule.Instance.PopUpWindow<TodayOracleUI>();
 	}
@@ -42,7 +43,7 @@ public class NavigationUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
-		UpdateNavigationLabelColors();
+		UpdateNavigationVisuals();
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -88,6 +89,12 @@ public class NavigationUI : WindowBase
 		CacheToggleLabelColor(uiComponent.myToggle);
 	}
 
+	private void ConfigureNavigationToggleGroup()
+	{
+		if (uiComponent.navigationToggleGroup != null)
+			uiComponent.navigationToggleGroup.allowSwitchOff = false;
+	}
+
 	private void CacheToggleLabelColor(Toggle toggle)
 	{
 		if (toggle == null || navigationDefaultLabelColors.ContainsKey(toggle))
@@ -98,12 +105,21 @@ public class NavigationUI : WindowBase
 			navigationDefaultLabelColors.Add(toggle, label.color);
 	}
 
-	private void UpdateNavigationLabelColors()
+	private void UpdateNavigationVisuals()
 	{
-		UpdateToggleLabelColor(uiComponent.todayOracleToggle);
-		UpdateToggleLabelColor(uiComponent.dialogueToggle);
-		UpdateToggleLabelColor(uiComponent.friendToggle);
-		UpdateToggleLabelColor(uiComponent.myToggle);
+		UpdateToggleVisualState(uiComponent.todayOracleToggle);
+		UpdateToggleVisualState(uiComponent.dialogueToggle);
+		UpdateToggleVisualState(uiComponent.friendToggle);
+		UpdateToggleVisualState(uiComponent.myToggle);
+	}
+
+	private void UpdateToggleVisualState(Toggle toggle)
+	{
+		if (toggle == null) return;
+
+		UpdateToggleLabelColor(toggle);
+		SetToggleBackgroundVisible(toggle, !toggle.isOn);
+		toggle.interactable = !toggle.isOn;
 	}
 
 	private void UpdateToggleLabelColor(Toggle toggle)
@@ -120,6 +136,25 @@ public class NavigationUI : WindowBase
 		}
 
 		label.color = toggle.isOn ? SelectedNavigationLabelColor : defaultColor;
+	}
+
+	private void SetToggleBackgroundVisible(Toggle toggle, bool visible)
+	{
+		if (toggle == null) return;
+
+		Image backgroundImage = null;
+		if (toggle.targetGraphic is Image targetImage && targetImage.transform.name == "Background")
+			backgroundImage = targetImage;
+
+		if (backgroundImage == null)
+		{
+			Transform backgroundTransform = FindChildByName(toggle.transform, "Background");
+			if (backgroundTransform != null)
+				backgroundImage = backgroundTransform.GetComponent<Image>();
+		}
+
+		if (backgroundImage != null)
+			backgroundImage.enabled = visible;
 	}
 
 	private TMP_Text GetToggleLabel(Toggle toggle)
@@ -155,7 +190,7 @@ public class NavigationUI : WindowBase
 	#region UI组件事件
 	public void OntodayOracleToggleChange(bool state, Toggle toggle)
 	{
-		UpdateNavigationLabelColors();
+		UpdateNavigationVisuals();
 		if(state)
 		{
 			if (mCurrentActiveWindow == nameof(TodayOracleUI)) return;
@@ -170,7 +205,7 @@ public class NavigationUI : WindowBase
 	}
 	public void OndialogueToggleChange(bool state, Toggle toggle)
 	{
-		UpdateNavigationLabelColors();
+		UpdateNavigationVisuals();
 		if(state)
 		{
 			if (mCurrentActiveWindow == nameof(DialogUI)) return;
@@ -185,7 +220,7 @@ public class NavigationUI : WindowBase
 	}
 	public void OnfriendToggleChange(bool state, Toggle toggle)
 	{
-		UpdateNavigationLabelColors();
+		UpdateNavigationVisuals();
 		if(state)
 		{
 			ShowFriendEntry();
@@ -197,7 +232,7 @@ public class NavigationUI : WindowBase
 	}
 	public void OnmyToggleChange(bool state, Toggle toggle)
 	{
-		UpdateNavigationLabelColors();
+		UpdateNavigationVisuals();
 		if(state)
 		{
 			if (mCurrentActiveWindow == nameof(MyUI)) return;
@@ -214,19 +249,19 @@ public class NavigationUI : WindowBase
 	public void OpenDialogUI()
 	{
 		uiComponent.dialogueToggle.isOn = true;
-		UpdateNavigationLabelColors();
+		UpdateNavigationVisuals();
 	}
 
 	public void OpenTodayOracleUI()
 	{
 		uiComponent.todayOracleToggle.isOn = true;
-		UpdateNavigationLabelColors();
+		UpdateNavigationVisuals();
 	}
 
 	public void OpenFriendUI()
 	{
 		uiComponent.friendToggle.isOn = true;
-		UpdateNavigationLabelColors();
+		UpdateNavigationVisuals();
 		ShowFriendEntry();
 	}
 

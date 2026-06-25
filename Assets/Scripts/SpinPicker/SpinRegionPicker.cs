@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.Serialization;
 using UnityEngine.UI;
 using TMPro;
+using GamerFrameWork.UIFrameWork;
 
 public class SpinRegionPicker : MonoBehaviour
 {
@@ -136,6 +137,10 @@ public class SpinRegionPicker : MonoBehaviour
 	public TMP_Text CurSelect;
 	public Button ConfirmButton;
 
+	public Button cancelButton;
+
+	public Image onImage;
+
 	private int mCurSelectedCountryIndex;
 	private int mCurSelectedProvinceIndex;
 	private int mCurSelectedCityIndex;
@@ -162,11 +167,18 @@ public class SpinRegionPicker : MonoBehaviour
 		EnsureInitialized();
 		MoveToCurrentRegion();
 		UpdateCurSelect();
+		RefreshAllWheelVisuals();
 	}
 
 	private void Awake()
 	{
 		BindReferences();
+	}
+
+	private void Update()
+	{
+		if (!mInitialized || !gameObject.activeInHierarchy) return;
+		RefreshAllWheelVisuals();
 	}
 
 	private void BindReferences()
@@ -198,34 +210,68 @@ public class SpinRegionPicker : MonoBehaviour
 			if (item == null) item = transform.Find("[Button]Confirm");
 			if (item != null) ConfirmButton = item.GetComponent<Button>();
 		}
+		if (cancelButton == null)
+		{
+			Transform item = transform.Find("cancelBtn");
+			if (item == null) item = transform.Find("[Button]Cancel");
+			if (item == null) item = transform.Find("CancelButton");
+			if (item != null) cancelButton = item.GetComponent<Button>();
+		}
+		if (onImage == null)
+		{
+			Transform item = transform.Find("On");
+			if (item == null) item = transform.Find("onImage");
+			if (item == null) item = transform.Find("OnImage");
+			if (item != null) onImage = item.GetComponent<Image>();
+		}
 	}
 
 	private void EnsureInitialized()
 	{
-		if (mInitialized) return;
+		if (mInitialized)
+		{
+			BindButtonListeners();
+			return;
+		}
 		if (mLoopListViewCountry == null || mLoopListViewProvince == null || mLoopListViewCity == null)
 		{
 			Debug.LogError("[SpinRegionPicker] Country, province or city LoopListView2 reference is missing.");
 			return;
 		}
 
-		mLoopListViewCountry.mOnSnapNearestChanged = OnCountrySnapTargetChanged;
+		SpinPickerWheelUtility.ConfigureWheel(mLoopListViewCountry);
+		SpinPickerWheelUtility.ConfigureWheel(mLoopListViewProvince);
+		SpinPickerWheelUtility.ConfigureWheel(mLoopListViewCity);
+
+		mLoopListViewCountry.mOnSnapNearestChanged = OnSnapTargetChanged;
 		mLoopListViewCountry.mOnSnapItemFinished = OnCountrySnapTargetFinished;
-		mLoopListViewProvince.mOnSnapNearestChanged = OnProvinceSnapTargetChanged;
+		mLoopListViewProvince.mOnSnapNearestChanged = OnSnapTargetChanged;
 		mLoopListViewProvince.mOnSnapItemFinished = OnProvinceSnapTargetFinished;
-		mLoopListViewCity.mOnSnapNearestChanged = OnCitySnapTargetChanged;
+		mLoopListViewCity.mOnSnapNearestChanged = OnSnapTargetChanged;
+		mLoopListViewCity.mOnSnapItemFinished = OnCitySnapTargetFinished;
 
-		mLoopListViewCountry.InitListView(-1, OnGetItemByIndexForCountry);
-		mLoopListViewProvince.InitListView(-1, OnGetItemByIndexForProvince);
-		mLoopListViewCity.InitListView(-1, OnGetItemByIndexForCity);
+		mLoopListViewCountry.InitListView(-1, OnGetItemByIndexForCountry, SpinPickerWheelUtility.CreateInitParam(mLoopListViewCountry));
+		mLoopListViewProvince.InitListView(-1, OnGetItemByIndexForProvince, SpinPickerWheelUtility.CreateInitParam(mLoopListViewProvince));
+		mLoopListViewCity.InitListView(-1, OnGetItemByIndexForCity, SpinPickerWheelUtility.CreateInitParam(mLoopListViewCity));
 
+		BindButtonListeners();
+
+		mInitialized = true;
+	}
+
+	private void BindButtonListeners()
+	{
 		if (ConfirmButton != null)
 		{
 			ConfirmButton.onClick.RemoveListener(OnConfirmButtonClicked);
 			ConfirmButton.onClick.AddListener(OnConfirmButtonClicked);
 		}
 
-		mInitialized = true;
+		if (cancelButton != null)
+		{
+			cancelButton.onClick.RemoveListener(OnCancelButtonClicked);
+			cancelButton.onClick.AddListener(OnCancelButtonClicked);
+		}
 	}
 
 	private void SelectInitialRegion(string value)
@@ -355,6 +401,7 @@ public class SpinRegionPicker : MonoBehaviour
 		if (itemText != null)
 		{
 			itemText.text = label;
+			itemText.color = mColorReserved;
 		}
 		return item;
 	}
@@ -399,53 +446,59 @@ public class SpinRegionPicker : MonoBehaviour
 		return count + ((index + 1) % count) - 1;
 	}
 
-	private void OnCountrySnapTargetChanged(LoopListView2 listView, LoopListViewItem2 item)
+	private void OnSnapTargetChanged(LoopListView2 listView, LoopListViewItem2 item)
 	{
-		if (!TryUpdateSelectedIndex(listView, item, out int valueIndex)) return;
-		if (mCurSelectedCountryIndex == valueIndex) return;
-
-		mCurSelectedCountryIndex = valueIndex;
-		mCurSelectedProvinceIndex = 0;
-		mCurSelectedCityIndex = 0;
-		UpdateCurSelect();
+		SpinPickerWheelUtility.RefreshWheelVisuals(listView, mColorReserved, mColorSelected);
 	}
 
 	private void OnCountrySnapTargetFinished(LoopListView2 listView, LoopListViewItem2 item)
 	{
-		RefreshProvinceColumn();
-	}
+		if (!TryGetItemValue(item, out int valueIndex)) return;
+		SpinPickerWheelUtility.RefreshWheelVisuals(listView, mColorReserved, mColorSelected);
+		if (mCurSelectedCountryIndex == valueIndex)
+		{
+			UpdateCurSelect();
+			return;
+		}
 
-	private void OnProvinceSnapTargetChanged(LoopListView2 listView, LoopListViewItem2 item)
-	{
-		if (!TryUpdateSelectedIndex(listView, item, out int valueIndex)) return;
-		if (mCurSelectedProvinceIndex == valueIndex) return;
-
-		mCurSelectedProvinceIndex = valueIndex;
+		mCurSelectedCountryIndex = valueIndex;
+		mCurSelectedProvinceIndex = 0;
 		mCurSelectedCityIndex = 0;
-		UpdateCurSelect();
+		RefreshProvinceColumn();
 	}
 
 	private void OnProvinceSnapTargetFinished(LoopListView2 listView, LoopListViewItem2 item)
 	{
+		if (!TryGetItemValue(item, out int valueIndex)) return;
+		SpinPickerWheelUtility.RefreshWheelVisuals(listView, mColorReserved, mColorSelected);
+		if (mCurSelectedProvinceIndex == valueIndex)
+		{
+			UpdateCurSelect();
+			return;
+		}
+
+		mCurSelectedProvinceIndex = valueIndex;
+		mCurSelectedCityIndex = 0;
 		RefreshCityColumn();
 	}
 
-	private void OnCitySnapTargetChanged(LoopListView2 listView, LoopListViewItem2 item)
+	private void OnCitySnapTargetFinished(LoopListView2 listView, LoopListViewItem2 item)
 	{
-		if (!TryUpdateSelectedIndex(listView, item, out int valueIndex)) return;
-		mCurSelectedCityIndex = valueIndex;
+		if (TryGetItemValue(item, out int valueIndex))
+		{
+			mCurSelectedCityIndex = valueIndex;
+		}
+		SpinPickerWheelUtility.RefreshWheelVisuals(listView, mColorReserved, mColorSelected);
 		UpdateCurSelect();
 	}
 
-	private bool TryUpdateSelectedIndex(LoopListView2 listView, LoopListViewItem2 item, out int valueIndex)
+	private bool TryGetItemValue(LoopListViewItem2 item, out int valueIndex)
 	{
 		valueIndex = 0;
-		int index = listView.GetIndexInShownItemList(item);
-		if (index < 0) return false;
+		if (item == null) return false;
 		SpinPickerItem itemScript = item.GetComponent<SpinPickerItem>();
 		if (itemScript == null) return false;
 		valueIndex = itemScript.Value;
-		OnListViewSnapTargetChanged(listView, index);
 		return true;
 	}
 
@@ -458,6 +511,7 @@ public class SpinRegionPicker : MonoBehaviour
 		MoveListToIndex(mLoopListViewProvince, mCurSelectedProvinceIndex);
 		RefreshCityColumn();
 		UpdateCurSelect();
+		RefreshAllWheelVisuals();
 	}
 
 	private void RefreshCityColumn()
@@ -467,24 +521,63 @@ public class SpinRegionPicker : MonoBehaviour
 		mLoopListViewCity.RefreshAllShownItem();
 		MoveListToIndex(mLoopListViewCity, mCurSelectedCityIndex);
 		UpdateCurSelect();
+		RefreshAllWheelVisuals();
 	}
 
-	private void OnListViewSnapTargetChanged(LoopListView2 listView, int targetIndex)
+	private void RefreshAllWheelVisuals()
 	{
-		int count = listView.ShownItemCount;
-		for (int i = 0; i < count; ++i)
+		SpinPickerWheelUtility.RefreshWheelVisuals(mLoopListViewCountry, mColorReserved, mColorSelected);
+		SpinPickerWheelUtility.RefreshWheelVisuals(mLoopListViewProvince, mColorReserved, mColorSelected);
+		SpinPickerWheelUtility.RefreshWheelVisuals(mLoopListViewCity, mColorReserved, mColorSelected);
+		UpdateOnImagePosition();
+	}
+
+	private void UpdateOnImagePosition()
+	{
+		if (onImage == null) return;
+
+		LoopListViewItem2 centerItem = GetNearestCenterItem(mLoopListViewProvince)
+			?? GetNearestCenterItem(mLoopListViewCountry)
+			?? GetNearestCenterItem(mLoopListViewCity);
+		if (centerItem == null) return;
+
+		RectTransform imageRect = onImage.rectTransform;
+		RectTransform itemRect = centerItem.CachedRectTransform;
+		Vector3 itemWorldCenter = itemRect.TransformPoint(itemRect.rect.center);
+		Vector3 imagePosition = imageRect.position;
+		imagePosition.y = itemWorldCenter.y;
+		imageRect.position = imagePosition;
+	}
+
+	private LoopListViewItem2 GetNearestCenterItem(LoopListView2 listView)
+	{
+		if (listView == null || !listView.ListViewInited) return null;
+
+		listView.UpdateAllShownItemSnapData();
+		LoopListViewItem2 nearestItem = null;
+		float nearestDistance = float.MaxValue;
+		for (int i = 0; i < listView.ShownItemCount; i++)
 		{
 			LoopListViewItem2 item = listView.GetShownItemByIndex(i);
-			SpinPickerItem itemScript = item != null ? item.GetComponent<SpinPickerItem>() : null;
-			if (itemScript != null && itemScript.mText != null)
-			{
-				itemScript.mText.color = i == targetIndex ? mColorSelected : mColorReserved;
-			}
+			if (item == null) continue;
+
+			float distance = Mathf.Abs(item.DistanceWithViewPortSnapCenter);
+			if (distance >= nearestDistance) continue;
+
+			nearestDistance = distance;
+			nearestItem = item;
 		}
+
+		return nearestItem;
 	}
 
 	private void OnConfirmButtonClicked()
 	{
 		mConfirmCallback?.Invoke(SelectedValue);
+	}
+
+	private void OnCancelButtonClicked()
+	{
+		UIModule.Instance.HideWindow<SpinPickerUI>();
 	}
 }

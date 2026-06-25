@@ -447,6 +447,26 @@ const ADMIN_ROOT_COLLECTIONS = Object.freeze([
       },
     ],
   },
+  {
+    key: "admin_audit_logs",
+    label: "管理员审计日志",
+    guidePage: 18,
+    collectionPath: "admin_audit_logs",
+    scope: "root",
+    orderBy: "createdAt",
+    orderDirection: "desc",
+    idHint: "autoId",
+    description: "后台管理员对会员、资料、好友、配置、Prompt 和原始数据的高风险操作记录。",
+    readable: "action、adminEmail、adminUid、target、details、request、createdAt",
+    writable: "只建议系统自动写入，人工修改会影响审计可信度。",
+    risk: "审计日志用于追溯管理员操作，不建议删除或覆盖。",
+    presets: [
+      { label: "会员操作", whereField: "targetType", whereOp: "==", whereValue: "membership" },
+      { label: "用户资料", whereField: "targetType", whereOp: "==", whereValue: "user" },
+      { label: "Prompt 发布", whereField: "targetType", whereOp: "==", whereValue: "agent_prompt" },
+    ],
+    templates: [],
+  },
 ]);
 const ADMIN_USER_SUBCOLLECTIONS = Object.freeze([
   {
@@ -797,6 +817,19 @@ const AGENT_PROMPT_FILES_COLLECTION = "agent_prompt_files";
 const AGENT_PROMPT_DRAFTS_COLLECTION = "agent_prompt_drafts";
 const AGENT_PROMPT_RELEASES_COLLECTION = "agent_prompt_releases";
 const AGENT_TURN_RATINGS_COLLECTION = "agent_turn_ratings";
+const ADMIN_AUDIT_LOG_COLLECTION = "admin_audit_logs";
+const ADMIN_AUDIT_REDACTION_KEYS = Object.freeze([
+  "password",
+  "token",
+  "secret",
+  "credential",
+  "receipt",
+  "authorization",
+  "content",
+  "baseContent",
+  "previousContent",
+  "payload",
+]);
 
 const runtime = {
   region: REGION,
@@ -1719,6 +1752,87 @@ function getAdminRequestSource(req) {
   return req.method === "GET" ? (req.query || {}) : (req.body || {});
 }
 
+function sanitizeAdminAuditValue(value, depth = 0) {
+  if (depth > 6) return "[max-depth]";
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") return value.slice(0, 1200);
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (value instanceof admin.firestore.Timestamp) return serializeTimestamp(value);
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) {
+    return value.slice(0, 40).map((item) => sanitizeAdminAuditValue(item, depth + 1));
+  }
+  if (typeof value === "object") {
+    const result = {};
+    for (const [key, child] of Object.entries(value).slice(0, 60)) {
+      const lowerKey = key.toLowerCase();
+      if (ADMIN_AUDIT_REDACTION_KEYS.some((redactionKey) => lowerKey.includes(redactionKey.toLowerCase()))) {
+        result[key] = "[redacted]";
+      } else {
+        result[key] = sanitizeAdminAuditValue(child, depth + 1);
+      }
+    }
+    return result;
+  }
+  return String(value).slice(0, 1200);
+}
+
+function getAdminAuditRequestInfo(req) {
+  if (!req) return {};
+  const forwardedFor = cleanString(req.get?.("x-forwarded-for"), "", 300);
+  return {
+    ip: cleanString(forwardedFor.split(",")[0] || req.ip, "", 80),
+    userAgent: cleanString(req.get?.("user-agent"), "", 500),
+    origin: cleanString(req.get?.("origin"), "", 500),
+  };
+}
+
+async function writeAdminAuditLog(decoded, action, target = {}, details = {}, req = null) {
+  try {
+    const cleanAction = cleanString(action, "", 120);
+    if (!decoded?.uid || !cleanAction) return;
+    const cleanTarget = sanitizeAdminAuditValue(target);
+    const targetType = getAdminScalarText(cleanTarget?.type, 120);
+    const targetId = getAdminScalarText(cleanTarget?.id, 300);
+    const targetPath = getAdminScalarText(cleanTarget?.path, 900);
+    const targetUid = getAdminScalarText(cleanTarget?.uid, 200);
+    await db.collection(ADMIN_AUDIT_LOG_COLLECTION).add({
+      action: cleanAction,
+      adminUid: decoded.uid,
+      adminEmail: cleanString(decoded.email, "", 200),
+      target: cleanTarget,
+      targetType,
+      targetId,
+      targetPath,
+      targetUid,
+      details: sanitizeAdminAuditValue(details),
+      request: getAdminAuditRequestInfo(req),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    console.warn("[adminAudit] write failed", error.message);
+  }
+}
+
+function serializeAdminAuditLog(doc) {
+  const data = doc.data() || {};
+  return {
+    id: doc.id,
+    path: doc.ref.path,
+    action: getAdminScalarText(data.action, 120),
+    adminUid: getAdminScalarText(data.adminUid, 200),
+    adminEmail: getAdminScalarText(data.adminEmail, 200),
+    targetType: getAdminScalarText(data.targetType, 120),
+    targetId: getAdminScalarText(data.targetId, 300),
+    targetPath: getAdminScalarText(data.targetPath, 900),
+    targetUid: getAdminScalarText(data.targetUid, 200),
+    target: serializeFirestoreValue(data.target || {}),
+    details: serializeFirestoreValue(data.details || {}),
+    request: serializeFirestoreValue(data.request || {}),
+    createdAt: serializeTimestamp(data.createdAt),
+  };
+}
+
 function resolveAdminCollection(source) {
   const collectionKey = cleanString(source.collectionKey, "", 120);
   if (collectionKey) {
@@ -2414,6 +2528,198 @@ async function addAdminUserDocsFromQuery(target, query) {
       ));
     }
   }
+}
+
+function getAdminSortableTime(value) {
+  if (!value) return 0;
+  if (typeof value.toDate === "function") return value.toDate().getTime();
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "object") {
+    if (value.value) return getAdminSortableTime(value.value);
+    if (value.seconds) return Number(value.seconds || 0) * 1000;
+  }
+
+  const parsed = Date.parse(String(value));
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function getAdminUserListSortTime(item) {
+  const data = item.data || {};
+  return Math.max(
+    getAdminSortableTime(data.lastActiveUnixMs),
+    getAdminSortableTime(data.lastSignInAt),
+    getAdminSortableTime(data.presenceUpdatedAt),
+    getAdminSortableTime(data.lastActiveAt),
+    getAdminSortableTime(data.profileUpdatedAt),
+    getAdminSortableTime(data.updatedAt),
+    getAdminSortableTime(data.createdAt),
+    getAdminSortableTime(data.authCreatedAt),
+    getAdminSortableTime(item.updateTime),
+    getAdminSortableTime(item.createTime),
+  );
+}
+
+function sortAdminUserListItems(items) {
+  return [...items].sort((a, b) => {
+    const timeDiff = getAdminUserListSortTime(b) - getAdminUserListSortTime(a);
+    if (timeDiff) return timeDiff;
+    const aName = getAdminScalarText(a.data?.displayName || a.data?.email || a.id, 200);
+    const bName = getAdminScalarText(b.data?.displayName || b.data?.email || b.id, 200);
+    return aName.localeCompare(bName);
+  });
+}
+
+async function listAdminUsersForAdmin(options = {}) {
+  const limit = getAdminLimit(options.limit, 80, options.max || 200);
+  const fetchLimit = getAdminLimit(options.fetchLimit, Math.max(limit * 4, 200), 1000);
+  const usersRef = db.collection("users");
+  const results = new Map();
+
+  await Promise.all([
+    addAdminUserDocsFromQuery(
+      results,
+      usersRef.orderBy(admin.firestore.FieldPath.documentId()).limit(fetchLimit),
+    ),
+    addAdminUserDocsFromQuery(results, usersRef.orderBy("lastSignInAt", "desc").limit(limit)),
+    addAdminUserDocsFromQuery(results, usersRef.orderBy("updatedAt", "desc").limit(limit)),
+    addAdminUserDocsFromQuery(results, usersRef.orderBy("createdAt", "desc").limit(limit)),
+  ]);
+
+  return sortAdminUserListItems([...results.values()]).slice(0, limit);
+}
+
+function getAuthRecordProviderLabel(authRecord) {
+  const providers = Array.isArray(authRecord?.providerData)
+    ? authRecord.providerData.map((provider) => getAdminScalarText(provider.providerId, 80)).filter(Boolean)
+    : [];
+  if (providers.some((provider) => provider.includes("google"))) return "Google";
+  if (providers.some((provider) => provider.includes("apple"))) return "Apple";
+  if (providers.some((provider) => provider.includes("password"))) return "Email";
+  if (providers.length) return providers.join(", ");
+  return authRecord?.email ? "Email" : "Unknown";
+}
+
+function authTimestamp(value) {
+  const parsed = Date.parse(String(value || ""));
+  if (!Number.isFinite(parsed)) return admin.firestore.FieldValue.serverTimestamp();
+  return admin.firestore.Timestamp.fromDate(new Date(parsed));
+}
+
+function buildAdminAuthUserSnapshot(authRecord, userSnap, publicProfileSnap) {
+  const authData = {
+    uid: authRecord.uid,
+    email: getAdminScalarText(authRecord.email, 160),
+    displayName: getAdminScalarText(authRecord.displayName, 120),
+    photoUrl: getAdminScalarText(authRecord.photoURL, 1000),
+    emailVerified: authRecord.emailVerified === true,
+    disabled: authRecord.disabled === true,
+    loginType: getAuthRecordProviderLabel(authRecord),
+    createdAt: getAdminScalarText(authRecord.metadata?.creationTime, 80),
+    lastSignInAt: getAdminScalarText(authRecord.metadata?.lastSignInTime, 80),
+    providerIds: Array.isArray(authRecord.providerData)
+      ? authRecord.providerData.map((provider) => getAdminScalarText(provider.providerId, 80)).filter(Boolean)
+      : [],
+  };
+
+  const hasUserDoc = userSnap?.exists === true;
+  const hasPublicProfile = publicProfileSnap?.exists === true;
+  return {
+    ...authData,
+    hasUserDoc,
+    hasPublicProfile,
+    missingUserDoc: !hasUserDoc,
+    missingPublicProfile: !hasPublicProfile,
+    needsRepair: !hasUserDoc || !hasPublicProfile,
+  };
+}
+
+async function listAdminAuthUsersForReconcile(options = {}) {
+  const limit = getAdminLimit(options.limit, 100, 1000);
+  const pageToken = cleanString(options.pageToken, "", 1000) || undefined;
+  const onlyMissing = options.onlyMissing === true || String(options.onlyMissing || "") === "true";
+  const authList = await admin.auth().listUsers(limit, pageToken);
+  const refs = [];
+  for (const authRecord of authList.users) {
+    refs.push(db.collection("users").doc(authRecord.uid));
+    refs.push(db.collection("public_profiles").doc(authRecord.uid));
+  }
+  const snaps = refs.length ? await db.getAll(...refs) : [];
+  const items = authList.users.map((authRecord, index) => {
+    const userSnap = snaps[index * 2] || null;
+    const publicProfileSnap = snaps[index * 2 + 1] || null;
+    return buildAdminAuthUserSnapshot(authRecord, userSnap, publicProfileSnap);
+  });
+  const filteredItems = onlyMissing ? items.filter((item) => item.needsRepair) : items;
+
+  return {
+    items: filteredItems,
+    scannedCount: authList.users.length,
+    count: filteredItems.length,
+    missingCount: items.filter((item) => item.needsRepair).length,
+    nextPageToken: authList.pageToken || "",
+    onlyMissing,
+  };
+}
+
+function buildAdminUserRepairDocsFromAuth(authRecord, decoded, existingUser = {}, existingPublicProfile = {}) {
+  const email = getAdminScalarText(existingUser.email || existingPublicProfile.email || authRecord.email, 160).toLowerCase();
+  const displayName = cleanString(
+    existingUser.displayName || existingPublicProfile.displayName || authRecord.displayName,
+    email.includes("@") ? email.split("@")[0] : "Fari User",
+    120,
+  );
+  const photoUrl = getAdminScalarText(
+    existingUser.photoUrl || existingUser.photoURL || existingPublicProfile.photoUrl || authRecord.photoURL,
+    1000,
+  );
+  const displayNameLower = normalizeSearchText(displayName);
+  const emailLower = normalizeSearchText(email);
+  const searchKeywords = buildSearchKeywords(displayName, email);
+  const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
+  const createdAt = authTimestamp(authRecord.metadata?.creationTime);
+  const loginType = getAuthRecordProviderLabel(authRecord);
+
+  return {
+    userData: {
+      uid: authRecord.uid,
+      displayName,
+      displayNameLower,
+      searchKeywords,
+      email,
+      emailLower,
+      photoUrl,
+      avatarStoragePath: getAdminScalarText(existingUser.avatarStoragePath, 1000),
+      birthday: getAdminScalarText(existingUser.birthday, 40),
+      birthTime: getAdminScalarText(existingUser.birthTime, 20),
+      city: getAdminScalarText(existingUser.city || existingUser.address, 160),
+      bio: getAdminScalarText(existingUser.bio || existingPublicProfile.bio, 500),
+      loginType,
+      isEmailVerified: authRecord.emailVerified === true,
+      membershipStatus: getAdminScalarText(existingUser.membershipStatus, 40) || "free",
+      timezone: getAdminScalarText(existingUser.timezone, 80),
+      createdAt,
+      profileUpdatedAt: serverTimestamp,
+      updatedAt: serverTimestamp,
+      adminRepaired: true,
+      adminRepairedBy: decoded.uid,
+      adminRepairedAt: serverTimestamp,
+    },
+    publicProfileData: {
+      uid: authRecord.uid,
+      displayName,
+      displayNameLower,
+      searchKeywords,
+      email,
+      emailLower,
+      photoUrl,
+      avatarStoragePath: getAdminScalarText(existingPublicProfile.avatarStoragePath || existingUser.avatarStoragePath, 1000),
+      bio: getAdminScalarText(existingPublicProfile.bio || existingUser.bio, 500),
+      updatedAt: serverTimestamp,
+      adminRepaired: true,
+      adminRepairedBy: decoded.uid,
+    },
+  };
 }
 
 function getAdminLimit(value, fallback = 20, max = 100) {
@@ -3524,6 +3830,15 @@ async function handleAdminAgentAction(action, source, req, decoded) {
       ratedUid: decoded.uid,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
+    await writeAdminAuditLog(decoded, "agent.turn_rate", {
+      type: "agent_turn",
+      id: docId,
+      path: `${AGENT_TURN_RATINGS_COLLECTION}/${docId}`,
+    }, {
+      turnId,
+      rating,
+      hasNote: Boolean(cleanString(source.note, "", 1000)),
+    }, req);
     return { ok: true, rating };
   }
 
@@ -3563,17 +3878,47 @@ async function handleAdminAgentAction(action, source, req, decoded) {
 
   if (action === "createPromptDraft") {
     if (req.method !== "POST") throw createHttpError(405, "Use POST");
-    return createAgentPromptDraft(source, decoded);
+    const result = await createAgentPromptDraft(source, decoded);
+    await writeAdminAuditLog(decoded, "agent.prompt_draft.create", {
+      type: "agent_prompt",
+      id: result.draft?.draftId || "",
+      path: `${AGENT_PROMPT_DRAFTS_COLLECTION}/${result.draft?.draftId || ""}`,
+    }, {
+      productId: result.draft?.productId || "",
+      promptPath: result.draft?.path || "",
+      title: result.draft?.title || "",
+    }, req);
+    return result;
   }
 
   if (action === "draftAction") {
     if (req.method !== "POST") throw createHttpError(405, "Use POST");
-    return applyAgentPromptDraftAction(source, decoded);
+    const result = await applyAgentPromptDraftAction(source, decoded);
+    await writeAdminAuditLog(decoded, "agent.prompt_draft.action", {
+      type: "agent_prompt",
+      id: result.draft?.draftId || result.draftId || "",
+      path: `${AGENT_PROMPT_DRAFTS_COLLECTION}/${result.draft?.draftId || result.draftId || ""}`,
+    }, {
+      draftAction: result.action || cleanString(source.draftAction || source.operation, "", 40),
+      productId: result.draft?.productId || "",
+      promptPath: result.draft?.path || "",
+    }, req);
+    return result;
   }
 
   if (action === "rollbackRelease") {
     if (req.method !== "POST") throw createHttpError(405, "Use POST");
-    return rollbackAgentPromptRelease(source, decoded);
+    const result = await rollbackAgentPromptRelease(source, decoded);
+    await writeAdminAuditLog(decoded, "agent.prompt_release.rollback", {
+      type: "agent_prompt",
+      id: result.release?.releaseId || "",
+      path: `${AGENT_PROMPT_RELEASES_COLLECTION}/${result.release?.releaseId || ""}`,
+    }, {
+      rollbackOf: cleanString(source.releaseId, "", 160),
+      productId: result.release?.productId || "",
+      promptPath: result.release?.path || "",
+    }, req);
+    return result;
   }
 
   if (action === "traceIngest") {
@@ -3596,6 +3941,16 @@ async function handleAdminAgentAction(action, source, req, decoded) {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
+    await writeAdminAuditLog(decoded, "agent.trace_ingest", {
+      type: "agent_trace",
+      id: traceRef.id,
+      uid,
+      path: `${AGENT_TRACE_COLLECTION}/${traceRef.id}`,
+    }, {
+      productId,
+      categoryKey: cleanString(source.categoryKey || source.category, "", 80),
+      sessionId: cleanString(source.sessionId || source.recordId, "", 160),
+    }, req);
     return { ok: true, traceId: traceRef.id };
   }
 
@@ -4267,6 +4622,14 @@ exports.adminPublicConfigUpdate = onRequest(runtime, async (req, res) => {
 
     await db.collection("app_config").doc("public").set(update, { merge: true });
     const snap = await db.collection("app_config").doc("public").get();
+    await writeAdminAuditLog(decoded, "public_config.update", {
+      type: "config",
+      id: "public",
+      path: "app_config/public",
+    }, {
+      socialLinksUpdated: Boolean(update.socialLinks),
+      iapProductsUpdated: Boolean(update.iapProducts),
+    }, req);
     json(res, 200, { ok: true, config: mergePublicConfig(snap.data() || {}) });
   } catch (error) {
     console.error("[adminPublicConfigUpdate]", error);
@@ -4292,6 +4655,7 @@ exports.adminDashboardSummary = onRequest(runtime, async (req, res) => {
       recentUsers,
       recentFeedbackDocs,
       recentPayments,
+      recentAuditLogs,
       publicConfigSnap,
     ] = await Promise.all([
       getCollectionCount(db.collection("users"), "adminDashboardSummary.users"),
@@ -4313,9 +4677,18 @@ exports.adminDashboardSummary = onRequest(runtime, async (req, res) => {
       ),
       getCollectionCount(db.collection("iap_receipts"), "adminDashboardSummary.receipts"),
       getCollectionCount(db.collection("payment_events"), "adminDashboardSummary.paymentEvents"),
-      getRecentAdminDocs("users", { orderBy: "createdAt", limit }),
+      listAdminUsersForAdmin({ limit }),
       getRecentAdminDocs("feedback", { orderBy: "createdAt", limit }),
       getRecentAdminDocs("payment_events", { orderBy: "createdAt", limit }),
+      db.collection(ADMIN_AUDIT_LOG_COLLECTION)
+        .orderBy("createdAt", "desc")
+        .limit(limit)
+        .get()
+        .then((snap) => snap.docs.map(serializeAdminAuditLog))
+        .catch((error) => {
+          console.warn("[adminDashboardSummary] recent audit failed", error.message);
+          return [];
+        }),
       db.collection("app_config").doc("public").get().catch(() => null),
     ]);
 
@@ -4335,6 +4708,7 @@ exports.adminDashboardSummary = onRequest(runtime, async (req, res) => {
         users: recentUsers,
         feedback: recentFeedbackDocs,
         paymentEvents: recentPayments,
+        auditLogs: recentAuditLogs,
       },
     });
   } catch (error) {
@@ -4484,6 +4858,16 @@ exports.adminFeedbackUpdate = onRequest(runtime, async (req, res) => {
     }
     await batch.commit();
 
+    await writeAdminAuditLog(decoded, "feedback.update", {
+      type: "feedback",
+      id: feedbackId,
+      uid: existing.uid || "",
+      path: `feedback/${feedbackId}`,
+    }, {
+      previousStatus: existing.status || "",
+      status,
+      adminNoteChanged: Boolean(update.adminNote),
+    }, req);
     json(res, 200, { ok: true });
   } catch (error) {
     console.error("[adminFeedbackUpdate]", error);
@@ -4643,6 +5027,121 @@ exports.adminUserSearch = onRequest(runtime, async (req, res) => {
   }
 });
 
+exports.adminUserList = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "GET")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const source = getAdminRequestSource(req);
+    const limit = getAdminLimit(source.limit, 80, 200);
+    const [items, total] = await Promise.all([
+      listAdminUsersForAdmin({ limit }),
+      getCollectionCount(db.collection("users"), "adminUserList.users"),
+    ]);
+
+    json(res, 200, {
+      collectionPath: "users",
+      collectionKey: "users",
+      items,
+      count: items.length,
+      total,
+      truncated: total > items.length,
+      note: "Default user list includes documents without createdAt; sorted by recent activity when available.",
+    });
+  } catch (error) {
+    console.error("[adminUserList]", error);
+    json(res, error.status || 500, { error: error.message || "List users failed" });
+  }
+});
+
+exports.adminAuthUserReconcile = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "GET")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const source = getAdminRequestSource(req);
+    const result = await listAdminAuthUsersForReconcile({
+      limit: source.limit,
+      pageToken: source.pageToken,
+      onlyMissing: source.onlyMissing,
+    });
+    json(res, 200, {
+      ok: true,
+      ...result,
+    });
+  } catch (error) {
+    console.error("[adminAuthUserReconcile]", error);
+    json(res, error.status || 500, { error: error.message || "Reconcile Auth users failed" });
+  }
+});
+
+exports.adminRepairAuthUserProfile = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const uid = validateDocumentId(req.body?.uid);
+    const authRecord = await admin.auth().getUser(uid).catch((error) => {
+      if (error.code === "auth/user-not-found") throw createHttpError(404, "Auth user not found");
+      throw error;
+    });
+    const userRef = db.collection("users").doc(uid);
+    const publicProfileRef = db.collection("public_profiles").doc(uid);
+    const [userSnap, publicProfileSnap] = await Promise.all([
+      userRef.get(),
+      publicProfileRef.get().catch(() => null),
+    ]);
+    const existingUser = userSnap.exists ? userSnap.data() || {} : {};
+    const existingPublicProfile = publicProfileSnap?.exists ? publicProfileSnap.data() || {} : {};
+    const { userData, publicProfileData } = buildAdminUserRepairDocsFromAuth(
+      authRecord,
+      decoded,
+      existingUser,
+      existingPublicProfile,
+    );
+    const repairUserDoc = !userSnap.exists;
+    const repairPublicProfile = !publicProfileSnap?.exists;
+
+    if (repairUserDoc || repairPublicProfile) {
+      const batch = db.batch();
+      if (repairUserDoc) {
+        batch.set(userRef, userData, { merge: true });
+      }
+      if (repairPublicProfile) {
+        batch.set(publicProfileRef, publicProfileData, { merge: true });
+      }
+      await batch.commit();
+    }
+
+    await writeAdminAuditLog(decoded, "user.auth_repair", {
+      type: "user",
+      id: uid,
+      uid,
+      path: `users/${uid}`,
+    }, {
+      repairUserDoc,
+      repairPublicProfile,
+      email: getAdminScalarText(authRecord.email, 160),
+      loginType: getAuthRecordProviderLabel(authRecord),
+    }, req);
+
+    json(res, 200, {
+      ok: true,
+      uid,
+      repairUserDoc,
+      repairPublicProfile,
+      repaired: repairUserDoc || repairPublicProfile,
+      ...(await buildAdminUserBundle(uid, { limit: 12 })),
+    });
+  } catch (error) {
+    console.error("[adminRepairAuthUserProfile]", error);
+    json(res, error.status || 500, { error: error.message || "Repair Auth user profile failed" });
+  }
+});
+
 exports.adminUserDetail = onRequest(runtime, async (req, res) => {
   if (!requireMethod(req, res, "GET")) return;
   const decoded = await requireAdmin(req, res);
@@ -4677,6 +5176,63 @@ exports.adminAgentConsole = onRequest(runtime, async (req, res) => {
   } catch (error) {
     console.error("[adminAgentConsole]", error);
     json(res, error.status || 500, { error: error.message || "Agent admin action failed" });
+  }
+});
+
+exports.adminAuditLogs = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "GET")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const source = getAdminRequestSource(req);
+    const limit = getAdminLimit(source.limit, 80, 200);
+    const actionFilter = cleanString(source.action, "", 120).toLowerCase();
+    const adminFilter = cleanString(source.admin, "", 200).toLowerCase();
+    const targetFilter = cleanString(source.target, "", 300).toLowerCase();
+    const fetchLimit = actionFilter || adminFilter || targetFilter ? Math.min(limit * 4, 400) : limit;
+    let snap;
+
+    try {
+      snap = await db.collection(ADMIN_AUDIT_LOG_COLLECTION)
+        .orderBy("createdAt", "desc")
+        .limit(fetchLimit)
+        .get();
+    } catch (error) {
+      console.warn("[adminAuditLogs] ordered query failed, retrying without order", error.message);
+      snap = await db.collection(ADMIN_AUDIT_LOG_COLLECTION).limit(fetchLimit).get();
+    }
+
+    let items = snap.docs.map(serializeAdminAuditLog);
+    if (actionFilter) {
+      items = items.filter((item) => item.action.toLowerCase().includes(actionFilter));
+    }
+    if (adminFilter) {
+      items = items.filter((item) => (
+        item.adminEmail.toLowerCase().includes(adminFilter)
+        || item.adminUid.toLowerCase().includes(adminFilter)
+      ));
+    }
+    if (targetFilter) {
+      items = items.filter((item) => [
+        item.targetType,
+        item.targetId,
+        item.targetPath,
+        item.targetUid,
+        JSON.stringify(item.target || {}),
+      ].join(" ").toLowerCase().includes(targetFilter));
+    }
+    items = items.slice(0, limit);
+
+    json(res, 200, {
+      ok: true,
+      items,
+      count: items.length,
+      collectionPath: ADMIN_AUDIT_LOG_COLLECTION,
+    });
+  } catch (error) {
+    console.error("[adminAuditLogs]", error);
+    json(res, error.status || 500, { error: error.message || "Load admin audit logs failed" });
   }
 });
 
@@ -4802,6 +5358,17 @@ exports.adminCreateRegisteredUser = onRequest(runtime, async (req, res) => {
 
     const snap = await db.collection("users").doc(uid).get();
     const doc = serializeAdminDocument(snap);
+    await writeAdminAuditLog(decoded, "user.create", {
+      type: "user",
+      id: uid,
+      uid,
+      path: `users/${uid}`,
+    }, {
+      email,
+      displayName,
+      hasPhotoUrl: Boolean(photoUrl),
+      hasBirthData: Boolean(birthday || birthTime || city),
+    }, req);
     json(res, 200, {
       ok: true,
       uid,
@@ -4934,6 +5501,23 @@ exports.adminUpdateUserProfile = onRequest(runtime, async (req, res) => {
     batch.set(publicProfileRef, publicProfileData, { merge: true });
     await batch.commit();
 
+    await writeAdminAuditLog(decoded, "user.profile_update", {
+      type: "user",
+      id: uid,
+      uid,
+      path: `users/${uid}`,
+    }, {
+      updatedFields: [
+        hasBodyField("displayName") ? "displayName" : "",
+        hasBodyField("photoUrl", "photoURL") ? "photoUrl" : "",
+        hasBodyField("birthday") ? "birthday" : "",
+        hasBodyField("birthTime") ? "birthTime" : "",
+        hasBodyField("city", "address") ? "city" : "",
+        hasBodyField("bio") ? "bio" : "",
+      ].filter(Boolean),
+      displayName,
+      hasPhotoUrl: Boolean(photoUrl),
+    }, req);
     const bundle = await buildAdminUserBundle(uid, { limit: 12 });
     json(res, 200, {
       ok: true,
@@ -5084,6 +5668,18 @@ exports.adminAddRealFriend = onRequest(runtime, async (req, res) => {
     }
     await batch.commit();
 
+    await writeAdminAuditLog(decoded, "friend.real_add", {
+      type: "friend",
+      id: `${ownerUid}_${friendUid}`,
+      uid: ownerUid,
+      path: `users/${ownerUid}/friends/${friendUid}`,
+    }, {
+      mode,
+      ownerUid,
+      friendUid,
+      friendEmail: friendProfile.email,
+      note,
+    }, req);
     json(res, 200, {
       ok: true,
       mode,
@@ -5150,6 +5746,17 @@ exports.adminAddVirtualFriend = onRequest(runtime, async (req, res) => {
       .doc(validateDocumentId(virtualFriendId))
       .set(data, { merge: true });
 
+    await writeAdminAuditLog(decoded, "friend.virtual_add", {
+      type: "virtual_friend",
+      id: virtualFriendId,
+      uid,
+      path: `users/${uid}/virtual_friends/${virtualFriendId}`,
+    }, {
+      name,
+      relationship: data.relationship,
+      hasAvatarUrl: Boolean(avatarUrl),
+      hasBirthData: Boolean(data.birthday || data.birthTime || data.city),
+    }, req);
     json(res, 200, { ok: true, uid, virtualFriendId, data });
   } catch (error) {
     console.error("[adminAddVirtualFriend]", error);
@@ -5276,6 +5883,15 @@ exports.adminDataUpsert = onRequest(runtime, async (req, res) => {
     await docRef.set(data, { merge });
     const snap = await docRef.get();
     const doc = serializeAdminDocument(snap);
+    await writeAdminAuditLog(decoded, "data.upsert", {
+      type: "data",
+      id: docRef.id,
+      path: docRef.path,
+    }, {
+      merge,
+      collectionPath: docRef.parent.path,
+      fieldCount: Object.keys(rawData).length,
+    }, req);
     json(res, 200, {
       ok: true,
       doc: { ...doc, summary: getDocumentSummary(doc.data) },
@@ -5306,6 +5922,14 @@ exports.adminDataDelete = onRequest(runtime, async (req, res) => {
       await docRef.delete();
     }
 
+    await writeAdminAuditLog(decoded, "data.delete", {
+      type: "data",
+      id: docRef.id,
+      path: docRef.path,
+    }, {
+      recursive,
+      collectionPath: docRef.parent.path,
+    }, req);
     json(res, 200, {
       ok: true,
       documentPath: docRef.path,
@@ -5707,6 +6331,17 @@ exports.adminGrantPro = onRequest(runtime, async (req, res) => {
       });
     });
 
+    await writeAdminAuditLog(decoded, "membership.grant_pro", {
+      type: "membership",
+      id: uid,
+      uid,
+      path: `users/${uid}`,
+    }, {
+      days,
+      reason,
+      proExpiresAt: proExpiresAtDate.toISOString(),
+      eventPath: eventRef.path,
+    }, req);
     json(res, 200, {
       ok: true,
       uid,
@@ -5766,6 +6401,15 @@ exports.adminRevokePro = onRequest(runtime, async (req, res) => {
       });
     });
 
+    await writeAdminAuditLog(decoded, "membership.revoke_pro", {
+      type: "membership",
+      id: uid,
+      uid,
+      path: `users/${uid}`,
+    }, {
+      reason,
+      eventPath: eventRef.path,
+    }, req);
     json(res, 200, {
       ok: true,
       uid,

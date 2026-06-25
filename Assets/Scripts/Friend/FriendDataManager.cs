@@ -699,7 +699,7 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
             changed = true;
         }
 
-        bool shouldUpdateTime = lastLoginUnixMs > 0
+        bool shouldUpdateTime = ShouldReplaceLastLoginTime(existing.lastLoginUnixMs, lastLoginUnixMs)
             && (!isOnline || statusChanged || existing.lastLoginUnixMs <= 0);
         if (shouldUpdateTime && existing.lastLoginUnixMs != lastLoginUnixMs)
         {
@@ -760,7 +760,7 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
             if (!string.IsNullOrWhiteSpace(photoUrl)) existing.photoUrl = photoUrl;
             if (headSprite != null) existing.headSprite = headSprite;
             existing.isOnline = isOnline;
-            if (lastLoginUnixMs > 0)
+            if (ShouldReplaceLastLoginTime(existing.lastLoginUnixMs, lastLoginUnixMs))
                 existing.lastLoginUnixMs = lastLoginUnixMs;
             existing.isVirtual = false;
         }
@@ -1044,6 +1044,16 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
     private static long CurrentUnixMs()
     {
         return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+    }
+
+    private static bool ShouldReplaceLastLoginTime(long currentUnixMs, long incomingUnixMs)
+    {
+        if (incomingUnixMs <= 0) return false;
+        if (currentUnixMs <= 0) return true;
+
+        // Friend presence can arrive from RTDB, Firestore friends, and public profiles in any order.
+        // Keep the newest activity time so a stale cloud callback cannot make the UI jump backwards.
+        return incomingUnixMs >= currentUnixMs;
     }
 
     #endregion

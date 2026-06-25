@@ -3,6 +3,7 @@ using SuperScrollView;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using GamerFrameWork.UIFrameWork;
 
 public class SpinTimePicker : MonoBehaviour
 {
@@ -12,6 +13,8 @@ public class SpinTimePicker : MonoBehaviour
 	public Color mColorSelected = new Color(1f, 0.84f, 0.48f, 1f);
 	public TMP_Text CurSelect;
 	public Button ConfirmButton;
+	public Button CancelButton;
+	public Image onImage;
 
 	[SerializeField] private int mFirstHour = 0;
 	[SerializeField] private int mHourCount = 24;
@@ -37,11 +40,18 @@ public class SpinTimePicker : MonoBehaviour
 		EnsureInitialized();
 		MoveToCurrentTime();
 		UpdateCurSelect();
+		RefreshAllWheelVisuals();
 	}
 
 	private void Awake()
 	{
 		BindReferences();
+	}
+
+	private void Update()
+	{
+		if (!mInitialized || !gameObject.activeInHierarchy) return;
+		RefreshAllWheelVisuals();
 	}
 
 	private void BindReferences()
@@ -68,30 +78,64 @@ public class SpinTimePicker : MonoBehaviour
 			if (item == null) item = transform.Find("[Button]Confirm");
 			if (item != null) ConfirmButton = item.GetComponent<Button>();
 		}
+		if (CancelButton == null)
+		{
+			Transform item = transform.Find("cancelBtn");
+			if (item == null) item = transform.Find("[Button]Cancel");
+			if (item == null) item = transform.Find("CancelButton");
+			if (item != null) CancelButton = item.GetComponent<Button>();
+		}
+		if (onImage == null)
+		{
+			Transform item = transform.Find("On");
+			if (item == null) item = transform.Find("onImage");
+			if (item == null) item = transform.Find("OnImage");
+			if (item != null) onImage = item.GetComponent<Image>();
+		}
 	}
 
 	private void EnsureInitialized()
 	{
-		if (mInitialized) return;
+		if (mInitialized)
+		{
+			BindButtonListeners();
+			return;
+		}
 		if (mLoopListViewHour == null || mLoopListViewMinute == null)
 		{
 			Debug.LogError("[SpinTimePicker] LoopListView2 reference is missing.");
 			return;
 		}
 
-		mLoopListViewHour.mOnSnapNearestChanged = OnHourSnapTargetChanged;
-		mLoopListViewMinute.mOnSnapNearestChanged = OnMinuteSnapTargetChanged;
+		SpinPickerWheelUtility.ConfigureWheel(mLoopListViewHour);
+		SpinPickerWheelUtility.ConfigureWheel(mLoopListViewMinute);
 
-		mLoopListViewHour.InitListView(-1, OnGetItemByIndexForHour);
-		mLoopListViewMinute.InitListView(-1, OnGetItemByIndexForMinute);
+		mLoopListViewHour.mOnSnapNearestChanged = OnSnapTargetChanged;
+		mLoopListViewMinute.mOnSnapNearestChanged = OnSnapTargetChanged;
+		mLoopListViewHour.mOnSnapItemFinished = OnHourSnapTargetFinished;
+		mLoopListViewMinute.mOnSnapItemFinished = OnMinuteSnapTargetFinished;
 
+		mLoopListViewHour.InitListView(-1, OnGetItemByIndexForHour, SpinPickerWheelUtility.CreateInitParam(mLoopListViewHour));
+		mLoopListViewMinute.InitListView(-1, OnGetItemByIndexForMinute, SpinPickerWheelUtility.CreateInitParam(mLoopListViewMinute));
+
+		BindButtonListeners();
+
+		mInitialized = true;
+	}
+
+	private void BindButtonListeners()
+	{
 		if (ConfirmButton != null)
 		{
 			ConfirmButton.onClick.RemoveListener(OnConfirmButtonClicked);
 			ConfirmButton.onClick.AddListener(OnConfirmButtonClicked);
 		}
 
-		mInitialized = true;
+		if (CancelButton != null)
+		{
+			CancelButton.onClick.RemoveListener(OnCancelButtonClicked);
+			CancelButton.onClick.AddListener(OnCancelButtonClicked);
+		}
 	}
 
 	private void ParseInitialTime(string value, out int hour, out int minute)
@@ -148,6 +192,7 @@ public class SpinTimePicker : MonoBehaviour
 		LoopListViewItem2 item = listView.NewListViewItem("ItemPrefab");
 		if (item == null) return null;
 		SpinPickerItem itemScript = item.GetComponent<SpinPickerItem>();
+		if (itemScript == null) return item;
 		if (item.IsInitHandlerCalled == false)
 		{
 			item.IsInitHandlerCalled = true;
@@ -156,7 +201,11 @@ public class SpinTimePicker : MonoBehaviour
 
 		int value = firstValue + NormalizeIndex(index, count);
 		itemScript.Value = value;
-		itemScript.mText.text = string.Format("{0:D2}{1}", value, suffix);
+		if (itemScript.mText != null)
+		{
+			itemScript.mText.text = string.Format("{0:D2}{1}", value, suffix);
+			itemScript.mText.color = mColorReserved;
+		}
 		return item;
 	}
 
@@ -167,48 +216,93 @@ public class SpinTimePicker : MonoBehaviour
 		return count + ((index + 1) % count) - 1;
 	}
 
-	private void OnHourSnapTargetChanged(LoopListView2 listView, LoopListViewItem2 item)
+	private void OnSnapTargetChanged(LoopListView2 listView, LoopListViewItem2 item)
 	{
-		if (!TryUpdateSelectedValue(listView, item, out int value)) return;
-		mCurSelectedHour = value;
-		UpdateCurSelect();
+		SpinPickerWheelUtility.RefreshWheelVisuals(listView, mColorReserved, mColorSelected);
 	}
 
-	private void OnMinuteSnapTargetChanged(LoopListView2 listView, LoopListViewItem2 item)
-	{
-		if (!TryUpdateSelectedValue(listView, item, out int value)) return;
-		mCurSelectedMinute = value;
-		UpdateCurSelect();
-	}
-
-	private bool TryUpdateSelectedValue(LoopListView2 listView, LoopListViewItem2 item, out int value)
+	private bool TryGetItemValue(LoopListViewItem2 item, out int value)
 	{
 		value = 0;
-		int index = listView.GetIndexInShownItemList(item);
-		if (index < 0) return false;
+		if (item == null) return false;
 		SpinPickerItem itemScript = item.GetComponent<SpinPickerItem>();
 		if (itemScript == null) return false;
 		value = itemScript.Value;
-		OnListViewSnapTargetChanged(listView, index);
 		return true;
 	}
 
-	private void OnListViewSnapTargetChanged(LoopListView2 listView, int targetIndex)
+	private void OnHourSnapTargetFinished(LoopListView2 listView, LoopListViewItem2 item)
 	{
-		int count = listView.ShownItemCount;
-		for (int i = 0; i < count; ++i)
+		if (TryGetItemValue(item, out int value))
+		{
+			mCurSelectedHour = value;
+		}
+		SpinPickerWheelUtility.RefreshWheelVisuals(listView, mColorReserved, mColorSelected);
+		UpdateCurSelect();
+	}
+
+	private void OnMinuteSnapTargetFinished(LoopListView2 listView, LoopListViewItem2 item)
+	{
+		if (TryGetItemValue(item, out int value))
+		{
+			mCurSelectedMinute = value;
+		}
+		SpinPickerWheelUtility.RefreshWheelVisuals(listView, mColorReserved, mColorSelected);
+		UpdateCurSelect();
+	}
+
+	private void RefreshAllWheelVisuals()
+	{
+		SpinPickerWheelUtility.RefreshWheelVisuals(mLoopListViewHour, mColorReserved, mColorSelected);
+		SpinPickerWheelUtility.RefreshWheelVisuals(mLoopListViewMinute, mColorReserved, mColorSelected);
+		UpdateOnImagePosition();
+	}
+
+	private void UpdateOnImagePosition()
+	{
+		if (onImage == null) return;
+
+		LoopListViewItem2 centerItem = GetNearestCenterItem(mLoopListViewMinute)
+			?? GetNearestCenterItem(mLoopListViewHour);
+		if (centerItem == null) return;
+
+		RectTransform imageRect = onImage.rectTransform;
+		RectTransform itemRect = centerItem.CachedRectTransform;
+		Vector3 itemWorldCenter = itemRect.TransformPoint(itemRect.rect.center);
+		Vector3 imagePosition = imageRect.position;
+		imagePosition.y = itemWorldCenter.y;
+		imageRect.position = imagePosition;
+	}
+
+	private LoopListViewItem2 GetNearestCenterItem(LoopListView2 listView)
+	{
+		if (listView == null || !listView.ListViewInited) return null;
+
+		listView.UpdateAllShownItemSnapData();
+		LoopListViewItem2 nearestItem = null;
+		float nearestDistance = float.MaxValue;
+		for (int i = 0; i < listView.ShownItemCount; i++)
 		{
 			LoopListViewItem2 item = listView.GetShownItemByIndex(i);
-			SpinPickerItem itemScript = item != null ? item.GetComponent<SpinPickerItem>() : null;
-			if (itemScript != null && itemScript.mText != null)
-			{
-				itemScript.mText.color = i == targetIndex ? mColorSelected : mColorReserved;
-			}
+			if (item == null) continue;
+
+			float distance = Mathf.Abs(item.DistanceWithViewPortSnapCenter);
+			if (distance >= nearestDistance) continue;
+
+			nearestDistance = distance;
+			nearestItem = item;
 		}
+
+		return nearestItem;
 	}
 
 	private void OnConfirmButtonClicked()
 	{
 		mConfirmCallback?.Invoke(SelectedValue);
+	}
+
+	private void OnCancelButtonClicked()
+	{
+		UIModule.Instance.HideWindow<SpinPickerUI>();
 	}
 }

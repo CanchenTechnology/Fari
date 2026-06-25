@@ -245,15 +245,16 @@ public class ChatItem : MonoBehaviour
 
         // TTS 按钮：仅 AI 消息显示
         bool isAIMessage = data.roleType == DialogRoleType.AI;
+        bool shouldShowTTSButton = isAIMessage
+            && !string.IsNullOrEmpty(data.content)
+            && data.ttsAudioReady;
         if (ttsPlayButton != null)
         {
-            ttsPlayButton.gameObject.SetActive(isAIMessage
-                && !string.IsNullOrEmpty(data.content)
-                && data.ttsAudioReady);
+            ttsPlayButton.gameObject.SetActive(shouldShowTTSButton);
         }
         SetTTSLength(isAIMessage ? data.ttsDurationSeconds : 0f);
 
-        ApplyTextBubbleLayout(reserveVoiceSpace: isAIMessage);
+        ApplyTextBubbleLayout(reserveVoiceSpace: shouldShowTTSButton);
     }
 
     private string BuildDisplayText(ChatMessageData data)
@@ -676,10 +677,14 @@ public class ChatItem : MonoBehaviour
     /// </summary>
     public void UpdateTTSButtonAfterStream(string text)
     {
+        bool hasText = !string.IsNullOrEmpty(text);
         if (ttsPlayButton != null)
         {
-            ttsPlayButton.gameObject.SetActive(!string.IsNullOrEmpty(text));
+            ttsPlayButton.gameObject.SetActive(hasText);
         }
+
+        if (hasText)
+            ApplyTextBubbleLayout(reserveVoiceSpace: true, layoutText: text);
     }
 
     #endregion

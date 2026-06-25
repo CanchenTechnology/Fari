@@ -393,6 +393,7 @@ public class UserSearchUI : WindowBase
 		InviteItem inviteItem = itemObject.GetComponent<InviteItem>();
 		if (inviteItem != null)
 		{
+			inviteItem.SetRejectButtonVisible(false);
 			ApplySearchResultAvatar(result, inviteItem.headImage);
 
 			if (inviteItem.nameText != null)
@@ -561,7 +562,6 @@ public class UserSearchUI : WindowBase
 				if (success)
 				{
 					requestedUserIds.Add(user.uid);
-					RemoveRecommendedUser(user.uid);
 					onRefresh?.Invoke();
 					RefreshRecommendationViews();
 				}
@@ -761,6 +761,7 @@ public class UserSearchUI : WindowBase
 					}
 				}
 
+				Debug.Log($"[UserSearchUI] 好友推荐UI刷新 raw={results?.Count ?? 0}, kept={recommendedResults.Count}, visible={Mathf.Min(recommendedResults.Count, RecommendationLimit)}, pendingRequests={requestedUserIds.Count}, root={(friendRecommendRoot == null ? "null" : friendRecommendRoot.name)}");
 				RefreshRecommendationViews();
 				RefreshSearchHistoryViews();
 				StopRefreshRecommendationsAnimation(true);
@@ -857,7 +858,6 @@ public class UserSearchUI : WindowBase
 				&& !string.IsNullOrEmpty(result.uid)
 				&& !result.isSelf
 				&& !IsResultAlreadyFriend(result)
-				&& !IsResultAlreadyRequested(result)
 				&& !IsResultBlocked(result);
 		}
 
@@ -873,8 +873,7 @@ public class UserSearchUI : WindowBase
 			if (item.infoText != null)
 				item.infoText.text = result.Handle;
 
-			if (item.rejectBtn != null)
-				item.rejectBtn.gameObject.SetActive(false);
+			item.SetRejectButtonVisible(false);
 
 			ConfigureUserActionButton(item.infoBtn, result, RefreshRecommendationViews);
 		}

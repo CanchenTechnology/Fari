@@ -23,9 +23,11 @@ public class DailyDivinationSyncSettingsManager : MonoSingleton<DailyDivinationS
 {
     private const string KEY_ENABLED = "DailyDivinationSync_Enabled";
     private const string KEY_VISIBILITY = "DailyDivinationSync_Visibility";
+    private const string KEY_PENDING_CLOUD_SYNC = "DailyDivinationSync_PendingCloudSync";
 
     public bool Enabled { get; private set; } = true;
     public DailyDivinationSyncVisibility Visibility { get; private set; } = DailyDivinationSyncVisibility.OnlyMe;
+    public bool HasPendingCloudSync { get; private set; }
 
     protected override void Awake()
     {
@@ -68,10 +70,25 @@ public class DailyDivinationSyncSettingsManager : MonoSingleton<DailyDivinationS
         PlayerPrefs.Save();
     }
 
+    public void MarkCloudSyncPending()
+    {
+        HasPendingCloudSync = true;
+        PlayerPrefs.SetInt(KEY_PENDING_CLOUD_SYNC, 1);
+        PlayerPrefs.Save();
+    }
+
+    public void MarkCloudSyncComplete()
+    {
+        HasPendingCloudSync = false;
+        PlayerPrefs.DeleteKey(KEY_PENDING_CLOUD_SYNC);
+        PlayerPrefs.Save();
+    }
+
     private void LoadLocal()
     {
         Enabled = PlayerPrefs.GetInt(KEY_ENABLED, 1) == 1;
         Visibility = FromVisibilityKey(PlayerPrefs.GetString(KEY_VISIBILITY, ToVisibilityKey(DailyDivinationSyncVisibility.OnlyMe)));
+        HasPendingCloudSync = PlayerPrefs.GetInt(KEY_PENDING_CLOUD_SYNC, 0) == 1;
     }
 
     public static string ToVisibilityKey(DailyDivinationSyncVisibility visibility)

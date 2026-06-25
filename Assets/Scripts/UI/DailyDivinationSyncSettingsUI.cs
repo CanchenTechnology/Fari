@@ -65,6 +65,13 @@ public class DailyDivinationSyncSettingsUI : WindowBase
 			return;
 		}
 
+		if (SettingsManager.HasPendingCloudSync)
+		{
+			RefreshUI();
+			SaveSettings(false);
+			return;
+		}
+
 		firestore.LoadDailyDivinationSyncSettings(cloud =>
 		{
 			if (cloud != null)
@@ -116,7 +123,7 @@ public class DailyDivinationSyncSettingsUI : WindowBase
 			uiComponent.MeibilityOnlyMeToggle.interactable = interactable;
 	}
 
-	private void SaveSettings()
+	private void SaveSettings(bool showToast = true)
 	{
 		if (_isSaving || SettingsManager == null) return;
 
@@ -127,9 +134,13 @@ public class DailyDivinationSyncSettingsUI : WindowBase
 		var firestore = FirestoreManager.Instance;
 		if (firestore == null || !firestore.IsInitialized)
 		{
+			SettingsManager.MarkCloudSyncPending();
 			_isSaving = false;
 			RefreshUI();
-			ToastManager.ShowToast("已保存到本地，云端稍后同步");
+			if (showToast)
+			{
+				ToastManager.ShowToast("已保存到本地，云端稍后同步");
+			}
 			return;
 		}
 
@@ -137,35 +148,46 @@ public class DailyDivinationSyncSettingsUI : WindowBase
 		{
 			if (!success)
 			{
+				SettingsManager.MarkCloudSyncPending();
 				_isSaving = false;
 				RefreshUI();
-				ToastManager.ShowToast("云端保存失败，请稍后重试");
+				if (showToast)
+				{
+					ToastManager.ShowToast("已保存到本地，云端稍后同步");
+				}
 				return;
 			}
 
-			UpdatePublishedSummaries(settings);
+			SettingsManager.MarkCloudSyncComplete();
+			UpdatePublishedSummaries(settings, showToast);
 		});
 	}
 
-	private void UpdatePublishedSummaries(DailyDivinationSyncSettings settings)
+	private void UpdatePublishedSummaries(DailyDivinationSyncSettings settings, bool showToast)
 	{
 		var store = DailyOracleFirestore.Instance;
 		if (store == null || !store.IsReady)
 		{
 			_isSaving = false;
 			RefreshUI();
-			ToastManager.ShowToast("设置已保存");
+			if (showToast)
+			{
+				ToastManager.ShowToast("设置已保存");
+			}
 			return;
 		}
 
-		store.ApplySyncSettingsToPublishedSummaries(settings, 30, OnSummaryUpdated);
+		store.ApplySyncSettingsToPublishedSummaries(settings, 30, success => OnSummaryUpdated(success, showToast));
 	}
 
-	private void OnSummaryUpdated(bool success)
+	private void OnSummaryUpdated(bool success, bool showToast)
 	{
 		_isSaving = false;
 		RefreshUI();
-		ToastManager.ShowToast(success ? "每日占卜同步设置已保存" : "设置已保存，今天还没有可同步的每日牌");
+		if (showToast)
+		{
+			ToastManager.ShowToast(success ? "每日占卜同步设置已保存" : "设置已保存，今天还没有可同步的每日牌");
+		}
 	}
 
 	private DailyDivinationSyncVisibility GetSelectedVisibility()

@@ -23,8 +23,18 @@ using XFGameFrameWork;
 public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
 {
     private const string LOCAL_CACHE_PREFIX = "DailyOracleCache_";
+    private const string PENDING_SAVE_KEY_PREFIX = "DailyOraclePendingSaves_";
     private FirebaseFirestore _db;
     private bool _isInitialized = false;
+    private bool _hasSubscribedFirebaseInit = false;
+    private bool _hasSubscribedAuthEvents = false;
+    private bool _isSyncingPendingSaves = false;
+
+    [Serializable]
+    private class PendingDateList
+    {
+        public List<string> dates = new List<string>();
+    }
 
     public bool IsReady => _isInitialized && _db != null;
 
@@ -36,21 +46,82 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
 
     private void TryInit()
     {
-        if (FirebaseAuthManager.Instance != null && FirebaseAuthManager.Instance.IsFirebaseInitialized)
+        if (IsReady) return;
+
+        FirebaseAuthManager authManager = FirebaseAuthManager.Instance;
+        if (authManager == null) return;
+
+        SubscribeAuthEvents(authManager);
+
+        if (authManager.IsFirebaseInitialized)
         {
-            _db = FirebaseFirestore.DefaultInstance;
-            _isInitialized = true;
-            Debug.Log("[DailyOracleFirestore] 初始化完成");
+            OnFirebaseReady();
         }
-        else if (FirebaseAuthManager.Instance != null)
+        else if (!_hasSubscribedFirebaseInit)
         {
-            FirebaseAuthManager.Instance.OnFirebaseInitialized += () =>
-            {
-                _db = FirebaseFirestore.DefaultInstance;
-                _isInitialized = true;
-                Debug.Log("[DailyOracleFirestore] Firebase 初始化完成后就绪");
-            };
+            _hasSubscribedFirebaseInit = true;
+            authManager.OnFirebaseInitialized += OnFirebaseReady;
         }
+    }
+
+    private void OnDestroy()
+    {
+        UnsubscribeAuthEvents();
+
+        FirebaseAuthManager authManager = FindObjectOfType<FirebaseAuthManager>();
+        if (authManager != null && _hasSubscribedFirebaseInit)
+            authManager.OnFirebaseInitialized -= OnFirebaseReady;
+        _hasSubscribedFirebaseInit = false;
+    }
+
+    private void SubscribeAuthEvents(FirebaseAuthManager authManager)
+    {
+        if (authManager == null || _hasSubscribedAuthEvents)
+            return;
+
+        authManager.OnLoginSuccess += OnAuthLoginSuccess;
+        authManager.OnLogout += OnAuthLogout;
+        _hasSubscribedAuthEvents = true;
+    }
+
+    private void UnsubscribeAuthEvents()
+    {
+        if (!_hasSubscribedAuthEvents)
+            return;
+
+        FirebaseAuthManager authManager = FindObjectOfType<FirebaseAuthManager>();
+        if (authManager != null)
+        {
+            authManager.OnLoginSuccess -= OnAuthLoginSuccess;
+            authManager.OnLogout -= OnAuthLogout;
+        }
+        _hasSubscribedAuthEvents = false;
+    }
+
+    private void OnFirebaseReady()
+    {
+        FirebaseAuthManager authManager = FirebaseAuthManager.Instance;
+        if (authManager != null && _hasSubscribedFirebaseInit)
+            authManager.OnFirebaseInitialized -= OnFirebaseReady;
+        _hasSubscribedFirebaseInit = false;
+
+        _db = FirebaseFirestore.DefaultInstance;
+        _isInitialized = true;
+        Debug.Log("[DailyOracleFirestore] Firebase 初始化完成后就绪");
+        SyncPendingDailyOracleSaves();
+    }
+
+    private void OnAuthLoginSuccess(AuthProvider provider, Firebase.Auth.FirebaseUser user)
+    {
+        if (!IsReady)
+            TryInit();
+
+        SyncPendingDailyOracleSaves();
+    }
+
+    private void OnAuthLogout()
+    {
+        _isSyncingPendingSaves = false;
     }
 
     public void LoadToday(Action<DailyOracleCloudRecord> onComplete)
@@ -144,6 +215,7 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
         }
 
         SaveByDateLocal(date, card, upright, payload, locale);
+        QueuePendingDailyOracleSave(date);
 
         if (!CheckReady(onComplete)) return;
 
@@ -154,43 +226,8 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
             return;
         }
 
-        var data = new Dictionary<string, object>
-        {
-            { "date", date },
-            { "cardId", card.cardId ?? "" },
-            { "cardName", card.nameZh ?? "" },
-            { "orientation", upright ? "upright" : "reversed" },
-            { "title", payload.title ?? "" },
-            { "oracle", payload.oracle ?? "" },
-            { "detail", payload.detail ?? "" },
-            { "dos", payload.dos ?? new List<string>() },
-            { "donts", payload.donts ?? new List<string>() },
-            { "microAction", payload.microAction ?? "" },
-            { "locale", string.IsNullOrEmpty(locale) ? "zh-CN" : locale },
-            { "oracleId", GetCurrentOracleId() },
-            { "syncEnabled", DailyDivinationSyncSettingsManager.Instance.Enabled },
-            { "visibility", DailyDivinationSyncSettingsManager.Instance.GetSettings().VisibilityKey },
-            { "summaryOnly", false },
-            { "createdAtLocal", DateTime.Now.ToString("o") },
-            { "updatedAt", FieldValue.ServerTimestamp },
-        };
-
-        GetDailyDoc(uid, date)
-            .SetAsync(data, SetOptions.MergeAll)
-            .ContinueWithOnMainThread(task =>
-            {
-                if (task.IsFaulted || task.IsCanceled)
-                {
-                    Debug.LogError($"[DailyOracleFirestore] 保存今日神谕失败: {task.Exception?.InnerException?.Message}");
-                    onComplete?.Invoke(false);
-                    return;
-                }
-
-                Debug.Log($"[DailyOracleFirestore] 今日神谕已保存: {date}");
-                SaveByDateLocal(date, card, upright, payload, locale);
-                SaveSummaryByDate(uid, date, card, upright, payload, locale, DailyDivinationSyncSettingsManager.Instance.GetSettings());
-                onComplete?.Invoke(true);
-            });
+        DailyOracleCloudRecord record = LoadByDateLocal(date);
+        SaveRecordToCloud(record, uid, onComplete);
     }
 
     public static DailyOracleCloudRecord LoadTodayLocal()
@@ -228,6 +265,17 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
         SaveByDateLocal(DateTime.Now.ToString("yyyy-MM-dd"), card, upright, payload, locale);
     }
 
+    public static void SaveTodayLocalPending(TarotCard card, bool upright, TodayOraclePayload payload, string locale)
+    {
+        SaveByDateLocalPending(DateTime.Now.ToString("yyyy-MM-dd"), card, upright, payload, locale);
+    }
+
+    public static void SaveByDateLocalPending(string date, TarotCard card, bool upright, TodayOraclePayload payload, string locale)
+    {
+        SaveByDateLocal(date, card, upright, payload, locale);
+        QueuePendingDailyOracleSave(string.IsNullOrWhiteSpace(date) ? DateTime.Now.ToString("yyyy-MM-dd") : date);
+    }
+
     public static void ClearLocalCacheForCurrentUser(int daysBack = 366)
     {
         int safeDaysBack = Mathf.Clamp(daysBack, 1, 3660);
@@ -237,6 +285,9 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
             foreach (string key in GetLocalCacheKeys(date))
                 PlayerPrefs.DeleteKey(key);
         }
+
+        foreach (string key in GetPendingSaveKeysForSync())
+            PlayerPrefs.DeleteKey(key);
 
         PlayerPrefs.Save();
         Debug.Log("[DailyOracleFirestore] 已清除当前用户本地每日神谕缓存");
@@ -278,6 +329,58 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
         foreach (string key in GetWritableLocalCacheKeys(record.date))
             PlayerPrefs.SetString(key, json);
         PlayerPrefs.Save();
+    }
+
+    private void SaveRecordToCloud(DailyOracleCloudRecord record, string uid, Action<bool> onComplete = null)
+    {
+        if (record == null || !record.HasPayload || string.IsNullOrWhiteSpace(record.date) || string.IsNullOrWhiteSpace(uid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        GetDailyDoc(uid, record.date)
+            .SetAsync(BuildDailyOracleData(record), SetOptions.MergeAll)
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogError($"[DailyOracleFirestore] 保存今日神谕失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                Debug.Log($"[DailyOracleFirestore] 今日神谕已保存: {record.date}");
+                RemovePendingDailyOracleSave(record.date);
+                SaveRecordLocal(record);
+                SaveSummaryFromRecord(record, DailyDivinationSyncSettingsManager.Instance.GetSettings());
+                onComplete?.Invoke(true);
+            });
+    }
+
+    private Dictionary<string, object> BuildDailyOracleData(DailyOracleCloudRecord record)
+    {
+        DailyDivinationSyncSettings settings = DailyDivinationSyncSettingsManager.Instance.GetSettings();
+        return new Dictionary<string, object>
+        {
+            { "date", record.date ?? "" },
+            { "cardId", record.cardId ?? "" },
+            { "cardName", record.cardName ?? "" },
+            { "orientation", record.orientation ?? "" },
+            { "title", record.title ?? "" },
+            { "oracle", record.oracle ?? "" },
+            { "detail", record.detail ?? "" },
+            { "dos", record.dos ?? new List<string>() },
+            { "donts", record.donts ?? new List<string>() },
+            { "microAction", record.microAction ?? "" },
+            { "locale", string.IsNullOrEmpty(record.locale) ? "zh-CN" : record.locale },
+            { "oracleId", string.IsNullOrEmpty(record.oracleId) ? GetCurrentOracleId() : record.oracleId },
+            { "syncEnabled", settings.ShouldPublishToFeed },
+            { "visibility", settings.VisibilityKey },
+            { "summaryOnly", false },
+            { "createdAtLocal", string.IsNullOrEmpty(record.createdAtLocal) ? DateTime.Now.ToString("o") : record.createdAtLocal },
+            { "updatedAt", FieldValue.ServerTimestamp },
+        };
     }
 
     public void PublishTodaySummary(Action<bool> onComplete = null)
@@ -661,6 +764,149 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
         return true;
     }
 
+    private void SyncPendingDailyOracleSaves()
+    {
+        if (_isSyncingPendingSaves || !IsReady)
+            return;
+
+        string uid = GetCurrentUid();
+        if (string.IsNullOrWhiteSpace(uid))
+            return;
+
+        HashSet<string> pendingDates = LoadPendingDailyOracleSaveDates();
+        if (pendingDates.Count == 0)
+            return;
+
+        int pendingOperations = 0;
+        _isSyncingPendingSaves = true;
+
+        void FinishOne()
+        {
+            pendingOperations--;
+            if (pendingOperations <= 0)
+                _isSyncingPendingSaves = false;
+        }
+
+        foreach (string date in pendingDates)
+        {
+            DailyOracleCloudRecord record = LoadByDateLocal(date);
+            if (record == null || !record.HasPayload)
+            {
+                RemovePendingDailyOracleSave(date);
+                continue;
+            }
+
+            pendingOperations++;
+            SaveRecordToCloud(record, uid, success =>
+            {
+                if (success)
+                    Debug.Log($"[DailyOracleFirestore] 已同步待上传每日神谕: {date}");
+                FinishOne();
+            });
+        }
+
+        if (pendingOperations == 0)
+            _isSyncingPendingSaves = false;
+    }
+
+    private static void QueuePendingDailyOracleSave(string date)
+    {
+        if (string.IsNullOrWhiteSpace(date)) return;
+
+        string key = GetPendingSaveKey();
+        List<string> pending = LoadPendingSaves(key);
+        if (!pending.Exists(item => item == date))
+            pending.Add(date);
+
+        SavePendingSaves(key, pending);
+    }
+
+    private static void RemovePendingDailyOracleSave(string date)
+    {
+        if (string.IsNullOrWhiteSpace(date)) return;
+
+        foreach (string key in GetPendingSaveKeysForSync())
+        {
+            List<string> pending = LoadPendingSaves(key);
+            if (pending.RemoveAll(item => item == date) > 0)
+                SavePendingSaves(key, pending);
+        }
+    }
+
+    private static HashSet<string> LoadPendingDailyOracleSaveDates()
+    {
+        HashSet<string> dates = new HashSet<string>();
+        foreach (string key in GetPendingSaveKeysForSync())
+        {
+            foreach (string date in LoadPendingSaves(key))
+            {
+                if (!string.IsNullOrWhiteSpace(date))
+                    dates.Add(date);
+            }
+        }
+
+        return dates;
+    }
+
+    private static string GetPendingSaveKey()
+    {
+        string owner = FirstNonEmpty(
+            UserDataManager.Instance?.FirebaseUid,
+            Firebase.Auth.FirebaseAuth.DefaultInstance?.CurrentUser?.UserId,
+            UserDataManager.Instance?.UserId,
+            "local");
+        return BuildPendingSaveKey(owner);
+    }
+
+    private static IEnumerable<string> GetPendingSaveKeysForSync()
+    {
+        HashSet<string> keys = new HashSet<string>();
+
+        foreach (string ownerKey in GetLocalOwnerKeys())
+        {
+            string key = BuildPendingSaveKey(ownerKey);
+            if (keys.Add(key))
+                yield return key;
+        }
+
+        string localKey = BuildPendingSaveKey("local");
+        if (keys.Add(localKey))
+            yield return localKey;
+    }
+
+    private static List<string> LoadPendingSaves(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return new List<string>();
+
+        string json = PlayerPrefs.GetString(key, "");
+        if (string.IsNullOrWhiteSpace(json)) return new List<string>();
+
+        try
+        {
+            PendingDateList data = JsonUtility.FromJson<PendingDateList>(json);
+            return data?.dates ?? new List<string>();
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[DailyOracleFirestore] 待上传每日神谕队列读取失败，已重置: {e.Message}");
+            PlayerPrefs.DeleteKey(key);
+            PlayerPrefs.Save();
+            return new List<string>();
+        }
+    }
+
+    private static void SavePendingSaves(string key, List<string> pending)
+    {
+        if (string.IsNullOrEmpty(key)) return;
+
+        if (pending == null || pending.Count == 0)
+            PlayerPrefs.DeleteKey(key);
+        else
+            PlayerPrefs.SetString(key, JsonUtility.ToJson(new PendingDateList { dates = pending }));
+
+        PlayerPrefs.Save();
+    }
+
     private static IEnumerable<string> GetLocalCacheKeys(string date)
     {
         HashSet<string> keys = new HashSet<string>();
@@ -702,6 +948,11 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
     private static string BuildLocalCacheKey(string ownerKey, string date)
     {
         return LOCAL_CACHE_PREFIX + SanitizeKey(string.IsNullOrWhiteSpace(ownerKey) ? "local" : ownerKey) + "_" + date;
+    }
+
+    private static string BuildPendingSaveKey(string ownerKey)
+    {
+        return PENDING_SAVE_KEY_PREFIX + SanitizeKey(string.IsNullOrWhiteSpace(ownerKey) ? "local" : ownerKey);
     }
 
     private static string SanitizeKey(string value)

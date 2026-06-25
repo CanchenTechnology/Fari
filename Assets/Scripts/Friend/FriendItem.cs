@@ -89,6 +89,9 @@ public class FriendItem : MonoBehaviour
 
     private void OpenDialogWithAtFriend()
     {
+        if (ShouldIgnoreClickAfterSwipe())
+            return;
+
         if (CloseOpenSwipeReveal())
             return;
 
@@ -106,6 +109,9 @@ public class FriendItem : MonoBehaviour
 
     private void OpenFriendProfile()
     {
+        if (ShouldIgnoreClickAfterSwipe())
+            return;
+
         if (CloseOpenSwipeReveal())
             return;
 
@@ -140,6 +146,11 @@ public class FriendItem : MonoBehaviour
         }
 
         return FriendSwipeRevealItem.CloseCurrentOpen(swipeRevealItem);
+    }
+
+    private bool ShouldIgnoreClickAfterSwipe()
+    {
+        return swipeRevealItem != null && swipeRevealItem.ConsumeClickBlock();
     }
 
     private string FormatFriendName(FriendDataManager.FriendData friend)
@@ -181,6 +192,7 @@ public class FriendItem : MonoBehaviour
         ResolveButtons();
         ResolveSwipeRevealItem();
         UnbindButtons();
+        BeginRebind();
         isRequestMode = false;
         requestData = null;
         requestAcceptAction = null;
@@ -221,6 +233,7 @@ public class FriendItem : MonoBehaviour
         ResolveButtons();
         ResolveSwipeRevealItem();
         UnbindButtons();
+        BeginRebind();
 
         isRequestMode = true;
         data = null;
@@ -325,6 +338,12 @@ public class FriendItem : MonoBehaviour
         }
 
         requestAcceptAction?.Invoke(requestData);
+    }
+
+    private void BeginRebind()
+    {
+        avatarRequestVersion++;
+        swipeRevealItem?.ResetReveal(true);
     }
 
     private string FormatInviteName(FriendDataManager.InviteData invite)

@@ -120,7 +120,8 @@ public class NotionUI : WindowBase
 
 	private void LoadCloudSettingsThenRefresh()
 	{
-		if (GetSettingsManager() == null)
+		var settings = GetSettingsManager();
+		if (settings == null)
 		{
 			RefreshUI();
 			return;
@@ -133,11 +134,18 @@ public class NotionUI : WindowBase
 			return;
 		}
 
+		if (settings.HasPendingCloudSync)
+		{
+			RefreshUI();
+			SaveCloudSettings(false);
+			return;
+		}
+
 		firestore.LoadNotificationSettings(cloud =>
 		{
 			if (cloud != null)
 			{
-				GetSettingsManager()?.ApplySettings(
+				settings.ApplySettings(
 					cloud.dailyOracleEnabled,
 					cloud.dialogueReplyEnabled,
 					cloud.divinationReturnEnabled,
@@ -149,18 +157,34 @@ public class NotionUI : WindowBase
 		});
 	}
 
-	private void SaveCloudSettings()
+	private void SaveCloudSettings(bool showOfflineToast = true)
 	{
-		var firestore = FirestoreManager.Instance;
-		if (firestore == null || !firestore.IsInitialized) return;
-
 		var settings = GetSettingsManager();
 		if (settings == null) return;
 
+		var firestore = FirestoreManager.Instance;
+		if (firestore == null || !firestore.IsInitialized)
+		{
+			settings.MarkCloudSyncPending();
+			if (showOfflineToast)
+				ToastManager.ShowToast("通知设置已保存到本地，云端稍后同步");
+			Debug.LogWarning("[NotionUI] 通知设置云端暂未就绪，已标记稍后同步");
+			return;
+		}
+
 		firestore.SaveNotificationSettings(settings, success =>
 		{
-			if (!success)
+			if (success)
+			{
+				settings.MarkCloudSyncComplete();
+			}
+			else
+			{
+				settings.MarkCloudSyncPending();
+				if (showOfflineToast)
+					ToastManager.ShowToast("通知设置已保存到本地，云端稍后同步");
 				Debug.LogWarning("[NotionUI] 通知设置云端同步失败");
+			}
 		});
 	}
 
@@ -177,37 +201,37 @@ public class NotionUI : WindowBase
 	private void SaveDailyOraclePreference(bool enabled)
 	{
 		GetSettingsManager()?.SetDailyOracle(enabled);
-		SaveCloudSettings();
 		ToastManager.ShowToast(enabled ? "已开启每日神谕提醒" : "已关闭每日神谕提醒");
+		SaveCloudSettings();
 	}
 
 	private void SaveDialogueReplyPreference(bool enabled)
 	{
 		GetSettingsManager()?.SetDialogueReply(enabled);
-		SaveCloudSettings();
 		ToastManager.ShowToast(enabled ? "已开启对话回复提醒" : "已关闭对话回复提醒");
+		SaveCloudSettings();
 	}
 
 	private void SaveDivinationReturnPreference(bool enabled)
 	{
 		GetSettingsManager()?.SetDivinationReturn(enabled);
-		SaveCloudSettings();
 		RefreshUI();
 		ToastManager.ShowToast(enabled ? "已开启占卜回访提醒" : "已关闭占卜回访提醒");
+		SaveCloudSettings();
 	}
 
 	private void SaveFriendInteractionPreference(bool enabled)
 	{
 		GetSettingsManager()?.SetFriendInteraction(enabled);
-		SaveCloudSettings();
 		ToastManager.ShowToast(enabled ? "已开启好友互动提醒" : "已关闭好友互动提醒");
+		SaveCloudSettings();
 	}
 
 	private void SaveActivitySystemPreference(bool enabled)
 	{
 		GetSettingsManager()?.SetActivitySystem(enabled);
-		SaveCloudSettings();
 		ToastManager.ShowToast(enabled ? "已开启活动与系统通知" : "已关闭活动与系统通知");
+		SaveCloudSettings();
 	}
 
 	#endregion
@@ -287,8 +311,8 @@ public class NotionUI : WindowBase
 		if (uiComponent.TimeValueText != null)
 			uiComponent.TimeValueText.text = newTime;
 
-		SaveCloudSettings();
 		ToastManager.ShowToast($"每日提醒时间设置为 {newTime}");
+		SaveCloudSettings();
 		Debug.Log($"[NotionUI] 每日提醒时间切换为：{newTime}");
 	}
 	#endregion

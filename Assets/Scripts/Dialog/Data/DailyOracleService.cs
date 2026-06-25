@@ -205,7 +205,7 @@ public class DailyOracleService : MonoBehaviour
             Debug.LogError("[DailyOracleService] 组装消息失败，使用降级模板");
             CachedPayload = BuildFallbackPayload(card, upright, CurrentLocale);
             MarkOracleCache(card, upright);
-            DailyOracleFirestore.SaveTodayLocal(card, upright, CachedPayload, CurrentLocale);
+            DailyOracleFirestore.SaveTodayLocalPending(card, upright, CachedPayload, CurrentLocale);
             IsOracleLoading = false;
             onComplete?.Invoke(CachedPayload);
             OnOracleGenerated?.Invoke(CachedPayload);
@@ -244,7 +244,7 @@ public class DailyOracleService : MonoBehaviour
         {
             CachedPayload = ParseDailyOracleResponse(aiResponse, card, upright, CurrentLocale);
             MarkOracleCache(card, upright);
-            DailyOracleFirestore.SaveTodayLocal(card, upright, CachedPayload, CurrentLocale);
+            DailyOracleFirestore.SaveTodayLocalPending(card, upright, CachedPayload, CurrentLocale);
             Debug.Log($"[DailyOracleService] AI 神谕生成成功: {card.nameZh}");
         }
         else
@@ -252,7 +252,7 @@ public class DailyOracleService : MonoBehaviour
             Debug.LogWarning($"[DailyOracleService] AI 请求失败: {errorMsg}，使用降级模板");
             CachedPayload = BuildFallbackPayload(card, upright, CurrentLocale);
             MarkOracleCache(card, upright);
-            DailyOracleFirestore.SaveTodayLocal(card, upright, CachedPayload, CurrentLocale);
+            DailyOracleFirestore.SaveTodayLocalPending(card, upright, CachedPayload, CurrentLocale);
         }
 
         DialogSystem.Instance?.RecordExternalPrompt(
@@ -458,6 +458,17 @@ public class DailyOracleService : MonoBehaviour
     public TodayCardPayload GetTodayCardPayload()
     {
         if (CurrentCard == null) return null;
+
+        TodayOraclePayload oraclePayload = null;
+        if (IsCachedOracleFor(CurrentCard, CurrentUpright))
+        {
+            oraclePayload = CachedPayload;
+        }
+        else if (IsCachedPreparedReadingFor(CurrentCard, CurrentUpright))
+        {
+            oraclePayload = CachedPreparedReading?.oraclePayload;
+        }
+
         return new TodayCardPayload
         {
             cardId = CurrentCard.cardId,
@@ -466,7 +477,8 @@ public class DailyOracleService : MonoBehaviour
             nameZh = CurrentCard.nameZh,
             orientation = CurrentUpright ? "upright" : "reversed",
             generatedAt = DateTime.Now.ToString("o"),
-            title = "今日塔罗"
+            oracleText = oraclePayload?.oracle,
+            title = FirstNonEmpty(oraclePayload?.title, "今日塔罗")
         };
     }
 

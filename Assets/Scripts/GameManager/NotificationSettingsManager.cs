@@ -27,6 +27,9 @@ public class NotificationSettingsManager : MonoSingleton<NotificationSettingsMan
     /// <summary>每日提醒时间（格式：HH:mm）</summary>
     public string ReminderTime { get; private set; } = "08:30";
 
+    /// <summary>本地通知设置是否等待云端同步。</summary>
+    public bool HasPendingCloudSync { get; private set; }
+
     #endregion
 
     #region 常量
@@ -37,6 +40,7 @@ public class NotificationSettingsManager : MonoSingleton<NotificationSettingsMan
     private const string KEY_FRIEND_INTERACTION = "Notif_FriendInteraction";
     private const string KEY_ACTIVITY_SYSTEM = "Notif_ActivitySystem";
     private const string KEY_REMINDER_TIME = "Notif_ReminderTime";
+    private const string KEY_PENDING_CLOUD_SYNC = "Notif_PendingCloudSync";
 
     private const string TIME_MORNING = "08:30";
     private const string TIME_EVENING = "21:30";
@@ -177,6 +181,7 @@ public class NotificationSettingsManager : MonoSingleton<NotificationSettingsMan
         FriendInteractionEnabled = PlayerPrefs.GetInt(KEY_FRIEND_INTERACTION, 0) == 1;
         ActivitySystemEnabled = PlayerPrefs.GetInt(KEY_ACTIVITY_SYSTEM, 1) == 1;
         ReminderTime = NormalizeReminderTime(PlayerPrefs.GetString(KEY_REMINDER_TIME, TIME_MORNING));
+        HasPendingCloudSync = PlayerPrefs.GetInt(KEY_PENDING_CLOUD_SYNC, 0) == 1;
 
         Debug.Log($"[NotificationSettingsManager] 通知设置已加载，提醒时间：{ReminderTime}");
         RescheduleNotifications();
@@ -196,6 +201,20 @@ public class NotificationSettingsManager : MonoSingleton<NotificationSettingsMan
 
         SaveSettings();
         Debug.Log("[NotificationSettingsManager] 通知设置已恢复默认");
+    }
+
+    public void MarkCloudSyncPending()
+    {
+        HasPendingCloudSync = true;
+        PlayerPrefs.SetInt(KEY_PENDING_CLOUD_SYNC, 1);
+        PlayerPrefs.Save();
+    }
+
+    public void MarkCloudSyncComplete()
+    {
+        HasPendingCloudSync = false;
+        PlayerPrefs.DeleteKey(KEY_PENDING_CLOUD_SYNC);
+        PlayerPrefs.Save();
     }
 
     private string NormalizeReminderTime(string time)

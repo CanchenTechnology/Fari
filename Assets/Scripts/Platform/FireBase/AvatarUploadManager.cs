@@ -205,7 +205,7 @@ public class AvatarUploadManager : MonoSingleton<AvatarUploadManager>
             UserDataManager.Instance.SetPhotoUrl(photoUrl);
             UserDataManager.Instance.SetAvatarStoragePath(storagePath);
             UserDataManager.Instance.SaveData();
-            GoogleUserInfoHelper.ClearLocalAvatarCache();
+            ClearAccountAvatarCaches();
             SaveAvatarCache(jpgBytes);
 
             if (FirebaseAuthManager.Instance != null)
@@ -353,6 +353,13 @@ public class AvatarUploadManager : MonoSingleton<AvatarUploadManager>
         {
             Debug.LogWarning("[AvatarUploadManager] 本地头像缓存写入失败: " + e.Message);
         }
+    }
+
+    private static void ClearAccountAvatarCaches()
+    {
+        GoogleUserInfoHelper.ClearLocalAvatarCache();
+        AppleUserInfoHelper.ClearLocalAvatarCache();
+        FacebookUserInfoHelper.ClearLocalAvatarCache();
     }
 
     private static Sprite TextureToSprite(Texture2D texture)

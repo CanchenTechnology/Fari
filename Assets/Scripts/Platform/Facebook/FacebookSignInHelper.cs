@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine;
 using XFGameFrameWork;
 
@@ -36,6 +38,14 @@ using XFGameFrameWork;
 /// </summary>
 public class FacebookSignInHelper : MonoSingleton<FacebookSignInHelper>
 {
+    private const string FBTypeName = "Facebook.Unity.FB, Facebook.Unity";
+    private const string FacebookSettingsTypeName = "Facebook.Unity.Settings.FacebookSettings, Facebook.Unity.Settings";
+    private const string InitDelegateTypeName = "Facebook.Unity.InitDelegate, Facebook.Unity";
+    private const string HideUnityDelegateTypeName = "Facebook.Unity.HideUnityDelegate, Facebook.Unity";
+    private const string FacebookDelegateTypeName = "Facebook.Unity.FacebookDelegate`1, Facebook.Unity";
+    private const string LoginResultTypeName = "Facebook.Unity.ILoginResult, Facebook.Unity";
+    private const string AccessTokenTypeName = "Facebook.Unity.AccessToken, Facebook.Unity";
+
     #region 枚举与配置
 
     /// <summary>登录状态</summary>
@@ -51,7 +61,10 @@ public class FacebookSignInHelper : MonoSingleton<FacebookSignInHelper>
     public string FacebookAppId = "";
 
     [Tooltip("登录时请求的权限列表")]
-    public string[] Permissions = new string[] { "public_profile", "email", "user_friends" };
+    public string[] Permissions = new string[] { "public_profile", "email" };
+
+    [Tooltip("好友发现时按需请求的权限列表")]
+    public string[] FriendDiscoveryPermissions = new string[] { "public_profile", "email", "user_friends" };
 
     [Header("Editor 模拟设置")]
     [Tooltip("Editor 模拟延迟（秒）")]
@@ -79,6 +92,7 @@ public class FacebookSignInHelper : MonoSingleton<FacebookSignInHelper>
 
     private Action<string> _onSuccess; // accessToken
     private Action<string> _onError;
+    private string[] _pendingPermissions;
 
     #endregion
 
@@ -91,20 +105,39 @@ public class FacebookSignInHelper : MonoSingleton<FacebookSignInHelper>
     /// <param name="onError">登录失败回调，参数为错误信息</param>
     public void SignIn(Action<string> onSuccess, Action<string> onError)
     {
+        BeginSignIn(Permissions, onSuccess, onError);
+    }
+
+    /// <summary>
+    /// 为 Facebook 好友发现请求 access token。
+    /// 不会切换 Firebase 当前用户，只用于 Graph API 好友查询。
+    /// </summary>
+    public void RequestFriendDiscoveryAccess(Action<string> onSuccess, Action<string> onError)
+    {
+        BeginSignIn(FriendDiscoveryPermissions, onSuccess, onError);
+    }
+
+    private void BeginSignIn(IEnumerable<string> permissions, Action<string> onSuccess, Action<string> onError)
+    {
         if (IsSigningIn)
         {
             onError?.Invoke("正在登录中，请勿重复操作");
             return;
         }
 
-        if (string.IsNullOrEmpty(FacebookAppId))
+        if (string.IsNullOrEmpty(ResolveConfiguredFacebookAppId()))
         {
-            Debug.LogWarning("[FacebookSignInHelper] FacebookAppId 未配置，使用模拟模式");
+#if UNITY_EDITOR
+            Debug.LogWarning("[FacebookSignInHelper] Facebook App ID 未配置，Editor 将使用模拟模式；真机登录前请配置 Facebook Settings");
+#else
+            Debug.LogWarning("[FacebookSignInHelper] Facebook App ID 未配置，请检查 FacebookSettings、AndroidManifest 或 iOS Info.plist");
+#endif
         }
 
         State = SignInState.SigningIn;
         _onSuccess = onSuccess;
         _onError = onError;
+        _pendingPermissions = NormalizePermissions(permissions);
 
         try
         {
@@ -125,7 +158,7 @@ public class FacebookSignInHelper : MonoSingleton<FacebookSignInHelper>
     {
         try
         {
-            var fbType = System.Type.GetType("FB, Facebook.Unity");
+            var fbType = GetFBType();
             if (fbType != null)
             {
                 var logOutMethod = fbType.GetMethod("LogOut");
@@ -153,7 +186,7 @@ public class FacebookSignInHelper : MonoSingleton<FacebookSignInHelper>
     /// </summary>
     public bool IsSDKAvailable()
     {
-        return System.Type.GetType("FB, Facebook.Unity") != null;
+        return GetFBType() != null;
     }
 
     /// <summary>
@@ -163,7 +196,7 @@ public class FacebookSignInHelper : MonoSingleton<FacebookSignInHelper>
     {
         try
         {
-            var fbType = System.Type.GetType("FB, Facebook.Unity");
+            var fbType = GetFBType();
             if (fbType != null)
             {
                 var isLoggedInProp = fbType.GetProperty("IsLoggedIn");
@@ -203,13 +236,13 @@ public class FacebookSignInHelper : MonoSingleton<FacebookSignInHelper>
 
         try
         {
-            var fbType = System.Type.GetType("FB, Facebook.Unity");
+            ResolveConfiguredFacebookAppId();
+
+            var fbType = GetFBType();
             if (fbType != null)
             {
-                var initMethod = fbType.GetMethod("Init", new Type[] { typeof(Action) });
-                if (initMethod != null)
+                if (TryInvokeFacebookInit(fbType))
                 {
-                    initMethod.Invoke(null, new object[] { (Action)OnFacebookInitComplete });
                     Debug.Log("[FacebookSignInHelper] Facebook SDK 初始化中...");
                     return;
                 }
@@ -261,7 +294,7 @@ public class FacebookSignInHelper : MonoSingleton<FacebookSignInHelper>
     /// </summary>
     private void StartFacebookSignIn()
     {
-        var fbType = System.Type.GetType("FB, Facebook.Unity");
+        var fbType = GetFBType();
 
 #if UNITY_EDITOR
         // Editor → 模拟模式
@@ -286,9 +319,20 @@ public class FacebookSignInHelper : MonoSingleton<FacebookSignInHelper>
             return;
         }
 
+        var iLoginResultType = System.Type.GetType(LoginResultTypeName);
+        var facebookDelegateType = System.Type.GetType(FacebookDelegateTypeName);
+        if (iLoginResultType == null || facebookDelegateType == null)
+        {
+            CancelSignIn();
+            _onError?.Invoke("Facebook SDK 类型加载失败");
+            return;
+        }
+
+        var callbackType = facebookDelegateType.MakeGenericType(iLoginResultType);
+
         // 调用 FB.LogInWithReadPermissions
         var logInMethod = fbType.GetMethod("LogInWithReadPermissions",
-            new Type[] { typeof(string[]), typeof(Action<>) });
+            new Type[] { typeof(IEnumerable<string>), callbackType });
 
         if (logInMethod == null)
         {
@@ -297,17 +341,16 @@ public class FacebookSignInHelper : MonoSingleton<FacebookSignInHelper>
             return;
         }
 
-        var iLoginResultType = System.Type.GetType("Facebook.Unity.ILoginResult, Facebook.Unity");
-        if (iLoginResultType == null)
-        {
-            CancelSignIn();
-            _onError?.Invoke("Facebook SDK 类型加载失败");
-            return;
-        }
+        MethodInfo callbackMethod = GetType().GetMethod(
+            nameof(OnFacebookLoginResult),
+            BindingFlags.Instance | BindingFlags.NonPublic,
+            null,
+            new Type[] { typeof(object) },
+            null);
 
-        var actionType = typeof(Action<>).MakeGenericType(iLoginResultType);
-        var callback = Delegate.CreateDelegate(actionType, this, nameof(OnFacebookLoginResult));
-        logInMethod.Invoke(null, new object[] { Permissions, callback });
+        var callback = Delegate.CreateDelegate(callbackType, this, callbackMethod);
+        IEnumerable<string> permissions = _pendingPermissions ?? NormalizePermissions(Permissions);
+        logInMethod.Invoke(null, new object[] { permissions, callback });
 
         Debug.Log("[FacebookSignInHelper] 已发起 Facebook 登录请求，等待用户授权...");
 #endif
@@ -345,7 +388,7 @@ public class FacebookSignInHelper : MonoSingleton<FacebookSignInHelper>
             if (errorProp != null)
             {
                 var error = errorProp.GetValue(result);
-                if (error != null)
+                if (!string.IsNullOrEmpty(error?.ToString()))
                 {
                     CancelSignIn();
                     _onError?.Invoke($"Facebook 登录错误: {error}");
@@ -354,34 +397,21 @@ public class FacebookSignInHelper : MonoSingleton<FacebookSignInHelper>
             }
 
             // 获取 Access Token
-            var accessTokenType = System.Type.GetType("Facebook.Unity.AccessToken, Facebook.Unity");
+            object resultAccessToken = result.GetType().GetProperty("AccessToken")?.GetValue(result);
+            if (TryFinishWithAccessToken(resultAccessToken))
+            {
+                return;
+            }
+
+            var accessTokenType = System.Type.GetType(AccessTokenTypeName);
             if (accessTokenType != null)
             {
                 var currentAccessTokenProp = accessTokenType.GetProperty("CurrentAccessToken");
                 if (currentAccessTokenProp != null)
                 {
                     var accessToken = currentAccessTokenProp.GetValue(null);
-                    if (accessToken != null)
-                    {
-                        var tokenStringProp = accessToken.GetType().GetProperty("TokenString");
-                        if (tokenStringProp != null)
-                        {
-                            string tokenString = tokenStringProp.GetValue(accessToken) as string;
-                            if (!string.IsNullOrEmpty(tokenString))
-                            {
-                                Debug.Log("[FacebookSignInHelper] Facebook 登录成功，已获取 Access Token");
-                                State = SignInState.Idle;
-                                _onSuccess?.Invoke(tokenString);
-                                ClearPendingCallbacks();
-                                return;
-                            }
-                        }
-
-                        // AccessToken 对象存在但 TokenString 为空 — 检查权限
-                        CancelSignIn();
-                        _onError?.Invoke("Facebook Access Token 为空，请确认权限配置正确");
+                    if (TryFinishWithAccessToken(accessToken))
                         return;
-                    }
                 }
             }
 
@@ -464,15 +494,109 @@ public class FacebookSignInHelper : MonoSingleton<FacebookSignInHelper>
 
     #region 工具方法
 
+    private static Type GetFBType()
+    {
+        return System.Type.GetType(FBTypeName);
+    }
+
+    private bool TryInvokeFacebookInit(Type fbType)
+    {
+        Type initDelegateType = System.Type.GetType(InitDelegateTypeName);
+        Type hideUnityDelegateType = System.Type.GetType(HideUnityDelegateTypeName);
+        if (initDelegateType == null || hideUnityDelegateType == null)
+            return false;
+
+        MethodInfo initMethod = fbType.GetMethod("Init", new Type[] { initDelegateType, hideUnityDelegateType, typeof(string) });
+        if (initMethod == null)
+            return false;
+
+        Delegate initCallback = Delegate.CreateDelegate(initDelegateType, this, nameof(OnFacebookInitComplete));
+        initMethod.Invoke(null, new object[] { initCallback, null, null });
+        return true;
+    }
+
+    private string ResolveConfiguredFacebookAppId()
+    {
+        if (!string.IsNullOrWhiteSpace(FacebookAppId))
+            return FacebookAppId.Trim();
+
+        try
+        {
+            Type settingsType = System.Type.GetType(FacebookSettingsTypeName);
+            object settings = settingsType?.GetProperty("NullableInstance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null)
+                ?? settingsType?.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+            string settingsAppId = settingsType?.GetProperty("AppId", BindingFlags.Public | BindingFlags.Instance)?.GetValue(settings) as string;
+            if (!string.IsNullOrWhiteSpace(settingsAppId))
+            {
+                FacebookAppId = settingsAppId.Trim();
+                return FacebookAppId;
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[FacebookSignInHelper] 读取 Facebook Settings App ID 失败: {e.Message}");
+        }
+
+        return string.Empty;
+    }
+
+    private bool TryFinishWithAccessToken(object accessToken)
+    {
+        if (accessToken == null)
+            return false;
+
+        var tokenStringProp = accessToken.GetType().GetProperty("TokenString");
+        string tokenString = tokenStringProp?.GetValue(accessToken) as string;
+        if (string.IsNullOrEmpty(tokenString))
+        {
+            CancelSignIn();
+            _onError?.Invoke("Facebook Access Token 为空，请确认权限配置正确");
+            return true;
+        }
+
+        Debug.Log("[FacebookSignInHelper] Facebook 登录成功，已获取 Access Token");
+        State = SignInState.Idle;
+        _onSuccess?.Invoke(tokenString);
+        ClearPendingCallbacks();
+        return true;
+    }
+
     private void CancelSignIn()
     {
         State = SignInState.Idle;
+        _pendingPermissions = null;
     }
 
     private void ClearPendingCallbacks()
     {
         _onSuccess = null;
         _onError = null;
+        _pendingPermissions = null;
+    }
+
+    private static string[] NormalizePermissions(IEnumerable<string> permissions)
+    {
+        List<string> normalized = new List<string>();
+        if (permissions != null)
+        {
+            foreach (string permission in permissions)
+            {
+                if (string.IsNullOrWhiteSpace(permission))
+                    continue;
+
+                string value = permission.Trim();
+                if (!normalized.Contains(value))
+                    normalized.Add(value);
+            }
+        }
+
+        if (normalized.Count == 0)
+        {
+            normalized.Add("public_profile");
+            normalized.Add("email");
+        }
+
+        return normalized.ToArray();
     }
 
     #endregion

@@ -30,7 +30,9 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
     private FirebaseFirestore _db;
     private bool _isInitialized = false;
     private bool _hasSubscribedFirebaseInit = false;
+    private bool _hasSubscribedAuthEvents = false;
     private bool _initRetryScheduled = false;
+    private bool _isSyncingLocalChanges = false;
 
     [Serializable]
     private class PendingRecordDeleteList
@@ -58,6 +60,8 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
             return;
         }
 
+        SubscribeAuthEvents(authManager);
+
         if (authManager.IsFirebaseInitialized)
         {
             OnFirebaseReady();
@@ -69,6 +73,51 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
             _hasSubscribedFirebaseInit = true;
             authManager.OnFirebaseInitialized += OnFirebaseReady;
         }
+    }
+
+    private void OnDestroy()
+    {
+        UnsubscribeAuthEvents();
+    }
+
+    private void SubscribeAuthEvents(FirebaseAuthManager authManager)
+    {
+        if (authManager == null || _hasSubscribedAuthEvents)
+            return;
+
+        authManager.OnLoginSuccess += OnAuthLoginSuccess;
+        authManager.OnLogout += OnAuthLogout;
+        _hasSubscribedAuthEvents = true;
+    }
+
+    private void UnsubscribeAuthEvents()
+    {
+        if (!_hasSubscribedAuthEvents)
+            return;
+
+        FirebaseAuthManager authManager = FindObjectOfType<FirebaseAuthManager>();
+        if (authManager != null)
+        {
+            authManager.OnLoginSuccess -= OnAuthLoginSuccess;
+            authManager.OnLogout -= OnAuthLogout;
+        }
+        _hasSubscribedAuthEvents = false;
+    }
+
+    private void OnAuthLoginSuccess(AuthProvider provider, Firebase.Auth.FirebaseUser user)
+    {
+        if (!IsReady)
+        {
+            TryInit();
+            return;
+        }
+
+        SyncLocalCacheToCloud();
+    }
+
+    private void OnAuthLogout()
+    {
+        _isSyncingLocalChanges = false;
     }
 
     private void ScheduleInitRetry()
@@ -97,7 +146,7 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
             _db = FirebaseFirestore.DefaultInstance;
             _isInitialized = true;
             Debug.Log("[DivinationRecordFirestore] Firebase 初始化完成后就绪");
-            ClearLocalCacheForCurrentUser();
+            SyncLocalCacheToCloud();
         }
         catch (Exception e)
         {
@@ -129,10 +178,14 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
         if (string.IsNullOrEmpty(record.createdAt))
             record.createdAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 
+        if (restoreDeleted)
+            RemovePendingRecordDelete(record.readingId);
+        CacheRecord(record);
+        DivinationHistoryCacheService.Instance.UpsertRecord(record);
+
 #if UNITY_EDITOR
         if (IsEditorPreviewMode())
         {
-            SaveRecordToEditorPreview(record);
             onComplete?.Invoke(true);
             return;
         }
@@ -148,33 +201,7 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
             return;
         }
 
-        DocumentReference docRef = _db.Collection("users")
-            .Document(uid)
-            .Collection("divination_records")
-            .Document(record.readingId);
-
-        var data = SerializeRecord(record);
-        data["updatedAt"] = FieldValue.ServerTimestamp;
-
-        // 使用 MergeAll 以便部分更新
-        docRef.SetAsync(data, SetOptions.MergeAll).ContinueWithOnMainThread(task =>
-        {
-            if (task.IsFaulted || task.IsCanceled)
-            {
-                Debug.LogError($"[DivinationRecordFirestore] 保存记录失败: {task.Exception?.InnerException?.Message}");
-#if UNITY_EDITOR
-                SaveRecordToEditorPreview(record);
-                onComplete?.Invoke(true);
-                return;
-#else
-                onComplete?.Invoke(false);
-                return;
-#endif
-            }
-            Debug.Log($"[DivinationRecordFirestore] 记录已保存: {record.readingId}");
-            DivinationHistoryCacheService.Instance.UpsertRecord(record);
-            onComplete?.Invoke(true);
-        });
+        SaveRecordToCloud(record, uid, restoreDeleted, onComplete);
     }
 
     public static bool SaveRecordLocal(DivinationRecordData record)
@@ -184,13 +211,10 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
 
     public static bool SaveRecordLocal(DivinationRecordData record, bool restoreDeleted)
     {
-#if UNITY_EDITOR
-        SaveRecordToEditorPreviewStatic(record);
+        SaveRecordToLocalCacheStatic(record);
+        if (restoreDeleted && record != null)
+            RemovePendingRecordDelete(record.readingId);
         return record != null;
-#else
-        Debug.LogWarning("[DivinationRecordFirestore] 占卜历史不再保存到本地，请使用 SaveRecord 写入 Firebase。");
-        return false;
-#endif
     }
 
     public static void ClearLocalCacheForCurrentUser()
@@ -243,17 +267,21 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
     /// </summary>
     public void LoadAllRecords(Action<List<DivinationRecordData>> onComplete)
     {
+        var records = LoadCachedRecordsLocal();
+        HashSet<string> pendingDeletes = LoadPendingRecordDeletesForCurrentUserLocal();
+        RemovePendingDeletedRecords(records, pendingDeletes);
+
 #if UNITY_EDITOR
         if (IsEditorPreviewMode())
         {
-            onComplete?.Invoke(LoadCachedRecordsLocal());
+            onComplete?.Invoke(records);
             return;
         }
 #endif
 
         if (!IsReady)
         {
-            onComplete?.Invoke(new List<DivinationRecordData>());
+            onComplete?.Invoke(records);
             return;
         }
 
@@ -261,11 +289,9 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
         if (string.IsNullOrEmpty(uid))
         {
             Debug.LogWarning("[DivinationRecordFirestore] 用户未登录");
-            onComplete?.Invoke(new List<DivinationRecordData>());
+            onComplete?.Invoke(records);
             return;
         }
-
-        var records = new List<DivinationRecordData>();
 
         _db.Collection("users")
             .Document(uid)
@@ -277,13 +303,8 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
                 if (task.IsFaulted || task.IsCanceled)
                 {
                     Debug.LogError($"[DivinationRecordFirestore] 加载记录失败: {task.Exception?.InnerException?.Message}");
-#if UNITY_EDITOR
-                    onComplete?.Invoke(LoadCachedRecordsLocal());
+                    onComplete?.Invoke(records);
                     return;
-#else
-                    onComplete?.Invoke(new List<DivinationRecordData>());
-                    return;
-#endif
                 }
 
                 foreach (var doc in task.Result.Documents)
@@ -292,6 +313,8 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
                     AddOrReplaceRecord(records, record);
                 }
 
+                RemovePendingDeletedRecords(records, pendingDeletes);
+                SaveRecordsToCache(records);
                 Debug.Log($"[DivinationRecordFirestore] 加载了 {records.Count} 条记录");
                 onComplete?.Invoke(records);
             });
@@ -302,24 +325,31 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
     /// </summary>
     public void LoadRecord(string readingId, Action<DivinationRecordData> onComplete)
     {
+        DivinationRecordData localRecord = FindCachedRecord(readingId);
+        if (IsPendingRecordDelete(readingId))
+        {
+            onComplete?.Invoke(null);
+            return;
+        }
+
 #if UNITY_EDITOR
         if (IsEditorPreviewMode())
         {
-            onComplete?.Invoke(FindCachedRecord(readingId));
+            onComplete?.Invoke(localRecord);
             return;
         }
 #endif
 
         if (!IsReady)
         {
-            onComplete?.Invoke(null);
+            onComplete?.Invoke(localRecord);
             return;
         }
 
         string uid = GetCurrentUid();
         if (string.IsNullOrEmpty(uid))
         {
-            onComplete?.Invoke(null);
+            onComplete?.Invoke(localRecord);
             return;
         }
 
@@ -332,10 +362,11 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
             {
                 if (task.IsFaulted || task.IsCanceled || !task.Result.Exists)
                 {
-                    onComplete?.Invoke(null);
+                    onComplete?.Invoke(localRecord);
                     return;
                 }
                 var record = DeserializeRecord(task.Result);
+                CacheRecord(record);
                 onComplete?.Invoke(record);
             });
     }
@@ -365,43 +396,29 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
         }
 #endif
 
+        bool removedLocal = RemoveCachedRecord(readingId);
+        DivinationHistoryCacheService.Instance.RemoveRecord(readingId);
+        QueuePendingRecordDelete(readingId);
+
         if (!IsReady)
         {
-            onComplete?.Invoke(false);
+            onComplete?.Invoke(removedLocal);
             return;
         }
 
         string uid = GetCurrentUid();
         if (string.IsNullOrEmpty(uid))
         {
-            onComplete?.Invoke(false);
+            onComplete?.Invoke(removedLocal);
             return;
         }
 
-        _db.Collection("users")
-            .Document(uid)
-            .Collection("divination_records")
-            .Document(readingId)
-            .DeleteAsync()
-            .ContinueWithOnMainThread(task =>
-            {
-                if (task.IsFaulted || task.IsCanceled)
-                {
-                    Debug.LogError($"[DivinationRecordFirestore] 删除失败: {task.Exception?.InnerException?.Message}");
-#if UNITY_EDITOR
-                    bool removed = RemoveCachedRecord(readingId);
-                    DivinationHistoryCacheService.Instance.RemoveRecord(readingId);
-                    onComplete?.Invoke(removed);
-                    return;
-#else
-                    onComplete?.Invoke(false);
-                    return;
-#endif
-                }
-                Debug.Log($"[DivinationRecordFirestore] 已删除记录: {readingId}");
-                DivinationHistoryCacheService.Instance.RemoveRecord(readingId);
-                onComplete?.Invoke(true);
-            });
+        DeleteRecordFromCloud(uid, readingId, success =>
+        {
+            if (success)
+                RemovePendingRecordDelete(readingId);
+            onComplete?.Invoke(success || removedLocal);
+        });
     }
 
     #endregion
@@ -541,6 +558,118 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
         return true;
     }
 
+    private void SaveRecordToCloud(DivinationRecordData record, string uid, bool restoreDeleted, Action<bool> onComplete = null)
+    {
+        if (record == null || string.IsNullOrWhiteSpace(uid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        DocumentReference docRef = _db.Collection("users")
+            .Document(uid)
+            .Collection("divination_records")
+            .Document(record.readingId);
+
+        var data = SerializeRecord(record);
+        data["updatedAt"] = FieldValue.ServerTimestamp;
+
+        docRef.SetAsync(data, SetOptions.MergeAll).ContinueWithOnMainThread(task =>
+        {
+            if (task.IsFaulted || task.IsCanceled)
+            {
+                Debug.LogError($"[DivinationRecordFirestore] 保存记录失败: {task.Exception?.InnerException?.Message}");
+                onComplete?.Invoke(false);
+                return;
+            }
+
+            if (restoreDeleted)
+                RemovePendingRecordDelete(record.readingId);
+            Debug.Log($"[DivinationRecordFirestore] 记录已保存: {record.readingId}");
+            onComplete?.Invoke(true);
+        });
+    }
+
+    private void DeleteRecordFromCloud(string uid, string readingId, Action<bool> onComplete = null)
+    {
+        if (string.IsNullOrWhiteSpace(uid) || string.IsNullOrWhiteSpace(readingId))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        _db.Collection("users")
+            .Document(uid)
+            .Collection("divination_records")
+            .Document(readingId)
+            .DeleteAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogError($"[DivinationRecordFirestore] 删除失败: {task.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                Debug.Log($"[DivinationRecordFirestore] 已删除记录: {readingId}");
+                onComplete?.Invoke(true);
+            });
+    }
+
+    private void SyncLocalCacheToCloud()
+    {
+        if (_isSyncingLocalChanges || !IsReady)
+            return;
+
+        string uid = GetCurrentUid();
+        if (string.IsNullOrWhiteSpace(uid))
+            return;
+
+        List<DivinationRecordData> records = LoadCachedRecordsLocal();
+        HashSet<string> pendingDeletes = LoadPendingRecordDeletesForCurrentUserLocal();
+        RemovePendingDeletedRecords(records, pendingDeletes);
+
+        int pendingOperations = 0;
+        void FinishOperation()
+        {
+            pendingOperations--;
+            if (pendingOperations <= 0)
+            {
+                _isSyncingLocalChanges = false;
+                DivinationHistoryCacheService.Instance.Refresh(true);
+            }
+        }
+
+        _isSyncingLocalChanges = true;
+
+        foreach (DivinationRecordData record in records)
+        {
+            if (record == null || string.IsNullOrWhiteSpace(record.readingId))
+                continue;
+
+            pendingOperations++;
+            SaveRecordToCloud(record, uid, restoreDeleted: false, _ => FinishOperation());
+        }
+
+        foreach (string readingId in pendingDeletes)
+        {
+            if (string.IsNullOrWhiteSpace(readingId))
+                continue;
+
+            pendingOperations++;
+            DeleteRecordFromCloud(uid, readingId, success =>
+            {
+                if (success)
+                    RemovePendingRecordDelete(readingId);
+                FinishOperation();
+            });
+        }
+
+        if (pendingOperations == 0)
+            _isSyncingLocalChanges = false;
+    }
+
     private string GetCurrentUid()
     {
         var auth = Firebase.Auth.FirebaseAuth.DefaultInstance;
@@ -580,11 +709,7 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
 
     public List<DivinationRecordData> LoadCachedRecords()
     {
-#if UNITY_EDITOR
         return LoadCachedRecordsLocal();
-#else
-        return new List<DivinationRecordData>();
-#endif
     }
 
     private DivinationRecordData FindCachedRecord(string readingId)
@@ -642,10 +767,11 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
 
     private void SaveRecordToEditorPreview(DivinationRecordData record)
     {
-        SaveRecordToEditorPreviewStatic(record);
+        SaveRecordToLocalCacheStatic(record);
     }
+#endif
 
-    private static void SaveRecordToEditorPreviewStatic(DivinationRecordData record)
+    private static void SaveRecordToLocalCacheStatic(DivinationRecordData record)
     {
         if (record == null) return;
         if (string.IsNullOrEmpty(record.readingId))
@@ -658,9 +784,8 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
         records.Insert(0, record);
         SaveRecordsToCacheLocal(records);
         DivinationHistoryCacheService.Instance.UpsertRecord(record);
-        Debug.LogWarning($"[DivinationRecordFirestore] Editor 预览模式：占卜历史已保存到编辑器本地缓存 {record.readingId}");
+        Debug.LogWarning($"[DivinationRecordFirestore] 占卜历史已保存到本地缓存 {record.readingId}");
     }
-#endif
 
     private static List<DivinationRecordData> LoadCachedRecordsLocal()
     {
@@ -668,6 +793,7 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
         foreach (string key in GetCacheKeysForCurrentUserLocal())
             MergeRecords(merged, LoadCachedRecordsForKey(key));
 
+        RemovePendingDeletedRecords(merged, LoadPendingRecordDeletesForCurrentUserLocal());
         SortRecordsDescendingLocal(merged);
         return merged;
     }

@@ -672,13 +672,20 @@ const myUIPrefab = fs.readFileSync("Assets/GameData/UI/Main/My/MyUI.prefab", "ut
 const history = fs.readFileSync("Assets/Scripts/UI/HistoryUI.cs", "utf8");
 const feedback = fs.readFileSync("Assets/Scripts/UI/FeedbackUI.cs", "utf8");
 const firestore = fs.readFileSync("Assets/Scripts/Platform/FireBase/FirestoreManager.cs", "utf8");
+const divinationRecordStore = fs.readFileSync("Assets/Scripts/Platform/FireBase/DivinationRecordFirestore.cs", "utf8");
 
 const myDashboardUsesReadingQuota = /tatTodayCardValueText\.text = stats\.GetReadingDisplay\(_isPro\)/.test(myUI)
   && /m_text: "\\u4ECA\\u65E5\\u5360\\u535C"/.test(myUIPrefab);
 
 const historySafeStore = /DivinationHistoryCacheService/.test(history)
   && /cache\.Refresh\(false/.test(history)
-  && /历史服务暂不可用/.test(history);
+  && /历史服务暂不可用/.test(history)
+  && /CacheRecord\(record\);/.test(divinationRecordStore)
+  && /DivinationHistoryCacheService\.Instance\.UpsertRecord\(record\);/.test(divinationRecordStore)
+  && /public List<DivinationRecordData> LoadCachedRecords\(\)[\s\S]*?return LoadCachedRecordsLocal\(\);/.test(divinationRecordStore)
+  && /QueuePendingRecordDelete\(readingId\);/.test(divinationRecordStore)
+  && /SyncLocalCacheToCloud\(\)/.test(divinationRecordStore)
+  && !/占卜历史不再保存到本地/.test(divinationRecordStore);
 
 const feedbackMigratesLocalPending = /MergeLocalPendingFeedbackEntries\(\)/.test(feedback)
   && /LoadCachedFeedbackEntriesForUid\("local", localEntries, clearTarget: true\)/.test(feedback)
@@ -687,18 +694,25 @@ const feedbackMigratesLocalPending = /MergeLocalPendingFeedbackEntries\(\)/.test
 const feedbackHandlesCloudEmptyAndFailure = /if \(entries != null\)[\s\S]*?_feedbackEntries\.Clear\(\)/.test(feedback)
   && /public void LoadFeedback\(Action<List<CloudFeedbackEntry>> onComplete, int limit = 30\)[\s\S]*?加载反馈失败[\s\S]*?onComplete\?\.Invoke\(null\)/.test(firestore);
 
-if (!myDashboardUsesReadingQuota || !historySafeStore || !feedbackMigratesLocalPending || !feedbackHandlesCloudEmptyAndFailure) {
+const feedbackComposerSeparatedFromSearch = /GetCommunityPublishText\(\)/.test(feedback)
+  && /IsCommunityPublishInput\(TMP_InputField input\)/.test(feedback)
+  && /ClearCommunityPublishInput\(\)/.test(feedback)
+  && /public void OnSearchInputInputChange\(string text\)[\s\S]*?IsCommunityPublishInput\(uiComponent\.SearchInputInputField\)[\s\S]*?return;[\s\S]*?_searchText = text/.test(feedback)
+  && /string content = GetCommunityPublishText\(\)/.test(feedback);
+
+if (!myDashboardUsesReadingQuota || !historySafeStore || !feedbackMigratesLocalPending || !feedbackHandlesCloudEmptyAndFailure || !feedbackComposerSeparatedFromSearch) {
   console.error(JSON.stringify({
     myDashboardUsesReadingQuota,
     historySafeStore,
     feedbackMigratesLocalPending,
     feedbackHandlesCloudEmptyAndFailure,
+    feedbackComposerSeparatedFromSearch,
   }, null, 2));
   process.exit(1);
 }
 NODE
 then
-  ok "My feature guards cover dashboard quota, history fallback, and feedback pending-cache migration"
+  ok "My feature guards cover dashboard quota, history fallback, and feedback pending-cache/composer behavior"
 else
   fail "My feature guard check failed; see /tmp/moonly_readiness_my_feature_guards.log"
 fi
@@ -710,10 +724,16 @@ const read = (path) => fs.readFileSync(path, "utf8");
 const files = {
   my: read("Assets/Scripts/UI/MyUI.cs"),
   history: read("Assets/Scripts/UI/HistoryUI.cs"),
+  historyDetail: read("Assets/Scripts/UI/DivinationHistoryUI.cs"),
   detail: read("Assets/Scripts/UI/DivinationRecordUI.cs"),
   profile: read("Assets/Scripts/UI/PersonalProfileUI.cs"),
   registration: read("Assets/Scripts/UI/RegistrationFlowUtility.cs"),
+  avatarUpload: read("Assets/Scripts/Platform/FireBase/AvatarUploadManager.cs"),
   memory: read("Assets/Scripts/UI/MemoryManagementUI.cs"),
+  memoryList: read("Assets/Scripts/UI/MemoryManageListUI.cs"),
+  memoryStore: read("Assets/Scripts/GameManager/MemoryUiStore.cs"),
+  memoryDetail: read("Assets/Scripts/UI/MemoryDetailUI.cs"),
+  dialogUi: read("Assets/Scripts/UI/DialogUI.cs"),
   account: read("Assets/Scripts/UI/AccountUI.cs"),
   notion: read("Assets/Scripts/UI/NotionUI.cs"),
   notifManager: read("Assets/Scripts/GameManager/NotificationSettingsManager.cs"),
@@ -728,6 +748,7 @@ const files = {
   feedback: read("Assets/Scripts/UI/FeedbackUI.cs"),
   follow: read("Assets/Scripts/UI/FollowusUI.cs"),
   unlock: read("Assets/Scripts/UI/UnlockProUI.cs"),
+  iapBridge: read("Assets/Scripts/Platform/IAP/UnityIapPurchaseBridge.cs"),
   firestore: read("Assets/Scripts/Platform/FireBase/FirestoreManager.cs"),
 };
 
@@ -757,6 +778,9 @@ const checks = {
     /ActivateReadingFromRecord\(_currentRecord, DivinationPhase\.FollowUp\)/.test(files.detail)
     && /DivinationRecordFirestore\.SaveRecordLocal\(_currentRecord\)/.test(files.detail)
     && /firestore\.SaveRecord\(_currentRecord/.test(files.detail)
+    && /bool localSaved = DivinationRecordFirestore\.SaveRecordLocal\(_currentRecord\)/.test(files.historyDetail)
+    && /localSaved \? "已保存到本地，云端稍后同步" : "保存失败，请稍后再试"/.test(files.historyDetail)
+    && /记录已保存到本地缓存/.test(files.historyDetail)
     && /OnDeleteRecordButtonClick\(\)[\s\S]*?DeleteRecord/.test(files.detail)
     && /BuildShareText\(\)/.test(files.detail)
     && /EnsureSaveToDiaryButtonInteractable\(\)/.test(files.detail),
@@ -770,21 +794,42 @@ const checks = {
     && /SyncAuthUserProfile/.test(files.registration)
     && /NormalizeHttpUrl/.test(files.registration)
     && /UpdateUserProfile\(displayName, photoUrl/.test(files.registration)
-    && /SaveUserData/.test(files.registration),
+    && /SaveUserData/.test(files.registration)
+    && /ClearAccountAvatarCaches/.test(files.avatarUpload)
+    && /GoogleUserInfoHelper\.ClearLocalAvatarCache/.test(files.avatarUpload)
+    && /AppleUserInfoHelper\.ClearLocalAvatarCache/.test(files.avatarUpload)
+    && /FacebookUserInfoHelper\.ClearLocalAvatarCache/.test(files.avatarUpload),
   memory:
-    /LoadMemorySource/.test(files.memory)
-    && /SetMemorySource/.test(files.memory)
-    && /SaveMemorySource/.test(files.memory)
-    && /DeleteMemorySource/.test(files.memory)
+    /MemoryUiStore\.LoadLatest/.test(files.memory)
+    && /MemoryUiStore\.SaveCurrent/.test(files.memory)
+    && /MemoryUiStore\.ClearAll/.test(files.memory)
+    && /MemoryUiStore\.LoadLatest/.test(files.dialogUi)
+    && /memoryCloudRefreshRequested/.test(files.dialogUi)
+    && !/LoadMemorySource/.test(files.dialogUi)
     && /MemoryPrivacySettings\.ShareAllMemoryEnabled/.test(files.memory)
     && /GetMemorySourceForPrompt/.test(files.dialogSystem)
+    && /MemoryUiStore\.SaveCurrent\(\)/.test(files.dialogSystem)
     && /GetMemorySourceForPrompt/.test(read("Assets/Scripts/Dialog/Data/DailyOracleService.cs"))
     && /GetPromptMemorySource/.test(read("Assets/Scripts/GameManager/MemoryPrivacySettings.cs"))
+    && /MemoryCacheKey/.test(files.memoryStore)
+    && /PendingCloudSaveKey/.test(files.memoryStore)
+    && /PendingCloudDeleteKey/.test(files.memoryStore)
+    && /LoadLatest[\s\S]*?HasPendingCloudDelete\(\)[\s\S]*?TrySyncPendingCloudDelete/.test(files.memoryStore)
+    && /LoadLatest[\s\S]*?HasPendingCloudSave\(\)[\s\S]*?TrySyncPendingCloudSave/.test(files.memoryStore)
+    && /SaveCurrent[\s\S]*?SaveLocalSource\(Source\)[\s\S]*?MarkCloudSavePending/.test(files.memoryStore)
+    && /ClearAll[\s\S]*?SaveLocalSource\(Source\)[\s\S]*?MarkCloudDeletePending/.test(files.memoryStore)
     && /CLEAR_CONFIRM_SECONDS = 8f/.test(files.memory)
     && /个人偏好/.test(files.memory)
     && /关系记忆/.test(files.memory)
     && /占卜连续性/.test(files.memory)
-    && /最近 Prompt/.test(files.memory),
+    && /最近 Prompt/.test(files.memory)
+    && /private const float DeleteConfirmSeconds = 6f/.test(files.memoryList)
+    && /_pendingDeleteItemId != item\.Id \|\| Time\.time > _deleteConfirmDeadline/.test(files.memoryList)
+    && /ToastManager\.ShowToast\("再次点击删除这条记忆"\)/.test(files.memoryList)
+    && /ResetDeleteConfirm\(\)[\s\S]*?MemoryUiStore\.DeleteMemory\(item\.Id\)/.test(files.memoryList)
+    && /SaveAndRefresh\("记忆已删除", "本地已删除，云端稍后同步"\)/.test(files.memoryList)
+    && /已保存到本地，云端稍后同步/.test(files.memoryDetail)
+    && /OnMemorySearchInputInputChange\(string text\)[\s\S]*?ResetDeleteConfirm\(\)/.test(files.memoryList),
   memoryPrivacy:
     /CreateRuntimeClearButton/.test(read("Assets/Scripts/UI/MemoryPrivacySettingsUI.cs"))
     && /CreateRuntimeClearConfirmModal/.test(read("Assets/Scripts/UI/MemoryPrivacySettingsUI.cs"))
@@ -807,6 +852,13 @@ const checks = {
     && /SetFriendInteraction/.test(files.notion)
     && /SetActivitySystem/.test(files.notion)
     && /ToggleReminderTime/.test(files.notion)
+    && /HasPendingCloudSync/.test(files.notifManager)
+    && /KEY_PENDING_CLOUD_SYNC/.test(files.notifManager)
+    && /MarkCloudSyncPending/.test(files.notifManager)
+    && /MarkCloudSyncComplete/.test(files.notifManager)
+    && /settings\.HasPendingCloudSync[\s\S]*?SaveCloudSettings\(false\)/.test(files.notion)
+    && /settings\.MarkCloudSyncPending\(\)/.test(files.notion)
+    && /settings\.MarkCloudSyncComplete\(\)/.test(files.notion)
     && /RescheduleNotifications/.test(files.notifManager)
     && /NotifyDialogueReplyReady/.test(files.notifScheduler)
     && /NotificationUnreadState\.MarkUnread\(payload\)/.test(files.notifScheduler)
@@ -847,7 +899,15 @@ const checks = {
     && /RestorePurchases/.test(files.unlock)
     && /OpenSubscriptionManagement/.test(files.unlock)
     && /BuildProductButtonText/.test(files.unlock)
-    && /SetPurchaseButtonsInteractable\(!isCurrentPro/.test(files.unlock),
+    && /SetPurchaseButtonsInteractable\(!isCurrentPro/.test(files.unlock)
+    && /using Unity\.Services\.Core;/.test(files.iapBridge)
+    && /InitializeStore\(\)[\s\S]*?EnsureUnityServicesInitialized\(\)[\s\S]*?UnityPurchasing\.Initialize/.test(files.iapBridge)
+    && /UnityServices\.InitializeAsync/.test(files.iapBridge)
+    && /UnityServices\.State == ServicesInitializationState\.Initialized/.test(files.iapBridge)
+    && /pendingRestore\)[\s\S]*?BeginStoreRestoreTransactions\(\)/.test(files.iapBridge)
+    && /GetExtension<IAppleExtensions>\(\)[\s\S]*?RestoreTransactions/.test(files.iapBridge)
+    && /GetExtension<IGooglePlayStoreExtensions>\(\)[\s\S]*?RestoreTransactions/.test(files.iapBridge)
+    && /OnRestoreReceiptSubmitted/.test(files.iapBridge),
 };
 
 const failed = Object.entries(checks)
@@ -1140,10 +1200,13 @@ else
 fi
 
 if grep_file "SaveNotificationSettings" "Assets/Scripts/UI/NotionUI.cs" \
-  && grep_file "LoadNotificationSettings" "Assets/Scripts/UI/NotionUI.cs"; then
-  ok "notification settings UI syncs settings with Firestore"
+  && grep_file "LoadNotificationSettings" "Assets/Scripts/UI/NotionUI.cs" \
+  && grep_file "MarkCloudSyncPending" "Assets/Scripts/UI/NotionUI.cs" \
+  && grep_file "HasPendingCloudSync" "Assets/Scripts/UI/NotionUI.cs" \
+  && grep_file "KEY_PENDING_CLOUD_SYNC" "Assets/Scripts/GameManager/NotificationSettingsManager.cs"; then
+  ok "notification settings UI syncs settings with Firestore and preserves offline local changes"
 else
-  fail "notification settings UI is not wired to Firestore settings sync"
+  fail "notification settings UI is not wired to Firestore settings sync or offline pending sync"
 fi
 
 if grep_file "SendPasswordResetEmail" "Assets/Scripts/Platform/FireBase/FirebaseAuthManager.cs" \
@@ -1161,6 +1224,187 @@ if grep_file "ttsSynthesize" "Assets/Scripts/TTS/TTSManager.cs" \
   ok "dialogue TTS uses authenticated Cloud Function and maps service errors for users"
 else
   fail "dialogue TTS is missing Cloud Function auth or user-facing error handling"
+fi
+
+if node <<'NODE' >/tmp/moonly_readiness_dialogue_input.log 2>&1
+const fs = require("fs");
+const dialog = fs.readFileSync("Assets/Scripts/UI/DialogUI.cs", "utf8");
+
+const trimsUserInput = /string inputText = \(uiComponent\.questionInputField\.text \?\? string\.Empty\)\.Trim\(\)/.test(dialog)
+  && /string\.IsNullOrWhiteSpace\(inputText\)/.test(dialog);
+const preservesDraftOnMembershipBlock = /if \(!MembershipGate\.CanUse\(MembershipFeature\.DialogMessage\)\)[\s\S]*?RefreshSendButtonState\(inputText\);[\s\S]*?return;/.test(dialog)
+  && /MembershipGate\.CanUse\(MembershipFeature\.DialogMessage\)[\s\S]*?if \(mIsLoading\)/.test(dialog);
+const clearsOnlyAfterSend = /SendUserMessage\(inputText\);[\s\S]*?ClearQuestionInput\(\);/.test(dialog)
+  && /private void ClearQuestionInput\(\)[\s\S]*?questionInputField\.text = string\.Empty/.test(dialog);
+const refreshesSendButton = /OnquestionInputChange\(string text\)[\s\S]*?RefreshSendButtonState\(text\)/.test(dialog)
+  && /OnquestionInputEnd\(string text\)[\s\S]*?RefreshSendButtonState\(text\)/.test(dialog)
+  && /sendButton\.interactable = !string\.IsNullOrWhiteSpace\(value\)/.test(dialog);
+
+if (!trimsUserInput || !preservesDraftOnMembershipBlock || !clearsOnlyAfterSend || !refreshesSendButton) {
+  console.error(JSON.stringify({
+    trimsUserInput,
+    preservesDraftOnMembershipBlock,
+    clearsOnlyAfterSend,
+    refreshesSendButton,
+  }, null, 2));
+  process.exit(1);
+}
+NODE
+then
+  ok "dialogue input trims blank messages, preserves drafts on quota blocks, and updates send state"
+else
+  fail "dialogue input guard failed; see /tmp/moonly_readiness_dialogue_input.log"
+fi
+
+if node <<'NODE' >/tmp/moonly_readiness_today_oracle_chat.log 2>&1
+const fs = require("fs");
+const dialogUi = fs.readFileSync("Assets/Scripts/UI/DialogUI.cs", "utf8");
+const dialogSystem = fs.readFileSync("Assets/Scripts/Dialog/Data/DialogSystem.cs", "utf8");
+const dailyService = fs.readFileSync("Assets/Scripts/Dialog/Data/DailyOracleService.cs", "utf8");
+const todayOracleUi = fs.readFileSync("Assets/Scripts/UI/TodayOracleUI.cs", "utf8");
+const todayCardUi = fs.readFileSync("Assets/Scripts/UI/TodayCardUI.cs", "utf8");
+const completeInterpretationUi = fs.readFileSync("Assets/Scripts/UI/CompleteInterpretationUI.cs", "utf8");
+
+const uiSendsBuiltContent = /SendTodayOracleMessage\(\)[\s\S]*?BuildTodayCardMessageContent\(\)[\s\S]*?AddTodayDivinationMessage\(content\)/.test(dialogUi)
+  && !/AddTodayDivinationMessage\(""\)/.test(dialogUi);
+const systemBuildsPayloadSummary = /public string BuildTodayCardMessageContent\(\)[\s\S]*?todayCardPayload[\s\S]*?displayName[\s\S]*?orientation[\s\S]*?oracleText[\s\S]*?generatedAt/.test(dialogSystem);
+const systemRejectsBlankContent = /public ChatMessageData AddTodayDivinationMessage\(string content\)[\s\S]*?string\.IsNullOrWhiteSpace\(content\) \? BuildTodayCardMessageContent\(\) : content\.Trim\(\)/.test(dialogSystem)
+  && /mApiMessageHistory\.Add\(new DeepSeekAPI\.Message\("assistant", content\)\)/.test(dialogSystem);
+const servicePayloadCarriesOracleText = /public TodayCardPayload GetTodayCardPayload\(\)[\s\S]*?IsCachedOracleFor\(CurrentCard, CurrentUpright\)[\s\S]*?oraclePayload = CachedPayload[\s\S]*?IsCachedPreparedReadingFor\(CurrentCard, CurrentUpright\)[\s\S]*?oraclePayload = CachedPreparedReading\?\.oraclePayload[\s\S]*?oracleText = oraclePayload\?\.oracle[\s\S]*?title = FirstNonEmpty\(oraclePayload\?\.title, "今日塔罗"\)/.test(dailyService);
+const detailBuildsPayloadWithOracleText = /private TodayCardPayload BuildTodayCardPayloadForDialog\(\)[\s\S]*?payload\.oracleText = FirstNonEmpty/.test(todayCardUi)
+  && /private void SyncTodayCardPayloadToDialogSystem\(\)[\s\S]*?SetTodayCardPayload\(payload\)/.test(todayCardUi);
+const detailFollowupsCarryContext = /private void SendFollowupQuestion\(string question\)[\s\S]*?SyncTodayCardPayloadToDialogSystem\(\)[\s\S]*?EventSystem\.DispatchEvent\(GameDataStr\.CardTopicSelected, question\)/.test(todayCardUi);
+const detailContinueAddsCard = /OnContinueChatButtonClick\(\)[\s\S]*?SyncTodayCardPayloadToDialogSystem\(\)[\s\S]*?SendTodayOracleMessage\(\)/.test(todayCardUi);
+const legacyOracleUiCarriesRichPayload = /OnDeepChatButtonClick\(\)[\s\S]*?var payload = BuildTodayCardPayloadForDialog\(\)[\s\S]*?SetTodayCardPayload\(payload\)/.test(todayOracleUi)
+  && /cardPayload = BuildTodayCardPayloadForDialog\(card, upright, oraclePayload\)/.test(todayOracleUi)
+  && /cardPayload = BuildTodayCardPayloadForDialog\(card, upright, safePayload\)/.test(todayOracleUi)
+  && /BuildTodayCardPayloadForDialog\(preparedReading\.card, preparedReading\.upright, preparedReading\.oraclePayload\)/.test(todayOracleUi)
+  && /private TodayOraclePayload GetCachedOraclePayloadFor\(TarotCard card, bool upright\)[\s\S]*?IsCachedOracleFor\(card, upright\)[\s\S]*?IsCachedPreparedReadingFor\(card, upright\)/.test(todayOracleUi)
+  && /private TodayCardPayload BuildTodayCardPayloadForDialog\(TarotCard card, bool upright, TodayOraclePayload oraclePayload\)[\s\S]*?payload\.oracleText = FirstNonEmpty\(payload\.oracleText, oraclePayload\?\.oracle\)/.test(todayOracleUi);
+const completeInterpretationFollowupsCarryContext = /private void NavigateToDialogAndSend\(string message\)[\s\S]*?SyncTodayCardPayloadToDialogSystem\(\)[\s\S]*?EventSystem\.DispatchEvent\(GameDataStr\.CardTopicSelected, message\)/.test(completeInterpretationUi)
+  && /private void SyncTodayCardPayloadToDialogSystem\(\)[\s\S]*?GetTodayCardPayload\(\)[\s\S]*?DialogSystem\.Instance\?\.SetTodayCardPayload\(payload\)/.test(completeInterpretationUi);
+
+if (!uiSendsBuiltContent || !systemBuildsPayloadSummary || !systemRejectsBlankContent || !servicePayloadCarriesOracleText || !detailBuildsPayloadWithOracleText || !detailFollowupsCarryContext || !detailContinueAddsCard || !legacyOracleUiCarriesRichPayload || !completeInterpretationFollowupsCarryContext) {
+  console.error(JSON.stringify({
+    uiSendsBuiltContent,
+    systemBuildsPayloadSummary,
+    systemRejectsBlankContent,
+    servicePayloadCarriesOracleText,
+    detailBuildsPayloadWithOracleText,
+    detailFollowupsCarryContext,
+    detailContinueAddsCard,
+    legacyOracleUiCarriesRichPayload,
+    completeInterpretationFollowupsCarryContext,
+  }, null, 2));
+  process.exit(1);
+}
+NODE
+then
+  ok "today oracle chat entries carry card context and non-empty summaries into dialogue"
+else
+  fail "today oracle deep-chat guard failed; see /tmp/moonly_readiness_today_oracle_chat.log"
+fi
+
+if node <<'NODE' >/tmp/moonly_readiness_daily_oracle_history.log 2>&1
+const fs = require("fs");
+const dailyHistory = fs.readFileSync("Assets/Scripts/Dialog/Data/DailyOracleHistoryBridge.cs", "utf8");
+const recordStore = fs.readFileSync("Assets/Scripts/Platform/FireBase/DivinationRecordFirestore.cs", "utf8");
+
+const dailyHistorySavesLocalFirst = /private static DivinationRecordData SaveRecord\(DivinationRecordData record, bool saveCloud\)[\s\S]*?DivinationRecordFirestore\.SaveRecordLocal\(record\);[\s\S]*?DivinationRecordFirestore store = GetRecordStore\(\)/.test(dailyHistory);
+const dailyHistoryTimeoutKeepsLocal = /历史服务暂未就绪，每日神谕历史已保存到本地缓存，云端稍后同步/.test(dailyHistory)
+  && /历史服务不可用，已保存每日神谕历史到本地缓存/.test(dailyHistory)
+  && !/未保存每日神谕历史/.test(dailyHistory);
+const recordStoreSyncsAfterLogin = /authManager\.OnLoginSuccess \+= OnAuthLoginSuccess/.test(recordStore)
+  && /authManager\.OnLogout \+= OnAuthLogout/.test(recordStore)
+  && /private void OnAuthLoginSuccess\(AuthProvider provider, Firebase\.Auth\.FirebaseUser user\)[\s\S]*?SyncLocalCacheToCloud\(\)/.test(recordStore)
+  && /private void OnAuthLogout\(\)[\s\S]*?_isSyncingLocalChanges = false/.test(recordStore);
+
+if (!dailyHistorySavesLocalFirst || !dailyHistoryTimeoutKeepsLocal || !recordStoreSyncsAfterLogin) {
+  console.error(JSON.stringify({
+    dailyHistorySavesLocalFirst,
+    dailyHistoryTimeoutKeepsLocal,
+    recordStoreSyncsAfterLogin,
+  }, null, 2));
+  process.exit(1);
+}
+NODE
+then
+  ok "daily oracle history saves locally first and syncs local history cache after login"
+else
+  fail "daily oracle history fallback guard failed; see /tmp/moonly_readiness_daily_oracle_history.log"
+fi
+
+if node <<'NODE' >/tmp/moonly_readiness_daily_oracle_cloud_sync.log 2>&1
+const fs = require("fs");
+const dailyStore = fs.readFileSync("Assets/Scripts/Platform/FireBase/DailyOracleFirestore.cs", "utf8");
+const dailyService = fs.readFileSync("Assets/Scripts/Dialog/Data/DailyOracleService.cs", "utf8");
+const todayUi = fs.readFileSync("Assets/Scripts/UI/TodayOracleUI.cs", "utf8");
+
+const hasPendingQueue = /PENDING_SAVE_KEY_PREFIX = "DailyOraclePendingSaves_"/.test(dailyStore)
+  && /private class PendingDateList/.test(dailyStore)
+  && /QueuePendingDailyOracleSave\(string date\)/.test(dailyStore)
+  && /RemovePendingDailyOracleSave\(string date\)/.test(dailyStore)
+  && /LoadPendingDailyOracleSaveDates\(\)/.test(dailyStore);
+const saveMarksPendingBeforeCloud = /public void SaveByDate\(string date, TarotCard card,[\s\S]*?SaveByDateLocal\(date, card, upright, payload, locale\);[\s\S]*?QueuePendingDailyOracleSave\(date\);[\s\S]*?if \(!CheckReady\(onComplete\)\) return/.test(dailyStore);
+const syncsPendingAfterReadyOrLogin = /OnFirebaseReady\(\)[\s\S]*?SyncPendingDailyOracleSaves\(\)/.test(dailyStore)
+  && /OnAuthLoginSuccess\(AuthProvider provider, Firebase\.Auth\.FirebaseUser user\)[\s\S]*?SyncPendingDailyOracleSaves\(\)/.test(dailyStore)
+  && /OnAuthLogout\(\)[\s\S]*?_isSyncingPendingSaves = false/.test(dailyStore);
+const uploadClearsPendingAndSummary = /SaveRecordToCloud\(DailyOracleCloudRecord record, string uid,[\s\S]*?SetAsync\(BuildDailyOracleData\(record\), SetOptions\.MergeAll\)[\s\S]*?RemovePendingDailyOracleSave\(record\.date\)[\s\S]*?SaveSummaryFromRecord\(record, DailyDivinationSyncSettingsManager\.Instance\.GetSettings\(\)\)/.test(dailyStore);
+const localFallbacksMarkPending = /SaveTodayLocalPending\(TarotCard card/.test(dailyStore)
+  && /SaveByDateLocalPending\(string date/.test(dailyStore)
+  && /QueuePendingDailyOracleSave\(string\.IsNullOrWhiteSpace\(date\) \? DateTime\.Now\.ToString\("yyyy-MM-dd"\) : date\)/.test(dailyStore)
+  && /SaveTodayLocalPending/.test(dailyService)
+  && /SaveTodayLocalPending/.test(todayUi);
+const clearDeletesPending = /ClearLocalCacheForCurrentUser[\s\S]*?foreach \(string key in GetPendingSaveKeysForSync\(\)\)[\s\S]*?PlayerPrefs\.DeleteKey\(key\)/.test(dailyStore);
+
+if (!hasPendingQueue || !saveMarksPendingBeforeCloud || !syncsPendingAfterReadyOrLogin || !uploadClearsPendingAndSummary || !localFallbacksMarkPending || !clearDeletesPending) {
+  console.error(JSON.stringify({
+    hasPendingQueue,
+    saveMarksPendingBeforeCloud,
+    syncsPendingAfterReadyOrLogin,
+    uploadClearsPendingAndSummary,
+    localFallbacksMarkPending,
+    clearDeletesPending,
+  }, null, 2));
+  process.exit(1);
+}
+NODE
+then
+  ok "daily oracle cloud records save locally first and sync pending daily_oracles after login"
+else
+  fail "daily oracle cloud pending-save guard failed; see /tmp/moonly_readiness_daily_oracle_cloud_sync.log"
+fi
+
+if node <<'NODE' >/tmp/moonly_readiness_divination_autosave.log 2>&1
+const fs = require("fs");
+const engine = fs.readFileSync("Assets/Scripts/Dialog/Data/DivinationEngine.cs", "utf8");
+const detail = fs.readFileSync("Assets/Scripts/UI/DivinationRecordUI.cs", "utf8");
+const dialogSystem = fs.readFileSync("Assets/Scripts/Dialog/Data/DialogSystem.cs", "utf8");
+
+const engineReportsLocalFallback = /SaveFromSession\(CurrentSession, shortVerdict,[\s\S]*?占卜记录已保存到本地缓存，云端稍后同步/.test(engine)
+  && /DivinationRecordBuilder\.FromSession\(\)[\s\S]*?DivinationRecordFirestore\.SaveRecordLocal\(record\)/.test(engine);
+const detailReportsLocalFallback = /bool localSaved = DivinationRecordFirestore\.SaveRecordLocal\(_currentRecord\)/.test(detail)
+  && /localSaved \? "已保存到本地，云端稍后同步" : "保存失败，请稍后再试"/.test(detail)
+  && /记录已保存到本地缓存/.test(detail);
+const dialogReplySavesLocalFallback = /ApplyDivinationReplyToActiveSpread\(string reply\)[\s\S]*?SaveDivinationReplyRecord\(target\)/.test(dialogSystem)
+  && /private void SaveDivinationReplyRecord\(ChatMessageData target\)[\s\S]*?DivinationRecordBuilder\.FromChatMessage\(target\)[\s\S]*?DivinationRecordFirestore\.SaveRecordLocal\(record\)[\s\S]*?DivinationRecordFirestore store = DivinationRecordFirestore\.Instance/.test(dialogSystem)
+  && /占卜回复记录已保存到本地缓存，云端稍后同步/.test(dialogSystem);
+const noStaleUnsavedMessaging = !/占卜记录未保存|跳过自动保存|历史服务未就绪，未保存记录/.test(engine + "\n" + detail + "\n" + dialogSystem);
+
+if (!engineReportsLocalFallback || !detailReportsLocalFallback || !dialogReplySavesLocalFallback || !noStaleUnsavedMessaging) {
+  console.error(JSON.stringify({
+    engineReportsLocalFallback,
+    detailReportsLocalFallback,
+    dialogReplySavesLocalFallback,
+    noStaleUnsavedMessaging,
+  }, null, 2));
+  process.exit(1);
+}
+NODE
+then
+  ok "divination auto-save, dialogue reply save, and detail save report local fallback instead of stale unsaved states"
+else
+  fail "divination auto-save fallback guard failed; see /tmp/moonly_readiness_divination_autosave.log"
 fi
 
 if grep_file "PhoneAuthProvider.GetInstance" "Assets/Scripts/UI/VerifyPhoneUI.cs" \
@@ -1184,12 +1428,24 @@ fi
 
 if grep_file "Apple 登录仅支持 iOS 设备" "Assets/Scripts/Platform/FireBase/FirebaseAuthManager.cs" \
   && grep_file "Apple 账号关联仅支持 iOS 设备" "Assets/Scripts/Platform/FireBase/FirebaseAuthManager.cs" \
+  && grep_file "FinishWithError(\"Apple 登录仅支持 iOS 设备\")" "Assets/Scripts/Platform/Apple/AppleSignInHelper.cs" \
+  && grep_file "Editor 模拟模式" "Assets/Scripts/Platform/Apple/AppleSignInHelper.cs" \
   && grep_file "ApplyPlatformButtonVisibility" "Assets/Scripts/UI/LoginUI.cs" \
   && grep_file "IsAppleSignInVisible" "Assets/Scripts/UI/LoginUI.cs" \
-  && grep_file "IsGameCenterSignInVisible" "Assets/Scripts/UI/LoginUI.cs"; then
-  ok "platform-specific sign-in buttons and Apple auth guard avoid non-iOS mock credential paths"
+  && grep_file "IsGoogleSignInVisible" "Assets/Scripts/UI/LoginUI.cs" \
+  && grep_file "IsFacebookSignInVisible" "Assets/Scripts/UI/LoginUI.cs" \
+  && grep_file "IsGameCenterSignInVisible" "Assets/Scripts/UI/LoginUI.cs" \
+  && grep_file "Facebook.Unity.FB, Facebook.Unity" "Assets/Scripts/Platform/Facebook/FacebookSignInHelper.cs" \
+  && grep_file "Facebook.Unity.FacebookDelegate\`1, Facebook.Unity" "Assets/Scripts/Platform/Facebook/FacebookSignInHelper.cs" \
+  && grep_file "typeof(IEnumerable<string>)" "Assets/Scripts/Platform/Facebook/FacebookSignInHelper.cs" \
+  && grep_file "ResolveConfiguredFacebookAppId" "Assets/Scripts/Platform/Facebook/FacebookSignInHelper.cs" \
+  && grep_file "RequestFriendDiscoveryAccess" "Assets/Scripts/Platform/Facebook/FacebookSignInHelper.cs" \
+  && grep_file "FriendDiscoveryPermissions" "Assets/Scripts/Platform/Facebook/FacebookSignInHelper.cs" \
+  && grep_file "RequestFriendDiscoveryAccess(anchor" "Assets/Scripts/Platform/Facebook/FacebookFriendDiscoveryManager.cs" \
+  && grep_file "IsPermissionError" "Assets/Scripts/Platform/Facebook/FacebookFriendDiscoveryManager.cs"; then
+  ok "platform-specific sign-in buttons, Facebook SDK wiring, and friend-discovery permission flow are guarded"
 else
-  fail "platform-specific sign-in guards are missing for Apple or Game Center login buttons"
+  fail "platform-specific sign-in guards, Facebook SDK reflection wiring, or friend-discovery permission flow are missing"
 fi
 
 if grep_file "AddGameCenter" "Assets/Editor/FariIOSContactsPostprocessor.cs" \
@@ -1264,6 +1520,94 @@ else
   fail "dialogue reply remote push/offline fallback wiring is incomplete; see /tmp/moonly_readiness_dialogue_remote_push.log"
 fi
 
+if node <<'NODE' >/tmp/moonly_readiness_virtual_friend_sync.log 2>&1
+const fs = require("fs");
+const firestore = fs.readFileSync("Assets/Scripts/Platform/FireBase/FirestoreManager.cs", "utf8");
+const create = fs.readFileSync("Assets/Scripts/UI/CreateFriendUI.cs", "utf8");
+const edit = fs.readFileSync("Assets/Scripts/UI/EditFriendUI.cs", "utf8");
+const friendUi = fs.readFileSync("Assets/Scripts/UI/FriendUI.cs", "utf8");
+const friendMove = fs.readFileSync("Assets/Scripts/UI/FriendMoveUI.cs", "utf8");
+
+const hasPendingQueues = /PENDING_VIRTUAL_FRIEND_SAVE_KEY_PREFIX/.test(firestore)
+  && /PENDING_VIRTUAL_FRIEND_DELETE_KEY_PREFIX/.test(firestore)
+  && /QueueVirtualFriendSaveLocal/.test(firestore)
+  && /QueueVirtualFriendDeleteLocal/.test(firestore)
+  && /SyncPendingVirtualFriendSaves/.test(firestore)
+  && /SyncPendingVirtualFriendDeletes/.test(firestore);
+const syncsOnReady = /OnFirebaseReady\(\)[\s\S]*?SyncPendingVirtualFriendSaves\(\)[\s\S]*?SyncPendingVirtualFriendDeletes\(\)/.test(firestore);
+const saveQueuesAndClears = /public void SaveVirtualFriend\(FriendDataManager\.FriendData virtualFriend[\s\S]*?QueuePendingVirtualFriendSave\(virtualFriend\.virtualFriendId\)[\s\S]*?CommitSaveVirtualFriendWithAvatar/.test(firestore)
+  && /RemovePendingVirtualFriendSave\(virtualFriend\.virtualFriendId\)/.test(firestore);
+const loadPreservesLocalPending = /public void LoadVirtualFriends[\s\S]*?SyncPendingVirtualFriendSaves\(\)[\s\S]*?SyncPendingVirtualFriendDeletes\(\)[\s\S]*?IsVirtualFriendPendingSave\(doc\.Id\) \|\| IsVirtualFriendPendingDelete\(doc\.Id\)/.test(firestore);
+const deleteQueuesAndRemovesLocal = /public void DeleteVirtualFriend\(FriendDataManager\.FriendData virtualFriend[\s\S]*?QueueVirtualFriendDeleteLocal\(virtualFriendId\)[\s\S]*?RemoveVirtualFriendById\(virtualFriendId\)/.test(firestore)
+  && /CommitDeleteVirtualFriend/.test(firestore)
+  && /RemovePendingVirtualFriendDelete\(virtualFriendId\)/.test(firestore);
+const createQueuesWhenStoreMissing = /QueueVirtualFriendSaveLocal\(createdFriend\)/.test(create)
+  && /QueueVirtualFriendSaveLocal\(friend\)/.test(create);
+const editQueuesWhenStoreMissing = /QueueVirtualFriendSaveLocal\(currentFriend\)/.test(edit)
+  && /SaveVirtualFriend\(currentFriend, _ => \{ \}\)/.test(edit);
+const deleteEntrypointsQueue = /QueueVirtualFriendDeleteLocal\(friend\)/.test(friendUi)
+  && /已删除创建的好友，云端稍后同步/.test(friendUi)
+  && /QueueVirtualFriendDeleteLocal\(friend\)/.test(friendMove)
+  && /已删除创建的好友，云端稍后同步/.test(friendMove);
+
+if (!hasPendingQueues || !syncsOnReady || !saveQueuesAndClears || !loadPreservesLocalPending || !deleteQueuesAndRemovesLocal || !createQueuesWhenStoreMissing || !editQueuesWhenStoreMissing || !deleteEntrypointsQueue) {
+  console.error(JSON.stringify({
+    hasPendingQueues,
+    syncsOnReady,
+    saveQueuesAndClears,
+    loadPreservesLocalPending,
+    deleteQueuesAndRemovesLocal,
+    createQueuesWhenStoreMissing,
+    editQueuesWhenStoreMissing,
+    deleteEntrypointsQueue,
+  }, null, 2));
+  process.exit(1);
+}
+NODE
+then
+  ok "created-friend cloud save/delete paths preserve local changes and sync pending virtual friends later"
+else
+  fail "created-friend cloud sync queue is incomplete; see /tmp/moonly_readiness_virtual_friend_sync.log"
+fi
+
+if node <<'NODE' >/tmp/moonly_readiness_real_friend_sync.log 2>&1
+const fs = require("fs");
+const firestore = fs.readFileSync("Assets/Scripts/Platform/FireBase/FirestoreManager.cs", "utf8");
+const friendUi = fs.readFileSync("Assets/Scripts/UI/FriendUI.cs", "utf8");
+const friendMove = fs.readFileSync("Assets/Scripts/UI/FriendMoveUI.cs", "utf8");
+
+const queuesDeletesOnCommitFailure = /CommitRemoveRealFriend\(currentUid, friendUid, success =>[\s\S]*?if \(!success\)[\s\S]*?QueuePendingRealFriendDelete\(friendUid\)[\s\S]*?RemoveRealFriendByFirebaseUid\(friendUid\)[\s\S]*?onComplete\?\.Invoke\(true\)/.test(firestore);
+const queuesBlocksOnCommitFailure = /CommitBlockRealFriend\(currentUid, friendUid, friend, success =>[\s\S]*?if \(!success\)[\s\S]*?QueuePendingRealFriendBlock\(friendUid\)[\s\S]*?AddBlockedUser\(friendUid\)[\s\S]*?onComplete\?\.Invoke\(true\)/.test(firestore);
+const exposesQueueState = /public static bool IsRealFriendDeleteQueuedLocal\(string friendUid\)/.test(firestore)
+  && /public static bool IsRealFriendBlockQueuedLocal\(string friendUid\)/.test(firestore)
+  && /public static bool IsVirtualFriendDeleteQueuedLocal\(string virtualFriendId\)/.test(firestore);
+const friendUiShowsQueuedDelete = /IsVirtualFriendDeleteQueuedLocal\(friend\.virtualFriendId\)/.test(friendUi)
+  && /IsRealFriendDeleteQueuedLocal\(friend\.firebaseUid\)/.test(friendUi)
+  && /BuildRealFriendDeleteSuccessToast\(bool queued\)/.test(friendUi)
+  && /已删除好友，云端稍后同步/.test(friendUi);
+const friendMoveShowsQueuedDeleteAndBlock = /IsVirtualFriendDeleteQueuedLocal\(friend\.virtualFriendId\)/.test(friendMove)
+  && /IsRealFriendDeleteQueuedLocal\(friend\.firebaseUid\)/.test(friendMove)
+  && /IsRealFriendBlockQueuedLocal\(friend\.firebaseUid\)/.test(friendMove)
+  && /BuildRealFriendDeleteSuccessToast\(bool queued\)/.test(friendMove)
+  && /已屏蔽好友，云端稍后同步/.test(friendMove);
+
+if (!queuesDeletesOnCommitFailure || !queuesBlocksOnCommitFailure || !exposesQueueState || !friendUiShowsQueuedDelete || !friendMoveShowsQueuedDeleteAndBlock) {
+  console.error(JSON.stringify({
+    queuesDeletesOnCommitFailure,
+    queuesBlocksOnCommitFailure,
+    exposesQueueState,
+    friendUiShowsQueuedDelete,
+    friendMoveShowsQueuedDeleteAndBlock,
+  }, null, 2));
+  process.exit(1);
+}
+NODE
+then
+  ok "real-friend delete/block commit failures preserve local changes and sync pending actions later"
+else
+  fail "real-friend pending delete/block fallback is incomplete; see /tmp/moonly_readiness_real_friend_sync.log"
+fi
+
 if node <<'NODE' >/tmp/moonly_readiness_virtual_relationship.log 2>&1
 const fs = require("fs");
 const helper = fs.readFileSync("Assets/Scripts/Friend/CreatedFriendRelationshipDivinationLocalFlow.cs", "utf8");
@@ -1306,15 +1650,36 @@ fi
 if grep_file "ApplySyncSettingsToPublishedSummaries" "Assets/Scripts/Platform/FireBase/DailyOracleFirestore.cs" \
   && grep_file "UpdateExistingSummarySettingsByDate" "Assets/Scripts/Platform/FireBase/DailyOracleFirestore.cs" \
   && grep_file "PublishSummaryByDate" "Assets/Scripts/Platform/FireBase/DailyOracleFirestore.cs" \
+  && grep_file "HasPendingCloudSync" "Assets/Scripts/GameManager/DailyDivinationSyncSettingsManager.cs" \
+  && grep_file "KEY_PENDING_CLOUD_SYNC" "Assets/Scripts/GameManager/DailyDivinationSyncSettingsManager.cs" \
+  && grep_file "MarkCloudSyncPending" "Assets/Scripts/GameManager/DailyDivinationSyncSettingsManager.cs" \
+  && grep_file "MarkCloudSyncComplete" "Assets/Scripts/GameManager/DailyDivinationSyncSettingsManager.cs" \
+  && grep_file "HasPendingCloudSync" "Assets/Scripts/UI/DailyDivinationSyncSettingsUI.cs" \
+  && grep_file "SaveSettings(false)" "Assets/Scripts/UI/DailyDivinationSyncSettingsUI.cs" \
+  && grep_file "MarkCloudSyncPending" "Assets/Scripts/UI/DailyDivinationSyncSettingsUI.cs" \
+  && grep_file "MarkCloudSyncComplete" "Assets/Scripts/UI/DailyDivinationSyncSettingsUI.cs" \
+  && grep_file "UpdatePublishedSummaries(settings, showToast)" "Assets/Scripts/UI/DailyDivinationSyncSettingsUI.cs" \
+  && grep_file "SaveCurrentSyncSettings(false)" "Assets/Scripts/UI/FriendProfileUI.cs" \
+  && grep_file "syncSettingsVersion" "Assets/Scripts/UI/FriendProfileUI.cs" \
+  && grep_file "MarkCloudSyncPending" "Assets/Scripts/UI/FriendProfileUI.cs" \
+  && grep_file "MarkCloudSyncComplete" "Assets/Scripts/UI/FriendProfileUI.cs" \
+  && grep_file "SaveCurrentSyncSettings(false)" "Assets/Scripts/UI/CreateFriendInfoUI.cs" \
+  && grep_file "syncSettingsVersion" "Assets/Scripts/UI/CreateFriendInfoUI.cs" \
+  && grep_file "MarkCloudSyncPending" "Assets/Scripts/UI/CreateFriendInfoUI.cs" \
+  && grep_file "MarkCloudSyncComplete" "Assets/Scripts/UI/CreateFriendInfoUI.cs" \
+  && grep_file "SaveCurrentSyncSettings(false)" "Assets/Scripts/UI/EditFriendUI.cs" \
+  && grep_file "syncSettingsVersion" "Assets/Scripts/UI/EditFriendUI.cs" \
+  && grep_file "MarkCloudSyncPending" "Assets/Scripts/UI/EditFriendUI.cs" \
+  && grep_file "MarkCloudSyncComplete" "Assets/Scripts/UI/EditFriendUI.cs" \
   && grep_file "ApplySyncSettingsToPublishedSummaries(settings, 30" "Assets/Scripts/UI/DailyDivinationSyncSettingsUI.cs" \
   && grep_file "ApplySyncSettingsToPublishedSummaries(settings, 30" "Assets/Scripts/UI/FriendProfileUI.cs" \
   && grep_file "ApplySyncSettingsToPublishedSummaries(settings, 30" "Assets/Scripts/UI/CreateFriendInfoUI.cs" \
   && grep_file "ApplySyncSettingsToPublishedSummaries(settings, 30" "Assets/Scripts/UI/EditFriendUI.cs" \
   && grep_file "canReadDailyOracleSummary" "firestore.rules" \
   && grep_file "isAcceptedFriend(data.ownerUid)" "firestore.rules"; then
-  ok "daily oracle sync settings refresh existing summaries and keep Firestore friend-only read rules"
+  ok "daily oracle sync settings refresh existing summaries, preserve offline local changes, and keep Firestore friend-only read rules"
 else
-  fail "daily oracle sync settings are missing existing-summary refresh wiring or friend-only read rules"
+  fail "daily oracle sync settings are missing offline sync, existing-summary refresh wiring, or friend-only read rules"
 fi
 
 if [[ "${CHECK_IOS_EXPORT:-0}" == "1" ]]; then
