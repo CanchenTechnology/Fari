@@ -15,6 +15,7 @@ https://www.figma.com/design/giPUObWIasLznx7cUHuZV3/Fari?node-id=213-319&t=fjFNI
 3. 所有可见 UI 都应拆成 Unity 组件：`Image`、`TextMeshProUGUI`、`Button`、`Toggle`、`ScrollRect`、布局容器等。
 4. prefab 必须可适配安全区和不同屏幕比例。
 5. prefab 必须能在 Unity 中重新生成，生成逻辑要可重复、可检查。
+6. Figma 中用到的贴图、头像、图标、背景图片必须随 prefab 一起落地为 Unity 本地资源，并在 prefab 中绑定为 `Sprite`，不能只保留 Figma 临时 asset URL 或空白占位。
 
 ## Prefab 拆分规则
 
@@ -74,6 +75,34 @@ Assets/GameData/AIUI/UI/<Feature>/Generated/
 
 所有从 Figma 导出的独立图片资源都必须放在这个目录结构下。
 
+建议按界面继续分目录，避免不同页面的同名资源互相覆盖：
+
+```text
+Assets/GameData/AIUI/UI/<Feature>/Generated/<ScreenName>/
+Assets/GameData/AIUI/UI/<Feature>/Generated/<ScreenName>/Sprites/
+Assets/GameData/AIUI/UI/<Feature>/Generated/<ScreenName>/GeneratedAssetManifest.json
+```
+
+`GeneratedAssetManifest.json` 用于记录 Figma 节点和 Unity 资源的映射，至少包含：
+
+```json
+[
+  {
+    "figmaNodeId": "282:711",
+    "figmaNodeName": "Main button",
+    "usage": "buttonBackground",
+    "sourceUrl": "figma asset url, for trace only",
+    "localPath": "Assets/GameData/AIUI/UI/Privacy/Generated/PrivacyNotice/Sprites/privacy_notice_button_bg.png",
+    "spriteName": "privacy_notice_button_bg",
+    "width": 860,
+    "height": 124,
+    "importType": "Sprite"
+  }
+]
+```
+
+`sourceUrl` 只允许作为生成记录，不能写入 prefab、运行时代码或正式配置。
+
 如果只是本次示例或跨界面共享资源，可以放入：
 
 ```text
@@ -82,13 +111,34 @@ Assets/GameData/AIUI/UI/ExampleUi/Generated/
 
 不要保留整页截图作为正式 prefab 依赖。截图只允许作为临时参考图。
 
+### 资源命名
+
+导出的贴图文件名必须稳定、可读、可重复生成：
+
+```text
+<screen_name>_<node_name>_<node_id>.<png|jpg|webp>
+privacy_notice_button_bg_282_711.png
+friend_avatar_286_755.png
+home_background_229_233.png
+```
+
+命名要求：
+
+- 全部使用小写英文、数字和下划线。
+- Figma node id 中的 `:` 替换为 `_`。
+- 同一个 Figma 节点重复生成时必须覆盖同一路径，不要追加随机后缀。
+- 纯色矩形、纯色圆角卡片、纯色按钮优先用 UGUI `Image.color` 或圆角组件还原，不要导出成贴图。
+- 复杂图片填充、头像、插画、卡牌图、背景图、无法用 UGUI 基础形状准确还原的图标，必须导出为贴图。
+
 ## Figma 读取规则
 
 1. 优先读取具体 Frame 节点，而不是只读当前选中小组件。
 2. 如果用户给的是 Figma 文件 URL，先通过 metadata 找到页面中的顶层 Frame。
 3. 对每个要生成的界面单独读取设计上下文。
 4. 截图只能用于视觉对照，不作为最终 prefab 背景。
-5. Figma 中的图片、头像、图标，应导出为单独 sprite 资源。
+5. Figma 中的图片、头像、图标、背景图片、卡牌图、带 image fill 的节点，必须导出为单独 sprite 资源。
+6. 对设计上下文中出现的所有 image asset URL，必须下载到本地工程目录，导入 Unity 后再绑定到 prefab。
+7. 对截图中可见但 metadata/code 中没有明确 asset URL 的图片节点，必须补充截图或节点级导出，不能用空白色块代替。
 
 推荐读取顺序：
 
@@ -97,6 +147,9 @@ get_metadata(file root)
 get_design_context(frame node)
 get_screenshot(frame node, for visual reference only)
 download required image assets
+write GeneratedAssetManifest.json
+import textures as Unity sprites
+bind sprites to prefab Image components
 ```
 
 ## 组件还原规则
@@ -342,7 +395,8 @@ sizeDelta = (figmaWidth, figmaHeight)
 ## 图片与图标规则
 
 1. 图标和头像使用 `Image`。
-2. 导入设置必须是 Sprite：
+2. 所有从 Figma 下载的贴图必须保存为本地文件，并作为 Unity Sprite 导入。prefab 中只能引用本地 `Sprite` 资源，不能引用远程 URL、临时文件或生成器内存对象。
+3. 导入设置必须是 Sprite：
 
 ```text
 TextureImporterType.Sprite
@@ -351,13 +405,39 @@ alphaIsTransparency = true
 mipmapEnabled = false
 ```
 
-3. 圆角图片和圆角面板优先使用项目内：
+4. 推荐补充设置：
+
+```text
+textureCompression = Uncompressed 或 High Quality
+filterMode = Bilinear
+wrapMode = Clamp
+npotScale = None
+spritePixelsPerUnit = 100
+```
+
+5. 贴图导出尺寸不得低于它在 `1080 x 1920` 设计基准中的最终显示尺寸。头像、卡牌、背景等容易模糊的资源建议至少按最终显示尺寸的 `1x` 导出；如果源图足够清晰，可按 `2x` 导出后由 Unity 缩放显示。
+6. 透明图标和不规则图片必须保留 alpha 通道，优先使用 PNG。
+7. 照片类大图可以使用 JPG，但如果 Figma 节点带圆角、透明、遮罩或叠加效果，仍优先使用 PNG。
+8. 圆角图片和圆角面板优先使用项目内：
 
 ```text
 Nobi.UiRoundedCorners.ImageWithRoundedCorners
 ```
 
-4. 已存在于项目内的图标应优先复用，不重复下载。
+9. 已存在于项目内的图标应优先复用，不重复下载。
+10. 可拉伸按钮、输入框、卡片背景如果来自图片资源，应优先配置为 `Image.Type = Sliced` 并设置合适 border，避免拉伸变形。
+11. 纯色背景、纯色描边、简单分割线不要导出贴图，应使用 UGUI 组件颜色、尺寸和圆角还原。
+12. 贴图节点必须在 prefab 层级中有清晰命名，例如：
+
+```text
+[Icon]Back
+[Image]Avatar
+[Image]CardArt
+[Image]HomeBackground
+[Image]ButtonBackground
+```
+
+13. 如果某个 Figma 图片资源下载失败，必须明确标记为生成失败并停止交付。不能用白块、灰块、透明图或截图裁片悄悄替代。
 
 ## Button 规则
 
@@ -399,6 +479,9 @@ Builder 必须做到：
 - 可重复运行。
 - 输出路径固定。
 - 自动配置 sprite import settings。
+- 自动下载 Figma image assets 到 `Assets/GameData/AIUI/UI/<Feature>/Generated/<ScreenName>/Sprites/`。
+- 自动生成或更新 `GeneratedAssetManifest.json`。
+- 自动把导入后的 `Sprite` 绑定到对应 `Image`、`Button.targetGraphic`、`Toggle`、背景图等组件。
 - 自动创建目录。
 - 自动删除废弃的旧 prefab。
 - 生成后 `AssetDatabase.SaveAssets()` 和 `AssetDatabase.Refresh()`。
@@ -438,6 +521,8 @@ Assets/GameData/UI/Main/My/ExampleMineUI.prefab
 - 是否沿用 `UITemp.prefab` 的根节点、`UIContent`、安全区适配和缩放策略。
 - 是否有清晰的页面容器、内容容器、字段组、按钮组，而不是所有节点平铺在根下。
 - 是否使用真实 UI 组件还原 Figma，而不是手机壳、整页截图、临时白块或占位图。
+- 是否已把 Figma 贴图下载为本地 Unity Sprite，并实际绑定到 prefab 中的 `Image` 或相关图形组件。
+- 是否存在 `GeneratedAssetManifest.json`，并且 manifest 中每条本地路径都能在工程中找到对应资源。
 - 是否保留足够的视觉细节：圆角、间距、状态栏、顶部标题、头像、输入框、下拉箭头、底部 Home indicator。
 - 是否在 Unity 中实际预览过，文本、图片、圆角、按钮位置都正常显示。
 - 如果新生成结果明显弱于已验收样例，必须回退重做，不能交付。
@@ -446,6 +531,9 @@ Assets/GameData/UI/Main/My/ExampleMineUI.prefab
 
 ```bash
 rg -n "Screenshot|FullPage|Friend\\.png|Mine\\.png" Assets/GameData/AIUI
+rg -n -g "!**/GeneratedAssetManifest.json" "https://www\\.figma\\.com|figma.com/api|figma asset|asset url" Assets/GameData/AIUI
+rg --files Assets/GameData/AIUI/UI | rg "\\.(png|jpg|jpeg|webp|meta|json)$"
+rg -n "\\[Image\\]Avatar|\\[Image\\]CardArt|\\[Image\\]HomeBackground|\\[Icon\\]" Assets/GameData/AIUI
 rg -n "m_Script: \\{fileID: 0\\}" Assets/GameData/AIUI
 rg -n "FriendRequestRow|MyInvitationRow" Assets/GameData/AIUI/Friend/ExampleFriendUI.prefab
 rg -n "RecentFeatures|PrimarySettingsGroup" Assets/GameData/AIUI/My/ExampleMineUI.prefab
@@ -455,10 +543,14 @@ rg -n "RecentFeatures|PrimarySettingsGroup" Assets/GameData/AIUI/My/ExampleMineU
 
 - prefab 中没有 `Screenshot` 层。
 - prefab 中没有完整页面 PNG 引用。
+- prefab、脚本、manifest 之外的运行资源中没有 Figma 临时 URL。
+- prefab 中所有需要图片显示的 `Image` 都已绑定本地 `Sprite`，不存在应有图片却 `m_Sprite: {fileID: 0}` 的节点。
 - prefab 中没有 `m_Script: {fileID: 0}`。
 - Friend prefab 不包含 Mine 页面专属组件。
 - Mine prefab 不包含 Friend 页面专属组件。
 - 所有新脚本都有 `.meta`，且 prefab 引用的 GUID 正确。
+- 所有导出的 PNG/JPG/WebP 都有 `.meta`，导入类型为 Sprite。
+- `GeneratedAssetManifest.json` 中记录的本地文件都存在，且没有未使用的大块废弃贴图。
 - 正式配置中没有 `Assets/GameData/AIUI` 引用。
 
 ## Unity 被占用时的处理规则
@@ -512,6 +604,7 @@ Assets/GameData/AIUI/Editor/ExampleUiPrefabBuilder.cs
 - 一个或多个独立 prefab。
 - prefab 必须基于 `Assets/GamerFrameWork/UIFrameWork/TempPrefabs/UITemp.prefab` 生成。
 - 对应导出的独立 sprite 资源。
+- 每个界面的 `GeneratedAssetManifest.json`。
 - 每个 prefab 对应的两个运行时脚本：`<ScreenName>UI.cs` 和 `<ScreenName>UIComponent.cs`。
 - 简短验证结果。
 
@@ -525,6 +618,8 @@ Assets/GameData/AIUI/My/ExampleMineUI.prefab
 Assets/GameData/AIUI/My/ExampleMineUI.cs
 Assets/GameData/AIUI/My/ExampleMineUIComponent.cs
 Assets/GameData/AIUI/UI/ExampleUi/Generated/
+Assets/GameData/AIUI/UI/ExampleUi/Generated/ExampleFriend/Sprites/
+Assets/GameData/AIUI/UI/ExampleUi/Generated/ExampleFriend/GeneratedAssetManifest.json
 ```
 
 ## 禁止事项总结
@@ -539,3 +634,5 @@ Assets/GameData/AIUI/UI/ExampleUi/Generated/
 8. 禁止把临时 Figma asset URL 写进 prefab 或代码。
 9. 禁止生成完成后遗留临时缓存、临时工程或旧构建 request。
 10. 禁止把一次性 prefab 生成脚本长期留在工程中，例如 `Assets/GameData/AIUI/Editor/ExampleUiPrefabBuilder.cs`。
+11. 禁止丢失 Figma 中可见的头像、图标、卡牌图、背景图等贴图资源。
+12. 禁止用白块、灰块、透明图、纯色占位图冒充贴图导出成功。

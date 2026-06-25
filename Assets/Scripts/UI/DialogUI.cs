@@ -14,6 +14,7 @@ using System.Collections.Generic;
 using GamerFrameWork;
 using XFGameFrameWork;
 using GamerFrameWork.OracleRuntime;
+using TMPro;
 
 
 public class DialogUI : WindowBase
@@ -49,6 +50,7 @@ public class DialogUI : WindowBase
     private readonly Dictionary<int, PreparedTTSAudio> _preparedTTSByMessageId = new Dictionary<int, PreparedTTSAudio>();
     private readonly Queue<System.Action> _pendingAIRequests = new Queue<System.Action>();
     private FriendDataManager.FriendData _activeAtFriend;
+    private MobileKeyboardInputAdapter _keyboardInputAdapter;
     private const float CLOUD_DIALOG_LOAD_RETRY_SECONDS = 8f;
     private const float CLOUD_DIALOG_LOAD_RETRY_INTERVAL = 0.5f;
 
@@ -84,6 +86,7 @@ public class DialogUI : WindowBase
         chatListView = uiComponent.ChatScrollViewLoopListView2;
 
         chatListView.InitListView(0, OnGetChatItemByIndex);
+        SetupKeyboardInputAdapter();
 
         // 订阅事件
         EventSystem.AddEvent(GameDataStr.RefreshChatUI, OnRefreshChatUI);
@@ -205,6 +208,45 @@ public class DialogUI : WindowBase
         if (!enableTTS) return;
 
         ttsManager = TTSManager.ResolveFor(gameObject);
+    }
+
+    private void SetupKeyboardInputAdapter()
+    {
+        if (uiComponent?.questionInputField == null)
+            return;
+
+        RectTransform footerPanel = FindChildRectTransform(transform, "FooterInputPanel");
+        if (footerPanel == null)
+        {
+            footerPanel = uiComponent.questionInputField.GetComponentInParent<RectTransform>();
+        }
+
+        if (footerPanel == null)
+            return;
+
+        _keyboardInputAdapter = footerPanel.GetComponent<MobileKeyboardInputAdapter>();
+        if (_keyboardInputAdapter == null)
+            _keyboardInputAdapter = footerPanel.gameObject.AddComponent<MobileKeyboardInputAdapter>();
+
+        _keyboardInputAdapter.Bind(footerPanel, uiComponent.questionInputField);
+    }
+
+    private static RectTransform FindChildRectTransform(Transform root, string childName)
+    {
+        if (root == null || string.IsNullOrEmpty(childName))
+            return null;
+
+        if (root.name == childName)
+            return root as RectTransform;
+
+        for (int i = 0; i < root.childCount; i++)
+        {
+            RectTransform result = FindChildRectTransform(root.GetChild(i), childName);
+            if (result != null)
+                return result;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -880,6 +922,7 @@ public class DialogUI : WindowBase
     public void OnquestionInputChange(string text)
     {
         RefreshSendButtonState(text);
+        _keyboardInputAdapter?.KeepLatestTextVisible();
     }
 
     /// <summary>
@@ -888,6 +931,7 @@ public class DialogUI : WindowBase
     public void OnquestionInputEnd(string text)
     {
         RefreshSendButtonState(text);
+        _keyboardInputAdapter?.KeepLatestTextVisible();
     }
 
     private void ClearQuestionInput()
@@ -1982,4 +2026,241 @@ public class DialogUI : WindowBase
     }
 
     #endregion
+}
+
+/// <summary>
+/// Moves the Dialog bottom input panel above the mobile soft keyboard without resizing it.
+/// </summary>
+public class MobileKeyboardInputAdapter : MonoBehaviour
+{
+    [SerializeField] private RectTransform targetPanel;
+    [SerializeField] private TMP_InputField inputField;
+    [SerializeField] private float extraSpacing = 8f;
+    [SerializeField] private float followSharpness = 18f;
+
+    private Canvas rootCanvas;
+    private Vector2 originalAnchoredPosition;
+    private bool hasOriginalPosition;
+    private float currentOffset;
+    private int lastTextLength;
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+    private int androidHiddenBottomInset;
+#endif
+
+    public void Bind(RectTransform panel, TMP_InputField field)
+    {
+        if (inputField != null)
+        {
+            inputField.onValueChanged.RemoveListener(OnInputValueChanged);
+            inputField.onSelect.RemoveListener(OnInputSelected);
+        }
+
+        targetPanel = panel;
+        inputField = field;
+        rootCanvas = targetPanel != null ? targetPanel.GetComponentInParent<Canvas>() : null;
+
+        if (targetPanel != null)
+        {
+            originalAnchoredPosition = targetPanel.anchoredPosition;
+            hasOriginalPosition = true;
+        }
+
+        ConfigureInputField();
+
+        if (inputField != null)
+        {
+            lastTextLength = inputField.text?.Length ?? 0;
+            inputField.onValueChanged.AddListener(OnInputValueChanged);
+            inputField.onSelect.AddListener(OnInputSelected);
+        }
+    }
+
+    private void Awake()
+    {
+        if (targetPanel == null)
+            targetPanel = transform as RectTransform;
+
+        if (inputField == null)
+            inputField = GetComponentInChildren<TMP_InputField>(true);
+
+        Bind(targetPanel, inputField);
+    }
+
+    private void OnEnable()
+    {
+        if (targetPanel != null && !hasOriginalPosition)
+        {
+            originalAnchoredPosition = targetPanel.anchoredPosition;
+            hasOriginalPosition = true;
+        }
+    }
+
+    private void OnDisable()
+    {
+        ResetPanelPosition();
+    }
+
+    private void OnDestroy()
+    {
+        if (inputField != null)
+        {
+            inputField.onValueChanged.RemoveListener(OnInputValueChanged);
+            inputField.onSelect.RemoveListener(OnInputSelected);
+        }
+    }
+
+    private void LateUpdate()
+    {
+        if (targetPanel == null || !hasOriginalPosition)
+            return;
+
+        float targetOffset = ShouldFollowKeyboard()
+            ? GetKeyboardHeightInCanvasUnits() + extraSpacing
+            : 0f;
+
+        if (targetOffset < 1f)
+            targetOffset = 0f;
+
+        float t = 1f - Mathf.Exp(-followSharpness * Time.unscaledDeltaTime);
+        currentOffset = Mathf.Lerp(currentOffset, targetOffset, t);
+
+        if (Mathf.Abs(currentOffset - targetOffset) < 0.5f)
+            currentOffset = targetOffset;
+
+        targetPanel.anchoredPosition = originalAnchoredPosition + Vector2.up * currentOffset;
+    }
+
+    private void ConfigureInputField()
+    {
+        if (inputField == null) return;
+
+        inputField.lineType = TMP_InputField.LineType.SingleLine;
+        inputField.resetOnDeActivation = false;
+
+        if (inputField.textComponent != null)
+        {
+            inputField.textComponent.enableWordWrapping = false;
+            inputField.textComponent.overflowMode = TextOverflowModes.Masking;
+        }
+    }
+
+    private bool ShouldFollowKeyboard()
+    {
+        if (inputField == null || !inputField.isFocused)
+            return false;
+
+#if UNITY_IOS || UNITY_ANDROID
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    private float GetKeyboardHeightInCanvasUnits()
+    {
+        float keyboardPixels = GetKeyboardHeightPixels();
+        if (keyboardPixels <= 0f)
+            return 0f;
+
+        float scaleFactor = rootCanvas != null && rootCanvas.scaleFactor > 0f
+            ? rootCanvas.scaleFactor
+            : 1f;
+
+        float canvasUnits = keyboardPixels / scaleFactor;
+        return Mathf.Min(canvasUnits, GetMaxAllowedOffset());
+    }
+
+    private float GetKeyboardHeightPixels()
+    {
+        float height = TouchScreenKeyboard.area.height;
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        height = Mathf.Max(height, GetAndroidKeyboardHeightPixels());
+#endif
+
+        float threshold = Mathf.Max(80f, Screen.height * 0.08f);
+        return height >= threshold ? height : 0f;
+    }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+    private float GetAndroidKeyboardHeightPixels()
+    {
+        try
+        {
+            using (AndroidJavaClass unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+            using (AndroidJavaObject activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
+            using (AndroidJavaObject window = activity.Call<AndroidJavaObject>("getWindow"))
+            using (AndroidJavaObject decorView = window.Call<AndroidJavaObject>("getDecorView"))
+            using (AndroidJavaObject visibleFrame = new AndroidJavaObject("android.graphics.Rect"))
+            {
+                decorView.Call("getWindowVisibleDisplayFrame", visibleFrame);
+                int visibleBottom = visibleFrame.Get<int>("bottom");
+                int rootHeight = decorView.Call<int>("getHeight");
+                int bottomInset = Mathf.Max(0, rootHeight - visibleBottom);
+                int threshold = Mathf.RoundToInt(Mathf.Max(80f, Screen.height * 0.08f));
+
+                if (bottomInset < threshold)
+                {
+                    androidHiddenBottomInset = Mathf.Max(androidHiddenBottomInset, bottomInset);
+                    return 0f;
+                }
+
+                return Mathf.Max(0, bottomInset - androidHiddenBottomInset);
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning("[MobileKeyboardInputAdapter] Android keyboard height unavailable: " + e.Message);
+            return 0f;
+        }
+    }
+#endif
+
+    private float GetMaxAllowedOffset()
+    {
+        RectTransform parentRect = targetPanel != null ? targetPanel.parent as RectTransform : null;
+        if (parentRect == null)
+            return Screen.height * 0.8f;
+
+        float panelHeight = targetPanel.rect.height;
+        return Mathf.Max(0f, parentRect.rect.height - panelHeight);
+    }
+
+    private void OnInputSelected(string _)
+    {
+        KeepLatestTextVisible();
+    }
+
+    private void OnInputValueChanged(string _)
+    {
+        KeepLatestTextVisible();
+    }
+
+    public void KeepLatestTextVisible()
+    {
+        if (inputField == null)
+            return;
+
+        string value = inputField.text ?? string.Empty;
+        int length = value.Length;
+        bool textGrew = length >= lastTextLength;
+        bool caretIsAtEnd = inputField.stringPosition >= Mathf.Max(0, length - 1)
+            || inputField.caretPosition >= Mathf.Max(0, length - 1);
+
+        if (inputField.isFocused && textGrew && caretIsAtEnd)
+            inputField.MoveTextEnd(false);
+
+        inputField.ForceLabelUpdate();
+        lastTextLength = length;
+    }
+
+    private void ResetPanelPosition()
+    {
+        if (targetPanel == null || !hasOriginalPosition)
+            return;
+
+        currentOffset = 0f;
+        targetPanel.anchoredPosition = originalAnchoredPosition;
+    }
 }
