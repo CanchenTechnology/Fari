@@ -1077,7 +1077,8 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
                             Debug.Log("[FirebaseAuthManager] Apple 头像下载并缓存成功");
                             OnUserInfoUpdated?.Invoke(CurrentUser);
                         }
-                    }
+                    },
+                    true
                 );
                 break;
             case AuthProvider.Facebook:
@@ -1090,7 +1091,8 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
                             Debug.Log("[FirebaseAuthManager] Facebook 头像下载并缓存成功");
                             OnUserInfoUpdated?.Invoke(CurrentUser);
                         }
-                    }
+                    },
+                    true
                 );
                 break;
             default:
@@ -1104,7 +1106,8 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
                             Debug.Log("[FirebaseAuthManager] 头像下载并缓存成功");
                             OnUserInfoUpdated?.Invoke(CurrentUser);
                         }
-                    }
+                    },
+                    true
                 );
                 break;
         }

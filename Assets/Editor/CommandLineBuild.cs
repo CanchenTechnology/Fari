@@ -26,6 +26,9 @@ public static class CommandLineBuild
 
         EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.iOS, BuildTarget.iOS);
         ValidateRelationshipDivinationLocalFlow();
+        GenerateHybridClrFiles();
+        BuildYooAssetPackage(BuildTarget.iOS);
+        SetGameStartPlayMode(EPlayMode.OfflinePlayMode);
 
         var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
         {

@@ -181,12 +181,16 @@ public static class AppleUserInfoHelper
     #region 头像下载与本地缓存
 
     private const string AVATAR_CACHE_FILENAME = "user_avatar_apple.png";
+    private const string AVATAR_CACHE_SOURCE_URL_FILENAME = AVATAR_CACHE_FILENAME + ".url";
 
     /// <summary>
     /// 本地头像缓存路径（persistentDataPath/user_avatar_apple.png）
     /// </summary>
     public static string LocalAvatarPath =>
         System.IO.Path.Combine(Application.persistentDataPath, AVATAR_CACHE_FILENAME);
+
+    private static string LocalAvatarSourceUrlPath =>
+        System.IO.Path.Combine(Application.persistentDataPath, AVATAR_CACHE_SOURCE_URL_FILENAME);
 
     /// <summary>
     /// 本地是否存在头像缓存
@@ -206,30 +210,25 @@ public static class AppleUserInfoHelper
         Action<Sprite> onComplete,
         bool forceRefresh = false)
     {
-        // 1. 优先读本地缓存
-        if (!forceRefresh && System.IO.File.Exists(LocalAvatarPath))
+        string normalizedUrl = NormalizeAvatarUrl(url);
+
+        // 1. 优先读当前 URL 对应的本地缓存
+        if (!forceRefresh && TryLoadCachedAvatar(normalizedUrl, out Sprite cachedSprite))
         {
-            byte[] bytes = System.IO.File.ReadAllBytes(LocalAvatarPath);
-            Texture2D tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-            if (tex.LoadImage(bytes))
-            {
-                Debug.Log("[AppleUserInfoHelper] 头像已从本地缓存加载");
-                onComplete?.Invoke(TextureToSprite(tex));
-                yield break;
-            }
-            // LoadImage 失败，继续走网络下载
-            UnityEngine.Object.Destroy(tex);
+            Debug.Log("[AppleUserInfoHelper] 头像已从本地缓存加载");
+            onComplete?.Invoke(cachedSprite);
+            yield break;
         }
 
         // 2. 网络下载
-        if (string.IsNullOrEmpty(url))
+        if (string.IsNullOrEmpty(normalizedUrl))
         {
             Debug.LogWarning("[AppleUserInfoHelper] 头像 URL 为空，跳过下载");
             onComplete?.Invoke(null);
             yield break;
         }
 
-        using (var req = UnityWebRequestTexture.GetTexture(url))
+        using (var req = UnityWebRequestTexture.GetTexture(normalizedUrl))
         {
             yield return req.SendWebRequest();
 
@@ -239,7 +238,7 @@ public static class AppleUserInfoHelper
 
                 // 3. 保存到本地 PNG
                 byte[] pngBytes = tex.EncodeToPNG();
-                System.IO.File.WriteAllBytes(LocalAvatarPath, pngBytes);
+                SaveLocalAvatarCache(pngBytes, normalizedUrl);
                 Debug.Log($"[AppleUserInfoHelper] 头像已下载并缓存到: {LocalAvatarPath}");
 
                 onComplete?.Invoke(TextureToSprite(tex));
@@ -257,11 +256,74 @@ public static class AppleUserInfoHelper
     /// </summary>
     public static void ClearLocalAvatarCache()
     {
-        if (System.IO.File.Exists(LocalAvatarPath))
+        bool hadCache = System.IO.File.Exists(LocalAvatarPath);
+        DeleteLocalAvatarCacheFiles();
+        if (hadCache)
         {
-            System.IO.File.Delete(LocalAvatarPath);
             Debug.Log("[AppleUserInfoHelper] 本地头像缓存已清除");
         }
+    }
+
+    public static void SaveLocalAvatarCache(byte[] imageBytes, string sourceUrl)
+    {
+        if (imageBytes == null || imageBytes.Length == 0) return;
+
+        try
+        {
+            System.IO.File.WriteAllBytes(LocalAvatarPath, imageBytes);
+            System.IO.File.WriteAllText(LocalAvatarSourceUrlPath, NormalizeAvatarUrl(sourceUrl));
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("[AppleUserInfoHelper] 写入头像缓存失败: " + e.Message);
+        }
+    }
+
+    private static bool TryLoadCachedAvatar(string expectedUrl, out Sprite sprite)
+    {
+        sprite = null;
+        if (string.IsNullOrEmpty(expectedUrl) || !System.IO.File.Exists(LocalAvatarPath))
+            return false;
+
+        if (!IsCachedAvatarForUrl(expectedUrl))
+        {
+            DeleteLocalAvatarCacheFiles();
+            return false;
+        }
+
+        byte[] bytes = System.IO.File.ReadAllBytes(LocalAvatarPath);
+        Texture2D tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+        if (tex.LoadImage(bytes))
+        {
+            sprite = TextureToSprite(tex);
+            return sprite != null;
+        }
+
+        UnityEngine.Object.Destroy(tex);
+        DeleteLocalAvatarCacheFiles();
+        return false;
+    }
+
+    private static bool IsCachedAvatarForUrl(string expectedUrl)
+    {
+        if (!System.IO.File.Exists(LocalAvatarSourceUrlPath))
+            return false;
+
+        string cachedUrl = NormalizeAvatarUrl(System.IO.File.ReadAllText(LocalAvatarSourceUrlPath));
+        return string.Equals(cachedUrl, expectedUrl, StringComparison.Ordinal);
+    }
+
+    private static void DeleteLocalAvatarCacheFiles()
+    {
+        if (System.IO.File.Exists(LocalAvatarPath))
+            System.IO.File.Delete(LocalAvatarPath);
+        if (System.IO.File.Exists(LocalAvatarSourceUrlPath))
+            System.IO.File.Delete(LocalAvatarSourceUrlPath);
+    }
+
+    private static string NormalizeAvatarUrl(string url)
+    {
+        return (url ?? string.Empty).Trim();
     }
 
     private static Sprite TextureToSprite(Texture2D tex)

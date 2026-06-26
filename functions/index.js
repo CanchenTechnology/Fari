@@ -5608,6 +5608,526 @@ function buildManualFriendInviteIncomingDoc(requesterProfile, decoded, note = ""
   };
 }
 
+const ADMIN_TEST_REAL_FRIEND_PREFIX = "test_real_friend_";
+const ADMIN_TEST_DATA_SOURCE = "adminSeedTestData";
+const ADMIN_TEST_FRIEND_VARIANTS = Object.freeze({
+  tarot: {
+    label: "塔罗测试好友",
+    displayName: "星尘测试好友",
+    birthday: "1998-11-03",
+    birthTime: "22:15",
+    city: "中国 · 上海",
+    relationship: "真实好友",
+    bio: "公开测试资料：用于验证好友、聊天、每日神谕和占卜历史展示。",
+    cardId: "the_star",
+    cardName: "星星",
+    orientation: "upright",
+    scene: "friend_relationship_divination",
+    spreadKind: "relationship_tension",
+  },
+  astrology: {
+    label: "星盘测试好友",
+    displayName: "晨星测试好友",
+    birthday: "2000-03-18",
+    birthTime: "06:40",
+    city: "美国 · 华盛顿州 · 塔科马",
+    relationship: "真实好友",
+    bio: "公开测试资料：用于验证出生资料、公开资料搜索和好友动态。",
+    cardId: "temperance",
+    cardName: "节制",
+    orientation: "upright",
+    scene: "astrology_friend_reading",
+    spreadKind: "three_card",
+  },
+  relationship: {
+    label: "关系占卜测试好友",
+    displayName: "月野测试好友",
+    birthday: "1996-07-21",
+    birthTime: "13:05",
+    city: "中国 · 成都",
+    relationship: "真实好友",
+    bio: "公开测试资料：用于验证双人关系占卜、聊天上下文和历史记录。",
+    cardId: "the_lovers",
+    cardName: "恋人",
+    orientation: "upright",
+    scene: "friend_relationship_divination",
+    spreadKind: "relationship_tension",
+  },
+});
+
+function parseAdminBoolean(value, fallback = false) {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  const normalized = String(value).trim().toLowerCase();
+  if (["true", "1", "yes", "y", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "n", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
+function getAdminTestFriendVariant(value) {
+  const key = cleanString(value, "tarot", 60).toLowerCase();
+  return ADMIN_TEST_FRIEND_VARIANTS[key] ? key : "tarot";
+}
+
+function buildAdminTestSeedId() {
+  return `${Date.now().toString(36)}_${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
+}
+
+function getAdminSeedDate(offsetDays = 0) {
+  const date = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000);
+  return date.toISOString().slice(0, 10);
+}
+
+function buildAdminSeedTimestamp(offsetMinutes = 0) {
+  return admin.firestore.Timestamp.fromDate(new Date(Date.now() + offsetMinutes * 60 * 1000));
+}
+
+function buildAdminSeedIso(offsetMinutes = 0) {
+  return new Date(Date.now() + offsetMinutes * 60 * 1000).toISOString();
+}
+
+function buildAdminSeedTestFriendProfile(ownerUid, seedId, variantKey) {
+  const variant = ADMIN_TEST_FRIEND_VARIANTS[variantKey] || ADMIN_TEST_FRIEND_VARIANTS.tarot;
+  const shortSeed = seedId.replace(/[^A-Za-z0-9]/g, "").slice(-8);
+  const uid = `${ADMIN_TEST_REAL_FRIEND_PREFIX}${shortSeed}`;
+  const email = `fari.test.${shortSeed.toLowerCase()}@example.com`;
+  const photoUrl = `https://api.dicebear.com/9.x/notionists-neutral/png?seed=${encodeURIComponent(uid)}`;
+  return {
+    uid,
+    email,
+    emailLower: normalizeSearchText(email),
+    displayName: variant.displayName,
+    displayNameLower: normalizeSearchText(variant.displayName),
+    photoUrl,
+    birthday: variant.birthday,
+    birthTime: variant.birthTime,
+    city: variant.city,
+    relationship: variant.relationship,
+    bio: variant.bio,
+    ownerUid,
+    seedId,
+    variantKey,
+    variant,
+  };
+}
+
+function buildAdminSeedSearchKeywords(profile) {
+  const keywords = new Set(buildSearchKeywords(profile.displayName, profile.email));
+  [
+    "test",
+    "测试",
+    "测试好友",
+    "真实好友",
+    profile.uid,
+    profile.variantKey,
+  ].forEach((keyword) => addSearchKeyword(keywords, keyword));
+  return [...keywords];
+}
+
+function buildAdminSeedUserData(profile, decoded) {
+  const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
+  const searchKeywords = buildAdminSeedSearchKeywords(profile);
+  const lastActiveUnixMs = Date.now();
+  return {
+    uid: profile.uid,
+    displayName: profile.displayName,
+    displayNameLower: profile.displayNameLower,
+    searchKeywords,
+    email: profile.email,
+    emailLower: profile.emailLower,
+    photoUrl: profile.photoUrl,
+    avatarStoragePath: "",
+    birthday: profile.birthday,
+    birthTime: profile.birthTime,
+    city: profile.city,
+    bio: profile.bio,
+    loginType: "Admin Test Data",
+    membershipStatus: "free",
+    isEmailVerified: true,
+    isOnline: false,
+    lastActiveUnixMs,
+    lastActiveAt: buildAdminSeedTimestamp(-12),
+    presenceUpdatedAt: buildAdminSeedTimestamp(-12),
+    presenceSource: ADMIN_TEST_DATA_SOURCE,
+    isTestData: true,
+    testDataKind: "real_friend_seed",
+    testOwnerUid: profile.ownerUid,
+    testSeedId: profile.seedId,
+    testVariant: profile.variantKey,
+    createdAt: serverTimestamp,
+    profileUpdatedAt: serverTimestamp,
+    updatedAt: serverTimestamp,
+    adminSeededBy: decoded.uid,
+    adminSeededAt: serverTimestamp,
+  };
+}
+
+function buildAdminSeedPublicProfileData(profile, decoded) {
+  const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
+  return {
+    uid: profile.uid,
+    displayName: profile.displayName,
+    displayNameLower: profile.displayNameLower,
+    searchKeywords: buildAdminSeedSearchKeywords(profile),
+    email: profile.email,
+    emailLower: profile.emailLower,
+    photoUrl: profile.photoUrl,
+    avatarStoragePath: "",
+    bio: profile.bio,
+    birthday: profile.birthday,
+    birthTime: profile.birthTime,
+    city: profile.city,
+    isOnline: false,
+    lastActiveUnixMs: Date.now(),
+    lastActiveAt: buildAdminSeedTimestamp(-12),
+    presenceUpdatedAt: buildAdminSeedTimestamp(-12),
+    presenceSource: ADMIN_TEST_DATA_SOURCE,
+    isTestData: true,
+    testDataKind: "real_friend_seed",
+    testOwnerUid: profile.ownerUid,
+    testSeedId: profile.seedId,
+    testVariant: profile.variantKey,
+    updatedAt: serverTimestamp,
+    adminSeededBy: decoded.uid,
+  };
+}
+
+function buildAdminSeedFriendDoc(targetProfile, decoded, note = "") {
+  return {
+    uid: targetProfile.uid,
+    displayName: targetProfile.displayName,
+    email: targetProfile.email,
+    photoUrl: targetProfile.photoUrl,
+    relationship: targetProfile.relationship || "真实好友",
+    birthday: targetProfile.birthday || "",
+    birthTime: targetProfile.birthTime || "",
+    city: targetProfile.city || "",
+    status: "friend",
+    source: ADMIN_TEST_DATA_SOURCE,
+    adminNote: note,
+    isTestData: true,
+    testSeedId: targetProfile.seedId || "",
+    testVariant: targetProfile.variantKey || "",
+    adminAddedBy: decoded.uid,
+    adminAddedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+function buildAdminSeedFriendContext(friendProfile) {
+  return [
+    `姓名：${friendProfile.displayName}`,
+    `Firebase UID：${friendProfile.uid}`,
+    `邮箱：${friendProfile.email}`,
+    `生日：${friendProfile.birthday}`,
+    `出生时间：${friendProfile.birthTime}`,
+    `城市：${friendProfile.city}`,
+    `类型：后台测试真实好友`,
+  ].join("\n");
+}
+
+function buildAdminSeedLockedCards(variant) {
+  return [
+    {
+      positionKey: "current_state",
+      position: "当前状态",
+      cardId: variant.cardId,
+      cardName: variant.cardName,
+      orientation: variant.orientation,
+    },
+    {
+      positionKey: "hidden_need",
+      position: "隐藏需求",
+      cardId: "the_moon",
+      cardName: "月亮",
+      orientation: "reversed",
+    },
+    {
+      positionKey: "next_action",
+      position: "下一步行动",
+      cardId: "temperance",
+      cardName: "节制",
+      orientation: "upright",
+    },
+  ];
+}
+
+function buildAdminSeedRelationshipCards(variant) {
+  return [
+    {
+      positionKey: "initiator_private",
+      position: "你的内心与看法",
+      cardId: variant.cardId,
+      cardName: variant.cardName,
+      orientation: variant.orientation,
+      visibleTo: "initiator",
+    },
+    {
+      positionKey: "shared",
+      position: "共同揭示",
+      cardId: "temperance",
+      cardName: "节制",
+      orientation: "upright",
+      visibleTo: "both",
+    },
+    {
+      positionKey: "receiver_private",
+      position: "对方的内心与想法",
+      cardId: "the_moon",
+      cardName: "月亮",
+      orientation: "reversed",
+      visibleTo: "receiver",
+    },
+  ];
+}
+
+function buildAdminSeedDivinationRecord(profile, ownerProfile, readingId, relationshipId, variant) {
+  const ownerName = ownerProfile.displayName || ownerProfile.email || "当前用户";
+  return {
+    readingId,
+    question: `我和 ${profile.displayName} 的关系接下来适合如何推进？`,
+    scene: variant.scene,
+    spreadKind: variant.spreadKind,
+    lockedCards: buildAdminSeedLockedCards(variant),
+    shortVerdict: `${ownerName} 与 ${profile.displayName} 的测试占卜：重点是放慢节奏，用清晰边界换取更稳定的互动。`,
+    judgeContent: [
+      `这是一条后台生成的测试占卜记录，用于验证客户端历史记录与好友上下文。`,
+      `核心牌：${variant.cardName}（${variant.orientation === "reversed" ? "逆位" : "正位"}）。`,
+      "关系的关键不在于立刻得到答案，而在于看见双方真实的节奏。",
+    ].join("\n"),
+    adviceContent: "建议用一个很小的行动重新建立信任，例如确认一次具体时间、明确一次期待，或者留出一点独处空间。",
+    topics: [
+      "我们现在最需要确认的边界是什么？",
+      "这段关系下一步最小的行动是什么？",
+      "我怎样表达期待才不会给对方压力？",
+    ],
+    oracleId: "tarot",
+    friendUid: profile.uid,
+    friendName: profile.displayName,
+    activeRelationshipId: relationshipId,
+    isTestData: true,
+    source: ADMIN_TEST_DATA_SOURCE,
+    testSeedId: profile.seedId,
+    createdAt: buildAdminSeedTimestamp(-20),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+function buildAdminSeedDailyOracle(profile, date, variant) {
+  return {
+    date,
+    cardId: variant.cardId,
+    cardName: variant.cardName,
+    orientation: variant.orientation,
+    title: `${profile.displayName} 的测试每日牌`,
+    oracle: `${variant.cardName}提醒今天适合把注意力放回真实感受，少猜测，多确认。`,
+    detail: "这是一条后台生成的每日神谕测试记录，用于验证好友动态、公开摘要和个人历史展示。",
+    dos: ["主动确认一件小事", "把感受写下来", "给关系留一点空间"],
+    donts: ["不要用沉默试探", "不要急着下结论"],
+    microAction: "给一个重要的人发送一句清晰而温和的问候。",
+    locale: "zh-CN",
+    oracleId: "tarot",
+    syncEnabled: true,
+    visibility: "real_friends",
+    summaryOnly: false,
+    isTestData: true,
+    source: ADMIN_TEST_DATA_SOURCE,
+    testSeedId: profile.seedId,
+    createdAtLocal: buildAdminSeedIso(-18),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+function buildAdminSeedDailySummary(profile, date, variant) {
+  return {
+    ownerUid: profile.uid,
+    date,
+    cardId: variant.cardId,
+    cardName: variant.cardName,
+    orientation: variant.orientation,
+    title: `${profile.displayName} 的测试每日牌`,
+    oracle: `${variant.cardName}提醒今天适合少猜测，多确认。`,
+    microAction: "发送一句清晰而温和的问候。",
+    locale: "zh-CN",
+    oracleId: "tarot",
+    syncEnabled: true,
+    visibility: "real_friends",
+    summaryOnly: true,
+    isTestData: true,
+    source: ADMIN_TEST_DATA_SOURCE,
+    testSeedId: profile.seedId,
+    createdAtLocal: buildAdminSeedIso(-18),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+function buildAdminSeedRelationshipDivination(ownerProfile, friendProfile, relationshipId, variant) {
+  return {
+    readingId: relationshipId,
+    initiatorUid: ownerProfile.uid,
+    receiverUid: friendProfile.uid,
+    initiatorName: ownerProfile.displayName || ownerProfile.email || "当前用户",
+    receiverName: friendProfile.displayName,
+    question: `我和 ${friendProfile.displayName} 的关系接下来会如何发展？`,
+    status: "completed",
+    initiatorRevealed: true,
+    receiverJoined: true,
+    receiverRevealed: true,
+    cards: buildAdminSeedRelationshipCards(variant),
+    oracleId: "tarot",
+    isTestData: true,
+    source: ADMIN_TEST_DATA_SOURCE,
+    testSeedId: friendProfile.seedId,
+    createdAt: buildAdminSeedTimestamp(-16),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    completedAt: buildAdminSeedTimestamp(-14),
+  };
+}
+
+function buildAdminSeedDialogMessages(friendProfile, readingId, relationshipId, variant) {
+  const friendContext = buildAdminSeedFriendContext(friendProfile);
+  const userQuestion = `我想测试一下和 ${friendProfile.displayName} 的关系占卜。`;
+  const aiAnswer = [
+    `${friendProfile.displayName} 的公开测试资料已经进入上下文。`,
+    `这次测试牌面以 ${variant.cardName} 为核心：适合验证聊天记录、好友资料、占卜历史和关系占卜跳转。`,
+    "建议在客户端检查：好友列表、好友动态、占卜历史、对话上下文是否都能读取到。",
+  ].join("\n");
+  const messages = [
+    buildDialogSessionMessage(0, "User", userQuestion, "Tarot", `seed_${friendProfile.seedId}_user`),
+    buildDialogSessionMessage(1, "AI", aiAnswer, "Tarot", `seed_${friendProfile.seedId}_ai`),
+  ];
+
+  messages[0].friendName = friendProfile.displayName;
+  messages[0].friendContext = friendContext;
+  messages[0].readingId = readingId;
+  messages[0].divinationQuestion = userQuestion;
+  messages[0].divinationScene = variant.scene;
+  messages[0].divinationCreatedAt = buildAdminSeedIso(-20);
+  messages[0].createdAt = buildAdminSeedIso(-21);
+
+  messages[1].friendName = friendProfile.displayName;
+  messages[1].friendContext = friendContext;
+  messages[1].readingId = readingId;
+  messages[1].divinationQuestion = userQuestion;
+  messages[1].divinationScene = variant.scene;
+  messages[1].divinationCreatedAt = buildAdminSeedIso(-20);
+  messages[1].shortVerdict = `${friendProfile.displayName} 的测试聊天已关联到占卜记录。`;
+  messages[1].judgeContent = "后台生成的 AI 回复，用于验证聊天消息、好友上下文和占卜记录关联。";
+  messages[1].adviceContent = "在客户端打开该用户后，检查好友、聊天、每日牌和历史记录是否都能展示。";
+  messages[1].followupTopics = [
+    "继续追问这个好友最近的状态",
+    "查看这段关系的下一步行动",
+    "生成一次新的测试关系占卜",
+  ];
+  messages[1].spreadKind = variant.spreadKind;
+  messages[1].spreadCardsDrawn = true;
+  messages[1].spreadDrawnCards = buildAdminSeedLockedCards(variant).map((card) => ({
+    cardId: card.cardId,
+    upright: card.orientation !== "reversed",
+  }));
+  messages[1].contextAttachments = [
+    {
+      contextType: "Friend",
+      id: friendProfile.uid,
+      title: friendProfile.displayName,
+      subtitle: friendProfile.email,
+      preview: friendContext,
+      payload: JSON.stringify({
+        uid: friendProfile.uid,
+        relationshipId,
+        readingId,
+      }),
+      source: ADMIN_TEST_DATA_SOURCE,
+      createdAt: buildAdminSeedIso(-21),
+    },
+  ];
+  messages[1].createdAt = buildAdminSeedIso(-19);
+
+  return {
+    messages,
+    apiMessages: [
+      { role: "user", content: userQuestion },
+      { role: "assistant", content: aiAnswer },
+    ],
+    friendContext,
+  };
+}
+
+function buildAdminSeedDialogSession(friendProfile, readingId, relationshipId, variant) {
+  const dialog = buildAdminSeedDialogMessages(friendProfile, readingId, relationshipId, variant);
+  return {
+    schemaVersion: 1,
+    messages: dialog.messages,
+    apiMessages: dialog.apiMessages,
+    activeReadingId: readingId,
+    activeReadingState: "completed",
+    activeActionKind: "admin_seed_test_friend",
+    activeRelationshipId: relationshipId,
+    activeFriendContext: dialog.friendContext,
+    activeContextAttachments: [
+      {
+        contextType: "Friend",
+        id: friendProfile.uid,
+        title: friendProfile.displayName,
+        subtitle: friendProfile.email,
+        preview: dialog.friendContext,
+        payload: JSON.stringify({ uid: friendProfile.uid }),
+        source: ADMIN_TEST_DATA_SOURCE,
+        createdAt: buildAdminSeedIso(-21),
+      },
+    ],
+    savedAtLocal: buildAdminSeedIso(-18),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    source: ADMIN_TEST_DATA_SOURCE,
+    isTestData: true,
+    testSeedId: friendProfile.seedId,
+  };
+}
+
+async function appendAdminSeedDefaultDialog(uid, friendProfile, readingId, relationshipId, variant) {
+  const ref = db.collection("users").doc(uid).collection(DIALOG_SESSION_COLLECTION).doc(DEFAULT_DIALOG_SESSION_ID);
+  const snap = await ref.get().catch(() => null);
+  const existing = snap?.exists ? snap.data() || {} : {};
+  const messages = Array.isArray(existing.messages) ? existing.messages : [];
+  const apiMessages = Array.isArray(existing.apiMessages) ? existing.apiMessages : [];
+  const dialog = buildAdminSeedDialogMessages(friendProfile, readingId, relationshipId, variant);
+  const nextId = getNextDialogMessageId(messages);
+  const seededMessages = dialog.messages.map((message, index) => ({
+    ...message,
+    id: nextId + index,
+  }));
+  const nextMessages = [...messages, ...seededMessages].slice(-120);
+  const nextApiMessages = [...apiMessages, ...dialog.apiMessages].slice(-80);
+
+  await ref.set({
+    schemaVersion: 1,
+    messages: nextMessages,
+    apiMessages: nextApiMessages,
+    activeReadingId: readingId,
+    activeReadingState: "completed",
+    activeActionKind: "admin_seed_test_friend",
+    activeRelationshipId: relationshipId,
+    activeFriendContext: dialog.friendContext,
+    activeContextAttachments: [
+      {
+        contextType: "Friend",
+        id: friendProfile.uid,
+        title: friendProfile.displayName,
+        subtitle: friendProfile.email,
+        preview: dialog.friendContext,
+        payload: JSON.stringify({ uid: friendProfile.uid }),
+        source: ADMIN_TEST_DATA_SOURCE,
+        createdAt: buildAdminSeedIso(-21),
+      },
+    ],
+    savedAtLocal: buildAdminSeedIso(-18),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    lastAdminSeedTestDataAt: admin.firestore.FieldValue.serverTimestamp(),
+    lastAdminSeedTestDataId: friendProfile.seedId,
+  }, { merge: true });
+}
+
 exports.adminAddRealFriend = onRequest(runtime, async (req, res) => {
   if (!requireMethod(req, res, "POST")) return;
   const decoded = await requireAdmin(req, res);
@@ -5761,6 +6281,162 @@ exports.adminAddVirtualFriend = onRequest(runtime, async (req, res) => {
   } catch (error) {
     console.error("[adminAddVirtualFriend]", error);
     json(res, error.status || 500, { error: error.message || "Add virtual friend failed" });
+  }
+});
+
+exports.adminSeedTestRealFriend = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const ownerUid = await resolveAdminUserUid({
+      uid: req.body?.uid || req.body?.ownerUid,
+      email: req.body?.email || req.body?.ownerEmail,
+      search: req.body?.ownerSearch,
+    });
+    if (!ownerUid) {
+      throw createHttpError(400, "Owner user is required");
+    }
+
+    const variantKey = getAdminTestFriendVariant(req.body?.variant);
+    const seedId = buildAdminTestSeedId();
+    const friendProfile = buildAdminSeedTestFriendProfile(ownerUid, seedId, variantKey);
+    const ownerProfile = await getAdminUserFriendProfile(ownerUid);
+    const ownerContextProfile = {
+      uid: ownerProfile.uid,
+      displayName: ownerProfile.displayName || ownerProfile.email || ownerUid,
+      email: ownerProfile.email || "",
+      photoUrl: ownerProfile.photoUrl || "",
+      birthday: "",
+      birthTime: "",
+      city: "",
+      relationship: "真实好友",
+      seedId,
+      variantKey,
+    };
+    const variant = friendProfile.variant;
+    const readingId = `admin_seed_reading_${seedId}`;
+    const friendReadingId = `admin_seed_friend_reading_${seedId}`;
+    const relationshipId = `rel_debug_${seedId}`;
+    const sessionId = `test_friend_${seedId}`;
+    const today = getAdminSeedDate(0);
+    const note = cleanString(
+      req.body?.note,
+      "后台生成测试真实好友：包含公开资料、聊天、每日神谕和占卜记录。",
+      500,
+    );
+    const attachDefaultDialog = parseAdminBoolean(req.body?.attachDefaultDialog, true);
+    const ownerRef = db.collection("users").doc(ownerUid);
+    const friendRef = db.collection("users").doc(friendProfile.uid);
+    const publicProfileRef = db.collection("public_profiles").doc(friendProfile.uid);
+    const writtenPaths = [];
+    const batch = db.batch();
+
+    batch.set(friendRef, buildAdminSeedUserData(friendProfile, decoded), { merge: true });
+    writtenPaths.push(`users/${friendProfile.uid}`);
+    batch.set(publicProfileRef, buildAdminSeedPublicProfileData(friendProfile, decoded), { merge: true });
+    writtenPaths.push(`public_profiles/${friendProfile.uid}`);
+
+    batch.set(
+      ownerRef.collection("friends").doc(friendProfile.uid),
+      buildAdminSeedFriendDoc(friendProfile, decoded, note),
+      { merge: true },
+    );
+    writtenPaths.push(`users/${ownerUid}/friends/${friendProfile.uid}`);
+    batch.set(
+      friendRef.collection("friends").doc(ownerUid),
+      buildAdminSeedFriendDoc(ownerContextProfile, decoded, "后台测试好友反向关系"),
+      { merge: true },
+    );
+    writtenPaths.push(`users/${friendProfile.uid}/friends/${ownerUid}`);
+
+    batch.set(
+      friendRef.collection("daily_oracles").doc(today),
+      buildAdminSeedDailyOracle(friendProfile, today, variant),
+      { merge: true },
+    );
+    writtenPaths.push(`users/${friendProfile.uid}/daily_oracles/${today}`);
+    batch.set(
+      db.collection("daily_oracle_summaries").doc(`${friendProfile.uid}_${today}`),
+      buildAdminSeedDailySummary(friendProfile, today, variant),
+      { merge: true },
+    );
+    writtenPaths.push(`daily_oracle_summaries/${friendProfile.uid}_${today}`);
+
+    batch.set(
+      ownerRef.collection("divination_records").doc(readingId),
+      buildAdminSeedDivinationRecord(friendProfile, ownerProfile, readingId, relationshipId, variant),
+      { merge: true },
+    );
+    writtenPaths.push(`users/${ownerUid}/divination_records/${readingId}`);
+    batch.set(
+      friendRef.collection("divination_records").doc(friendReadingId),
+      buildAdminSeedDivinationRecord(ownerContextProfile, friendProfile, friendReadingId, relationshipId, variant),
+      { merge: true },
+    );
+    writtenPaths.push(`users/${friendProfile.uid}/divination_records/${friendReadingId}`);
+
+    batch.set(
+      db.collection("relationship_divinations").doc(relationshipId),
+      buildAdminSeedRelationshipDivination(ownerContextProfile, friendProfile, relationshipId, variant),
+      { merge: true },
+    );
+    writtenPaths.push(`relationship_divinations/${relationshipId}`);
+    batch.set(
+      ownerRef.collection(DIALOG_SESSION_COLLECTION).doc(sessionId),
+      buildAdminSeedDialogSession(friendProfile, readingId, relationshipId, variant),
+      { merge: true },
+    );
+    writtenPaths.push(`users/${ownerUid}/${DIALOG_SESSION_COLLECTION}/${sessionId}`);
+    batch.set(
+      friendRef.collection(DIALOG_SESSION_COLLECTION).doc(DEFAULT_DIALOG_SESSION_ID),
+      buildAdminSeedDialogSession(ownerContextProfile, friendReadingId, relationshipId, variant),
+      { merge: true },
+    );
+    writtenPaths.push(`users/${friendProfile.uid}/${DIALOG_SESSION_COLLECTION}/${DEFAULT_DIALOG_SESSION_ID}`);
+
+    await batch.commit();
+
+    if (attachDefaultDialog) {
+      await appendAdminSeedDefaultDialog(ownerUid, friendProfile, readingId, relationshipId, variant);
+      writtenPaths.push(`users/${ownerUid}/${DIALOG_SESSION_COLLECTION}/${DEFAULT_DIALOG_SESSION_ID}`);
+    }
+
+    await writeAdminAuditLog(decoded, "friend.test_seed", {
+      type: "test_real_friend",
+      id: friendProfile.uid,
+      uid: ownerUid,
+      path: `users/${ownerUid}/friends/${friendProfile.uid}`,
+    }, {
+      ownerUid,
+      friendUid: friendProfile.uid,
+      seedId,
+      variant: variantKey,
+      attachDefaultDialog,
+      writtenPaths,
+    }, req);
+
+    const bundle = await buildAdminUserBundle(ownerUid, { limit: 12 });
+    json(res, 200, {
+      ok: true,
+      uid: ownerUid,
+      friendUid: friendProfile.uid,
+      seedId,
+      variant: variantKey,
+      attachDefaultDialog,
+      writtenPaths,
+      friend: {
+        uid: friendProfile.uid,
+        displayName: friendProfile.displayName,
+        email: friendProfile.email,
+        photoUrl: friendProfile.photoUrl,
+      },
+      bundle,
+    });
+  } catch (error) {
+    console.error("[adminSeedTestRealFriend]", error);
+    json(res, error.status || 500, { error: error.message || "Seed test real friend failed" });
   }
 });
 

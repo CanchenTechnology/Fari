@@ -152,12 +152,6 @@ public static class FriendAvatarImageUtility
 
     public static IEnumerator LoadCurrentUserAvatarCoroutine(Action<Sprite, string> onComplete)
     {
-        if (TryLoadKnownAccountAvatarFromCache(out Sprite cachedSprite, out string cachedPath))
-        {
-            onComplete?.Invoke(cachedSprite, cachedPath);
-            yield break;
-        }
-
         UserDataManager userData = UserDataManager.Instance;
         string photoUrl = userData != null ? userData.PhotoUrl : string.Empty;
         LoginType loginType = userData != null ? userData.CurrentLoginType : LoginType.Email;
@@ -283,36 +277,6 @@ public static class FriendAvatarImageUtility
         {
             onError?.Invoke("处理头像图片失败: " + e.Message);
         }
-    }
-
-    private static bool TryLoadKnownAccountAvatarFromCache(out Sprite sprite, out string path)
-    {
-        UserDataManager userData = UserDataManager.Instance;
-        if (userData != null && TryLoadSpriteFromPath(GetPreferredAccountCachePath(userData.CurrentLoginType), out sprite))
-        {
-            path = GetPreferredAccountCachePath(userData.CurrentLoginType);
-            return true;
-        }
-
-        string[] knownPaths =
-        {
-            GoogleUserInfoHelper.LocalAvatarPath,
-            AppleUserInfoHelper.LocalAvatarPath,
-            FacebookUserInfoHelper.LocalAvatarPath,
-        };
-
-        foreach (string knownPath in knownPaths)
-        {
-            if (TryLoadSpriteFromPath(knownPath, out sprite))
-            {
-                path = knownPath;
-                return true;
-            }
-        }
-
-        sprite = null;
-        path = string.Empty;
-        return false;
     }
 
     private static string GetPreferredAccountCachePath(LoginType loginType)

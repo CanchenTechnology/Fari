@@ -12,8 +12,28 @@ public static class FariIOSContactsPostprocessor
     {
         if (target != BuildTarget.iOS) return;
 
+        AddGoogleSignInPod(pathToBuiltProject);
         AddInfoPlistUsageDescriptions(pathToBuiltProject);
         AddRequiredCapabilities(pathToBuiltProject);
+    }
+
+    private static void AddGoogleSignInPod(string pathToBuiltProject)
+    {
+        string podfilePath = Path.Combine(pathToBuiltProject, "Podfile");
+        if (!File.Exists(podfilePath)) return;
+
+        string podfile = File.ReadAllText(podfilePath);
+        if (podfile.Contains("pod 'GoogleSignIn'") || podfile.Contains("pod \"GoogleSignIn\"")) return;
+
+        const string unityFrameworkTarget = "target 'UnityFramework' do";
+        int targetIndex = podfile.IndexOf(unityFrameworkTarget, System.StringComparison.Ordinal);
+        if (targetIndex < 0) return;
+
+        int insertIndex = podfile.IndexOf('\n', targetIndex);
+        if (insertIndex < 0) return;
+
+        podfile = podfile.Insert(insertIndex + 1, "  pod 'GoogleSignIn', '~> 7.0'\n");
+        File.WriteAllText(podfilePath, podfile);
     }
 
     private static void AddInfoPlistUsageDescriptions(string pathToBuiltProject)

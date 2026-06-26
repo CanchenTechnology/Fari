@@ -74,9 +74,8 @@ public class MyUI : WindowBase
 
 		if (!string.IsNullOrEmpty(userData.PhotoUrl) && GameManager.Instance != null)
 		{
-			GameManager.Instance.StartCoroutine(GoogleUserInfoHelper.LoadAndCacheAvatarCoroutine(
-					userData.PhotoUrl,
-					sprite =>
+			GameManager.Instance.StartCoroutine(FriendAvatarImageUtility.LoadCurrentUserAvatarCoroutine(
+					(sprite, _) =>
 					{
 						if (requestId != _dashboardRequestId) return;
 						if (sprite != null && uiComponent.AvatarImage != null)

@@ -206,7 +206,7 @@ public class AvatarUploadManager : MonoSingleton<AvatarUploadManager>
             UserDataManager.Instance.SetAvatarStoragePath(storagePath);
             UserDataManager.Instance.SaveData();
             ClearAccountAvatarCaches();
-            SaveAvatarCache(jpgBytes);
+            SaveAvatarCache(jpgBytes, photoUrl);
 
             if (FirebaseAuthManager.Instance != null)
             {
@@ -343,11 +343,22 @@ public class AvatarUploadManager : MonoSingleton<AvatarUploadManager>
         return $"https://firebasestorage.googleapis.com/v0/b/{StorageBucket}/o/{encodedPath}?alt=media&token={token}";
     }
 
-    private static void SaveAvatarCache(byte[] jpgBytes)
+    private static void SaveAvatarCache(byte[] jpgBytes, string photoUrl)
     {
         try
         {
-            File.WriteAllBytes(GoogleUserInfoHelper.LocalAvatarPath, jpgBytes);
+            switch (UserDataManager.Instance != null ? UserDataManager.Instance.CurrentLoginType : LoginType.Email)
+            {
+                case LoginType.Apple:
+                    AppleUserInfoHelper.SaveLocalAvatarCache(jpgBytes, photoUrl);
+                    break;
+                case LoginType.Facebook:
+                    FacebookUserInfoHelper.SaveLocalAvatarCache(jpgBytes, photoUrl);
+                    break;
+                default:
+                    GoogleUserInfoHelper.SaveLocalAvatarCache(jpgBytes, photoUrl);
+                    break;
+            }
         }
         catch (Exception e)
         {
