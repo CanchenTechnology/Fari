@@ -73,6 +73,7 @@ public class CreateFriendUI : WindowBase
 		RefreshNameCounter();
 	}
 
+
 	public override void OnHide()
 	{
 		avatarLoadVersion++;

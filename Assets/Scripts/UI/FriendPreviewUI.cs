@@ -21,6 +21,7 @@ public class FriendPreviewUI : WindowBase
 	private const int HistoryDaysBack = 30;
 	private const float SettingPanelTweenDuration = 0.22f;
 	private const float SettingPanelHiddenPadding = 80f;
+	private const string PrivateValueText = "用户未公开";
 
 	public FriendPreviewUIComponent uiComponent;
 
@@ -228,25 +229,23 @@ public class FriendPreviewUI : WindowBase
 
 	private void RefreshBasicInfo()
 	{
-		bool hasBirthday = SetBasicInfoField("BirthdayDay", uiComponent.birthdayTextTextMeshProUGUI, FormatBirthDate(CurrentBirthday()));
-		bool hasBirthTime = SetBasicInfoField("BirthdayTime", uiComponent.birthdayTimeTextTextMeshProUGUI, CurrentBirthTime());
-		bool hasCity = SetBasicInfoField("BirthdayCity", uiComponent.birthdayPlaceTextTextMeshProUGUI, CurrentCity());
-		SetBasicInfoPanelVisible(hasBirthday || hasBirthTime || hasCity);
+		SetBasicInfoField("BirthdayDay", uiComponent.birthdayTextTextMeshProUGUI, FormatBirthDate(CurrentBirthday()));
+		SetBasicInfoField("BirthdayTime", uiComponent.birthdayTimeTextTextMeshProUGUI, CurrentBirthTime());
+		SetBasicInfoField("BirthdayCity", uiComponent.birthdayPlaceTextTextMeshProUGUI, CurrentCity());
+		SetBasicInfoPanelVisible(true);
 	}
 
-	private bool SetBasicInfoField(string rowName, TMP_Text text, string value)
+	private void SetBasicInfoField(string rowName, TMP_Text text, string value)
 	{
 		bool hasValue = !string.IsNullOrWhiteSpace(value);
 		if (text != null)
-			text.text = hasValue ? value.Trim() : string.Empty;
+			text.text = hasValue ? value.Trim() : PrivateValueText;
 
 		Transform row = FindTransformByName(transform, rowName);
 		if (row != null)
-			row.gameObject.SetActive(hasValue);
+			row.gameObject.SetActive(true);
 		else if (text != null && text.transform.parent != null)
-			text.transform.parent.gameObject.SetActive(hasValue);
-
-		return hasValue;
+			text.transform.parent.gameObject.SetActive(true);
 	}
 
 	private void SetBasicInfoPanelVisible(bool visible)
@@ -259,15 +258,36 @@ public class FriendPreviewUI : WindowBase
 
 	private void LoadPreviewHistory()
 	{
-		SetHistoryEntries(new List<FriendPreviewHistoryEntry>());
 		if (!CanLoadFriendHistory())
+		{
+			SetHistoryPlaceholder(
+				PrivateValueText,
+				"对方暂未向你公开占卜历史。",
+				"占卜历史",
+				string.Empty);
 			return;
+		}
 
+		SetHistoryPlaceholder(
+			"正在加载",
+			"正在同步对方公开的占卜摘要...",
+			"占卜历史",
+			string.Empty);
 		int requestId = requestVersion;
 		LoadHistoryEntries(PreviewHistoryLimit, PreviewHistoryLimit, entries =>
 		{
 			if (requestId != requestVersion) return;
-			SetHistoryEntries(entries);
+			if (entries != null && entries.Count > 0)
+			{
+				SetHistoryEntries(entries);
+				return;
+			}
+
+			SetHistoryPlaceholder(
+				"暂无可见占卜记录",
+				"对方最近还没有公开的占卜摘要。",
+				"占卜历史",
+				string.Empty);
 		});
 	}
 
@@ -351,6 +371,13 @@ public class FriendPreviewUI : WindowBase
 		RefreshHistoryItems();
 	}
 
+	private void SetHistoryPlaceholder(string title, string description, string source, string time)
+	{
+		historyEntries.Clear();
+		historyEntries.Add(FriendPreviewHistoryEntry.Placeholder(title, description, source, time));
+		RefreshHistoryItems();
+	}
+
 	private void RefreshHistoryItems()
 	{
 		int visibleCount = 0;
@@ -377,7 +404,7 @@ public class FriendPreviewUI : WindowBase
 			}
 		}
 
-		SetHistoryPanelVisible(visibleCount > 0);
+		SetHistoryPanelVisible(true);
 	}
 
 	private void SetHistoryPanelVisible(bool visible)
@@ -954,6 +981,19 @@ public class FriendPreviewUI : WindowBase
 		private DateTime sortTime;
 
 		public DateTime SortTime => sortTime;
+
+		public static FriendPreviewHistoryEntry Placeholder(string title, string description, string source, string time)
+		{
+			return new FriendPreviewHistoryEntry
+			{
+				cardSprites = new List<Sprite>(),
+				cardNames = FirstNonEmpty(title, PrivateValueText),
+				description = FirstNonEmpty(description, PrivateValueText),
+				source = FirstNonEmpty(source, "占卜历史"),
+				time = time ?? string.Empty,
+				sortTime = DateTime.MinValue
+			};
+		}
 
 		public static FriendPreviewHistoryEntry FromSummary(DailyOracleSummaryRecord summary)
 		{

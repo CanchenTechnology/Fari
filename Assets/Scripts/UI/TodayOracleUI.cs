@@ -44,6 +44,7 @@ public class TodayOracleUI : WindowBase
 	{
 		uiComponent = ResolveUiComponent();
 		uiComponent.InitComponent(this);
+		ResolveTodayStateContentReferences();
 		ConfigureIdleVideoPlayer();
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		base.OnAwake();
@@ -112,6 +113,34 @@ public class TodayOracleUI : WindowBase
 		}
 
 		return components[0];
+	}
+
+	private void ResolveTodayStateContentReferences()
+	{
+		if (uiComponent == null) return;
+
+		if (uiComponent.filpContent == null)
+			uiComponent.filpContent = FindTransformByName(transform,
+				"[Transform]filpContent",
+				"filpContent",
+				"FlipContent",
+				"UndrawnContent",
+				"NotDrawnContent",
+				"TodayUndrawnContent",
+				"未抽卡");
+		if (uiComponent.filpedContent == null)
+			uiComponent.filpedContent = FindTransformByName(transform,
+				"[Transform]filpedContent",
+				"filpedContent",
+				"FlippedContent",
+				"DrawnContent",
+				"TodayDrawnContent",
+				"已抽卡");
+
+		if (uiComponent.filpContent == null && uiComponent.flipCardButton != null)
+			uiComponent.filpContent = uiComponent.flipCardButton.transform;
+		if (uiComponent.filpedContent == null && uiComponent.ReadingCardContainerTransform != null)
+			uiComponent.filpedContent = uiComponent.ReadingCardContainerTransform;
 	}
 
 	private void ConfigureIdleVideoPlayer()
@@ -344,16 +373,11 @@ public class TodayOracleUI : WindowBase
 				return;
 			}
 
-			_prepareFlipCoroutine = uiComponent.StartCoroutine(PrepareAndRevealTodayCardRoutine());
+			StartDrawCardAnimation();
 		}
 
 	private IEnumerator PrepareAndRevealTodayCardRoutine()
 	{
-		_isPreparingFlip = true;
-		uiComponent.flipCardButton.gameObject.SetActive(false);
-		uiComponent.ReadingCardContainerTransform.gameObject.SetActive(false);
-
-		// 绘制今日牌
 		if (_divinationEngine == null)
 		{
 			_isPreparingFlip = false;
@@ -365,6 +389,24 @@ public class TodayOracleUI : WindowBase
 		_currentUpright = upright;
 		Debug.Log($"[TodayOracleUI] 翻牌准备: {card.nameZh} ({(upright ? "正位" : "逆位")})");
 		DailyOracleFirestore.SaveTodayLocalPending(card, upright, BuildLocalFallback(card, upright), DailyOracleService.CurrentLocale);
+
+		yield return PrepareAndRevealTodayCardRoutine(card, upright, flipRevealDelaySeconds);
+	}
+
+	private IEnumerator PrepareAndRevealTodayCardRoutine(TarotCard card, bool upright, float minimumRevealDelaySeconds)
+	{
+		_isPreparingFlip = true;
+		ApplyPreparingState();
+
+		if (card == null)
+		{
+			_isPreparingFlip = false;
+			_prepareFlipCoroutine = null;
+			yield break;
+		}
+
+		_currentCard = card;
+		_currentUpright = upright;
 		ShowLoadingText(card);
 
 		EnsureDailyOracleService();
@@ -386,7 +428,8 @@ public class TodayOracleUI : WindowBase
 		}
 
 		float elapsed = 0f;
-		while (elapsed < flipRevealDelaySeconds || !preparedReady)
+		float minDelay = Mathf.Max(0f, minimumRevealDelaySeconds);
+		while (elapsed < minDelay || !preparedReady)
 		{
 			elapsed += Time.deltaTime;
 			yield return null;
@@ -399,6 +442,62 @@ public class TodayOracleUI : WindowBase
 		RevealPreparedReading(preparedReading, true);
 		_isPreparingFlip = false;
 		_prepareFlipCoroutine = null;
+	}
+
+	public void StartDrawCardAnimation()
+	{
+		_isPreparingFlip = true;
+		ApplyPreparingState();
+
+		DrawCardUI.Prepare(DrawDailyCardForAnimation, OnDrawCardAnimationCompleted, OnDrawCardAnimationCanceled);
+		DrawCardUI drawWindow = UIModule.Instance.PopUpWindow<DrawCardUI>();
+		if (drawWindow == null)
+		{
+			Debug.LogWarning("[TodayOracleUI] DrawCardUI 打开失败，回退到直接翻牌流程");
+			DrawCardUI.Prepare(null, null, null);
+			_prepareFlipCoroutine = uiComponent.StartCoroutine(PrepareAndRevealTodayCardRoutine());
+		}
+	}
+
+	private (TarotCard card, bool upright) DrawDailyCardForAnimation()
+	{
+		if (_divinationEngine == null)
+		{
+			GameObject engineObject = new GameObject("DivinationEngine");
+			_divinationEngine = engineObject.AddComponent<DivinationEngine>();
+		}
+
+		var result = _divinationEngine.DrawDailyCard();
+		_currentCard = result.card;
+		_currentUpright = result.upright;
+
+		if (result.card != null)
+		{
+			DailyOracleFirestore.SaveTodayLocalPending(result.card, result.upright,
+				BuildLocalFallback(result.card, result.upright), DailyOracleService.CurrentLocale);
+			Debug.Log($"[TodayOracleUI] 抽卡动画锁定今日牌: {result.card.nameZh} ({(result.upright ? "正位" : "逆位")})");
+		}
+
+		return result;
+	}
+
+	private void OnDrawCardAnimationCompleted(TarotCard card, bool upright)
+	{
+		if (card == null)
+		{
+			OnDrawCardAnimationCanceled();
+			return;
+		}
+
+		_prepareFlipCoroutine = uiComponent.StartCoroutine(PrepareAndRevealTodayCardRoutine(card, upright, 0.15f));
+	}
+
+	private void OnDrawCardAnimationCanceled()
+	{
+		_isPreparingFlip = false;
+		_prepareFlipCoroutine = null;
+		HideLoadingText();
+		ApplyUndrawnState();
 	}
 
 	private void PopulateReadingCardContainer(TarotCard card, bool upright)
@@ -423,7 +522,7 @@ public class TodayOracleUI : WindowBase
 
 		// 标题（先用默认值，等 AI 返回后更新）
 		if (_readingCardContainer.titleText != null)
-			_readingCardContainer.titleText.text = $"今日神谕 · {card.nameZh}";
+			_readingCardContainer.titleText.text = BuildReadingTitle(card, null);
 
 		// 描述：先显示简短的占位文本，等 AI 返回后更新
 		if (_readingCardContainer.descriptText != null)
@@ -458,8 +557,7 @@ public class TodayOracleUI : WindowBase
 			_readingCardContainer.cardNameText.text = preparedReading.cardDisplayName;
 
 		if (_readingCardContainer.titleText != null)
-			_readingCardContainer.titleText.text = preparedReading.oraclePayload?.title
-				?? $"今日神谕 · {preparedReading.card?.nameZh}";
+			_readingCardContainer.titleText.text = BuildReadingTitle(preparedReading.card, preparedReading.oraclePayload);
 
 		if (_readingCardContainer.descriptText != null)
 			_readingCardContainer.descriptText.text = preparedReading.cardDescription;
@@ -506,12 +604,45 @@ public class TodayOracleUI : WindowBase
 
 		// 标题（AI 生成的可覆盖默认）
 		if (_readingCardContainer.titleText != null && !string.IsNullOrEmpty(payload.title))
-			_readingCardContainer.titleText.text = payload.title;
+			_readingCardContainer.titleText.text = CleanTodayOracleTitle(payload.title, _currentCard?.nameZh);
 
 		// 描述 → 用 AI 的 detail
 		if (_readingCardContainer.descriptText != null && !string.IsNullOrEmpty(payload.detail))
 			_readingCardContainer.descriptText.text = payload.detail;
 		
+	}
+
+	private static string BuildReadingTitle(TarotCard card, TodayOraclePayload payload)
+	{
+		return CleanTodayOracleTitle(payload?.title, card != null ? card.nameZh : string.Empty);
+	}
+
+	private static string CleanTodayOracleTitle(string title, string fallback)
+	{
+		string cleaned = FirstNonEmpty(title, fallback).Trim();
+		if (string.IsNullOrEmpty(cleaned))
+			return string.Empty;
+
+		string[] prefixes =
+		{
+			"今日神谕 ·",
+			"今日神谕·",
+			"今日神谕：",
+			"今日神谕:",
+			"今日标题：",
+			"今日标题:"
+		};
+
+		foreach (string prefix in prefixes)
+		{
+			if (!cleaned.StartsWith(prefix, System.StringComparison.Ordinal))
+				continue;
+
+			cleaned = cleaned.Substring(prefix.Length).Trim();
+			break;
+		}
+
+		return string.IsNullOrEmpty(cleaned) ? FirstNonEmpty(fallback, title).Trim() : cleaned;
 	}
 
 
@@ -546,7 +677,7 @@ public class TodayOracleUI : WindowBase
 
 		return new TodayOraclePayload
 		{
-			title = $"今日神谕 · {card.nameZh}",
+			title = card.nameZh,
 			oracle = upright
 				? $"{card.nameZh}的正位能量提示你，今天适合迈出第一步。"
 				: $"逆位的{card.nameZh}提醒你放慢脚步，回看内心。",
@@ -594,8 +725,7 @@ public class TodayOracleUI : WindowBase
 			?? preparedReading.cardPayload
 			?? _divinationEngine?.GetTodayCardPayload());
 
-		SetFlipButtonVisible(false);
-		SetReadingContainerVisible(true);
+		ApplyDrawnState();
 		DailyOracleHistoryBridge.SavePreparedReading(preparedReading, true);
 		if (openReadingWindow)
 			UIModule.Instance.PopUpWindow<OracleReadingUI>();
@@ -633,8 +763,7 @@ public class TodayOracleUI : WindowBase
 	private IEnumerator RestoreTodayOracleStateRoutine(int requestId)
 	{
 		_isRestoringToday = true;
-		SetFlipButtonVisible(false);
-		SetReadingContainerVisible(false);
+		ApplyPreparingState();
 
 		if (TryRestoreSavedToday(DailyOracleFirestore.LoadTodayLocal())
 			|| TryRevealInMemoryToday()
@@ -772,8 +901,28 @@ public class TodayOracleUI : WindowBase
 
 	private void ApplyUndrawnState()
 	{
+		ApplyTodayCardState(false);
+	}
+
+	private void ApplyDrawnState()
+	{
+		ApplyTodayCardState(true);
+	}
+
+	private void ApplyPreparingState()
+	{
+		SetUndrawnContentVisible(false);
+		SetDrawnContentVisible(false);
+		SetFlipButtonVisible(false);
 		SetReadingContainerVisible(false);
-		SetFlipButtonVisible(true);
+	}
+
+	private void ApplyTodayCardState(bool hasDrawnCard)
+	{
+		SetUndrawnContentVisible(!hasDrawnCard);
+		SetDrawnContentVisible(hasDrawnCard);
+		SetFlipButtonVisible(!hasDrawnCard);
+		SetReadingContainerVisible(hasDrawnCard);
 	}
 
 	private bool HasUsedDailyOracleToday()
@@ -792,6 +941,37 @@ public class TodayOracleUI : WindowBase
 	{
 		if (uiComponent?.ReadingCardContainerTransform != null)
 			uiComponent.ReadingCardContainerTransform.gameObject.SetActive(visible);
+	}
+
+	private void SetUndrawnContentVisible(bool visible)
+	{
+		if (uiComponent?.filpContent != null)
+			uiComponent.filpContent.gameObject.SetActive(visible);
+	}
+
+	private void SetDrawnContentVisible(bool visible)
+	{
+		if (uiComponent?.filpedContent != null)
+			uiComponent.filpedContent.gameObject.SetActive(visible);
+	}
+
+	private static Transform FindTransformByName(Transform root, params string[] names)
+	{
+		if (root == null || names == null) return null;
+		for (int i = 0; i < names.Length; i++)
+		{
+			if (root.name == names[i])
+				return root;
+		}
+
+		for (int i = 0; i < root.childCount; i++)
+		{
+			Transform result = FindTransformByName(root.GetChild(i), names);
+			if (result != null)
+				return result;
+		}
+
+		return null;
 	}
 
 	private static string FirstNonEmpty(params string[] values)

@@ -15,9 +15,16 @@ public class TodayOracleUIComponent:MonoBehaviour
 {
 	public WindowLayer windowLayer = WindowLayer.MainUI;
 	public Button switchDivinerButton;
-	public Button flipCardButton;
-	public Transform ReadingCardContainerTransform;
+
 	public VideoPlayer idleVideoPlayer;
+	[Header("今日未抽卡")]
+	public Transform filpContent;
+	public Button flipCardButton;
+
+	[Header("今日已抽卡")]
+	public Transform filpedContent;
+	public Transform ReadingCardContainerTransform;
+
 
 	public void InitComponent(WindowBase target)
 	{
