@@ -14,6 +14,7 @@ public static class FariIOSContactsPostprocessor
 
         AddGoogleSignInPod(pathToBuiltProject);
         AddInfoPlistUsageDescriptions(pathToBuiltProject);
+        AddRequiredFrameworks(pathToBuiltProject);
         AddRequiredCapabilities(pathToBuiltProject);
     }
 
@@ -47,6 +48,21 @@ public static class FariIOSContactsPostprocessor
             "NSContactsUsageDescription",
             "用于选择你想邀请加入 Moonly 的联系人。我们不会自动发送消息。");
         plist.WriteToFile(plistPath);
+    }
+
+    private static void AddRequiredFrameworks(string pathToBuiltProject)
+    {
+        string pbxProjectPath = PBXProject.GetPBXProjectPath(pathToBuiltProject);
+        if (!File.Exists(pbxProjectPath)) return;
+
+        PBXProject project = new PBXProject();
+        project.ReadFromFile(pbxProjectPath);
+        string frameworkTargetGuid = project.GetUnityFrameworkTargetGuid();
+        if (string.IsNullOrEmpty(frameworkTargetGuid)) return;
+
+        project.AddFrameworkToProject(frameworkTargetGuid, "Contacts.framework", false);
+        project.AddFrameworkToProject(frameworkTargetGuid, "ContactsUI.framework", false);
+        project.WriteToFile(pbxProjectPath);
     }
 
     private static void AddRequiredCapabilities(string pathToBuiltProject)
