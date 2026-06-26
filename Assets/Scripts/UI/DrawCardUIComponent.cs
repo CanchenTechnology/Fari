@@ -22,6 +22,7 @@ public class DrawCardUIComponent:MonoBehaviour
 	public TMP_Text cardNameText;
 
 	[Header("抽卡动画配置")]
+	[Header("牌组布局")]
 	public int selectableCardCount = 12;
 	public float fanWidth = 0f;
 	public bool useResponsiveFanWidth = true;
@@ -30,11 +31,15 @@ public class DrawCardUIComponent:MonoBehaviour
 	public float fanHeightOffset = 4f;
 	public float fanRiseOffset = 108f;
 	public float fanRotation = 18f;
+
+	[Header("动画节奏")]
 	public float dealDuration = 0.42f;
 	public float cardDealGap = 0.045f;
 	public float selectDuration = 0.48f;
 	public float flipDuration = 0.46f;
 	public float resultHoldDuration = 1.5f;
+
+	[Header("卡牌尺寸")]
 	public bool infiniteScroll = true;
 	public float deckCardScale = 0f;
 	public float minDeckCardScale = 0.5f;
@@ -42,6 +47,8 @@ public class DrawCardUIComponent:MonoBehaviour
 	public float maxDeckCardHeightRatio = 0.52f;
 	public float maxDeckCardWidthRatio = 0.36f;
 	public float selectedCardScale = 0.9f;
+
+	[Header("横向滚动")]
 	public float scrollEdgePadding = 12f;
 	public float minScrollRange = 0f;
 	public float scrollRangeMultiplier = 1.05f;
@@ -51,10 +58,14 @@ public class DrawCardUIComponent:MonoBehaviour
 	public float minFlickVelocity = 80f;
 	public float maxFlickVelocity = 3800f;
 	public float maxInertiaDuration = 1.15f;
+
+	[Header("拖拽抽牌")]
 	public float dragSensitivity = 1f;
 	public float dragClickThreshold = 12f;
 	public float dragPullSelectThreshold = 110f;
 	public float dragPullDirectionBias = 1.15f;
+
+	[Header("视觉资源")]
 	public Sprite cardBackSprite;
 	public Color selectedGlowColor = new Color(1f, 0.58f, 0.12f, 0.88f);
 
