@@ -60,7 +60,6 @@ public class CompleteInterpretationUI : WindowBase
     public override void OnShow()
     {
         base.OnShow();
-        OracleForegroundEffects.Attach(this.Canvas, OracleForegroundEffectStyle.DailyOracle);
         // 防止重复请求
         if (_isLoading) return;
         PopulateCardInfo();
@@ -69,7 +68,6 @@ public class CompleteInterpretationUI : WindowBase
 
     public override void OnHide()
     {
-        OracleForegroundEffects.Detach(this.Canvas);
         base.OnHide();
         StopTimeoutCoroutine();
     }
@@ -571,6 +569,11 @@ public class CompleteInterpretationUI : WindowBase
     #endregion
 
     #region UI组件事件
+
+    public void OnExitButtonClick()
+    {
+        HideWindow();
+    }
 
     public void OnTopic1ItemButtonClick()
     {

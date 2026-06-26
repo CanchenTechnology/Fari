@@ -17,6 +17,7 @@ using UnityEngine;
 public class CompleteInterpretationUIComponent:MonoBehaviour
 {
 	public WindowLayer windowLayer = WindowLayer.MainUI;
+	public Button exitButton;
 	public Button SwitchOracleButton;
 	public Image CardImageImage;
 	public TMP_Text CardDescTextText;
@@ -50,6 +51,7 @@ public class CompleteInterpretationUIComponent:MonoBehaviour
 		target.Canvas.sortingOrder = (int)windowLayer;
 		target.Layer = windowLayer;
 		CompleteInterpretationUI mWindow=(CompleteInterpretationUI)target;
+		target.AddButtonClickListener(exitButton,mWindow.OnExitButtonClick);
 		target.AddButtonClickListener(SwitchOracleButton,mWindow.OnSwitchOracleButtonClick);
 		target.AddButtonClickListener(Topic1ItemButton,mWindow.OnTopic1ItemButtonClick);
 		target.AddButtonClickListener(Topic2ItemButton,mWindow.OnTopic2ItemButtonClick);

@@ -17,7 +17,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &5698182686476988569
 RectTransform:
   m_ObjectHideFlags: 0
@@ -34,8 +34,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: -299.871}
-  m_SizeDelta: {x: 0, y: -599.7421}
+  m_AnchoredPosition: {x: 0, y: -248.33914}
+  m_SizeDelta: {x: 0, y: -496.6785}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &2829641528063518310
 CanvasRenderer:
@@ -396,7 +396,7 @@ VideoPlayer:
   m_EnabledAudioTracks: 
   m_DirectAudioMutes: 
   m_ControlledAudioTrackCount: 0
-  m_PlayOnAwake: 1
+  m_PlayOnAwake: 0
   m_SkipOnDrop: 0
   m_Looping: 1
   m_WaitForFirstFrame: 1
@@ -530,7 +530,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 4982844966782634380}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
   m_Name: 
@@ -1032,6 +1032,7 @@ MonoBehaviour:
   targetCardParent: {fileID: 3420190990309878999}
   targetCard: {fileID: 6243634696056032640}
   cardNameText: {fileID: 6393479271529930101}
+  backgroundVideoPlayer: {fileID: 1901979373398970504}
   selectableCardCount: 12
   fanWidth: 0
   useResponsiveFanWidth: 1
@@ -1043,12 +1044,13 @@ MonoBehaviour:
   dealDuration: 0.42
   cardDealGap: 0.045
   selectDuration: 0.48
-  flipDuration: 0.46
-  resultHoldDuration: 1.5
+  flipDuration: 1
+  reverseRotateDuration: 1.5
+  resultHoldDuration: 3
   infiniteScroll: 1
-  deckCardScale: 0
-  minDeckCardScale: 0.5
-  maxDeckCardScale: 0.64
+  deckCardScale: 0.42
+  minDeckCardScale: 0.6
+  maxDeckCardScale: 0.8
   maxDeckCardHeightRatio: 0.52
   maxDeckCardWidthRatio: 0.36
   selectedCardScale: 0.9

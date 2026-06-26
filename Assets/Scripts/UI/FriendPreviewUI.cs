@@ -8,6 +8,7 @@
 using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
+using GamerFrameWork.OracleRuntime;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -22,6 +23,9 @@ public class FriendPreviewUI : WindowBase
 	private const float SettingPanelTweenDuration = 0.22f;
 	private const float SettingPanelHiddenPadding = 80f;
 	private const string PrivateValueText = "用户未公开";
+	private const string MissingLocalValueText = "未填写";
+	private const string LocalRelationshipReadingIdPrefix = "rel_local_";
+	private static readonly Color DisabledEditFriendTextColor = new Color(0.55f, 0.55f, 0.55f, 1f);
 
 	public FriendPreviewUIComponent uiComponent;
 
@@ -40,12 +44,15 @@ public class FriendPreviewUI : WindowBase
 	private RectTransform settingBtnContainerRect;
 	private RectTransform settingEditButtonRect;
 	private RectTransform settingDeleteButtonRect;
+	private TMP_Text settingEditButtonLabel;
 	private Vector2 settingBtnContainerShownPosition;
 	private Vector2 settingBtnContainerHiddenPosition;
 	private Vector2 settingDeleteButtonShownPosition;
 	private bool settingPanelPositionsInitialized;
 	private bool settingPanelVisible;
 	private bool isDeletingFriend;
+	private bool hasSettingEditButtonOriginalTextColor;
+	private Color settingEditButtonOriginalTextColor;
 	private readonly HashSet<string> pendingSentUserIds = new HashSet<string>();
 	private readonly List<FriendPreviewHistoryEntry> historyEntries = new List<FriendPreviewHistoryEntry>();
 
@@ -239,7 +246,7 @@ public class FriendPreviewUI : WindowBase
 	{
 		bool hasValue = !string.IsNullOrWhiteSpace(value);
 		if (text != null)
-			text.text = hasValue ? value.Trim() : PrivateValueText;
+			text.text = hasValue ? value.Trim() : GetMissingBasicInfoText();
 
 		Transform row = FindTransformByName(transform, rowName);
 		if (row != null)
@@ -258,6 +265,12 @@ public class FriendPreviewUI : WindowBase
 
 	private void LoadPreviewHistory()
 	{
+		if (IsVirtualFriendPreview())
+		{
+			LoadVirtualFriendHistory();
+			return;
+		}
+
 		if (!CanLoadFriendHistory())
 		{
 			SetHistoryPlaceholder(
@@ -289,6 +302,46 @@ public class FriendPreviewUI : WindowBase
 				"占卜历史",
 				string.Empty);
 		});
+	}
+
+	private void LoadVirtualFriendHistory()
+	{
+		SetHistoryPlaceholder(
+			"正在加载",
+			"正在整理这个好友的本地占卜记录...",
+			"占卜历史",
+			string.Empty);
+
+		int requestId = requestVersion;
+		DivinationRecordFirestore historyStore = RelationshipDivinationFlow.GetOrCreateHistoryService();
+		if (historyStore == null)
+		{
+			SetVirtualFriendEmptyHistoryPlaceholder();
+			return;
+		}
+
+		historyStore.LoadAllRecords(records =>
+		{
+			if (requestId != requestVersion) return;
+
+			List<FriendPreviewHistoryEntry> entries = BuildVirtualFriendHistoryEntries(records, PreviewHistoryLimit);
+			if (entries.Count > 0)
+			{
+				SetHistoryEntries(entries);
+				return;
+			}
+
+			SetVirtualFriendEmptyHistoryPlaceholder();
+		});
+	}
+
+	private void SetVirtualFriendEmptyHistoryPlaceholder()
+	{
+		SetHistoryPlaceholder(
+			"暂无占卜记录",
+			"还没有和这个好友完成占卜记录。",
+			"占卜历史",
+			string.Empty);
 	}
 
 	private void LoadHistoryEntries(int dailyLimit, int finalLimit, Action<List<FriendPreviewHistoryEntry>> onComplete)
@@ -361,6 +414,70 @@ public class FriendPreviewUI : WindowBase
 		if (entries.Count > safeLimit)
 			entries.RemoveRange(safeLimit, entries.Count - safeLimit);
 		return entries;
+	}
+
+	private List<FriendPreviewHistoryEntry> BuildVirtualFriendHistoryEntries(List<DivinationRecordData> records, int limit)
+	{
+		List<FriendPreviewHistoryEntry> entries = new List<FriendPreviewHistoryEntry>();
+		if (records == null) return entries;
+
+		int safeLimit = Mathf.Max(1, limit);
+		foreach (DivinationRecordData record in records)
+		{
+			if (!IsCurrentVirtualFriendHistoryRecord(record))
+				continue;
+
+			entries.Add(FriendPreviewHistoryEntry.FromDivinationRecord(record));
+			if (entries.Count >= safeLimit)
+				break;
+		}
+
+		return SortAndLimitEntries(entries, safeLimit);
+	}
+
+	private bool IsCurrentVirtualFriendHistoryRecord(DivinationRecordData record)
+	{
+		if (record == null || !IsVirtualFriendPreview())
+			return false;
+		if (!string.Equals(record.scene, "friend_relationship_divination", StringComparison.Ordinal)
+			&& !string.Equals(record.spreadKind, "relationship_tension", StringComparison.Ordinal))
+			return false;
+		if (string.IsNullOrWhiteSpace(record.readingId)
+			|| !record.readingId.StartsWith(LocalRelationshipReadingIdPrefix, StringComparison.Ordinal))
+			return false;
+
+		return RecordMentionsCurrentFriend(record);
+	}
+
+	private bool RecordMentionsCurrentFriend(DivinationRecordData record)
+	{
+		if (record == null || currentFriend == null)
+			return false;
+
+		string haystack = string.Join("\n", new[]
+		{
+			record.question,
+			record.shortVerdict,
+			record.judgeContent,
+			record.adviceContent
+		});
+		if (string.IsNullOrWhiteSpace(haystack))
+			return false;
+
+		string[] tokens =
+		{
+			currentFriend.name,
+			currentFriend.handle
+		};
+		foreach (string token in tokens)
+		{
+			if (string.IsNullOrWhiteSpace(token))
+				continue;
+			if (haystack.IndexOf(token.Trim(), StringComparison.OrdinalIgnoreCase) >= 0)
+				return true;
+		}
+
+		return false;
 	}
 
 	private void SetHistoryEntries(List<FriendPreviewHistoryEntry> entries)
@@ -459,6 +576,11 @@ public class FriendPreviewUI : WindowBase
 		return currentFriend != null && currentFriend.isVirtual && !currentFromAddFlow;
 	}
 
+	private bool IsVirtualFriendPreview()
+	{
+		return currentFriend != null && currentFriend.isVirtual && !currentFromAddFlow;
+	}
+
 	private bool CanDeleteFriend()
 	{
 		return currentFriend != null && !currentFromAddFlow;
@@ -466,11 +588,16 @@ public class FriendPreviewUI : WindowBase
 
 	private void ConfigureSettingButtons()
 	{
-		bool showEdit = CanEditFriend();
+		bool showEdit = CanOpenSettingPanel();
 		bool showDelete = CanDeleteFriend();
+		bool canEdit = CanEditFriend();
 
 		if (uiComponent?.editFriendBtn != null)
+		{
 			uiComponent.editFriendBtn.gameObject.SetActive(showEdit);
+			uiComponent.editFriendBtn.interactable = showEdit;
+			SetEditFriendButtonVisual(canEdit);
+		}
 		if (uiComponent?.deleteBtn != null)
 			uiComponent.deleteBtn.gameObject.SetActive(showDelete);
 
@@ -478,6 +605,26 @@ public class FriendPreviewUI : WindowBase
 			settingDeleteButtonRect.anchoredPosition = !showEdit && settingEditButtonRect != null
 				? settingEditButtonRect.anchoredPosition
 				: settingDeleteButtonShownPosition;
+	}
+
+	private void SetEditFriendButtonVisual(bool canEdit)
+	{
+		if (uiComponent?.editFriendBtn == null)
+			return;
+
+		if (settingEditButtonLabel == null)
+			settingEditButtonLabel = uiComponent.editFriendBtn.GetComponentInChildren<TMP_Text>(true);
+		if (settingEditButtonLabel == null)
+			return;
+
+		if (!hasSettingEditButtonOriginalTextColor)
+		{
+			settingEditButtonOriginalTextColor = settingEditButtonLabel.color;
+			hasSettingEditButtonOriginalTextColor = true;
+		}
+
+		settingEditButtonLabel.text = "编辑好友";
+		settingEditButtonLabel.color = canEdit ? settingEditButtonOriginalTextColor : DisabledEditFriendTextColor;
 	}
 
 	private void ShowSettingPanel()
@@ -608,6 +755,11 @@ public class FriendPreviewUI : WindowBase
 	private bool CanLoadFriendHistory()
 	{
 		return IsAcceptedFriend(CurrentUid());
+	}
+
+	private string GetMissingBasicInfoText()
+	{
+		return IsVirtualFriendPreview() ? MissingLocalValueText : PrivateValueText;
 	}
 
 	private bool IsAcceptedFriend(string uid)
@@ -830,7 +982,7 @@ public class FriendPreviewUI : WindowBase
 	{
 		if (!CanEditFriend())
 		{
-			ToastManager.ShowToast("真实好友资料不能编辑");
+			ToastManager.ShowToast("没有权限");
 			return;
 		}
 
@@ -1044,6 +1196,37 @@ public class FriendPreviewUI : WindowBase
 				source = "双人关系占卜",
 				time = FormatHistoryDate(timeValue),
 				sortTime = ParseSortTime(timeValue)
+			};
+		}
+
+		public static FriendPreviewHistoryEntry FromDivinationRecord(DivinationRecordData record)
+		{
+			List<Sprite> sprites = new List<Sprite>();
+			List<string> names = new List<string>();
+			if (record?.lockedCards != null)
+			{
+				foreach (LockedCard card in record.lockedCards)
+				{
+					if (card == null) continue;
+					names.Add(FirstNonEmpty(card.cardName, "关系牌"));
+					if (!string.IsNullOrWhiteSpace(card.cardId))
+					{
+						Sprite sprite = TarotSpriteLoader.Load(card.cardId);
+						if (sprite != null)
+							sprites.Add(sprite);
+					}
+				}
+			}
+
+			string cardNames = names.Count > 0 ? string.Join(" & ", names) : FirstNonEmpty(record?.CardsSummary, "双人关系牌");
+			return new FriendPreviewHistoryEntry
+			{
+				cardSprites = sprites,
+				cardNames = cardNames,
+				description = FirstNonEmpty(record?.shortVerdict, record?.judgeContent, record?.question, "已完成一次关系占卜。"),
+				source = "双人关系占卜",
+				time = FormatHistoryDate(record?.createdAt),
+				sortTime = ParseSortTime(record?.createdAt)
 			};
 		}
 

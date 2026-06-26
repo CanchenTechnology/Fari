@@ -60,6 +60,8 @@ public class TodayOracleUI : WindowBase
 		if (uiComponent.ReadingCardContainerTransform != null)
 		{
 			_readingCardContainer = uiComponent.ReadingCardContainerTransform.GetComponent<ReadingCardContainer>();
+			if (_readingCardContainer != null)
+				_readingCardContainer.RefreshButtonBindings();
 		}
 
 		// 初始化 DailyOracleService
@@ -69,6 +71,7 @@ public class TodayOracleUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		RefreshReadingCardContainerActions();
 		PlayIdleVideo();
 		LoadDueTomorrowHooks();
 		RefreshTodayOracleState();
@@ -502,6 +505,10 @@ public class TodayOracleUI : WindowBase
 
 	private void PopulateReadingCardContainer(TarotCard card, bool upright)
 	{
+		if (_readingCardContainer == null || card == null) return;
+
+		_readingCardContainer.SetCard(card, upright);
+
 		// 卡牌图片
 		if (_readingCardContainer.cardImage != null)
 		{
@@ -540,6 +547,7 @@ public class TodayOracleUI : WindowBase
 	private void PopulateReadingCardContainer(TodayOraclePreparedReading preparedReading)
 	{
 		if (preparedReading == null || _readingCardContainer == null) return;
+		_readingCardContainer.SetCard(preparedReading.card, preparedReading.upright);
 
 		if (_readingCardContainer.cardImage != null)
 		{
@@ -907,6 +915,7 @@ public class TodayOracleUI : WindowBase
 	private void ApplyDrawnState()
 	{
 		ApplyTodayCardState(true);
+		RefreshReadingCardContainerActions();
 	}
 
 	private void ApplyPreparingState()
@@ -923,6 +932,14 @@ public class TodayOracleUI : WindowBase
 		SetDrawnContentVisible(hasDrawnCard);
 		SetFlipButtonVisible(!hasDrawnCard);
 		SetReadingContainerVisible(hasDrawnCard);
+	}
+
+	private void RefreshReadingCardContainerActions()
+	{
+		if (_readingCardContainer == null) return;
+		_readingCardContainer.RefreshButtonBindings();
+		if (_currentCard != null)
+			_readingCardContainer.SetCard(_currentCard, _currentUpright);
 	}
 
 	private bool HasUsedDailyOracleToday()

@@ -6,6 +6,7 @@
  * 注意: 以下文件是自动生成的，再次生成不会覆盖原有的代码，会在原有的代码上进行新增，可放心使用
 ---------------------------------*/
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using DG.Tweening;
 using GamerFrameWork.UIFrameWork;
@@ -13,6 +14,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using UnityEngine.Video;
 
 public class DrawCardUI : WindowBase
 {
@@ -36,6 +38,9 @@ public class DrawCardUI : WindowBase
 	private Tween _pullBackTween;
 	private Tween _inertiaTween;
 	private Sprite _cachedCardBackSprite;
+	private Coroutine _backgroundVideoCoroutine;
+	private RenderTexture _backgroundVideoTextureInstance;
+	private RenderTexture _sharedBackgroundVideoTexture;
 
 	private bool _isChoosing;
 	private bool _isAnimating;
@@ -47,8 +52,10 @@ public class DrawCardUI : WindowBase
 	private bool _isScrollingDeck;
 	private bool _isPullingCard;
 	private bool _isInertiaScrolling;
+	private bool _backgroundVideoHasStarted;
 
 	private int _activeDragCardIndex = -1;
+	private int _backgroundVideoPlayRequestId;
 	private float _dragStartLocalX;
 	private float _dragStartLocalY;
 	private float _dragStartOffsetX;
@@ -85,6 +92,8 @@ public class DrawCardUI : WindowBase
 		}
 
 		uiComponent.InitComponent(this);
+		ResolveBackgroundVideoReference();
+		ConfigureBackgroundVideoPlayer();
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		base.OnAwake();
 	}
@@ -92,6 +101,7 @@ public class DrawCardUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		PlayBackgroundVideo();
 		PlayDrawEntrance();
 	}
 
@@ -101,6 +111,7 @@ public class DrawCardUI : WindowBase
 			CancelDraw(false);
 
 		KillFlow();
+		PauseBackgroundVideo();
 		base.OnHide();
 	}
 
@@ -110,6 +121,7 @@ public class DrawCardUI : WindowBase
 			CancelDraw(false);
 
 		KillFlow();
+		ReleaseBackgroundVideoTextureInstance();
 		base.OnDestroy();
 	}
 	#endregion
@@ -251,6 +263,7 @@ public class DrawCardUI : WindowBase
 		_flowSequence = DOTween.Sequence();
 		float selectDuration = Mathf.Max(0.12f, uiComponent.selectDuration);
 		float flipHalfDuration = Mathf.Max(0.08f, uiComponent.flipDuration * 0.5f);
+		float reverseRotateDuration = Mathf.Max(0.08f, uiComponent.reverseRotateDuration);
 		float liftDuration = Mathf.Min(0.18f, selectDuration * 0.38f);
 		Vector2 liftPosition = selectedRect.anchoredPosition
 			+ new Vector2(0f, Mathf.Clamp(_viewportHeight * 0.12f, 80f, 170f));
@@ -284,7 +297,9 @@ public class DrawCardUI : WindowBase
 		_flowSequence.AppendInterval(0.08f);
 		_flowSequence.Append(selectedRect.DORotate(new Vector3(0f, 88f, targetRotationZ), flipHalfDuration).SetEase(Ease.InCubic));
 		_flowSequence.AppendCallback(() => RevealFrontCard(selectedImage, card, upright, targetRotationZ));
-		_flowSequence.Append(selectedRect.DORotate(new Vector3(0f, 0f, targetRotationZ + (upright ? 0f : 180f)), flipHalfDuration).SetEase(Ease.OutCubic));
+		_flowSequence.Append(selectedRect.DORotate(new Vector3(0f, 0f, targetRotationZ), flipHalfDuration).SetEase(Ease.OutCubic));
+		if (!upright)
+			_flowSequence.Append(selectedRect.DORotate(new Vector3(0f, 0f, targetRotationZ + 180f), reverseRotateDuration).SetEase(Ease.InOutCubic));
 		_flowSequence.AppendCallback(() => CommitTargetCardResult(selectedImage, card, upright));
 		if (uiComponent.targetCard != null)
 			_flowSequence.Append(uiComponent.targetCard.rectTransform.DOPunchScale(Vector3.one * 0.035f, 0.3f, 7, 0.65f));
@@ -440,8 +455,6 @@ public class DrawCardUI : WindowBase
 				uiComponent.cardNameText = uiComponent.targetCard.GetComponentInChildren<TMP_Text>(true);
 		}
 
-		HideCardContainerBackdrop();
-
 		GameObject mask = ResolveMaskObject();
 		if (mask != null)
 		{
@@ -456,16 +469,153 @@ public class DrawCardUI : WindowBase
 			_titleText.text = "每日塔罗牌";
 	}
 
-	private void HideCardContainerBackdrop()
+	private void ResolveBackgroundVideoReference()
 	{
-		if (_cardContainer == null) return;
+		if (uiComponent == null || uiComponent.backgroundVideoPlayer != null)
+			return;
 
-		Graphic graphic = _cardContainer.GetComponent<Graphic>();
-		if (graphic == null) return;
+		uiComponent.backgroundVideoPlayer = transform.Find("video")?.GetComponent<VideoPlayer>();
+	}
 
-		Color color = graphic.color;
-		color.a = 0f;
-		graphic.color = color;
+	private void ConfigureBackgroundVideoPlayer()
+	{
+		ResolveBackgroundVideoReference();
+
+		VideoPlayer videoPlayer = uiComponent?.backgroundVideoPlayer;
+		if (videoPlayer == null) return;
+
+		EnsureBackgroundVideoTextureInstance(videoPlayer);
+		videoPlayer.playOnAwake = false;
+		videoPlayer.waitForFirstFrame = true;
+		videoPlayer.skipOnDrop = false;
+		videoPlayer.isLooping = true;
+	}
+
+	private void EnsureBackgroundVideoTextureInstance(VideoPlayer videoPlayer)
+	{
+		if (videoPlayer == null || _backgroundVideoTextureInstance != null)
+			return;
+
+		RenderTexture sourceTexture = videoPlayer.targetTexture;
+		if (sourceTexture == null)
+			return;
+
+		_sharedBackgroundVideoTexture = sourceTexture;
+		RenderTextureDescriptor descriptor = sourceTexture.descriptor;
+		_backgroundVideoTextureInstance = new RenderTexture(descriptor)
+		{
+			name = $"{sourceTexture.name}_DrawCardRuntime",
+			filterMode = sourceTexture.filterMode,
+			wrapMode = sourceTexture.wrapMode,
+			anisoLevel = sourceTexture.anisoLevel,
+		};
+		_backgroundVideoTextureInstance.Create();
+
+		videoPlayer.targetTexture = _backgroundVideoTextureInstance;
+		ApplyBackgroundVideoTextureToRawImages(_sharedBackgroundVideoTexture, _backgroundVideoTextureInstance);
+	}
+
+	private void ApplyBackgroundVideoTextureToRawImages(Texture fromTexture, Texture toTexture)
+	{
+		if (fromTexture == null || toTexture == null)
+			return;
+
+		RawImage[] rawImages = gameObject.GetComponentsInChildren<RawImage>(true);
+		if (rawImages == null)
+			return;
+
+		foreach (RawImage rawImage in rawImages)
+		{
+			if (rawImage != null && rawImage.texture == fromTexture)
+				rawImage.texture = toTexture;
+		}
+	}
+
+	private void PlayBackgroundVideo()
+	{
+		VideoPlayer videoPlayer = uiComponent?.backgroundVideoPlayer;
+		if (videoPlayer == null)
+			return;
+
+		ConfigureBackgroundVideoPlayer();
+		if (videoPlayer.isPlaying || _backgroundVideoCoroutine != null)
+			return;
+
+		_backgroundVideoCoroutine = uiComponent.StartCoroutine(PlayBackgroundVideoRoutine(++_backgroundVideoPlayRequestId));
+	}
+
+	private IEnumerator PlayBackgroundVideoRoutine(int requestId)
+	{
+		VideoPlayer videoPlayer = uiComponent?.backgroundVideoPlayer;
+		if (videoPlayer == null || videoPlayer.clip == null)
+		{
+			_backgroundVideoCoroutine = null;
+			yield break;
+		}
+
+		if (!videoPlayer.isPrepared)
+		{
+			videoPlayer.Prepare();
+			while (!videoPlayer.isPrepared)
+			{
+				if (requestId != _backgroundVideoPlayRequestId)
+				{
+					_backgroundVideoCoroutine = null;
+					yield break;
+				}
+
+				yield return null;
+			}
+		}
+
+		if (requestId != _backgroundVideoPlayRequestId)
+		{
+			_backgroundVideoCoroutine = null;
+			yield break;
+		}
+
+		if (!_backgroundVideoHasStarted || (videoPlayer.length > 0 && videoPlayer.time >= videoPlayer.length - 0.05f))
+		{
+			videoPlayer.time = 0;
+			_backgroundVideoHasStarted = true;
+		}
+
+		videoPlayer.Play();
+		_backgroundVideoCoroutine = null;
+	}
+
+	private void PauseBackgroundVideo()
+	{
+		_backgroundVideoPlayRequestId++;
+		if (_backgroundVideoCoroutine != null)
+		{
+			uiComponent.StopCoroutine(_backgroundVideoCoroutine);
+			_backgroundVideoCoroutine = null;
+		}
+
+		VideoPlayer videoPlayer = uiComponent?.backgroundVideoPlayer;
+		if (videoPlayer != null && videoPlayer.isPlaying)
+			videoPlayer.Pause();
+	}
+
+	private void ReleaseBackgroundVideoTextureInstance()
+	{
+		PauseBackgroundVideo();
+
+		if (_backgroundVideoTextureInstance == null)
+			return;
+
+		if (uiComponent?.backgroundVideoPlayer != null
+			&& uiComponent.backgroundVideoPlayer.targetTexture == _backgroundVideoTextureInstance)
+		{
+			uiComponent.backgroundVideoPlayer.targetTexture = _sharedBackgroundVideoTexture;
+		}
+
+		ApplyBackgroundVideoTextureToRawImages(_backgroundVideoTextureInstance, _sharedBackgroundVideoTexture);
+		_backgroundVideoTextureInstance.Release();
+		UnityEngine.Object.Destroy(_backgroundVideoTextureInstance);
+		_backgroundVideoTextureInstance = null;
+		_sharedBackgroundVideoTexture = null;
 	}
 
 	private GameObject ResolveMaskObject()

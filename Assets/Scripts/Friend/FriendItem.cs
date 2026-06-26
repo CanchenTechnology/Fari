@@ -124,7 +124,7 @@ public class FriendItem : MonoBehaviour
         if (data.isVirtual)
         {
             FriendDataManager.Instance?.RecordVirtualFriendOperated(data);
-            CreateFriendInfoUI.Show(data);
+            FriendPreviewUI.Show(data);
             return;
         }
 

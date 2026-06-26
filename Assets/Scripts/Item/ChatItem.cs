@@ -11,6 +11,12 @@ using TMPro;
 /// </summary>
 public class ChatItem : MonoBehaviour
 {
+    private const float MinTextWidth = 40f;
+    private const float MinMaxTextWidth = 120f;
+    private const float BubbleHorizontalPadding = 20f;
+    private const float BubbleVerticalPadding = 34f;
+    private const float BubbleOuterMargin = 64f;
+
     //头像
     public Image headImage;
     //说话人的名字
@@ -280,23 +286,15 @@ public class ChatItem : MonoBehaviour
         if (layoutText != null)
             mMsgText.text = layoutText;
 
-        // 【修改核心区：动态计算文本宽度】
-        // 1. 获取文本无折行情况下的实际理想宽度 (比如 "ss" 只有几十像素)
         float preferredWidth = mMsgText.preferredWidth;
+        float maxTextWidth = GetMaxTextWidth();
+        float targetTextWidth = Mathf.Clamp(preferredWidth, MinTextWidth, maxTextWidth);
 
-        // 2. 设定一个最大宽度，防止长文本不换行超出屏幕边界
-        // 你可以根据你实际的游戏 UI 比例修改这个值
-        float maxTextWidth = Mathf.Max(120f, Screen.width - 400);
-
-        // 3. 取两者较小值：短文本自动缩框，长文本触达极限宽度以备换行
-        float targetTextWidth = Mathf.Clamp(preferredWidth, 40f, maxTextWidth);
-
-        // 4. 将计算出的真实宽度强行赋给 Text 的 RectTransform
-        mMsgText.rectTransform.sizeDelta = new Vector2(targetTextWidth, mMsgText.rectTransform.sizeDelta.y);
-
-        // 5. 触发布局刷新（此时 ContentSizeFitter 会根据刚才给的定宽，自动算出换行后正确的 sizeDelta.y）
+        mMsgText.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, targetTextWidth);
         LayoutRebuilder.ForceRebuildLayoutImmediate(mMsgText.rectTransform);
-        float targetTextHeight = Mathf.Max(mMsgText.preferredHeight, mMsgText.rectTransform.sizeDelta.y);
+        float targetTextHeight = Mathf.Max(
+            mMsgText.GetPreferredValues(mMsgText.text, targetTextWidth, Mathf.Infinity).y,
+            mMsgText.rectTransform.sizeDelta.y);
         mMsgText.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, targetTextHeight);
 
         // 显示背景气泡
@@ -304,8 +302,8 @@ public class ChatItem : MonoBehaviour
 
         // 根据 Text 最终的尺寸动态调整背景尺寸
         Vector2 size = mItemBg.rectTransform.sizeDelta;
-        size.x = targetTextWidth + 20; // 左右边距
-        size.y = mMsgText.rectTransform.sizeDelta.y + 34; // 上下边距
+        size.x = targetTextWidth + BubbleHorizontalPadding;
+        size.y = mMsgText.rectTransform.sizeDelta.y + BubbleVerticalPadding;
         mItemBg.rectTransform.sizeDelta = size;
 
         // 调整整个Item高度
@@ -328,6 +326,32 @@ public class ChatItem : MonoBehaviour
         // {
         //     RenderOptionButtons(data.options);
         // }
+    }
+
+    private float GetMaxTextWidth()
+    {
+        RectTransform itemRect = transform as RectTransform;
+        float availableWidth = itemRect != null ? itemRect.rect.width : 0f;
+
+        if (availableWidth <= 0f && transform.parent is RectTransform parentRect)
+            availableWidth = parentRect.rect.width;
+
+        if (availableWidth <= 0f)
+        {
+            Canvas canvas = GetComponentInParent<Canvas>();
+            RectTransform canvasRect = canvas != null ? canvas.transform as RectTransform : null;
+            availableWidth = canvasRect != null ? canvasRect.rect.width : 0f;
+        }
+
+        if (availableWidth <= 0f)
+            availableWidth = 600f;
+
+        float anchorInset = 0f;
+        if (msgTrans is RectTransform msgRect)
+            anchorInset = Mathf.Abs(msgRect.anchoredPosition.x);
+
+        float maxWidth = availableWidth - anchorInset - BubbleHorizontalPadding - BubbleOuterMargin;
+        return Mathf.Max(MinMaxTextWidth, maxWidth);
     }
 
     /// <summary>

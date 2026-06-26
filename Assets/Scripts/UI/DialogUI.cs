@@ -15,6 +15,7 @@ using GamerFrameWork;
 using XFGameFrameWork;
 using GamerFrameWork.OracleRuntime;
 using TMPro;
+using UnityEngine.Video;
 
 
 public class DialogUI : WindowBase
@@ -47,6 +48,12 @@ public class DialogUI : WindowBase
     private int _currentTTSMessageId = -1;
     private Coroutine _ttsPlaybackCoroutine;
     private Coroutine _cloudDialogLoadCoroutine;
+    private Coroutine _dialogBackgroundVideoCoroutine;
+    private VideoPlayer _dialogBackgroundVideoPlayer;
+    private RenderTexture _dialogBackgroundVideoTextureInstance;
+    private RenderTexture _sharedDialogBackgroundVideoTexture;
+    private int _dialogBackgroundVideoPlayRequestId;
+    private bool _dialogBackgroundVideoHasStarted;
     private readonly Dictionary<int, PreparedTTSAudio> _preparedTTSByMessageId = new Dictionary<int, PreparedTTSAudio>();
     private readonly Queue<System.Action> _pendingAIRequests = new Queue<System.Action>();
     private FriendDataManager.FriendData _activeAtFriend;
@@ -67,6 +74,8 @@ public class DialogUI : WindowBase
     {
         uiComponent = gameObject.GetComponent<DialogUIComponent>();
         uiComponent.InitComponent(this);
+        ResolveDialogBackgroundVideoReferences();
+        ConfigureDialogBackgroundVideoPlayer();
         this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
         base.OnAwake();
 
@@ -100,6 +109,7 @@ public class DialogUI : WindowBase
     public override void OnShow()
     {
         base.OnShow();
+        PlayDialogBackgroundVideo();
         OracleForegroundEffects.Attach(this.Canvas, OracleForegroundEffectStyle.Dialog);
         ClearAtFriendSelection(false, false);
         RefreshSendButtonState();
@@ -108,6 +118,7 @@ public class DialogUI : WindowBase
     // 物体隐藏时执行
     public override void OnHide()
     {
+        PauseDialogBackgroundVideo();
         OracleForegroundEffects.Detach(this.Canvas);
         base.OnHide();
     }
@@ -117,11 +128,186 @@ public class DialogUI : WindowBase
         EventSystem.RemoveEvent(GameDataStr.RefreshChatUI, OnRefreshChatUI);
         EventSystem.RemoveEventListener<string>(GameDataStr.QuickQuestionSelected, OnQuickQuestionSelected);
         EventSystem.RemoveEventListener<string>(GameDataStr.CardTopicSelected, OnCardTopicSelected);
+        ReleaseDialogBackgroundVideoTextureInstance();
         base.OnDestroy();
     }
     #endregion
 
     #region 初始化
+
+    private void ResolveDialogBackgroundVideoReferences()
+    {
+        if (_dialogBackgroundVideoPlayer != null)
+            return;
+
+        VideoPlayer[] videoPlayers = gameObject.GetComponentsInChildren<VideoPlayer>(true);
+        if (videoPlayers == null || videoPlayers.Length == 0)
+            return;
+
+        foreach (VideoPlayer videoPlayer in videoPlayers)
+        {
+            if (videoPlayer == null)
+                continue;
+
+            if (string.Equals(videoPlayer.gameObject.name, "video", System.StringComparison.OrdinalIgnoreCase))
+            {
+                _dialogBackgroundVideoPlayer = videoPlayer;
+                break;
+            }
+        }
+
+        if (_dialogBackgroundVideoPlayer == null)
+            _dialogBackgroundVideoPlayer = videoPlayers[0];
+    }
+
+    private void ConfigureDialogBackgroundVideoPlayer()
+    {
+        ResolveDialogBackgroundVideoReferences();
+
+        VideoPlayer videoPlayer = _dialogBackgroundVideoPlayer;
+        if (videoPlayer == null)
+            return;
+
+        EnsureDialogBackgroundVideoTextureInstance(videoPlayer);
+        videoPlayer.playOnAwake = false;
+        videoPlayer.waitForFirstFrame = true;
+        videoPlayer.skipOnDrop = false;
+        videoPlayer.isLooping = true;
+    }
+
+    private void EnsureDialogBackgroundVideoTextureInstance(VideoPlayer videoPlayer)
+    {
+        if (videoPlayer == null || _dialogBackgroundVideoTextureInstance != null)
+            return;
+
+        RenderTexture sourceTexture = videoPlayer.targetTexture;
+        if (sourceTexture == null)
+            return;
+
+        _sharedDialogBackgroundVideoTexture = sourceTexture;
+        RenderTextureDescriptor descriptor = sourceTexture.descriptor;
+        _dialogBackgroundVideoTextureInstance = new RenderTexture(descriptor)
+        {
+            name = $"{sourceTexture.name}_DialogRuntime",
+            filterMode = sourceTexture.filterMode,
+            wrapMode = sourceTexture.wrapMode,
+            anisoLevel = sourceTexture.anisoLevel,
+        };
+        _dialogBackgroundVideoTextureInstance.Create();
+
+        videoPlayer.renderMode = VideoRenderMode.RenderTexture;
+        videoPlayer.targetTexture = _dialogBackgroundVideoTextureInstance;
+        ApplyDialogBackgroundVideoTextureToRawImages(_sharedDialogBackgroundVideoTexture, _dialogBackgroundVideoTextureInstance);
+    }
+
+    private void ApplyDialogBackgroundVideoTextureToRawImages(Texture fromTexture, Texture toTexture)
+    {
+        if (fromTexture == null || toTexture == null)
+            return;
+
+        RawImage[] rawImages = gameObject.GetComponentsInChildren<RawImage>(true);
+        if (rawImages == null)
+            return;
+
+        foreach (RawImage rawImage in rawImages)
+        {
+            if (rawImage != null && rawImage.texture == fromTexture)
+                rawImage.texture = toTexture;
+        }
+    }
+
+    private void PlayDialogBackgroundVideo()
+    {
+        ConfigureDialogBackgroundVideoPlayer();
+
+        VideoPlayer videoPlayer = _dialogBackgroundVideoPlayer;
+        if (videoPlayer == null)
+            return;
+
+        if (videoPlayer.isPlaying || _dialogBackgroundVideoCoroutine != null)
+            return;
+
+        _dialogBackgroundVideoCoroutine = uiComponent.StartCoroutine(PlayDialogBackgroundVideoRoutine(++_dialogBackgroundVideoPlayRequestId));
+    }
+
+    private void PauseDialogBackgroundVideo()
+    {
+        _dialogBackgroundVideoPlayRequestId++;
+        if (_dialogBackgroundVideoCoroutine != null)
+        {
+            uiComponent.StopCoroutine(_dialogBackgroundVideoCoroutine);
+            _dialogBackgroundVideoCoroutine = null;
+        }
+
+        VideoPlayer videoPlayer = _dialogBackgroundVideoPlayer;
+        if (videoPlayer != null && videoPlayer.isPlaying)
+            videoPlayer.Pause();
+    }
+
+    private IEnumerator PlayDialogBackgroundVideoRoutine(int requestId)
+    {
+        VideoPlayer videoPlayer = _dialogBackgroundVideoPlayer;
+        if (videoPlayer == null)
+        {
+            _dialogBackgroundVideoCoroutine = null;
+            yield break;
+        }
+
+        if (videoPlayer.clip == null && string.IsNullOrEmpty(videoPlayer.url))
+        {
+            _dialogBackgroundVideoCoroutine = null;
+            yield break;
+        }
+
+        ConfigureDialogBackgroundVideoPlayer();
+
+        if (!videoPlayer.isPrepared)
+        {
+            videoPlayer.Prepare();
+            while (!videoPlayer.isPrepared)
+            {
+                if (requestId != _dialogBackgroundVideoPlayRequestId)
+                {
+                    _dialogBackgroundVideoCoroutine = null;
+                    yield break;
+                }
+
+                yield return null;
+            }
+        }
+
+        if (requestId != _dialogBackgroundVideoPlayRequestId)
+        {
+            _dialogBackgroundVideoCoroutine = null;
+            yield break;
+        }
+
+        if (!_dialogBackgroundVideoHasStarted || (videoPlayer.length > 0 && videoPlayer.time >= videoPlayer.length - 0.05f))
+        {
+            videoPlayer.time = 0;
+            _dialogBackgroundVideoHasStarted = true;
+        }
+
+        videoPlayer.Play();
+        _dialogBackgroundVideoCoroutine = null;
+    }
+
+    private void ReleaseDialogBackgroundVideoTextureInstance()
+    {
+        PauseDialogBackgroundVideo();
+
+        if (_dialogBackgroundVideoTextureInstance == null)
+            return;
+
+        if (_dialogBackgroundVideoPlayer != null && _dialogBackgroundVideoPlayer.targetTexture == _dialogBackgroundVideoTextureInstance)
+            _dialogBackgroundVideoPlayer.targetTexture = _sharedDialogBackgroundVideoTexture;
+
+        ApplyDialogBackgroundVideoTextureToRawImages(_dialogBackgroundVideoTextureInstance, _sharedDialogBackgroundVideoTexture);
+        _dialogBackgroundVideoTextureInstance.Release();
+        UnityEngine.Object.Destroy(_dialogBackgroundVideoTextureInstance);
+        _dialogBackgroundVideoTextureInstance = null;
+        _sharedDialogBackgroundVideoTexture = null;
+    }
 
     private void LoadCloudDialogState()
     {
