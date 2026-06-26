@@ -36,6 +36,9 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         public string displayName;
         public string email;
         public string photoUrl;
+        public string birthday;
+        public string birthTime;
+        public string city;
         public bool isSelf;
 
         public string Handle => string.IsNullOrEmpty(email) ? $"@{uid}" : $"@{email.Split('@')[0]}";
@@ -1984,6 +1987,9 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                     displayName = GetString(data, "displayName", "未命名用户"),
                     email = GetString(data, "email", string.Empty),
                     photoUrl = GetString(data, "photoUrl", string.Empty),
+                    birthday = GetString(data, "birthday", string.Empty),
+                    birthTime = GetString(data, "birthTime", string.Empty),
+                    city = GetString(data, "city", string.Empty),
                     isSelf = uid == UserDataManager.Instance.FirebaseUid
                 });
             });
@@ -3907,6 +3913,9 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 displayName = displayName,
                 email = email,
                 photoUrl = GetRestString(fields, "photoUrl", string.Empty),
+                birthday = GetRestString(fields, "birthday", string.Empty),
+                birthTime = GetRestString(fields, "birthTime", string.Empty),
+                city = GetRestString(fields, "city", string.Empty),
                 isSelf = uid == currentUid,
             });
         }
@@ -4022,6 +4031,9 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 displayName = GetString(data, "displayName", "未命名用户"),
                 email = GetString(data, "email", string.Empty),
                 photoUrl = GetString(data, "photoUrl", string.Empty),
+                birthday = GetString(data, "birthday", string.Empty),
+                birthTime = GetString(data, "birthTime", string.Empty),
+                city = GetString(data, "city", string.Empty),
                 isSelf = doc.Id == currentUid,
             });
         }
@@ -4054,6 +4066,9 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 displayName = displayName,
                 email = email,
                 photoUrl = GetString(data, "photoUrl", string.Empty),
+                birthday = GetString(data, "birthday", string.Empty),
+                birthTime = GetString(data, "birthTime", string.Empty),
+                city = GetString(data, "city", string.Empty),
                 isSelf = doc.Id == currentUid,
             });
         }

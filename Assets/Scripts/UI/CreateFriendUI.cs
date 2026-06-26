@@ -5,6 +5,7 @@
  * Description: UI 表现层，该层只负责界面的交互、表现相关的更新，不允许编写任何业务逻辑代码
  * 注意: 以下文件是自动生成的，再次生成不会覆盖原有的代码，会在原有的代码上进行新增，可放心使用
 ---------------------------------*/
+using System;
 using System.IO;
 using UnityEngine.UI;
 using UnityEngine;
@@ -51,6 +52,7 @@ public class CreateFriendUI : WindowBase
 	{
 		base.OnShow();
 		CapturePrefabFallbackAvatar();
+		HideChooseHeadPanel();
 
 		if (!formInitialized)
 		{
@@ -74,6 +76,7 @@ public class CreateFriendUI : WindowBase
 	public override void OnHide()
 	{
 		avatarLoadVersion++;
+		HideChooseHeadPanel();
 		base.OnHide();
 	}
 
@@ -90,13 +93,67 @@ public class CreateFriendUI : WindowBase
 	#region UI组件事件
 	public void OnBackButtonClick()
 	{
+		if (IsChooseHeadPanelVisible())
+		{
+			HideChooseHeadPanel();
+			return;
+		}
+
 		formInitialized = false;
 		HideWindow();
 	}
 
 	public void OnUploadAvatarButtonClick()
 	{
+		if (uiComponent.chooseHeadPanel != null)
+		{
+			ShowChooseHeadPanel();
+			return;
+		}
+
 		SelectFriendAvatarUI.Show(selectedAvatarSprite, selectedAvatarIndex, selectedAvatarImagePath, ApplySelectedAvatar);
+	}
+
+	public void OnHideChooseHeadButtonClick()
+	{
+		HideChooseHeadPanel();
+	}
+
+	public void OnAIGenerateButtonClick()
+	{
+		ReadFormValues();
+		HideChooseHeadPanel();
+
+		string seed = $"{username}|{birthday}|{birthTime}|{city}|{DateTime.UtcNow.Ticks}";
+		FriendAvatarImageUtility.PickedAvatar avatar = FriendAvatarImageUtility.GenerateAiAvatar(seed);
+		if (avatar == null || avatar.sprite == null)
+		{
+			ToastManager.ShowToast("AI 头像生成失败，请稍后重试");
+			return;
+		}
+
+		ApplySelectedAvatar(avatar.sprite, 0, avatar.persistentPath);
+		ToastManager.ShowToast("AI 头像已生成");
+	}
+
+	public void OnFromPhotoAlbumButtonClick()
+	{
+		HideChooseHeadPanel();
+		FriendAvatarImageUtility.PickAvatar(
+			avatar =>
+			{
+				if (avatar == null || avatar.sprite == null) return;
+				ApplySelectedAvatar(avatar.sprite, 0, avatar.persistentPath);
+				ToastManager.ShowToast("头像已选择");
+			},
+			error =>
+			{
+				if (!string.IsNullOrEmpty(error) && error != "已取消选择头像")
+				{
+					Debug.LogWarning("[CreateFriendUI] 选择好友头像失败: " + error);
+					ToastManager.ShowToast(error);
+				}
+			});
 	}
 
 	public void OnInputInputChange(string text)
@@ -132,6 +189,7 @@ public class CreateFriendUI : WindowBase
 
 	public void OnSubmitButtonClick()
 	{
+		HideChooseHeadPanel();
 		ReadFormValues();
 		username = TrimName(username);
 		if (string.IsNullOrWhiteSpace(username))
@@ -436,11 +494,40 @@ public class CreateFriendUI : WindowBase
 			selectedAvatarSprite = accountAvatarSprite != null ? accountAvatarSprite : prefabFallbackAvatarSprite;
 		}
 
-		if (uiComponent.AvatarPreviewImage != null && selectedAvatarSprite != null)
+		SetAvatarImage(uiComponent.AvatarPreviewImage, selectedAvatarSprite);
+		SetAvatarImage(uiComponent.headImage, selectedAvatarSprite);
+	}
+
+	private void SetAvatarImage(Image image, Sprite sprite)
+	{
+		if (image == null || sprite == null)
+			return;
+
+		image.sprite = sprite;
+		image.preserveAspect = true;
+	}
+
+	private void ShowChooseHeadPanel()
+	{
+		if (uiComponent.chooseHeadPanel != null)
 		{
-			uiComponent.AvatarPreviewImage.sprite = selectedAvatarSprite;
-			uiComponent.AvatarPreviewImage.preserveAspect = true;
+			uiComponent.chooseHeadPanel.SetActive(true);
 		}
+	}
+
+	private void HideChooseHeadPanel()
+	{
+		if (uiComponent != null && uiComponent.chooseHeadPanel != null)
+		{
+			uiComponent.chooseHeadPanel.SetActive(false);
+		}
+	}
+
+	private bool IsChooseHeadPanelVisible()
+	{
+		return uiComponent != null
+			&& uiComponent.chooseHeadPanel != null
+			&& uiComponent.chooseHeadPanel.activeSelf;
 	}
 
 	private void CapturePrefabFallbackAvatar()

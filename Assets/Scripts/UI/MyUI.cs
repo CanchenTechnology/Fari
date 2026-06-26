@@ -230,6 +230,11 @@ public class MyUI : WindowBase
 	#endregion
 
 	#region UI组件事件		 
+	public void Onbtn_settingButtonClick()
+	{
+		UIModule.Instance.PopUpWindow<DailyDivinationSyncSettingsUI>();
+	}
+
 	public void OnnoticeButtonClick()
 	{
 		UIModule.Instance.PopUpWindow<NotionUI>();

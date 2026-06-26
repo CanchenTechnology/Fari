@@ -19,6 +19,7 @@ public class MyUIComponent:MonoBehaviour
 	public TMP_Text tatTodayCardValueText;
 	public TMP_Text StatTodaydialouNumText;
 	public TMP_Text StatTodaydesText;
+	public Button btn_setting;
 	public Button btn_divinationButton;
 	public Button btn_myinfoButton;
 	public Button memoryButton;
@@ -35,6 +36,7 @@ public class MyUIComponent:MonoBehaviour
 	    target.Canvas.sortingOrder = (int)windowLayer;
 	    target.Layer = windowLayer;
 	    MyUI mWindow=(MyUI)target;
+	    target.AddButtonClickListener(btn_setting,mWindow.Onbtn_settingButtonClick);
 	    target.AddButtonClickListener(btn_divinationButton,mWindow.Onbtn_divinationButtonClick);
 	    target.AddButtonClickListener(btn_myinfoButton,mWindow.Onbtn_myinfoButtonClick);
 	    target.AddButtonClickListener(memoryButton,mWindow.OnmemoryButtonClick);

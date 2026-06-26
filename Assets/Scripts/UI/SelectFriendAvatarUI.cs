@@ -90,10 +90,19 @@ public class SelectFriendAvatarUI : WindowBase
 
 	public void OnAIAvatarButtonClick()
 	{
-		int count = uiComponent.AvatarStyleButtons == null ? 0 : uiComponent.AvatarStyleButtons.Length;
-		if (count == 0) return;
-		SelectAvatarStyle((selectedAvatarIndex + 1) % count);
-		ToastManager.ShowToast("已为你生成一个头像灵感");
+		FriendAvatarImageUtility.PickedAvatar avatar = FriendAvatarImageUtility.GenerateAiAvatar(DateTime.UtcNow.Ticks.ToString());
+		if (avatar == null || avatar.sprite == null)
+		{
+			ToastManager.ShowToast("AI 头像生成失败，请稍后重试");
+			return;
+		}
+
+		selectedAvatarIndex = -1;
+		selectedAvatarSprite = avatar.sprite;
+		selectedAvatarImagePath = avatar.persistentPath ?? string.Empty;
+		RefreshPreview();
+		RefreshSelectedMarks();
+		ToastManager.ShowToast("AI 头像已生成");
 	}
 
 	public void OnAvatarStyleButtonClick(int index)

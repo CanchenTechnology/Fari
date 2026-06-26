@@ -130,7 +130,7 @@ public class FriendItem : MonoBehaviour
 
         if (FriendProfileUI.CanShowForFriend(data))
         {
-            FriendProfileUI.Show(data);
+            FriendPreviewUI.Show(data);
             return;
         }
 

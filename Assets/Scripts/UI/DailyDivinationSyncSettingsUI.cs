@@ -12,6 +12,7 @@ using GamerFrameWork.UIFrameWork;
 public class DailyDivinationSyncSettingsUI : WindowBase
 {
 	public DailyDivinationSyncSettingsUIComponent uiComponent;
+	private const string PrivacyNoticeAcceptedKey = "DailyDivinationSyncSettings_PrivacyNoticeAccepted";
 	private bool _isRefreshing;
 	private bool _isSaving;
 
@@ -26,6 +27,7 @@ public class DailyDivinationSyncSettingsUI : WindowBase
 			return;
 		}
 		uiComponent.InitComponent(this);
+		AddButtonClickListener(uiComponent.privacyBtn, OnPrivacyNoticeButtonClick);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		base.OnAwake();
 	}
@@ -34,6 +36,7 @@ public class DailyDivinationSyncSettingsUI : WindowBase
 	{
 		base.OnShow();
 		LoadSettingsThenRefresh();
+		SetPrivacyNoticeVisible(ShouldShowPrivacyNotice());
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
@@ -199,6 +202,26 @@ public class DailyDivinationSyncSettingsUI : WindowBase
 		return DailyDivinationSyncVisibility.OnlyMe;
 	}
 
+	private bool ShouldShowPrivacyNotice()
+	{
+		return PlayerPrefs.GetInt(PrivacyNoticeAcceptedKey, 0) == 0;
+	}
+
+	private void SetPrivacyNoticeVisible(bool visible)
+	{
+		if (uiComponent?.privacyNoticePanel != null)
+		{
+			uiComponent.privacyNoticePanel.SetActive(visible);
+		}
+	}
+
+	private void AcceptPrivacyNotice()
+	{
+		PlayerPrefs.SetInt(PrivacyNoticeAcceptedKey, 1);
+		PlayerPrefs.Save();
+		SetPrivacyNoticeVisible(false);
+	}
+
 	#endregion
 
 	#region UI组件事件
@@ -208,7 +231,11 @@ public class DailyDivinationSyncSettingsUI : WindowBase
 	}
 	public void OnInfoButtonClick()
 	{
-		ToastManager.ShowToast("只同步每日卡片摘要，不同步完整解读。你可以随时关闭或改为仅自己可见。");
+		SetPrivacyNoticeVisible(true);
+	}
+	public void OnPrivacyNoticeButtonClick()
+	{
+		AcceptPrivacyNotice();
 	}
 	public void OnSyncToggleButtonClick()
 	{

@@ -14,13 +14,16 @@ public class DailyDivinationSyncSettingsUIComponent:MonoBehaviour
 {
 	public WindowLayer windowLayer = WindowLayer.MainUI;
 	public Button BackButton;
-	public Button InfoButton;
 	public Switch SwitchSwitch;
 	public ToggleGroup visibilityToggleGroup;
 	public Toggle VisibilityAllFriendsToggle;
 	public Toggle VisibilityRealFriendsToggle;
 	public Toggle MeibilityOnlyMeToggle;
 	public Button SaveSettingsButton;
+	
+	[Header("隐私策略")]
+	public Button privacyBtn;
+	public GameObject privacyNoticePanel;
 	public void InitComponent(WindowBase target)
 	{
 	    //组件事件绑定
@@ -28,7 +31,6 @@ public class DailyDivinationSyncSettingsUIComponent:MonoBehaviour
 	    target.Layer = windowLayer;
 	    DailyDivinationSyncSettingsUI mWindow=(DailyDivinationSyncSettingsUI)target;
 	    target.AddButtonClickListener(BackButton,mWindow.OnBackButtonClick);
-	    target.AddButtonClickListener(InfoButton,mWindow.OnInfoButtonClick);
 	    if (SwitchSwitch != null)
 	    {
 	        target.AddButtonClickListener(SwitchSwitch.GetComponent<Button>(),mWindow.OnSyncToggleButtonClick);

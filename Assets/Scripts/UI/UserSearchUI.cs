@@ -407,6 +407,7 @@ public class UserSearchUI : WindowBase
 			}
 
 			BindInviteButton(inviteItem.infoBtn, index);
+			BindPreviewClick(itemObject, result);
 			return;
 		}
 
@@ -427,6 +428,21 @@ public class UserSearchUI : WindowBase
 
 		BindInviteButton(inviteButton, index);
 		ApplySearchResultAvatar(result, headImage);
+		BindPreviewClick(itemObject, result);
+	}
+
+	private void BindPreviewClick(GameObject itemObject, FirestoreManager.UserSearchResult result)
+	{
+		if (itemObject == null || result == null || string.IsNullOrWhiteSpace(result.uid))
+			return;
+
+		Button previewButton = itemObject.GetComponent<Button>();
+		if (previewButton == null)
+			previewButton = itemObject.AddComponent<Button>();
+
+		previewButton.transition = Selectable.Transition.None;
+		previewButton.onClick.RemoveAllListeners();
+		previewButton.onClick.AddListener(() => FriendPreviewUI.Show(result));
 	}
 
 	private void ApplySearchResultAvatar(FirestoreManager.UserSearchResult result, Image target)
@@ -876,6 +892,7 @@ public class UserSearchUI : WindowBase
 			item.SetRejectButtonVisible(false);
 
 			ConfigureUserActionButton(item.infoBtn, result, RefreshRecommendationViews);
+			BindPreviewClick(item.gameObject, result);
 		}
 
 		private void RemoveRecommendedUser(string uid)

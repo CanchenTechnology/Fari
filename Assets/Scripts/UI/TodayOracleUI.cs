@@ -29,6 +29,8 @@ public class TodayOracleUI : WindowBase
 	private Coroutine _idleVideoCoroutine;
 	private Coroutine _restoreTodayCoroutine;
 	private LoadingTextUI _loadingTextUI;
+	private RenderTexture _idleVideoTextureInstance;
+	private RenderTexture _sharedIdleVideoTexture;
 	private int _tomorrowHookRequestId;
 	private int _todayStateRequestId;
 	private int _idleVideoPlayRequestId;
@@ -85,6 +87,7 @@ public class TodayOracleUI : WindowBase
 		_todayStateRequestId++;
 		StopRestoreTodayCoroutine();
 		StopPrepareFlipCoroutine();
+		ReleaseIdleVideoTextureInstance();
 		base.OnDestroy();
 	}
 	#endregion
@@ -116,10 +119,66 @@ public class TodayOracleUI : WindowBase
 		VideoPlayer videoPlayer = uiComponent?.idleVideoPlayer;
 		if (videoPlayer == null) return;
 
+		EnsureIdleVideoTextureInstance(videoPlayer);
 		videoPlayer.playOnAwake = false;
 		videoPlayer.waitForFirstFrame = true;
 		videoPlayer.skipOnDrop = false;
 		videoPlayer.isLooping = true;
+	}
+
+	private void EnsureIdleVideoTextureInstance(VideoPlayer videoPlayer)
+	{
+		if (videoPlayer == null || _idleVideoTextureInstance != null)
+			return;
+
+		RenderTexture sourceTexture = videoPlayer.targetTexture;
+		if (sourceTexture == null)
+			return;
+
+		_sharedIdleVideoTexture = sourceTexture;
+		var descriptor = sourceTexture.descriptor;
+		_idleVideoTextureInstance = new RenderTexture(descriptor)
+		{
+			name = $"{sourceTexture.name}_TodayOracleRuntime",
+			filterMode = sourceTexture.filterMode,
+			wrapMode = sourceTexture.wrapMode,
+			anisoLevel = sourceTexture.anisoLevel,
+		};
+		_idleVideoTextureInstance.Create();
+
+		videoPlayer.targetTexture = _idleVideoTextureInstance;
+		ApplyIdleVideoTextureToRawImages(_sharedIdleVideoTexture, _idleVideoTextureInstance);
+	}
+
+	private void ApplyIdleVideoTextureToRawImages(Texture fromTexture, Texture toTexture)
+	{
+		if (fromTexture == null || toTexture == null)
+			return;
+
+		RawImage[] rawImages = gameObject.GetComponentsInChildren<RawImage>(true);
+		if (rawImages == null)
+			return;
+
+		foreach (RawImage rawImage in rawImages)
+		{
+			if (rawImage != null && rawImage.texture == fromTexture)
+				rawImage.texture = toTexture;
+		}
+	}
+
+	private void ReleaseIdleVideoTextureInstance()
+	{
+		if (_idleVideoTextureInstance == null)
+			return;
+
+		if (uiComponent?.idleVideoPlayer != null && uiComponent.idleVideoPlayer.targetTexture == _idleVideoTextureInstance)
+			uiComponent.idleVideoPlayer.targetTexture = _sharedIdleVideoTexture;
+
+		ApplyIdleVideoTextureToRawImages(_idleVideoTextureInstance, _sharedIdleVideoTexture);
+		_idleVideoTextureInstance.Release();
+		UnityEngine.Object.Destroy(_idleVideoTextureInstance);
+		_idleVideoTextureInstance = null;
+		_sharedIdleVideoTexture = null;
 	}
 
 	private void PlayIdleVideo()

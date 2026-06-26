@@ -25,6 +25,14 @@ public class CreateFriendUIComponent:MonoBehaviour
 	public Button Field_birthdayCountryButton;
 	public TMP_Text birthdayCountryText;
 	public Button SubmitButton;
+
+	[Header("选择头像")]
+	public GameObject chooseHeadPanel;
+
+	public Button hideChooseHeadBtn;
+	public Button aiGenerateBtn;
+	public Button fromPhotoAlbumBtn;
+	public Image headImage;
 	public void InitComponent(WindowBase target)
 	{
 	    //组件事件绑定
@@ -38,5 +46,8 @@ public class CreateFriendUIComponent:MonoBehaviour
 	    target.AddButtonClickListener(Field_birthdayTimeButton,mWindow.OnField_birthdayTimeButtonClick);
 	    target.AddButtonClickListener(Field_birthdayCountryButton,mWindow.OnField_birthdayCountryButtonClick);
 	    target.AddButtonClickListener(SubmitButton,mWindow.OnSubmitButtonClick);
+	    target.AddButtonClickListener(hideChooseHeadBtn,mWindow.OnHideChooseHeadButtonClick);
+	    target.AddButtonClickListener(aiGenerateBtn,mWindow.OnAIGenerateButtonClick);
+	    target.AddButtonClickListener(fromPhotoAlbumBtn,mWindow.OnFromPhotoAlbumButtonClick);
 	}
 }

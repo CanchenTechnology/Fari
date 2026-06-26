@@ -126,6 +126,30 @@ public static class FriendAvatarImageUtility
 #endif
     }
 
+    public static PickedAvatar GenerateAiAvatar(string seed = null)
+    {
+        try
+        {
+            Texture2D texture = CreateGeneratedAvatarTexture(seed);
+            if (texture == null)
+            {
+                return null;
+            }
+
+            string persistentPath = SaveTextureToPersistent(texture);
+            return new PickedAvatar
+            {
+                sprite = TextureToSprite(texture),
+                persistentPath = persistentPath,
+            };
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("[FriendAvatarImageUtility] 生成 AI 好友头像失败: " + e.Message);
+            return null;
+        }
+    }
+
     public static IEnumerator LoadCurrentUserAvatarCoroutine(Action<Sprite, string> onComplete)
     {
         if (TryLoadKnownAccountAvatarFromCache(out Sprite cachedSprite, out string cachedPath))
@@ -335,6 +359,118 @@ public static class FriendAvatarImageUtility
 
         output.Apply(false, false);
         return output;
+    }
+
+    private static Texture2D CreateGeneratedAvatarTexture(string seed)
+    {
+        int hash = StableHash(string.IsNullOrWhiteSpace(seed) ? DateTime.UtcNow.Ticks.ToString() : seed);
+        float hue = Mathf.Repeat((hash & 0xFFFF) / 65535f, 1f);
+        float accentHue = Mathf.Repeat(hue + 0.18f + (((hash >> 8) & 0xFF) / 1024f), 1f);
+        float hairHue = Mathf.Repeat(hue + 0.52f, 1f);
+
+        Color bgOuter = Color.HSVToRGB(hue, 0.78f, 0.22f);
+        Color bgInner = Color.HSVToRGB(accentHue, 0.58f, 0.74f);
+        Color accent = Color.HSVToRGB(accentHue, 0.72f, 0.95f);
+        Color skin = Color.Lerp(new Color(0.98f, 0.72f, 0.52f, 1f), new Color(0.72f, 0.45f, 0.32f, 1f), ((hash >> 16) & 0xFF) / 255f);
+        Color hair = Color.HSVToRGB(hairHue, 0.54f, 0.32f);
+        Color shadow = new Color(0.06f, 0.04f, 0.09f, 1f);
+
+        Texture2D texture = new Texture2D(AvatarSize, AvatarSize, TextureFormat.RGBA32, false)
+        {
+            name = "GeneratedFriendAiAvatar",
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp
+        };
+
+        for (int y = 0; y < AvatarSize; y++)
+        {
+            for (int x = 0; x < AvatarSize; x++)
+            {
+                float u = (x + 0.5f) / AvatarSize * 2f - 1f;
+                float v = (y + 0.5f) / AvatarSize * 2f - 1f;
+                float radius = Mathf.Sqrt(u * u + v * v);
+                float sweep = Mathf.Sin((u * 3.7f + v * 2.9f + hue * 6f) * Mathf.PI) * 0.08f;
+                Color pixel = Color.Lerp(bgInner, bgOuter, Mathf.Clamp01(radius + sweep));
+
+                float ring = Mathf.Abs(radius - 0.78f);
+                if (ring < 0.018f)
+                {
+                    pixel = Color.Lerp(pixel, accent, 0.72f);
+                }
+
+                texture.SetPixel(x, y, pixel);
+            }
+        }
+
+        DrawEllipse(texture, AvatarSize * 0.5f, AvatarSize * 0.21f, AvatarSize * 0.33f, AvatarSize * 0.17f, new Color(0.05f, 0.035f, 0.07f, 0.50f));
+        DrawEllipse(texture, AvatarSize * 0.5f, AvatarSize * 0.21f, AvatarSize * 0.30f, AvatarSize * 0.15f, Color.Lerp(accent, shadow, 0.38f));
+        DrawEllipse(texture, AvatarSize * 0.5f, AvatarSize * 0.48f, AvatarSize * 0.24f, AvatarSize * 0.29f, hair);
+        DrawEllipse(texture, AvatarSize * 0.5f, AvatarSize * 0.47f, AvatarSize * 0.20f, AvatarSize * 0.25f, skin);
+        DrawEllipse(texture, AvatarSize * 0.43f, AvatarSize * 0.59f, AvatarSize * 0.13f, AvatarSize * 0.11f, hair);
+        DrawEllipse(texture, AvatarSize * 0.57f, AvatarSize * 0.59f, AvatarSize * 0.13f, AvatarSize * 0.11f, hair);
+        DrawEllipse(texture, AvatarSize * 0.5f, AvatarSize * 0.61f, AvatarSize * 0.20f, AvatarSize * 0.08f, Color.Lerp(hair, accent, 0.22f));
+
+        float eyeOffset = 0.048f + (((hash >> 20) & 0x0F) / 1024f);
+        DrawEllipse(texture, AvatarSize * (0.5f - eyeOffset), AvatarSize * 0.49f, AvatarSize * 0.018f, AvatarSize * 0.026f, shadow);
+        DrawEllipse(texture, AvatarSize * (0.5f + eyeOffset), AvatarSize * 0.49f, AvatarSize * 0.018f, AvatarSize * 0.026f, shadow);
+        DrawEllipse(texture, AvatarSize * 0.5f, AvatarSize * 0.40f, AvatarSize * 0.055f, AvatarSize * 0.018f, new Color(0.40f, 0.12f, 0.16f, 0.72f));
+        DrawEllipse(texture, AvatarSize * 0.39f, AvatarSize * 0.71f, AvatarSize * 0.035f, AvatarSize * 0.035f, new Color(1f, 1f, 1f, 0.62f));
+        DrawEllipse(texture, AvatarSize * 0.71f, AvatarSize * 0.76f, AvatarSize * 0.022f, AvatarSize * 0.022f, new Color(1f, 1f, 1f, 0.48f));
+        DrawEllipse(texture, AvatarSize * 0.28f, AvatarSize * 0.68f, AvatarSize * 0.018f, AvatarSize * 0.018f, accent);
+
+        texture.Apply(false, false);
+        return texture;
+    }
+
+    private static void DrawEllipse(Texture2D texture, float centerX, float centerY, float radiusX, float radiusY, Color color)
+    {
+        if (texture == null || radiusX <= 0f || radiusY <= 0f)
+        {
+            return;
+        }
+
+        int minX = Mathf.Max(0, Mathf.FloorToInt(centerX - radiusX));
+        int maxX = Mathf.Min(texture.width - 1, Mathf.CeilToInt(centerX + radiusX));
+        int minY = Mathf.Max(0, Mathf.FloorToInt(centerY - radiusY));
+        int maxY = Mathf.Min(texture.height - 1, Mathf.CeilToInt(centerY + radiusY));
+
+        for (int y = minY; y <= maxY; y++)
+        {
+            float dy = (y + 0.5f - centerY) / radiusY;
+            for (int x = minX; x <= maxX; x++)
+            {
+                float dx = (x + 0.5f - centerX) / radiusX;
+                float distance = dx * dx + dy * dy;
+                if (distance > 1f)
+                {
+                    continue;
+                }
+
+                float edgeFade = Mathf.Clamp01((1f - distance) * 8f);
+                Color blended = Color.Lerp(texture.GetPixel(x, y), color, color.a * edgeFade);
+                blended.a = 1f;
+                texture.SetPixel(x, y, blended);
+            }
+        }
+    }
+
+    private static int StableHash(string value)
+    {
+        unchecked
+        {
+            int hash = 23;
+            if (string.IsNullOrEmpty(value))
+            {
+                return hash;
+            }
+
+            for (int i = 0; i < value.Length; i++)
+            {
+                hash = hash * 31 + value[i];
+            }
+
+            return hash;
+        }
     }
 
     private static Sprite TextureToSprite(Texture2D texture)
