@@ -424,7 +424,7 @@ public class CompleteInterpretationUI : WindowBase
     {
         if (label == null) return;
         var topic = (topics != null && index < topics.Count) ? topics[index] : "";
-        label.text = string.IsNullOrEmpty(topic) || topic == "..." ? topic : $"Q  {topic}";
+        label.text = topic;
     }
 
     /// <summary>
