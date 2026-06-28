@@ -1295,6 +1295,10 @@
             <span class="nav-icon">AI</span>
             <span class="nav-label"><strong>AI 上下文</strong><span>Prompt 与调用复盘</span></span>
           </button>
+          <button class="nav-button" type="button" data-module="modelQuota">
+            <span class="nav-icon">额</span>
+            <span class="nav-label"><strong>模型额度</strong><span>余额、Key 和巡检</span></span>
+          </button>
           <button class="nav-button" type="button" data-module="config">
             <span class="nav-icon">配</span>
             <span class="nav-label"><strong>配置管理</strong><span>公开配置和 IAP</span></span>
@@ -1324,13 +1328,6 @@
             <button id="refreshDashboardButton" type="button">刷新</button>
           </div>
           <div id="dashboardMetrics" class="grid-4"></div>
-          <div class="panel">
-            <div class="panel-title">
-              <h2>模型额度</h2>
-              <button id="refreshModelQuotaButton" type="button" class="secondary">刷新额度</button>
-            </div>
-            <div id="modelQuotaStatus"></div>
-          </div>
           <div class="split">
             <div class="panel">
               <div class="panel-title"><h2>最近动态</h2></div>
@@ -1345,6 +1342,19 @@
               <button type="button" data-open-module="audit" class="secondary">查看审计日志</button>
               <button type="button" data-open-module="roadmap" class="secondary">查看功能蓝图</button>
             </div>
+          </div>
+        </section>
+
+        <section id="modelQuotaModule" class="module">
+          <div class="module-head">
+            <div>
+              <h1 class="module-title">模型额度</h1>
+              <p class="module-subtitle">查看 DeepSeek 等模型余额、备用 Key、巡检记录和当前调用顺序。</p>
+            </div>
+            <button id="refreshModelQuotaButton" type="button">刷新额度</button>
+          </div>
+          <div class="panel">
+            <div id="modelQuotaStatus"></div>
           </div>
         </section>
 
@@ -2367,7 +2377,7 @@
 
     function setActiveModule(moduleKey) {
       state.activeModule = moduleKey;
-      if (moduleKey !== "dashboard") setModelQuotaCooldownTicker(false);
+      if (moduleKey !== "modelQuota") setModelQuotaCooldownTicker(false);
       document.querySelectorAll("[data-module]").forEach((button) => {
         button.classList.toggle("active", button.dataset.module === moduleKey);
       });
@@ -2385,6 +2395,7 @@
       if (moduleKey === "feedback") return loadFeedback();
       if (moduleKey === "chats") return loadChatUserCandidates();
       if (moduleKey === "agent") return loadAgent();
+      if (moduleKey === "modelQuota") return loadModelQuotaStatus(!state.modelQuota);
       if (moduleKey === "config") return loadConfig();
       if (moduleKey === "audit") return loadAuditLogs();
       if (moduleKey === "roadmap") return;
@@ -2407,7 +2418,7 @@
 
     async function loadDashboard() {
       setLoading($("dashboardMetrics"), "加载总览...");
-      const dashboardRequest = callFunction("/adminDashboardSummary?limit=8")
+      await callFunction("/adminDashboardSummary?limit=8")
         .then((data) => {
           state.dashboard = data;
           renderDashboard();
@@ -2417,8 +2428,6 @@
           setInlineError($("dashboardMetrics"), message);
           showMessage(message, "warn");
       });
-      const quotaRequest = loadModelQuotaStatus(false);
-      await Promise.allSettled([dashboardRequest, quotaRequest]);
     }
 
     const modelQuotaAutoRefreshIntervalMs = 60 * 1000;
@@ -2432,7 +2441,7 @@
       }
       if (state.modelQuotaAutoRefresh) {
         state.modelQuotaAutoRefreshTimer = setInterval(() => {
-          if (state.activeModule !== "dashboard" || !state.token || state.modelQuotaLoading || state.modelQuotaRepairing || state.modelQuotaReleasingCooldown) return;
+          if (state.activeModule !== "modelQuota" || !state.token || state.modelQuotaLoading || state.modelQuotaRepairing || state.modelQuotaReleasingCooldown) return;
           loadModelQuotaStatus(false);
         }, modelQuotaAutoRefreshIntervalMs);
       }
@@ -2453,7 +2462,7 @@
       }
       if (shouldRun && !state.modelQuotaCooldownTimer) {
         state.modelQuotaCooldownTimer = setInterval(() => {
-          if (state.activeModule !== "dashboard" || !state.token) {
+          if (state.activeModule !== "modelQuota" || !state.token) {
             setModelQuotaCooldownTicker(false);
             return;
           }
@@ -2571,7 +2580,7 @@
           const result = await addProviderPoolSecrets(form, secretName, secretValues, button);
           await maybeCheckAddedProviderKeys(form, secretName, result, button);
         } else {
-          await callFunction("/adminProviderSecretUpdate", {
+          const updateResult = await callFunction("/adminProviderSecretUpdate", {
             method: "POST",
             body: JSON.stringify({
               secretName,
@@ -2581,7 +2590,7 @@
           });
           $("providerSecretDialog").close();
           form.elements.secretValue.value = "";
-          showMessage("密钥已替换，正在刷新状态", "ok");
+          showMessage(updateResult.activeKeyId === "primary" ? "密钥已替换，并已切换为主 Key" : "密钥已替换，正在刷新状态", "ok");
         }
         await loadModelQuotaStatus(false);
       } catch (error) {
@@ -3854,6 +3863,7 @@
 
     function isRuntimeKeyCandidate(key = {}) {
       if (key.source === "primary") return true;
+      if (key.runtimeCandidate === false) return false;
       return !["deleted", "disabled", "invalid", "invalid_secret", "exhausted", "insufficient_balance", "missing_secret"].includes(String(key.status || "active"));
     }
 
@@ -3879,8 +3889,13 @@
     function renderProviderKeyCard(provider, key) {
       const status = String(key.status || "active");
       const disabled = key.source !== "primary" && ["deleted", "disabled", "invalid", "invalid_secret", "exhausted", "insufficient_balance", "missing_secret"].includes(status);
+      const runtimeCandidate = isRuntimeKeyCandidate(key);
+      const selectedAndUsable = key.selected && runtimeCandidate;
+      const selectedButUnavailable = key.selected && !runtimeCandidate;
+      const statusLabel = selectedAndUsable ? "当前使用" : selectedButUnavailable ? "已选但不可用" : providerStatusLabel(key.status);
+      const statusTone = selectedAndUsable ? "ok" : selectedButUnavailable ? "warn" : providerTone(key);
       return `
-        <div class="model-key-card ${key.selected ? "selected" : ""} ${disabled ? "disabled" : ""}"
+        <div class="model-key-card ${selectedAndUsable ? "selected" : ""} ${disabled ? "disabled" : ""}"
           data-select-key="${escapeAttr(key.id)}"
           data-provider="${escapeAttr(provider.provider)}">
           <div class="model-key-head">
@@ -3888,7 +3903,7 @@
               <div class="strong">${escapeHtml(key.source === "primary" ? "主 SK" : key.label || key.id)}</div>
               <div class="model-quota-note">${escapeHtml(key.id === "primary" ? "Primary" : key.id)}</div>
             </div>
-            <span class="pill ${key.selected ? "ok" : providerTone(key)}">${escapeHtml(key.selected ? "当前使用" : providerStatusLabel(key.status))}</span>
+            <span class="pill ${statusTone}">${escapeHtml(statusLabel)}</span>
           </div>
           ${renderProviderKeyCardDetails(key)}
           <div class="model-key-actions">
@@ -3927,10 +3942,11 @@
       const keyAttr = escapeAttr(key.id);
       const labelAttr = escapeAttr(key.label || key.id);
       const coolingDown = isRuntimeKeyCoolingDown(key);
+      const runtimeCandidate = isRuntimeKeyCandidate(key);
       const actions = [];
       actions.push(`<button type="button" class="secondary" data-provider="${providerAttr}" data-check-key="${keyAttr}">检测</button>`);
       actions.push(`<button type="button" class="secondary" data-provider="${providerAttr}" data-provider-key-events data-key-id="${keyAttr}" data-label="${labelAttr}">日志</button>`);
-      if (!key.selected && !disabled) {
+      if (!key.selected && !disabled && runtimeCandidate) {
         actions.push(`<button type="button" class="secondary" data-provider="${providerAttr}" data-select-key="${keyAttr}">使用这个</button>`);
       }
       if (key.source !== "primary") {

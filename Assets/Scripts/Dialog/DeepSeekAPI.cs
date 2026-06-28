@@ -19,7 +19,7 @@ public class DeepSeekAPI : MonoBehaviour
 
     [Header("Editor 调试")]
     [Tooltip("Editor 下优先使用下面的调试 Key 直连 DeepSeek。正式包不生效，正式包始终走 Firebase Functions。")]
-    public bool useEditorDirectDeepSeek = true;
+    public bool useEditorDirectDeepSeek = false;
 
     [Tooltip("仅用于 Unity Editor 调试的 DeepSeek API Key。请使用单独的调试 Key，不要提交真实生产 Key。")]
     public string editorDeepSeekApiKey = "";
@@ -237,11 +237,12 @@ public class DeepSeekAPI : MonoBehaviour
             if (request.isNetworkError || request.isHttpError)
 #endif
             {
-                Debug.LogError("DeepSeek API Error: " + request.error);
+                string errorMessage = BuildBackendErrorMessage(request.responseCode, request.error, request.downloadHandler.text);
+                Debug.LogError("DeepSeek API Error: " + errorMessage);
                 Debug.LogError("Response: " + request.downloadHandler.text);
-                if (TryCompleteWithEditorMock(messages, onSuccess, request.error))
+                if (TryCompleteWithEditorMock(messages, onSuccess, errorMessage))
                     yield break;
-                onError?.Invoke(request.error);
+                onError?.Invoke(errorMessage);
             }
             else
             {
@@ -358,10 +359,15 @@ public class DeepSeekAPI : MonoBehaviour
                 // 如果 Handler 还没触发过错误回调才报错
                 if (!handler.HasCompleted)
                 {
-                    Debug.LogError("DeepSeek Stream Error: " + request.error);
-                    if (TryCompleteStreamWithEditorMock(messages, onChunk, onComplete, request.error))
+                    string errorMessage = BuildBackendErrorMessage(request.responseCode, request.error, handler.ResponseText);
+                    Debug.LogError("DeepSeek Stream Error: " + errorMessage);
+                    if (!string.IsNullOrWhiteSpace(handler.ResponseText))
+                    {
+                        Debug.LogError("Response: " + handler.ResponseText);
+                    }
+                    if (TryCompleteStreamWithEditorMock(messages, onChunk, onComplete, errorMessage))
                         yield break;
-                    onError?.Invoke(request.error);
+                    onError?.Invoke(errorMessage);
                 }
             }
         }
@@ -376,10 +382,12 @@ public class DeepSeekAPI : MonoBehaviour
         private Action<string> onComplete;
         private Action<string> onError;
         private StringBuilder textBuffer = new StringBuilder();
+        private StringBuilder rawResponse = new StringBuilder();
         private StringBuilder fullContent = new StringBuilder();
         private bool _hasCompleted;
 
         public bool HasCompleted => _hasCompleted;
+        public string ResponseText => rawResponse.ToString();
 
         public StreamingDownloadHandler(Action<string> onChunk,
             Action<string> onComplete, Action<string> onError)
@@ -395,6 +403,7 @@ public class DeepSeekAPI : MonoBehaviour
             if (data == null || dataLength <= 0) return false;
 
             string text = Encoding.UTF8.GetString(data, 0, dataLength);
+            rawResponse.Append(text);
             textBuffer.Append(text);
             ProcessLines();
             return true;
@@ -713,6 +722,59 @@ public class DeepSeekAPI : MonoBehaviour
         }
     }
 #endif
+
+    /// <summary>
+    /// 把后端/DeepSeek 的 HTTP 错误转成可读提示。
+    /// </summary>
+    private string BuildBackendErrorMessage(long statusCode, string requestError, string responseText)
+    {
+        string backendError = "";
+        string backendCode = "";
+        if (!string.IsNullOrWhiteSpace(responseText))
+        {
+            try
+            {
+                BackendAIResponse response = JsonUtility.FromJson<BackendAIResponse>(responseText);
+                backendError = response?.error ?? "";
+                backendCode = response?.code ?? "";
+            }
+            catch
+            {
+                // Non-JSON bodies are still useful as raw debug context below.
+            }
+        }
+
+        if (statusCode == 402)
+        {
+            return string.IsNullOrWhiteSpace(backendError)
+                ? "DeepSeek 余额不足（HTTP 402）。请在后台“模型额度”里充值 DeepSeek，或添加/切换到有余额的备用 Key。"
+                : $"DeepSeek 余额不足（HTTP 402）：{backendError}";
+        }
+
+        if (statusCode == 401 || statusCode == 403)
+        {
+            return string.IsNullOrWhiteSpace(backendError)
+                ? $"DeepSeek 密钥无效或无权限（HTTP {statusCode}）。请在后台“模型额度”里替换 Key。"
+                : $"DeepSeek 密钥无效或无权限（HTTP {statusCode}）：{backendError}";
+        }
+
+        if (statusCode == 429)
+        {
+            return string.IsNullOrWhiteSpace(backendError)
+                ? "DeepSeek 请求受限（HTTP 429）。请稍后重试，或切换备用 Key。"
+                : $"DeepSeek 请求受限（HTTP 429）：{backendError}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(backendError))
+        {
+            return string.IsNullOrWhiteSpace(backendCode)
+                ? backendError
+                : $"{backendError} ({backendCode})";
+        }
+
+        if (!string.IsNullOrWhiteSpace(requestError)) return requestError;
+        return statusCode > 0 ? $"AI 服务请求失败（HTTP {statusCode}）" : "AI 服务请求失败";
+    }
 
     /// <summary>
     /// 转义 JSON 字符串中的特殊字符

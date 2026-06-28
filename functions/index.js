@@ -4995,7 +4995,9 @@ async function getProviderKeyCandidates(provider, primarySecretName, primarySecr
   const normalizedProvider = normalizePoolProvider(provider);
   const selectedKeyId = await getProviderSelectedKeyId(normalizedProvider);
   const now = Date.now();
-  const primaryValue = await getRuntimeSecretValue(primarySecretName, primarySecretParam);
+  const primaryValue = await getRuntimeSecretValue(primarySecretName, primarySecretParam, {
+    forceRefresh: options.forceRefresh === true,
+  });
   if (primaryValue) {
     candidates.push({
       id: "primary",
@@ -5517,7 +5519,9 @@ async function callDeepSeek(body, stream) {
     stream,
   };
 
-  const candidates = await getProviderKeyCandidates("deepseek", "DEEPSEEK_API_KEY", deepseekApiKey);
+  const candidates = await getProviderKeyCandidates("deepseek", "DEEPSEEK_API_KEY", deepseekApiKey, {
+    forceRefresh: true,
+  });
   if (!candidates.length) throw new Error("DEEPSEEK_API_KEY is not configured");
 
   const failures = [];
@@ -6044,7 +6048,9 @@ async function cleanupProviderKeyMaintenanceData() {
 
 async function checkDeepSeekBalance() {
   const keyPool = await getProviderPoolSummary("deepseek");
-  const candidates = await getProviderKeyCandidates("deepseek", "DEEPSEEK_API_KEY", deepseekApiKey);
+  const candidates = await getProviderKeyCandidates("deepseek", "DEEPSEEK_API_KEY", deepseekApiKey, {
+    forceRefresh: true,
+  });
   if (!candidates.length) {
     return {
       ...buildMissingProvider("deepseek", "DeepSeek", "llm", "DEEPSEEK_API_KEY", true),
@@ -7052,6 +7058,10 @@ exports.adminProviderSecretUpdate = onRequest(runtime, async (req, res) => {
     const config = MODEL_SECRET_CONFIGS[secretName];
     const secretValue = validateSecretValue(req.body?.secretValue);
     const result = await addSecretVersion(secretName, secretValue);
+    const activeKeyId = config.keyKind === "api_key" ? "primary" : "";
+    if (activeKeyId) {
+      await setProviderSelectedKey(config.provider, activeKeyId, decoded, req);
+    }
     await writeAdminAuditLog(decoded, "provider_secret.update", {
       type: "provider_secret",
       id: secretName,
@@ -7071,6 +7081,7 @@ exports.adminProviderSecretUpdate = onRequest(runtime, async (req, res) => {
       label: config.label,
       secretVersion: result.name,
       fingerprint: result.fingerprint,
+      activeKeyId,
     });
   } catch (error) {
     console.error("[adminProviderSecretUpdate]", error);
