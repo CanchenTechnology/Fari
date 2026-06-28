@@ -177,8 +177,13 @@ public class TodayCardUI : WindowBase
 
 	private TodayCardDetailContent BuildContent(TarotCard card, bool upright)
 	{
-		if (_contentOverride != null)
-			return MergeWithFallback(_contentOverride, BuildFallbackContent(card, upright));
+		return BuildContentForCard(card, upright, _contentOverride);
+	}
+
+	public static TodayCardDetailContent BuildContentForCard(TarotCard card, bool upright, TodayCardDetailContent contentOverride = null)
+	{
+		if (contentOverride != null)
+			return MergeWithFallback(contentOverride, BuildFallbackContent(card, upright));
 
 		var ruleContent = ContentRuleProvider?.Invoke(card, upright);
 		if (ruleContent != null)
@@ -203,7 +208,7 @@ public class TodayCardUI : WindowBase
 			BuildFallbackContent(card, upright));
 	}
 
-	private TodayCardDetailContent BuildContentFromPayloads(TodayOraclePayload oraclePayload,
+	private static TodayCardDetailContent BuildContentFromPayloads(TodayOraclePayload oraclePayload,
 		CompleteInterpretationPayload interpretationPayload, TarotCard card, bool upright)
 	{
 		var content = new TodayCardDetailContent();
@@ -237,7 +242,7 @@ public class TodayCardUI : WindowBase
 		return content;
 	}
 
-	private TodayCardDetailContent BuildFallbackContent(TarotCard card, bool upright)
+	private static TodayCardDetailContent BuildFallbackContent(TarotCard card, bool upright)
 	{
 		var kw = card.keywords ?? new List<string>();
 		var content = new TodayCardDetailContent
@@ -267,7 +272,7 @@ public class TodayCardUI : WindowBase
 		return content;
 	}
 
-	private TodayCardDetailContent MergeWithFallback(TodayCardDetailContent primary, TodayCardDetailContent fallback)
+	private static TodayCardDetailContent MergeWithFallback(TodayCardDetailContent primary, TodayCardDetailContent fallback)
 	{
 		if (primary == null) return fallback;
 		if (fallback == null) return primary;

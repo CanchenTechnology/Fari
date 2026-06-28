@@ -16,6 +16,12 @@ using XFGameFrameWork;
 using GamerFrameWork.OracleRuntime;
 using TMPro;
 using UnityEngine.Video;
+using IBeginDragHandler = UnityEngine.EventSystems.IBeginDragHandler;
+using IDragHandler = UnityEngine.EventSystems.IDragHandler;
+using IEndDragHandler = UnityEngine.EventSystems.IEndDragHandler;
+using IInitializePotentialDragHandler = UnityEngine.EventSystems.IInitializePotentialDragHandler;
+using IScrollHandler = UnityEngine.EventSystems.IScrollHandler;
+using PointerEventData = UnityEngine.EventSystems.PointerEventData;
 
 
 public class DialogUI : WindowBase
@@ -43,6 +49,22 @@ public class DialogUI : WindowBase
     [Tooltip("已废弃：现在不再等待语音生成后才显示 AI 文本")]
     public bool delayAITextUntilVoiceReady = false;
 
+    private int questionInputMaxVisibleLines = 5;
+    private float questionInputExpandedRightExtend = 44f;
+    private float questionInputTextLeftOffset = 0f;
+    private float questionInputTextTopPadding = 16f;
+    private float questionInputTextRightPadding = 28f;
+    private float questionInputTextBottomPadding = 16f;
+    private float questionInputLeftButtonBottomInset = 0f;
+    private float questionInputViewportLeftInset = 112f;
+    private float questionInputViewportRightInset = 64f;
+    private float questionInputViewportTopInset = 0f;
+    private float questionInputViewportBottomInset = 0f;
+    private float questionInputScrollbarRightOutset = 24f;
+    private float questionInputScrollbarVerticalInset = 10f;
+    private float questionInputScrollbarWidth = 8f;
+    private float questionInputScrollbarVisibleSeconds = 0.7f;
+
     private TTSManager ttsManager;
     private ChatItem _currentTTSItem; // 当前正在播放语音的 ChatItem
     private int _currentTTSMessageId = -1;
@@ -58,8 +80,42 @@ public class DialogUI : WindowBase
     private readonly Queue<System.Action> _pendingAIRequests = new Queue<System.Action>();
     private FriendDataManager.FriendData _activeAtFriend;
     private MobileKeyboardInputAdapter _keyboardInputAdapter;
+    private DialogQuestionInputLayoutSettings _questionInputLayoutSettings;
+    private RectTransform _questionInputBgRect;
+    private RectTransform _questionInputRect;
+    private RectTransform _questionInputTextRect;
+    private RectTransform _questionInputLeftButtonRect;
+    private RectTransform _questionInputScrollbarRect;
+    private TMP_Text _questionInputPlaceholderText;
+    private Vector2 _questionInputBgOriginalAnchorMin;
+    private Vector2 _questionInputBgOriginalAnchorMax;
+    private Vector2 _questionInputBgOriginalPivot;
+    private Vector2 _questionInputBgOriginalAnchoredPosition;
+    private Vector2 _questionInputBgOriginalSizeDelta;
+    private float _questionInputBgOriginalHeight;
+    private float _questionInputBgOriginalBottomY;
+    private Vector2 _questionInputOriginalAnchorMin;
+    private Vector2 _questionInputOriginalAnchorMax;
+    private Vector2 _questionInputOriginalPivot;
+    private Vector2 _questionInputOriginalAnchoredPosition;
+    private Vector2 _questionInputOriginalSizeDelta;
+    private Vector2 _questionInputTextOriginalAnchorMin;
+    private Vector2 _questionInputTextOriginalAnchorMax;
+    private Vector2 _questionInputTextOriginalPivot;
+    private Vector2 _questionInputTextOriginalAnchoredPosition;
+    private Vector2 _questionInputTextOriginalSizeDelta;
+    private Vector2 _questionInputLeftButtonOriginalAnchorMin;
+    private Vector2 _questionInputLeftButtonOriginalAnchorMax;
+    private Vector2 _questionInputLeftButtonOriginalPivot;
+    private Vector2 _questionInputLeftButtonOriginalAnchoredPosition;
+    private Vector2 _questionInputLeftButtonOriginalSizeDelta;
+    private Vector4 _questionInputTextOriginalMargin;
+    private Vector4 _questionInputPlaceholderOriginalMargin;
+    private bool _hasQuestionInputOriginalLayout;
     private const float CLOUD_DIALOG_LOAD_RETRY_SECONDS = 8f;
     private const float CLOUD_DIALOG_LOAD_RETRY_INTERVAL = 0.5f;
+    private const float CHAT_ITEM_DEFAULT_WITH_PADDING_SIZE = 180f;
+    private const float QUESTION_INPUT_DRAG_SCROLL_SENSITIVITY = 1.2f;
 
     private class PreparedTTSAudio
     {
@@ -74,6 +130,7 @@ public class DialogUI : WindowBase
     {
         uiComponent = gameObject.GetComponent<DialogUIComponent>();
         uiComponent.InitComponent(this);
+        _questionInputLayoutSettings = gameObject.GetComponent<DialogQuestionInputLayoutSettings>();
         ResolveDialogBackgroundVideoReferences();
         ConfigureDialogBackgroundVideoPlayer();
         this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
@@ -94,8 +151,9 @@ public class DialogUI : WindowBase
 
         chatListView = uiComponent.ChatScrollViewLoopListView2;
 
-        chatListView.InitListView(0, OnGetChatItemByIndex);
+        chatListView.InitListView(0, OnGetChatItemByIndex, CreateChatListInitParam());
         SetupKeyboardInputAdapter();
+        SetupExpandingQuestionInput();
 
         // 订阅事件
         EventSystem.AddEvent(GameDataStr.RefreshChatUI, OnRefreshChatUI);
@@ -110,16 +168,16 @@ public class DialogUI : WindowBase
     {
         base.OnShow();
         PlayDialogBackgroundVideo();
-        OracleForegroundEffects.Attach(this.Canvas, OracleForegroundEffectStyle.Dialog);
         ClearAtFriendSelection(false, false);
         RefreshSendButtonState();
+        RefreshQuestionInputLayout();
         LoadCloudDialogState();
     }
     // 物体隐藏时执行
     public override void OnHide()
     {
+        ResetQuestionInputTransientScrollState();
         PauseDialogBackgroundVideo();
-        OracleForegroundEffects.Detach(this.Canvas);
         base.OnHide();
     }
     // 物体销毁时执行
@@ -417,6 +475,648 @@ public class DialogUI : WindowBase
         _keyboardInputAdapter.Bind(footerPanel, uiComponent.questionInputField);
     }
 
+    private void SetupExpandingQuestionInput()
+    {
+        TMP_InputField inputField = uiComponent?.questionInputField;
+        if (inputField == null)
+            return;
+
+        SyncQuestionInputLayoutSettings();
+
+        _questionInputBgRect = FindChildRectTransform(transform, "InputBg");
+        _questionInputLeftButtonRect = _questionInputBgRect != null
+            ? FindChildRectTransform(_questionInputBgRect, "[Button]MenuLeft")
+            : null;
+        if (_questionInputLeftButtonRect == null)
+            _questionInputLeftButtonRect = FindChildRectTransform(transform, "[Button]MenuLeft");
+
+        _questionInputRect = inputField.GetComponent<RectTransform>();
+        _questionInputTextRect = inputField.textComponent != null
+            ? inputField.textComponent.rectTransform
+            : null;
+        _questionInputPlaceholderText = inputField.placeholder as TMP_Text;
+
+        CaptureQuestionInputOriginalLayout();
+
+        ConfigureQuestionInputField(inputField);
+        inputField.onSelect.RemoveListener(OnQuestionInputFocusChanged);
+        inputField.onSelect.AddListener(OnQuestionInputFocusChanged);
+        inputField.onDeselect.RemoveListener(OnQuestionInputFocusChanged);
+        inputField.onDeselect.AddListener(OnQuestionInputFocusChanged);
+        RefreshQuestionInputLayout(inputField.text);
+    }
+
+    private void CaptureQuestionInputOriginalLayout()
+    {
+        if (_questionInputBgRect == null || _questionInputRect == null)
+            return;
+
+        _questionInputBgOriginalAnchorMin = _questionInputBgRect.anchorMin;
+        _questionInputBgOriginalAnchorMax = _questionInputBgRect.anchorMax;
+        _questionInputBgOriginalPivot = _questionInputBgRect.pivot;
+        _questionInputBgOriginalAnchoredPosition = _questionInputBgRect.anchoredPosition;
+        _questionInputBgOriginalSizeDelta = _questionInputBgRect.sizeDelta;
+        _questionInputBgOriginalHeight = Mathf.Max(1f, _questionInputBgRect.rect.height);
+        _questionInputBgOriginalBottomY = _questionInputBgOriginalAnchoredPosition.y
+            - (_questionInputBgOriginalHeight * _questionInputBgOriginalPivot.y);
+
+        _questionInputOriginalAnchorMin = _questionInputRect.anchorMin;
+        _questionInputOriginalAnchorMax = _questionInputRect.anchorMax;
+        _questionInputOriginalPivot = _questionInputRect.pivot;
+        _questionInputOriginalAnchoredPosition = _questionInputRect.anchoredPosition;
+        _questionInputOriginalSizeDelta = _questionInputRect.sizeDelta;
+
+        TMP_InputField inputField = uiComponent?.questionInputField;
+        if (inputField?.textComponent != null)
+            _questionInputTextOriginalMargin = inputField.textComponent.margin;
+
+        if (_questionInputPlaceholderText != null)
+            _questionInputPlaceholderOriginalMargin = _questionInputPlaceholderText.margin;
+
+        if (_questionInputTextRect != null)
+        {
+            _questionInputTextOriginalAnchorMin = _questionInputTextRect.anchorMin;
+            _questionInputTextOriginalAnchorMax = _questionInputTextRect.anchorMax;
+            _questionInputTextOriginalPivot = _questionInputTextRect.pivot;
+            _questionInputTextOriginalAnchoredPosition = _questionInputTextRect.anchoredPosition;
+            _questionInputTextOriginalSizeDelta = _questionInputTextRect.sizeDelta;
+        }
+
+        if (_questionInputLeftButtonRect != null)
+        {
+            _questionInputLeftButtonOriginalAnchorMin = _questionInputLeftButtonRect.anchorMin;
+            _questionInputLeftButtonOriginalAnchorMax = _questionInputLeftButtonRect.anchorMax;
+            _questionInputLeftButtonOriginalPivot = _questionInputLeftButtonRect.pivot;
+            _questionInputLeftButtonOriginalAnchoredPosition = _questionInputLeftButtonRect.anchoredPosition;
+            _questionInputLeftButtonOriginalSizeDelta = _questionInputLeftButtonRect.sizeDelta;
+        }
+
+        _hasQuestionInputOriginalLayout = true;
+    }
+
+    private void RestoreQuestionInputOriginalLayout()
+    {
+        if (!_hasQuestionInputOriginalLayout || _questionInputBgRect == null || _questionInputRect == null)
+            return;
+
+        _questionInputBgRect.anchorMin = _questionInputBgOriginalAnchorMin;
+        _questionInputBgRect.anchorMax = _questionInputBgOriginalAnchorMax;
+        _questionInputBgRect.pivot = _questionInputBgOriginalPivot;
+        _questionInputBgRect.anchoredPosition = _questionInputBgOriginalAnchoredPosition;
+        _questionInputBgRect.sizeDelta = _questionInputBgOriginalSizeDelta;
+
+        _questionInputRect.anchorMin = _questionInputOriginalAnchorMin;
+        _questionInputRect.anchorMax = _questionInputOriginalAnchorMax;
+        _questionInputRect.pivot = _questionInputOriginalPivot;
+        _questionInputRect.anchoredPosition = _questionInputOriginalAnchoredPosition;
+        _questionInputRect.sizeDelta = _questionInputOriginalSizeDelta;
+
+        if (_questionInputTextRect != null)
+        {
+            _questionInputTextRect.anchorMin = _questionInputTextOriginalAnchorMin;
+            _questionInputTextRect.anchorMax = _questionInputTextOriginalAnchorMax;
+            _questionInputTextRect.pivot = _questionInputTextOriginalPivot;
+            _questionInputTextRect.anchoredPosition = _questionInputTextOriginalAnchoredPosition;
+            _questionInputTextRect.sizeDelta = _questionInputTextOriginalSizeDelta;
+        }
+
+        if (_questionInputLeftButtonRect != null)
+        {
+            _questionInputLeftButtonRect.anchorMin = _questionInputLeftButtonOriginalAnchorMin;
+            _questionInputLeftButtonRect.anchorMax = _questionInputLeftButtonOriginalAnchorMax;
+            _questionInputLeftButtonRect.pivot = _questionInputLeftButtonOriginalPivot;
+            _questionInputLeftButtonRect.anchoredPosition = _questionInputLeftButtonOriginalAnchoredPosition;
+            _questionInputLeftButtonRect.sizeDelta = _questionInputLeftButtonOriginalSizeDelta;
+        }
+
+        TMP_InputField inputField = uiComponent?.questionInputField;
+        if (inputField?.textComponent != null)
+            inputField.textComponent.margin = _questionInputTextOriginalMargin;
+
+        if (_questionInputPlaceholderText != null)
+            _questionInputPlaceholderText.margin = _questionInputPlaceholderOriginalMargin;
+    }
+
+    private void OnQuestionInputFocusChanged(string text)
+    {
+        RefreshQuestionInputLayout(text);
+    }
+
+    private void SyncQuestionInputLayoutSettings()
+    {
+        if (_questionInputLayoutSettings == null && gameObject != null)
+            _questionInputLayoutSettings = gameObject.GetComponent<DialogQuestionInputLayoutSettings>();
+
+        if (_questionInputLayoutSettings == null)
+            return;
+
+        questionInputMaxVisibleLines = Mathf.Max(1, _questionInputLayoutSettings.questionInputMaxVisibleLines);
+        questionInputExpandedRightExtend = Mathf.Max(0f, _questionInputLayoutSettings.questionInputExpandedRightExtend);
+        questionInputTextLeftOffset = Mathf.Max(0f, _questionInputLayoutSettings.questionInputTextLeftOffset);
+        questionInputTextTopPadding = Mathf.Max(0f, _questionInputLayoutSettings.questionInputTextTopPadding);
+        questionInputTextRightPadding = Mathf.Max(0f, _questionInputLayoutSettings.questionInputTextRightPadding);
+        questionInputTextBottomPadding = Mathf.Max(0f, _questionInputLayoutSettings.questionInputTextBottomPadding);
+        questionInputLeftButtonBottomInset = Mathf.Max(0f, _questionInputLayoutSettings.questionInputLeftButtonBottomInset);
+        questionInputViewportLeftInset = Mathf.Max(0f, _questionInputLayoutSettings.questionInputViewportLeftInset);
+        questionInputViewportRightInset = Mathf.Max(0f, _questionInputLayoutSettings.questionInputViewportRightInset);
+        questionInputViewportTopInset = Mathf.Max(0f, _questionInputLayoutSettings.questionInputViewportTopInset);
+        questionInputViewportBottomInset = Mathf.Max(0f, _questionInputLayoutSettings.questionInputViewportBottomInset);
+        questionInputScrollbarRightOutset = Mathf.Max(0f, _questionInputLayoutSettings.questionInputScrollbarRightOutset);
+        questionInputScrollbarVerticalInset = Mathf.Max(0f, _questionInputLayoutSettings.questionInputScrollbarVerticalInset);
+        questionInputScrollbarWidth = Mathf.Max(1f, _questionInputLayoutSettings.questionInputScrollbarWidth);
+        questionInputScrollbarVisibleSeconds = Mathf.Max(0.1f, _questionInputLayoutSettings.questionInputScrollbarVisibleSeconds);
+    }
+
+    private void ConfigureQuestionInputField(TMP_InputField inputField)
+    {
+        inputField.lineType = TMP_InputField.LineType.MultiLineNewline;
+        inputField.resetOnDeActivation = false;
+        EnsureQuestionInputRaycastTarget(inputField);
+        EnsureQuestionInputViewportMask(inputField);
+        EnsureQuestionInputScrollable(inputField);
+
+        if (inputField.textComponent != null)
+        {
+            inputField.textComponent.enableWordWrapping = true;
+            inputField.textComponent.overflowMode = TextOverflowModes.Masking;
+            inputField.textComponent.enableCulling = true;
+        }
+
+        if (inputField.placeholder is TMP_Text placeholderText)
+        {
+            placeholderText.enableWordWrapping = false;
+            placeholderText.overflowMode = TextOverflowModes.Ellipsis;
+            placeholderText.enableCulling = true;
+            placeholderText.alignment = TextAlignmentOptions.MidlineLeft;
+        }
+    }
+
+    private static void EnsureQuestionInputViewportMask(TMP_InputField inputField)
+    {
+        if (inputField == null)
+            return;
+
+        RectTransform viewport = inputField.textViewport != null
+            ? inputField.textViewport
+            : inputField.GetComponent<RectTransform>();
+
+        if (viewport == null)
+            return;
+
+        if (viewport.GetComponent<RectMask2D>() == null)
+            viewport.gameObject.AddComponent<RectMask2D>();
+    }
+
+    private static void EnsureQuestionInputRaycastTarget(TMP_InputField inputField)
+    {
+        if (inputField == null)
+            return;
+
+        Graphic targetGraphic = inputField.targetGraphic;
+        if (targetGraphic == null)
+        {
+            Image image = inputField.GetComponent<Image>();
+            if (image == null)
+                image = inputField.gameObject.AddComponent<Image>();
+
+            targetGraphic = image;
+            inputField.targetGraphic = targetGraphic;
+        }
+
+        targetGraphic.enabled = true;
+        targetGraphic.raycastTarget = true;
+        targetGraphic.color = Color.clear;
+        inputField.transition = Selectable.Transition.None;
+    }
+
+    private void EnsureQuestionInputScrollable(TMP_InputField inputField)
+    {
+        if (inputField == null)
+            return;
+
+        RectTransform scrollbarParent = _questionInputBgRect != null
+            ? _questionInputBgRect
+            : inputField.transform as RectTransform;
+
+        Transform existing = scrollbarParent != null
+            ? scrollbarParent.Find("__QuestionInputScrollbar")
+            : null;
+        if (existing == null && scrollbarParent != null)
+            existing = scrollbarParent.Find("__QuestionInputHiddenScrollbar");
+        if (existing == null)
+            existing = inputField.transform.Find("__QuestionInputScrollbar");
+        if (existing == null)
+            existing = inputField.transform.Find("__QuestionInputHiddenScrollbar");
+
+        Scrollbar scrollbar = existing != null
+            ? existing.GetComponent<Scrollbar>()
+            : inputField.verticalScrollbar;
+        if (scrollbar == null)
+        {
+            GameObject scrollbarObject = existing != null
+                ? existing.gameObject
+                : new GameObject("__QuestionInputScrollbar", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Scrollbar));
+            scrollbarObject.name = "__QuestionInputScrollbar";
+
+            RectTransform scrollbarRect = scrollbarObject.GetComponent<RectTransform>();
+            if (scrollbarRect == null)
+            {
+                if (existing != null)
+                    existing.gameObject.name = "__QuestionInputInvalidScrollbar";
+
+                scrollbarObject = new GameObject("__QuestionInputScrollbar", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Scrollbar));
+                scrollbarRect = scrollbarObject.GetComponent<RectTransform>();
+            }
+            scrollbarRect.SetParent(scrollbarParent != null ? scrollbarParent : inputField.transform, false);
+
+            if (scrollbarObject.GetComponent<CanvasRenderer>() == null)
+                scrollbarObject.AddComponent<CanvasRenderer>();
+
+            Image scrollbarImage = scrollbarObject.GetComponent<Image>();
+            if (scrollbarImage == null)
+                scrollbarImage = scrollbarObject.AddComponent<Image>();
+            scrollbarImage.color = Color.clear;
+            scrollbarImage.raycastTarget = false;
+
+            scrollbar = scrollbarObject.GetComponent<Scrollbar>();
+            if (scrollbar == null)
+                scrollbar = scrollbarObject.AddComponent<Scrollbar>();
+        }
+
+        _questionInputScrollbarRect = scrollbar != null
+            ? scrollbar.GetComponent<RectTransform>()
+            : null;
+        if (_questionInputScrollbarRect != null && scrollbarParent != null && _questionInputScrollbarRect.parent != scrollbarParent)
+            _questionInputScrollbarRect.SetParent(scrollbarParent, false);
+
+        if (_questionInputScrollbarRect != null)
+            _questionInputScrollbarRect.SetAsLastSibling();
+
+        ConfigureQuestionInputScrollbar(scrollbar);
+        if (inputField.verticalScrollbar != null)
+            inputField.verticalScrollbar = null;
+
+        inputField.scrollSensitivity = 0f;
+
+        TMPInputFieldDragScroller scroller = inputField.GetComponent<TMPInputFieldDragScroller>();
+        if (scroller == null)
+            scroller = inputField.gameObject.AddComponent<TMPInputFieldDragScroller>();
+
+        scroller.Bind(inputField, scrollbar, QUESTION_INPUT_DRAG_SCROLL_SENSITIVITY, questionInputScrollbarVisibleSeconds);
+
+        TMPInputFieldRectStabilizer stabilizer = inputField.GetComponent<TMPInputFieldRectStabilizer>();
+        if (stabilizer == null)
+            stabilizer = inputField.gameObject.AddComponent<TMPInputFieldRectStabilizer>();
+
+        stabilizer.Bind(inputField);
+    }
+
+    private void ConfigureQuestionInputScrollbar(Scrollbar scrollbar)
+    {
+        if (scrollbar == null)
+            return;
+
+        RectTransform scrollbarRect = scrollbar.GetComponent<RectTransform>();
+        if (scrollbarRect != null)
+        {
+            _questionInputScrollbarRect = scrollbarRect;
+            ApplyQuestionInputScrollbarLayout();
+        }
+
+        Image trackImage = scrollbar.GetComponent<Image>();
+        if (trackImage == null)
+            trackImage = scrollbar.gameObject.AddComponent<Image>();
+
+        trackImage.color = new Color(1f, 1f, 1f, 0.10f);
+        trackImage.raycastTarget = false;
+
+        RectTransform handleRect = scrollbar.handleRect;
+        if (handleRect == null)
+        {
+            Transform existingHandle = scrollbar.transform.Find("Handle");
+            GameObject handleObject = existingHandle != null
+                ? existingHandle.gameObject
+                : new GameObject("Handle", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+
+            handleRect = handleObject.GetComponent<RectTransform>();
+            handleRect.SetParent(scrollbar.transform, false);
+            scrollbar.handleRect = handleRect;
+        }
+
+        handleRect.anchorMin = new Vector2(0f, 0f);
+        handleRect.anchorMax = new Vector2(1f, 1f);
+        handleRect.pivot = new Vector2(0.5f, 0.5f);
+        handleRect.anchoredPosition = Vector2.zero;
+        handleRect.sizeDelta = Vector2.zero;
+
+        Image handleImage = handleRect.GetComponent<Image>();
+        if (handleImage == null)
+            handleImage = handleRect.gameObject.AddComponent<Image>();
+
+        handleImage.color = new Color(1f, 0.72f, 0.38f, 0.85f);
+        handleImage.raycastTarget = false;
+
+        scrollbar.transition = Selectable.Transition.None;
+        scrollbar.targetGraphic = handleImage;
+        scrollbar.direction = Scrollbar.Direction.BottomToTop;
+        scrollbar.size = 1f;
+    }
+
+    private void ApplyQuestionInputScrollbarLayout()
+    {
+        if (_questionInputScrollbarRect == null)
+            return;
+
+        _questionInputScrollbarRect.SetAsLastSibling();
+
+        RectTransform parent = _questionInputScrollbarRect.parent as RectTransform;
+        if (parent == _questionInputBgRect && _questionInputRect != null)
+        {
+            _questionInputScrollbarRect.anchorMin = new Vector2(1f, 0f);
+            _questionInputScrollbarRect.anchorMax = new Vector2(1f, 1f);
+            _questionInputScrollbarRect.pivot = new Vector2(0.5f, 1f);
+            _questionInputScrollbarRect.anchoredPosition = new Vector2(
+                _questionInputRect.offsetMax.x + questionInputScrollbarRightOutset + questionInputScrollbarWidth * 0.5f,
+                -questionInputScrollbarVerticalInset);
+            _questionInputScrollbarRect.sizeDelta = new Vector2(
+                questionInputScrollbarWidth,
+                -questionInputScrollbarVerticalInset * 2f);
+            return;
+        }
+
+        _questionInputScrollbarRect.anchorMin = new Vector2(1f, 0f);
+        _questionInputScrollbarRect.anchorMax = new Vector2(1f, 1f);
+        _questionInputScrollbarRect.pivot = new Vector2(1f, 1f);
+        _questionInputScrollbarRect.anchoredPosition = new Vector2(0f, -questionInputScrollbarVerticalInset);
+        _questionInputScrollbarRect.sizeDelta = new Vector2(
+            questionInputScrollbarWidth,
+            -questionInputScrollbarVerticalInset * 2f);
+    }
+
+    private void RefreshQuestionInputLayout(string text = null)
+    {
+        TMP_InputField inputField = uiComponent?.questionInputField;
+        if (inputField == null || _questionInputBgRect == null || _questionInputRect == null)
+            return;
+
+        SyncQuestionInputLayoutSettings();
+        RestoreQuestionInputOriginalLayout();
+        ApplyQuestionInputViewportInsets();
+        ApplyQuestionInputTextAreaAlignment(inputField);
+        ApplyQuestionInputTextPadding(inputField);
+
+        text ??= inputField.text ?? string.Empty;
+
+        bool hasText = !string.IsNullOrEmpty(text);
+        if (hasText)
+            ApplyQuestionInputExpandedRightExtend();
+        ApplyQuestionInputScrollbarLayout();
+
+        float targetHeight = hasText
+            ? ApplyQuestionInputHeight(inputField, text)
+            : _questionInputBgOriginalHeight;
+        ApplyQuestionInputScrollbarLayout();
+        ApplyQuestionInputLeftButtonBottomAlignment();
+
+        bool expanded = hasText && targetHeight > _questionInputBgOriginalHeight + 1f;
+        bool overflowed = IsQuestionInputTextOverflowed(inputField);
+
+        if (inputField.textComponent != null)
+        {
+            inputField.textComponent.enableWordWrapping = true;
+            inputField.textComponent.overflowMode = TextOverflowModes.Masking;
+            inputField.textComponent.enableCulling = true;
+            inputField.textComponent.alignment = expanded || overflowed
+                ? TextAlignmentOptions.TopLeft
+                : TextAlignmentOptions.MidlineLeft;
+            inputField.textComponent.ForceMeshUpdate();
+        }
+
+        if (inputField.placeholder is TMP_Text placeholderText)
+        {
+            placeholderText.gameObject.SetActive(!hasText);
+            placeholderText.enableWordWrapping = false;
+            placeholderText.overflowMode = TextOverflowModes.Ellipsis;
+            placeholderText.enableCulling = true;
+            placeholderText.alignment = TextAlignmentOptions.MidlineLeft;
+        }
+
+        inputField.ForceLabelUpdate();
+        RefreshQuestionInputScrollState(inputField, inputField.isFocused && IsQuestionInputCaretAtEnd(inputField));
+        RefreshQuestionInputRectStabilizer(inputField);
+
+        _keyboardInputAdapter?.MarkLatestTextVisibleHandled();
+    }
+
+    private void ApplyQuestionInputExpandedRightExtend()
+    {
+        if (_questionInputRect == null || questionInputExpandedRightExtend <= 0f)
+            return;
+
+        Vector2 offsetMax = _questionInputRect.offsetMax;
+        _questionInputRect.offsetMax = new Vector2(offsetMax.x + questionInputExpandedRightExtend, offsetMax.y);
+    }
+
+    private void ApplyQuestionInputViewportInsets()
+    {
+        if (_questionInputRect == null)
+            return;
+
+        _questionInputRect.anchorMin = Vector2.zero;
+        _questionInputRect.anchorMax = Vector2.one;
+        _questionInputRect.pivot = new Vector2(0.5f, 0.5f);
+        _questionInputRect.offsetMin = new Vector2(questionInputViewportLeftInset, questionInputViewportBottomInset);
+        _questionInputRect.offsetMax = new Vector2(-questionInputViewportRightInset, -questionInputViewportTopInset);
+    }
+
+    private void ApplyQuestionInputTextAreaAlignment(TMP_InputField inputField)
+    {
+        StretchToParent(_questionInputTextRect);
+        if (_questionInputPlaceholderText != null)
+            StretchToParent(_questionInputPlaceholderText.rectTransform);
+
+        if (inputField?.textComponent != null)
+            inputField.textComponent.margin = _questionInputTextOriginalMargin;
+
+        if (_questionInputPlaceholderText != null)
+            _questionInputPlaceholderText.margin = _questionInputPlaceholderOriginalMargin;
+    }
+
+    private static void StretchToParent(RectTransform rect)
+    {
+        if (rect == null)
+            return;
+
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = Vector2.zero;
+        rect.sizeDelta = Vector2.zero;
+    }
+
+    private void ApplyQuestionInputTextPadding(TMP_InputField inputField)
+    {
+        if (inputField?.textComponent != null)
+        {
+            inputField.textComponent.margin = ApplyQuestionInputTextPadding(_questionInputTextOriginalMargin);
+        }
+
+        if (_questionInputPlaceholderText != null)
+        {
+            _questionInputPlaceholderText.margin = ApplyQuestionInputTextPadding(_questionInputPlaceholderOriginalMargin);
+        }
+    }
+
+    private Vector4 ApplyQuestionInputTextPadding(Vector4 margin)
+    {
+        margin.x += questionInputTextLeftOffset;
+        margin.y += questionInputTextTopPadding;
+        margin.z += questionInputTextRightPadding;
+        margin.w += questionInputTextBottomPadding;
+        return margin;
+    }
+
+    private float ApplyQuestionInputHeight(TMP_InputField inputField, string text)
+    {
+        if (!_hasQuestionInputOriginalLayout || _questionInputBgRect == null)
+            return 0f;
+
+        float targetHeight = CalculateQuestionInputTargetHeight(inputField, text);
+        _questionInputBgRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, targetHeight);
+        _questionInputBgRect.anchoredPosition = new Vector2(
+            _questionInputBgOriginalAnchoredPosition.x,
+            _questionInputBgOriginalBottomY + targetHeight * _questionInputBgOriginalPivot.y);
+
+        return targetHeight;
+    }
+
+    private void ApplyQuestionInputLeftButtonBottomAlignment()
+    {
+        if (_questionInputLeftButtonRect == null)
+            return;
+
+        Vector2 anchorMin = _questionInputLeftButtonRect.anchorMin;
+        Vector2 anchorMax = _questionInputLeftButtonRect.anchorMax;
+        Vector2 pivot = _questionInputLeftButtonRect.pivot;
+        anchorMin.y = 0f;
+        anchorMax.y = 0f;
+        pivot.y = 0f;
+
+        _questionInputLeftButtonRect.anchorMin = anchorMin;
+        _questionInputLeftButtonRect.anchorMax = anchorMax;
+        _questionInputLeftButtonRect.pivot = pivot;
+        Vector2 position = _questionInputLeftButtonRect.anchoredPosition;
+        _questionInputLeftButtonRect.anchoredPosition = new Vector2(position.x, questionInputLeftButtonBottomInset);
+    }
+
+    private float CalculateQuestionInputTargetHeight(TMP_InputField inputField, string text)
+    {
+        if (inputField == null || inputField.textComponent == null || inputField.textViewport == null)
+            return _questionInputBgOriginalHeight;
+
+        float viewportWidth = GetQuestionInputTextMeasureWidth(inputField);
+        float baseViewportHeight = GetQuestionInputBaseViewportHeight();
+        float verticalPadding = GetQuestionInputTextVerticalPadding();
+        float preferredTextHeight = inputField.textComponent.GetPreferredValues(string.IsNullOrEmpty(text) ? " " : text, viewportWidth, Mathf.Infinity).y;
+        float maxViewportHeight = Mathf.Max(
+            baseViewportHeight,
+            GetQuestionInputSingleLineHeight(inputField.textComponent, viewportWidth) * Mathf.Max(1, questionInputMaxVisibleLines)
+                + verticalPadding);
+        float desiredViewportHeight = Mathf.Clamp(preferredTextHeight, baseViewportHeight, maxViewportHeight);
+
+        return _questionInputBgOriginalHeight + desiredViewportHeight - baseViewportHeight;
+    }
+
+    private float GetQuestionInputTextMeasureWidth(TMP_InputField inputField)
+    {
+        if (inputField == null || inputField.textViewport == null)
+            return 1f;
+
+        float textPadding = questionInputTextLeftOffset + questionInputTextRightPadding;
+        return Mathf.Max(1f, inputField.textViewport.rect.width - textPadding);
+    }
+
+    private float GetQuestionInputTextVerticalPadding()
+    {
+        return Mathf.Max(0f, _questionInputTextOriginalMargin.y + questionInputTextTopPadding)
+            + Mathf.Max(0f, _questionInputTextOriginalMargin.w + questionInputTextBottomPadding);
+    }
+
+    private float GetQuestionInputBaseViewportHeight()
+    {
+        float verticalInsets = questionInputViewportTopInset + questionInputViewportBottomInset;
+        return Mathf.Max(1f, _questionInputBgOriginalHeight - verticalInsets);
+    }
+
+    private static float GetQuestionInputSingleLineHeight(TMP_Text textComponent, float width)
+    {
+        if (textComponent == null)
+            return 40f;
+
+        float singleLineHeight = textComponent.GetPreferredValues("A", width, Mathf.Infinity).y;
+        float doubleLineHeight = textComponent.GetPreferredValues("A\nA", width, Mathf.Infinity).y;
+        float measuredLineHeight = doubleLineHeight > singleLineHeight
+            ? doubleLineHeight - singleLineHeight
+            : singleLineHeight;
+
+        return Mathf.Max(textComponent.fontSize, measuredLineHeight);
+    }
+
+    private static void RefreshQuestionInputScrollState(TMP_InputField inputField, bool keepCaretVisible = false)
+    {
+        if (inputField == null)
+            return;
+
+        TMPInputFieldDragScroller scroller = inputField.GetComponent<TMPInputFieldDragScroller>();
+        if (scroller != null)
+            scroller.Refresh(keepCaretVisible);
+    }
+
+    private static void RefreshQuestionInputRectStabilizer(TMP_InputField inputField)
+    {
+        if (inputField == null)
+            return;
+
+        TMPInputFieldRectStabilizer stabilizer = inputField.GetComponent<TMPInputFieldRectStabilizer>();
+        if (stabilizer != null)
+        {
+            stabilizer.RequestNormalize();
+            stabilizer.NormalizeIfNotScrollable();
+        }
+    }
+
+    private void ResetQuestionInputTransientScrollState()
+    {
+        TMP_InputField inputField = uiComponent?.questionInputField;
+        TMPInputFieldDragScroller scroller = inputField != null
+            ? inputField.GetComponent<TMPInputFieldDragScroller>()
+            : null;
+
+        if (scroller != null)
+            scroller.ResetTransientState();
+        else if (_questionInputScrollbarRect != null)
+            _questionInputScrollbarRect.gameObject.SetActive(false);
+    }
+
+    private static bool IsQuestionInputCaretAtEnd(TMP_InputField inputField)
+    {
+        if (inputField == null)
+            return false;
+
+        int length = inputField.text?.Length ?? 0;
+        return inputField.stringPosition >= Mathf.Max(0, length - 1)
+            || inputField.caretPosition >= Mathf.Max(0, length - 1);
+    }
+
+    private static bool IsQuestionInputTextOverflowed(TMP_InputField inputField)
+    {
+        if (inputField == null || inputField.textComponent == null || inputField.textViewport == null)
+            return false;
+
+        inputField.ForceLabelUpdate();
+        return TMPInputFieldScrollUtility.HasScrollableContent(inputField);
+    }
+
     private static RectTransform FindChildRectTransform(Transform root, string childName)
     {
         if (root == null || string.IsNullOrEmpty(childName))
@@ -451,7 +1151,14 @@ public class DialogUI : WindowBase
             }
         }
 
-        chatListView.InitListView(0, OnGetChatItemByIndex);
+        chatListView.InitListView(0, OnGetChatItemByIndex, CreateChatListInitParam());
+    }
+
+    private LoopListViewInitParam CreateChatListInitParam()
+    {
+        LoopListViewInitParam initParam = LoopListViewInitParam.CopyDefaultInitParam();
+        initParam.mItemDefaultWithPaddingSize = CHAT_ITEM_DEFAULT_WITH_PADDING_SIZE;
+        return initParam;
     }
 
     /// <summary>
@@ -593,6 +1300,7 @@ public class DialogUI : WindowBase
                         if (msgData != null)
                         {
                             streamingItem.GetComponent<ChatItem>().UpdateStreamingText(msgData.content);
+                            RefreshChatItemLayoutAfterRuntimeSizeChange(streamingMessageIndex, false);
                         }
                     }
                     chatListView.MovePanelToItemIndex(streamingMessageIndex, 0);
@@ -645,6 +1353,7 @@ public class DialogUI : WindowBase
                 int msgCount = dialogSystem.GetMessageCount();
                 chatListView.SetListItemCount(msgCount, false);
                 chatListView.RefreshAllShownItem();
+                SyncShownChatItemSizes();
                 ProcessNextQueuedAIRequest();
             }
         );
@@ -667,6 +1376,7 @@ public class DialogUI : WindowBase
         chatListView.SetListItemCount(msgCount, false);
         chatListView.MovePanelToItemIndex(messageIndex >= 0 ? messageIndex : msgCount - 1, 0);
         chatListView.RefreshAllShownItem();
+        SyncShownChatItemSizes();
     }
 
     private ChatItem GetShownChatItem(int messageIndex)
@@ -684,6 +1394,18 @@ public class DialogUI : WindowBase
         bool isLastMessage = messageIndex == dialogSystem.GetMessageCount() - 1;
         if (scrollIfLastMessage && isLastMessage)
             chatListView.MovePanelToItemIndex(messageIndex, 0);
+    }
+
+    private void SyncShownChatItemSizes()
+    {
+        if (chatListView == null || chatListView.ItemList == null) return;
+
+        for (int i = 0; i < chatListView.ItemList.Count; i++)
+        {
+            LoopListViewItem2 item = chatListView.ItemList[i];
+            if (item != null)
+                chatListView.OnItemSizeChanged(item.ItemIndex);
+        }
     }
 
     private void PrepareTTSForCompletedAIMessage(int messageIndex)
@@ -893,6 +1615,7 @@ public class DialogUI : WindowBase
         Debug.Log($"发送用户消息后，当前消息数量：{msgCount}");
         chatListView.SetListItemCount(msgCount, false);
         chatListView.RefreshAllShownItem();
+        SyncShownChatItemSizes();
 
         // 滚动到最后一条
         chatListView.MovePanelToItemIndex(
@@ -1108,7 +1831,7 @@ public class DialogUI : WindowBase
     public void OnquestionInputChange(string text)
     {
         RefreshSendButtonState(text);
-        _keyboardInputAdapter?.KeepLatestTextVisible();
+        RefreshQuestionInputLayout(text);
     }
 
     /// <summary>
@@ -1117,7 +1840,7 @@ public class DialogUI : WindowBase
     public void OnquestionInputEnd(string text)
     {
         RefreshSendButtonState(text);
-        _keyboardInputAdapter?.KeepLatestTextVisible();
+        RefreshQuestionInputLayout(text);
     }
 
     private void ClearQuestionInput()
@@ -1125,6 +1848,7 @@ public class DialogUI : WindowBase
         if (uiComponent.questionInputField != null)
             uiComponent.questionInputField.text = string.Empty;
         RefreshSendButtonState(string.Empty);
+        RefreshQuestionInputLayout(string.Empty);
     }
 
     private void RefreshSendButtonState(string text = null)
@@ -1132,7 +1856,16 @@ public class DialogUI : WindowBase
         if (uiComponent?.sendButton == null) return;
 
         string value = text ?? uiComponent.questionInputField?.text ?? string.Empty;
-        uiComponent.sendButton.interactable = !string.IsNullOrWhiteSpace(value);
+        bool hasText = !string.IsNullOrWhiteSpace(value);
+        uiComponent.sendButton.interactable = hasText;
+
+        CanvasGroup canvasGroup = uiComponent.sendButton.GetComponent<CanvasGroup>();
+        if (canvasGroup == null)
+            canvasGroup = uiComponent.sendButton.gameObject.AddComponent<CanvasGroup>();
+
+        canvasGroup.alpha = hasText ? 1f : 0.38f;
+        canvasGroup.interactable = hasText;
+        canvasGroup.blocksRaycasts = hasText;
     }
 
     #endregion
@@ -1150,6 +1883,7 @@ public class DialogUI : WindowBase
 
         chatListView.SetListItemCount(msgCount, false);
         chatListView.RefreshAllShownItem();
+        SyncShownChatItemSizes();
         chatListView.MovePanelToItemIndex(msgCount - 1, 0);
     }
 
@@ -1428,6 +2162,7 @@ public class DialogUI : WindowBase
         chatListView.SetListItemCount(msgCount, false);
         chatListView.MovePanelToItemIndex(messageIndex, 0);
         chatListView.RefreshAllShownItem();
+        SyncShownChatItemSizes();
         yield return null;
 
         ChatItem item = GetShownChatItem(messageIndex);
@@ -1761,12 +2496,14 @@ public class DialogUI : WindowBase
         _preparedTTSByMessageId.Remove(msgData.id);
         dialogSystem.SetAIMessageTTSInfo(messageIndex, 0f, false);
         chatListView.RefreshAllShownItem();
+        SyncShownChatItemSizes();
 
         ChatItem item = GetShownChatItem(messageIndex);
         if (item == null)
         {
             chatListView.MovePanelToItemIndex(messageIndex, 0);
             chatListView.RefreshAllShownItem();
+            SyncShownChatItemSizes();
             item = GetShownChatItem(messageIndex);
         }
 
@@ -2214,6 +2951,572 @@ public class DialogUI : WindowBase
     #endregion
 }
 
+public static class TMPInputFieldScrollUtility
+{
+    public static bool HasScrollableContent(TMP_InputField inputField, float tolerance = 1f)
+    {
+        if (inputField == null || inputField.textComponent == null || inputField.textViewport == null)
+            return false;
+
+        inputField.textComponent.ForceMeshUpdate();
+        return inputField.textComponent.textInfo.lineCount > 1
+            && GetContentHeight(inputField) > GetViewportHeight(inputField) + tolerance;
+    }
+
+    public static float GetContentHeight(TMP_InputField inputField)
+    {
+        if (inputField == null || inputField.textComponent == null)
+            return 1f;
+
+        return Mathf.Max(1f, inputField.textComponent.preferredHeight);
+    }
+
+    public static float GetViewportHeight(TMP_InputField inputField)
+    {
+        return inputField != null && inputField.textViewport != null
+            ? Mathf.Max(1f, inputField.textViewport.rect.height)
+            : 1f;
+    }
+}
+
+public class TMPInputFieldRectStabilizer : MonoBehaviour, ICanvasElement
+{
+    [SerializeField] private TMP_InputField inputField;
+
+    private RectTransform textRect;
+    private RectTransform placeholderRect;
+    private RectTransform caretRect;
+    private Coroutine endOfFrameNormalizeCoroutine;
+    private float normalizeUntilTime;
+    private int normalizeFramesRemaining;
+    private bool lastKnownScrollable;
+
+    private const float NormalizeAfterChangeSeconds = 0.35f;
+    private const int NormalizeAfterChangeFrames = 8;
+    private const float RectOffsetEpsilon = 0.01f;
+
+    public void Bind(TMP_InputField field)
+    {
+        RemoveInputListeners();
+        inputField = field;
+        ResolveRects();
+        AddInputListeners();
+
+        RequestNormalize();
+        NormalizeIfNotScrollable();
+    }
+
+    private void OnEnable()
+    {
+        Canvas.willRenderCanvases += OnWillRenderCanvases;
+        endOfFrameNormalizeCoroutine = StartCoroutine(NormalizeAtEndOfFrame());
+        AddInputListeners();
+        RequestNormalize();
+    }
+
+    private void OnDisable()
+    {
+        Canvas.willRenderCanvases -= OnWillRenderCanvases;
+        if (endOfFrameNormalizeCoroutine != null)
+        {
+            StopCoroutine(endOfFrameNormalizeCoroutine);
+            endOfFrameNormalizeCoroutine = null;
+        }
+
+        RemoveInputListeners();
+    }
+
+    private void LateUpdate()
+    {
+        if (!ShouldTryNormalize())
+            return;
+
+        NormalizeIfNotScrollable();
+        CanvasUpdateRegistry.RegisterCanvasElementForGraphicRebuild(this);
+    }
+
+    private void OnWillRenderCanvases()
+    {
+        if (ShouldTryNormalize())
+            NormalizeIfNotScrollable();
+    }
+
+    private IEnumerator NormalizeAtEndOfFrame()
+    {
+        WaitForEndOfFrame wait = new WaitForEndOfFrame();
+        while (enabled)
+        {
+            yield return wait;
+            if (ShouldTryNormalize())
+                NormalizeIfNotScrollable();
+        }
+    }
+
+    public void Rebuild(CanvasUpdate executing)
+    {
+        if (executing == CanvasUpdate.LatePreRender && ShouldTryNormalize())
+            NormalizeIfNotScrollable();
+    }
+
+    public void LayoutComplete()
+    {
+    }
+
+    public void GraphicUpdateComplete()
+    {
+    }
+
+    public bool IsDestroyed()
+    {
+        return this == null;
+    }
+
+    public void NormalizeIfNotScrollable()
+    {
+        if (inputField == null || inputField.textComponent == null || inputField.textViewport == null)
+            return;
+
+        ResolveRects();
+        bool consumeNormalizeFrame = normalizeFramesRemaining > 0;
+        bool isScrollable = IsTextScrollable();
+        lastKnownScrollable = isScrollable;
+        if (isScrollable)
+        {
+            if (consumeNormalizeFrame)
+                normalizeFramesRemaining--;
+            return;
+        }
+
+        NormalizeRect(textRect);
+        NormalizeRect(placeholderRect);
+        NormalizeRect(caretRect);
+
+        if (consumeNormalizeFrame)
+            normalizeFramesRemaining--;
+    }
+
+    public void RequestNormalize()
+    {
+        normalizeUntilTime = Time.unscaledTime + NormalizeAfterChangeSeconds;
+        normalizeFramesRemaining = NormalizeAfterChangeFrames;
+        lastKnownScrollable = false;
+    }
+
+    private void OnInputChanged(string _)
+    {
+        RequestNormalize();
+    }
+
+    private void AddInputListeners()
+    {
+        if (inputField == null)
+            return;
+
+        inputField.onValueChanged.RemoveListener(OnInputChanged);
+        inputField.onSelect.RemoveListener(OnInputChanged);
+        inputField.onDeselect.RemoveListener(OnInputChanged);
+        inputField.onValueChanged.AddListener(OnInputChanged);
+        inputField.onSelect.AddListener(OnInputChanged);
+        inputField.onDeselect.AddListener(OnInputChanged);
+    }
+
+    private void RemoveInputListeners()
+    {
+        if (inputField == null)
+            return;
+
+        inputField.onValueChanged.RemoveListener(OnInputChanged);
+        inputField.onSelect.RemoveListener(OnInputChanged);
+        inputField.onDeselect.RemoveListener(OnInputChanged);
+    }
+
+    private bool ShouldTryNormalize()
+    {
+        ResolveRects();
+        bool activeNormalizeWindow = normalizeFramesRemaining > 0
+            || Time.unscaledTime <= normalizeUntilTime;
+        if (!activeNormalizeWindow && lastKnownScrollable)
+            return false;
+
+        return activeNormalizeWindow
+            || HasNonZeroOffset(textRect)
+            || HasNonZeroOffset(placeholderRect)
+            || HasNonZeroOffset(caretRect);
+    }
+
+    private void ResolveRects()
+    {
+        if (inputField == null)
+            return;
+
+        if (textRect == null && inputField.textComponent != null)
+            textRect = inputField.textComponent.rectTransform;
+
+        if (placeholderRect == null && inputField.placeholder is TMP_Text placeholderText)
+            placeholderRect = placeholderText.rectTransform;
+
+        if (caretRect == null)
+        {
+            Transform caret = inputField.transform.Find("Caret");
+            if (caret == null && inputField.textComponent != null)
+                caret = inputField.textComponent.transform.parent?.Find("Caret");
+
+            caretRect = caret as RectTransform;
+        }
+    }
+
+    private bool IsTextScrollable()
+    {
+        if (inputField == null || inputField.textComponent == null || inputField.textViewport == null)
+            return false;
+
+        return TMPInputFieldScrollUtility.HasScrollableContent(inputField);
+    }
+
+    private static void NormalizeRect(RectTransform rect)
+    {
+        if (rect == null)
+            return;
+
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+    }
+
+    private static bool HasNonZeroOffset(RectTransform rect)
+    {
+        if (rect == null)
+            return false;
+
+        return Mathf.Abs(rect.offsetMin.x) > RectOffsetEpsilon
+            || Mathf.Abs(rect.offsetMin.y) > RectOffsetEpsilon
+            || Mathf.Abs(rect.offsetMax.x) > RectOffsetEpsilon
+            || Mathf.Abs(rect.offsetMax.y) > RectOffsetEpsilon;
+    }
+}
+
+public class TMPInputFieldDragScroller : MonoBehaviour, IInitializePotentialDragHandler, IBeginDragHandler, IDragHandler, IEndDragHandler, IScrollHandler
+{
+    [SerializeField] private TMP_InputField inputField;
+    [SerializeField] private Scrollbar verticalScrollbar;
+    [SerializeField] private float dragSensitivity = 1f;
+    [SerializeField] private float scrollbarVisibleSeconds = 0.7f;
+
+    private const float DefaultScrollbarVisibleSeconds = 0.7f;
+
+    private Canvas rootCanvas;
+    private bool isDragging;
+    private float lastPointerY;
+    private float hideScrollbarAtTime;
+    private bool suppressScrollbarCallback;
+    private bool pendingApplyScrollPosition;
+    private bool hasCanScrollCache;
+    private bool cachedCanScroll;
+
+    public void Bind(TMP_InputField field, Scrollbar scrollbar, float sensitivity, float visibleSeconds = DefaultScrollbarVisibleSeconds)
+    {
+        if (verticalScrollbar != null)
+            verticalScrollbar.onValueChanged.RemoveListener(OnScrollbarValueChanged);
+
+        inputField = field;
+        verticalScrollbar = scrollbar;
+        dragSensitivity = Mathf.Max(0.1f, sensitivity);
+        scrollbarVisibleSeconds = Mathf.Max(0.1f, visibleSeconds);
+        rootCanvas = inputField != null ? inputField.GetComponentInParent<Canvas>() : null;
+        InvalidateCanScrollCache();
+
+        if (verticalScrollbar != null)
+        {
+            verticalScrollbar.onValueChanged.RemoveListener(OnScrollbarValueChanged);
+            verticalScrollbar.onValueChanged.AddListener(OnScrollbarValueChanged);
+        }
+
+        Refresh();
+    }
+
+    private void OnDestroy()
+    {
+        if (verticalScrollbar != null)
+            verticalScrollbar.onValueChanged.RemoveListener(OnScrollbarValueChanged);
+    }
+
+    private void OnDisable()
+    {
+        ResetTransientState();
+    }
+
+    public void ResetTransientState()
+    {
+        isDragging = false;
+        pendingApplyScrollPosition = false;
+        hideScrollbarAtTime = 0f;
+        SetScrollbarVisible(false);
+    }
+
+    public void Refresh(bool keepCaretVisible = false)
+    {
+        InvalidateCanScrollCache();
+
+        if (inputField == null || inputField.textComponent == null || inputField.textViewport == null)
+        {
+            SetCanScrollCache(false);
+            SetScrollbarVisible(false);
+            return;
+        }
+
+        if (keepCaretVisible)
+            inputField.MoveTextEnd(false);
+
+        inputField.ForceLabelUpdate();
+        SetCanScrollCache(EvaluateCanScroll());
+
+        bool canScroll = cachedCanScroll;
+        if (verticalScrollbar == null)
+        {
+            if (!canScroll)
+                ApplyScrollPosition(0f);
+
+            return;
+        }
+
+        verticalScrollbar.interactable = canScroll;
+
+        if (!canScroll)
+        {
+            isDragging = false;
+            verticalScrollbar.size = 1f;
+            SetScrollbarValueWithoutNotify(0f);
+            ApplyScrollPosition(0f);
+            pendingApplyScrollPosition = true;
+            SetScrollbarVisible(false);
+            return;
+        }
+
+        verticalScrollbar.size = Mathf.Clamp01(GetViewportHeight() / GetContentHeight());
+
+        if (keepCaretVisible)
+            SetScrollbarValueWithoutNotify(1f);
+        else
+            SetScrollbarValueWithoutNotify(Mathf.Clamp01(verticalScrollbar.value));
+
+        ApplyScrollPosition(verticalScrollbar.value);
+        pendingApplyScrollPosition = true;
+
+        SetScrollbarVisible(isDragging || Time.unscaledTime < hideScrollbarAtTime);
+    }
+
+    private void LateUpdate()
+    {
+        if (pendingApplyScrollPosition && verticalScrollbar != null)
+        {
+            pendingApplyScrollPosition = false;
+            ApplyScrollPosition(verticalScrollbar.value);
+        }
+
+        if (verticalScrollbar == null || !verticalScrollbar.gameObject.activeSelf)
+            return;
+
+        if (!isDragging && Time.unscaledTime >= hideScrollbarAtTime)
+            SetScrollbarVisible(false);
+    }
+
+    public void OnInitializePotentialDrag(PointerEventData eventData)
+    {
+        eventData.useDragThreshold = true;
+    }
+
+    public void OnBeginDrag(PointerEventData eventData)
+    {
+        InvalidateCanScrollCache();
+        isDragging = CanScroll();
+        lastPointerY = eventData.position.y;
+
+        if (isDragging)
+            ShowScrollbar();
+    }
+
+    public void OnDrag(PointerEventData eventData)
+    {
+        if (!isDragging || verticalScrollbar == null || !CanScroll())
+            return;
+
+        float deltaY = eventData.position.y - lastPointerY;
+        lastPointerY = eventData.position.y;
+
+        if (Mathf.Abs(deltaY) < 0.1f)
+            return;
+
+        float canvasScale = rootCanvas != null && rootCanvas.scaleFactor > 0f
+            ? rootCanvas.scaleFactor
+            : 1f;
+        float scrollableHeight = Mathf.Max(1f, GetContentHeight() - GetViewportHeight());
+        float normalizedDelta = (deltaY / canvasScale / scrollableHeight) * dragSensitivity;
+
+        ShowScrollbar();
+        verticalScrollbar.value = Mathf.Clamp01(verticalScrollbar.value + normalizedDelta);
+        eventData.Use();
+    }
+
+    public void OnEndDrag(PointerEventData eventData)
+    {
+        isDragging = false;
+        ScheduleScrollbarHide();
+    }
+
+    public void OnScroll(PointerEventData eventData)
+    {
+        if (eventData == null || verticalScrollbar == null)
+            return;
+
+        InvalidateCanScrollCache();
+        if (!CanScroll())
+            return;
+
+        if (Mathf.Abs(eventData.scrollDelta.y) > 0.01f)
+        {
+            ShowScrollbar();
+            float normalizedDelta = eventData.scrollDelta.y * 0.08f * dragSensitivity;
+            verticalScrollbar.value = Mathf.Clamp01(verticalScrollbar.value + normalizedDelta);
+            eventData.Use();
+        }
+    }
+
+    private bool CanScroll()
+    {
+        if (!hasCanScrollCache)
+            SetCanScrollCache(EvaluateCanScroll());
+
+        return cachedCanScroll;
+    }
+
+    private bool EvaluateCanScroll()
+    {
+        return inputField != null
+            && inputField.textComponent != null
+            && inputField.textViewport != null
+            && TMPInputFieldScrollUtility.HasScrollableContent(inputField);
+    }
+
+    private void SetCanScrollCache(bool canScroll)
+    {
+        cachedCanScroll = canScroll;
+        hasCanScrollCache = true;
+    }
+
+    private void InvalidateCanScrollCache()
+    {
+        cachedCanScroll = false;
+        hasCanScrollCache = false;
+    }
+
+    private float GetContentHeight()
+    {
+        return TMPInputFieldScrollUtility.GetContentHeight(inputField);
+    }
+
+    private float GetViewportHeight()
+    {
+        return TMPInputFieldScrollUtility.GetViewportHeight(inputField);
+    }
+
+    private void ShowScrollbar()
+    {
+        if (verticalScrollbar == null || !CanScroll())
+            return;
+
+        verticalScrollbar.size = Mathf.Clamp01(GetViewportHeight() / GetContentHeight());
+        verticalScrollbar.interactable = true;
+        SetScrollbarVisible(true);
+        ScheduleScrollbarHide();
+    }
+
+    private void OnScrollbarValueChanged(float value)
+    {
+        if (suppressScrollbarCallback)
+            return;
+
+        ApplyScrollPosition(value);
+        pendingApplyScrollPosition = true;
+    }
+
+    private void ApplyScrollPosition(float value)
+    {
+        if (inputField == null || inputField.textComponent == null)
+            return;
+
+        RectTransform textRect = inputField.textComponent.rectTransform;
+        if (!CanScroll())
+        {
+            ResetRectOffsets(textRect);
+            SyncCaretRectToTextRect(textRect);
+            return;
+        }
+
+        float scrollableHeight = Mathf.Max(0f, GetContentHeight() - GetViewportHeight());
+        Vector2 position = textRect.anchoredPosition;
+        textRect.anchoredPosition = new Vector2(position.x, Mathf.Clamp01(value) * scrollableHeight);
+        SyncCaretRectToTextRect(textRect);
+    }
+
+    private void SetScrollbarValueWithoutNotify(float value)
+    {
+        if (verticalScrollbar == null)
+            return;
+
+        suppressScrollbarCallback = true;
+        verticalScrollbar.value = value;
+        suppressScrollbarCallback = false;
+    }
+
+    private void SyncCaretRectToTextRect(RectTransform textRect)
+    {
+        if (inputField == null || textRect == null)
+            return;
+
+        Transform caret = inputField.transform.Find("Caret");
+        if (caret == null && inputField.textComponent != null)
+            caret = inputField.textComponent.transform.parent?.Find("Caret");
+
+        RectTransform caretRect = caret as RectTransform;
+        if (caretRect == null)
+            return;
+
+        caretRect.localPosition = textRect.localPosition;
+        caretRect.localRotation = textRect.localRotation;
+        caretRect.localScale = textRect.localScale;
+        caretRect.anchorMin = textRect.anchorMin;
+        caretRect.anchorMax = textRect.anchorMax;
+        caretRect.anchoredPosition = textRect.anchoredPosition;
+        caretRect.sizeDelta = textRect.sizeDelta;
+        caretRect.pivot = textRect.pivot;
+    }
+
+    private static void ResetRectOffsets(RectTransform rect)
+    {
+        if (rect == null)
+            return;
+
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+    }
+
+    private void ScheduleScrollbarHide()
+    {
+        hideScrollbarAtTime = Time.unscaledTime + scrollbarVisibleSeconds;
+    }
+
+    private void SetScrollbarVisible(bool visible)
+    {
+        if (verticalScrollbar != null && verticalScrollbar.gameObject.activeSelf != visible)
+            verticalScrollbar.gameObject.SetActive(visible);
+    }
+}
+
 /// <summary>
 /// Moves the Dialog bottom input panel above the mobile soft keyboard without resizing it.
 /// </summary>
@@ -2229,6 +3532,7 @@ public class MobileKeyboardInputAdapter : MonoBehaviour
     private bool hasOriginalPosition;
     private float currentOffset;
     private int lastTextLength;
+    private int lastHandledTextFrame = -1;
 
 #if UNITY_ANDROID && !UNITY_EDITOR
     private int androidHiddenBottomInset;
@@ -2321,14 +3625,26 @@ public class MobileKeyboardInputAdapter : MonoBehaviour
     {
         if (inputField == null) return;
 
-        inputField.lineType = TMP_InputField.LineType.SingleLine;
+        inputField.lineType = TMP_InputField.LineType.MultiLineNewline;
         inputField.resetOnDeActivation = false;
+        EnsureInputViewportMask();
 
         if (inputField.textComponent != null)
         {
-            inputField.textComponent.enableWordWrapping = false;
+            inputField.textComponent.enableWordWrapping = true;
             inputField.textComponent.overflowMode = TextOverflowModes.Masking;
+            inputField.textComponent.enableCulling = true;
         }
+    }
+
+    private void EnsureInputViewportMask()
+    {
+        RectTransform viewport = inputField.textViewport != null
+            ? inputField.textViewport
+            : inputField.GetComponent<RectTransform>();
+
+        if (viewport != null && viewport.GetComponent<RectMask2D>() == null)
+            viewport.gameObject.AddComponent<RectMask2D>();
     }
 
     private bool ShouldFollowKeyboard()
@@ -2420,7 +3736,19 @@ public class MobileKeyboardInputAdapter : MonoBehaviour
 
     private void OnInputValueChanged(string _)
     {
+        if (Time.frameCount == lastHandledTextFrame)
+        {
+            UpdateLastTextLength();
+            return;
+        }
+
         KeepLatestTextVisible();
+    }
+
+    public void MarkLatestTextVisibleHandled()
+    {
+        UpdateLastTextLength();
+        lastHandledTextFrame = Time.frameCount;
     }
 
     public void KeepLatestTextVisible()
@@ -2438,7 +3766,23 @@ public class MobileKeyboardInputAdapter : MonoBehaviour
             inputField.MoveTextEnd(false);
 
         inputField.ForceLabelUpdate();
+        TMPInputFieldDragScroller scroller = inputField.GetComponent<TMPInputFieldDragScroller>();
+        if (scroller != null)
+            scroller.Refresh(inputField.isFocused && textGrew && caretIsAtEnd);
+
+        TMPInputFieldRectStabilizer stabilizer = inputField.GetComponent<TMPInputFieldRectStabilizer>();
+        if (stabilizer != null)
+        {
+            stabilizer.RequestNormalize();
+            stabilizer.NormalizeIfNotScrollable();
+        }
+
         lastTextLength = length;
+    }
+
+    private void UpdateLastTextLength()
+    {
+        lastTextLength = inputField?.text?.Length ?? 0;
     }
 
     private void ResetPanelPosition()

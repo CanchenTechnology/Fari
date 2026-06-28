@@ -133,8 +133,9 @@ public class LoginUI : WindowBase
 				createAccountButton.interactable = interactable;
 			if (gameCenterSignInButton != null)
 				gameCenterSignInButton.interactable = interactable;
-			if (anonymousSignInButton != null)
-				anonymousSignInButton.interactable = interactable;
+			Button guestButton = anonymousSignInButton != null ? anonymousSignInButton : uiComponent.youkeLoginButton;
+			if (guestButton != null)
+				guestButton.interactable = interactable;
 			if (dontSignInButton != null)
 				dontSignInButton.interactable = interactable;
 		}
@@ -168,7 +169,8 @@ public class LoginUI : WindowBase
 		emailLoginButton = BindButton(emailLoginButton, OnEmailSignInButtonClick, "[Button]EmailLogin", "EmailLogin", "EmailSignInButton");
 		createAccountButton = BindButton(createAccountButton, OnCreateAccountButtonClick, "[Button]CreateAccount", "CreateAccountButton", "CreateAccount");
 		gameCenterSignInButton = BindButton(gameCenterSignInButton, OnGameCenterSignInButtonClick, "[Button]GameCenterLogin", "GameCenterLogin", "GameCenterSignInButton");
-		anonymousSignInButton = BindButton(anonymousSignInButton, OnAnonymousSignInButtonClick, "[Button]AnonymousLogin", "AnonymousLogin", "AnonymousSignInButton");
+		anonymousSignInButton = anonymousSignInButton != null ? anonymousSignInButton : uiComponent?.youkeLoginButton;
+		anonymousSignInButton = BindButton(anonymousSignInButton, OnAnonymousSignInButtonClick, "[Button]AnonymousLogin", "AnonymousLogin", "[Button]AnonymousSignInButton", "AnonymousSignInButton");
 		dontSignInButton = BindButton(dontSignInButton, OnDontSignInButtonClick, "[Button]DontSignIn", "DontSignInButton", "SkipLoginButton");
 	}
 

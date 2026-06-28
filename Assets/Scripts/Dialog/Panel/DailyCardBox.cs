@@ -9,6 +9,8 @@ using TMPro;
 
 public class DailyCardBox : MonoBehaviour
 {
+    private const string CardNameColor = "#D58A3F";
+
     public TMP_Text cardTitleText;
     public Image cardImage;
     public TMP_Text cardDesTitleText;
@@ -16,25 +18,35 @@ public class DailyCardBox : MonoBehaviour
 
     public Button detailBtn;
 
-    private void OnEnable() 
+    private TarotCard _currentCard;
+    private bool _currentUpright;
+
+    private void OnEnable()
     {
-        detailBtn.onClick.AddListener(OpenDailyCard);
+        if (detailBtn != null)
+            detailBtn.onClick.AddListener(OpenDailyCard);
     }
     
     private void OnDisable()
     {
-        detailBtn.onClick.RemoveListener(OpenDailyCard);     
+        if (detailBtn != null)
+            detailBtn.onClick.RemoveListener(OpenDailyCard);
     }
 
     private void OpenDailyCard()
     {
-          UIModule.Instance.PopUpWindow<TodayCardUI>();
+        var completeUI = UIModule.Instance.PopUpWindow<CompleteInterpretationUI>();
+        if (completeUI != null && _currentCard != null)
+            completeUI.SetCard(_currentCard, _currentUpright);
     }
 
     public void SetCardData(TarotCard card, bool upright, TodayOraclePayload oraclePayload = null,
         Sprite cardSprite = null)
     {
         if (card == null) return;
+
+        _currentCard = card;
+        _currentUpright = upright;
 
         if (cardTitleText != null)
             cardTitleText.text = $"今日牌：{card.DisplayName(upright)}";
@@ -75,14 +87,10 @@ public class DailyCardBox : MonoBehaviour
 
     private static string BuildDescriptionText(TarotCard card, bool upright, TodayOraclePayload oraclePayload)
     {
-        if (!string.IsNullOrEmpty(oraclePayload?.oracle))
-            return oraclePayload.oracle;
-        if (!string.IsNullOrEmpty(oraclePayload?.detail))
-            return oraclePayload.detail;
-
-        return upright
-            ? "你不必急着确认答案，先让信心回来。"
-            : "先别急着推进，今天更适合看清真正卡住你的地方。";
+        string cardName = EscapeRichText(string.IsNullOrWhiteSpace(card?.nameZh)
+            ? card?.DisplayName(upright) ?? "这张牌"
+            : card.nameZh);
+        return $"你今天抽到的塔罗牌是 <color={CardNameColor}>{cardName}</color>。你对这张牌有什么疑问吗？";
     }
 
     private static string CleanDescriptionTitle(string title)
@@ -105,5 +113,15 @@ public class DailyCardBox : MonoBehaviour
         }
 
         return string.IsNullOrEmpty(cleaned) ? title.Trim() : cleaned;
+    }
+
+    private static string EscapeRichText(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return "";
+
+        return value
+            .Replace("&", "&amp;")
+            .Replace("<", "&lt;")
+            .Replace(">", "&gt;");
     }
 }

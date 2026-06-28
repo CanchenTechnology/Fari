@@ -11,11 +11,34 @@ using TMPro;
 /// </summary>
 public class ChatItem : MonoBehaviour
 {
-    private const float MinTextWidth = 40f;
-    private const float MinMaxTextWidth = 120f;
-    private const float BubbleHorizontalPadding = 20f;
-    private const float BubbleVerticalPadding = 34f;
-    private const float BubbleOuterMargin = 64f;
+    [Header("聊天气泡尺寸控制")]
+    [Tooltip("文字区域的最小宽度。文字很短时，气泡也不会比这个更窄。")]
+    [SerializeField] private float minTextWidth = 40f;
+    [Tooltip("文字最大宽度的保底值。即使可用空间很小，也会尽量保证至少这个宽度。")]
+    [SerializeField] private float minMaxTextWidth = 120f;
+    [Tooltip("气泡左右内边距总和。数值越大，文字左右留白越多。")]
+    [SerializeField] private float bubbleHorizontalPadding = 20f;
+    [Tooltip("气泡上下内边距总和。数值越大，文字上下留白越多。")]
+    [SerializeField] private float bubbleVerticalPadding = 34f;
+    [Tooltip("气泡距离聊天项边缘预留的外边距，用来限制最长气泡宽度。")]
+    [SerializeField] private float bubbleOuterMargin = 64f;
+    [Tooltip("AI 语音按钮/时长区域需要额外预留的高度。")]
+    [SerializeField] private float voiceReservedHeight = 70f;
+    [Tooltip("当文字气泡比头像矮时，聊天项高度在头像高度基础上额外增加的高度。")]
+    [SerializeField] private float minTextItemAvatarExtraHeight = 40f;
+    [Header("Message vertical spacing")]
+    [SerializeField] private float leftTextMessageTopOffset = 72f;
+    [SerializeField] private float rightTextMessageTopOffset = 18f;
+
+    [Header("图片消息尺寸控制")]
+    [Tooltip("图片消息的宽度缩放比例。")]
+    [SerializeField] private float msgPicScaleX = 0.7f;
+    [Tooltip("图片消息的高度缩放比例。")]
+    [SerializeField] private float msgPicScaleY = 0.7f;
+    [Tooltip("图片消息整体额外留白。")]
+    [SerializeField] private float pictureMessagePadding = 20f;
+    [Tooltip("当图片消息比头像矮时，聊天项高度在头像高度基础上额外增加的高度。")]
+    [SerializeField] private float minPictureItemAvatarExtraHeight = 10f;
 
     //头像
     public Image headImage;
@@ -42,11 +65,6 @@ public class ChatItem : MonoBehaviour
 
     // 图片消息遮罩区域（控制图片尺寸）
     public RectTransform mMsgPicMask;
-    // 图片缩放比例（宽高）
-    float mMsgPicScaleX = 0.7f;
-    float mMsgPicScaleY = 0.7f;
-
-
     [Header("今日牌")]
     public Transform dailyCardTrans;
 
@@ -64,7 +82,8 @@ public class ChatItem : MonoBehaviour
     public TMP_Text ttsTimeText;  //记录语音的时常
 
     [Header("列表底部安全距离")]
-    public float lastMessageBottomPadding = 110f;
+    [Tooltip("最后一条消息底部额外留白，避免被底部输入框挡住。")]
+    [SerializeField] private float lastMessageBottomPadding = 110f;
 
     /// <summary>TTS 播放回调（由 DialogUI 绑定）</summary>
     public System.Action<ChatItem> onTTSPlayClicked;
@@ -288,35 +307,30 @@ public class ChatItem : MonoBehaviour
 
         float preferredWidth = mMsgText.preferredWidth;
         float maxTextWidth = GetMaxTextWidth();
-        float targetTextWidth = Mathf.Clamp(preferredWidth, MinTextWidth, maxTextWidth);
+        float targetTextWidth = Mathf.Clamp(preferredWidth, minTextWidth, maxTextWidth);
 
-        mMsgText.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, targetTextWidth);
-        LayoutRebuilder.ForceRebuildLayoutImmediate(mMsgText.rectTransform);
-        float targetTextHeight = Mathf.Max(
-            mMsgText.GetPreferredValues(mMsgText.text, targetTextWidth, Mathf.Infinity).y,
-            mMsgText.rectTransform.sizeDelta.y);
-        mMsgText.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, targetTextHeight);
+        RectTransform textRect = mMsgText.rectTransform;
+        RectTransform bubbleRect = mItemBg.rectTransform;
+
+        textRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, targetTextWidth);
+        LayoutRebuilder.ForceRebuildLayoutImmediate(textRect);
+        float targetTextHeight = mMsgText.GetPreferredValues(mMsgText.text, targetTextWidth, Mathf.Infinity).y;
+        textRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, targetTextHeight);
 
         // 显示背景气泡
         mItemBg.gameObject.SetActive(true);
 
         // 根据 Text 最终的尺寸动态调整背景尺寸
-        Vector2 size = mItemBg.rectTransform.sizeDelta;
-        size.x = targetTextWidth + BubbleHorizontalPadding;
-        size.y = mMsgText.rectTransform.sizeDelta.y + BubbleVerticalPadding;
-        mItemBg.rectTransform.sizeDelta = size;
+        Vector2 size = bubbleRect.sizeDelta;
+        size.x = targetTextWidth + bubbleHorizontalPadding;
+        size.y = textRect.sizeDelta.y + bubbleVerticalPadding;
+        bubbleRect.sizeDelta = size;
+        ApplyTextPaddingToBubble(textRect, bubbleRect);
+        ApplyTextMessageTopOffset(bubbleRect);
 
         // 调整整个Item高度
-        RectTransform tf = gameObject.GetComponent<RectTransform>();
-        float y = size.y + (reserveVoiceSpace ? 70 : 0);  //70 是新加的音频高度
-
-        // 最小高度限制
-        if (y < headImage.GetComponent<RectTransform>().sizeDelta.y)
-        {
-            y = headImage.GetComponent<RectTransform>().sizeDelta.y+40;
-        }
-        y = ApplyLastMessageBottomPadding(y);
-        tf.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, y);
+        float extraHeight = reserveVoiceSpace ? voiceReservedHeight : 0f;
+        ApplyItemHeight(size.y + extraHeight, msgTrans, minTextItemAvatarExtraHeight);
 
         if (layoutText != null)
             mMsgText.text = originalText;
@@ -326,6 +340,58 @@ public class ChatItem : MonoBehaviour
         // {
         //     RenderOptionButtons(data.options);
         // }
+    }
+
+    private void ApplyTextPaddingToBubble(RectTransform textRect, RectTransform bubbleRect)
+    {
+        if (textRect == null || bubbleRect == null) return;
+
+        float horizontalInset = bubbleHorizontalPadding * 0.5f;
+        float verticalInset = bubbleVerticalPadding * 0.5f;
+        Vector2 textPos = textRect.anchoredPosition;
+        bool rightAligned = bubbleRect.pivot.x > 0.5f;
+
+        textPos.x = rightAligned ? -horizontalInset : horizontalInset;
+        textPos.y = -verticalInset;
+        textRect.anchoredPosition = textPos;
+    }
+
+    private void ApplyTextMessageTopOffset(RectTransform bubbleRect)
+    {
+        if (!(msgTrans is RectTransform msgRect) || bubbleRect == null) return;
+
+        bool rightAligned = bubbleRect.pivot.x > 0.5f;
+        float targetTopOffset = rightAligned ? rightTextMessageTopOffset : leftTextMessageTopOffset;
+        if (targetTopOffset < 0f) return;
+
+        float currentTopOffset = GetTopOffset(msgRect);
+        if (currentTopOffset <= targetTopOffset) return;
+
+        Vector2 pos = msgRect.anchoredPosition;
+        pos.y = -targetTopOffset;
+        msgRect.anchoredPosition = pos;
+    }
+
+    private void ApplyItemHeight(float contentHeight, Transform contentTrans, float avatarExtraHeight)
+    {
+        RectTransform tf = gameObject.GetComponent<RectTransform>();
+        if (tf == null) return;
+
+        float y = GetTopOffset(contentTrans) + contentHeight;
+
+        if (headImage != null && headImage.gameObject.activeSelf && headImage.TryGetComponent(out RectTransform headRect))
+            y = Mathf.Max(y, headRect.sizeDelta.y + avatarExtraHeight);
+
+        y = ApplyLastMessageBottomPadding(y);
+        tf.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, y);
+    }
+
+    private float GetTopOffset(Transform contentTrans)
+    {
+        if (contentTrans is RectTransform contentRect)
+            return Mathf.Max(0f, -contentRect.anchoredPosition.y);
+
+        return 0f;
     }
 
     private float GetMaxTextWidth()
@@ -350,8 +416,8 @@ public class ChatItem : MonoBehaviour
         if (msgTrans is RectTransform msgRect)
             anchorInset = Mathf.Abs(msgRect.anchoredPosition.x);
 
-        float maxWidth = availableWidth - anchorInset - BubbleHorizontalPadding - BubbleOuterMargin;
-        return Mathf.Max(MinMaxTextWidth, maxWidth);
+        float maxWidth = availableWidth - anchorInset - bubbleHorizontalPadding - bubbleOuterMargin;
+        return Mathf.Max(minMaxTextWidth, maxWidth);
     }
 
     /// <summary>
@@ -428,7 +494,7 @@ public class ChatItem : MonoBehaviour
         float h = mMsgPic.overrideSprite.rect.height;
 
         // 按比例缩放图片
-        mMsgPicMask.sizeDelta = new Vector2(w * mMsgPicScaleX, h * mMsgPicScaleY);
+        mMsgPicMask.sizeDelta = new Vector2(w * msgPicScaleX, h * msgPicScaleY);
 
         // 设置头像
         //mIcon.sprite = ResManager.Get.GetSpriteByName(person.mHeadIcon);
@@ -438,30 +504,21 @@ public class ChatItem : MonoBehaviour
 
         // 计算Item整体尺寸
         Vector2 size = Vector2.zero;
-        size.x = mMsgPicMask.sizeDelta.x + 20;
-        size.y = mMsgPicMask.sizeDelta.y + 20;
+        size.x = mMsgPicMask.sizeDelta.x + pictureMessagePadding;
+        size.y = mMsgPicMask.sizeDelta.y + pictureMessagePadding;
 
-        RectTransform tf = gameObject.GetComponent<RectTransform>();
-        float y = size.y;
+        ApplyItemHeight(size.y, msgTrans, minPictureItemAvatarExtraHeight);
 
-         // 最小高度限制
-        if (y < headImage.GetComponent<RectTransform>().sizeDelta.y)
-        {
-            y = headImage.GetComponent<RectTransform>().sizeDelta.y+10;
-        }
-        y = ApplyLastMessageBottomPadding(y);
-        tf.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, y);
     }
 
     private void SetContentSizeMessage(Transform targetTrans)
     {
         if (targetTrans == null) return;
 
-        Vector2 size = Vector2.zero;
-        size.x = this.GetComponent<RectTransform>().sizeDelta.x;
-        size.y = targetTrans.GetComponent<RectTransform>().sizeDelta.y;
-        size.y = ApplyLastMessageBottomPadding(size.y);
-        this.GetComponent<RectTransform>().sizeDelta = size;
+        RectTransform targetRect = targetTrans.GetComponent<RectTransform>();
+        if (targetRect == null) return;
+
+        ApplyItemHeight(targetRect.sizeDelta.y, targetTrans, 0f);
     }
     private void SetDailyCardMessage()
     {

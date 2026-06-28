@@ -37,6 +37,11 @@ public class CompleteInterpretationUIComponent:MonoBehaviour
 	public TMP_Text TopicText4Text;
 	public Button ContinueChatButton;
 
+	public TMP_Text suitableText;
+	public TMP_Text notSuitableText;
+
+	public TMP_Text moodReminderText;
+
 
 	public void InitComponent(WindowBase target)
 	{

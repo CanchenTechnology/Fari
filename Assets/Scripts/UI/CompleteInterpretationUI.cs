@@ -37,6 +37,8 @@ public class CompleteInterpretationUI : WindowBase
     private bool _isLoading;
     private bool _hasError;
     private Coroutine _timeoutCoroutine;
+    private Coroutine _layoutRefreshCoroutine;
+    private bool _isPreparingTodayDetailContent;
 
     // 兜底时缓存的话题列表（供 GetTopicText 使用，避免依赖 CachedInterpretation）
     private List<string> _fallbackTopics;
@@ -70,11 +72,15 @@ public class CompleteInterpretationUI : WindowBase
     {
         base.OnHide();
         StopTimeoutCoroutine();
+        StopLayoutRefreshCoroutine();
+        _isPreparingTodayDetailContent = false;
     }
 
     public override void OnDestroy()
     {
         StopTimeoutCoroutine();
+        StopLayoutRefreshCoroutine();
+        _isPreparingTodayDetailContent = false;
         base.OnDestroy();
     }
     #endregion
@@ -175,6 +181,7 @@ public class CompleteInterpretationUI : WindowBase
 
         // 设置占位符，表示等待 AI 内容
         ShowLoadingPlaceholders();
+        PopulateTodayDetailSections();
     }
 
     /// <summary>
@@ -187,6 +194,10 @@ public class CompleteInterpretationUI : WindowBase
         SetMeaningText("...");
         SetActionText("...");
         SetTopicTexts(new List<string> { "...", "...", "...", "..." });
+        SetSuitableText("...");
+        SetNotSuitableText("...");
+        SetMoodReminderText("...");
+        RequestLayoutRefresh();
     }
 
     private void RequestAIInterpretation()
@@ -271,6 +282,114 @@ public class CompleteInterpretationUI : WindowBase
         }
     }
 
+    private void StopLayoutRefreshCoroutine()
+    {
+        if (_layoutRefreshCoroutine != null && uiComponent != null)
+        {
+            uiComponent.StopCoroutine(_layoutRefreshCoroutine);
+            _layoutRefreshCoroutine = null;
+        }
+    }
+
+    private void RequestLayoutRefresh()
+    {
+        if (uiComponent == null) return;
+
+        ForceDynamicTextMeshUpdate();
+        ForceLayoutRefresh();
+
+        if (!uiComponent.gameObject.activeInHierarchy) return;
+
+        if (_layoutRefreshCoroutine != null)
+            uiComponent.StopCoroutine(_layoutRefreshCoroutine);
+
+        _layoutRefreshCoroutine = uiComponent.StartCoroutine(RefreshLayoutNextFrame());
+    }
+
+    private IEnumerator RefreshLayoutNextFrame()
+    {
+        yield return null;
+
+        ForceDynamicTextMeshUpdate();
+        ForceLayoutRefresh();
+        _layoutRefreshCoroutine = null;
+    }
+
+    private void ForceDynamicTextMeshUpdate()
+    {
+        ForceTextMeshUpdate(uiComponent.CardNameTextText);
+        ForceTextMeshUpdate(uiComponent.CardDescTextText);
+        ForceTextMeshUpdate(uiComponent.Tag1TextText);
+        ForceTextMeshUpdate(uiComponent.Tag2TextText);
+        ForceTextMeshUpdate(uiComponent.Tag3TextText);
+        ForceTextMeshUpdate(uiComponent.MeaningSectionText);
+        ForceTextMeshUpdate(uiComponent.ActionSectionText);
+        ForceTextMeshUpdate(uiComponent.suitableText);
+        ForceTextMeshUpdate(uiComponent.notSuitableText);
+        ForceTextMeshUpdate(uiComponent.moodReminderText);
+        ForceTextMeshUpdate(uiComponent.TopicText1Text);
+        ForceTextMeshUpdate(uiComponent.TopicText2Text);
+        ForceTextMeshUpdate(uiComponent.TopicText3Text);
+        ForceTextMeshUpdate(uiComponent.TopicText4Text);
+    }
+
+    private void ForceTextMeshUpdate(TMP_Text text)
+    {
+        if (text == null) return;
+        text.ForceMeshUpdate(true, true);
+    }
+
+    private void ForceLayoutRefresh()
+    {
+        Canvas.ForceUpdateCanvases();
+
+        var rebuildRoots = new List<RectTransform>();
+        AddLayoutChain(rebuildRoots, uiComponent.CardDescTextText?.rectTransform);
+        AddLayoutChain(rebuildRoots, uiComponent.MeaningSectionText?.rectTransform);
+        AddLayoutChain(rebuildRoots, uiComponent.ActionSectionText?.rectTransform);
+        AddLayoutChain(rebuildRoots, uiComponent.suitableText?.rectTransform);
+        AddLayoutChain(rebuildRoots, uiComponent.notSuitableText?.rectTransform);
+        AddLayoutChain(rebuildRoots, uiComponent.moodReminderText?.rectTransform);
+        AddLayoutChain(rebuildRoots, uiComponent.TopicText1Text?.rectTransform);
+        AddLayoutChain(rebuildRoots, uiComponent.TopicText2Text?.rectTransform);
+        AddLayoutChain(rebuildRoots, uiComponent.TopicText3Text?.rectTransform);
+        AddLayoutChain(rebuildRoots, uiComponent.TopicText4Text?.rectTransform);
+
+        var scrollRect = uiComponent.GetComponentInChildren<ScrollRect>(true);
+        AddUniqueRect(rebuildRoots, scrollRect != null ? scrollRect.content : null);
+        AddUniqueRect(rebuildRoots, transform as RectTransform);
+
+        for (int i = 0; i < rebuildRoots.Count; i++)
+        {
+            if (rebuildRoots[i] != null)
+                LayoutRebuilder.ForceRebuildLayoutImmediate(rebuildRoots[i]);
+        }
+
+        Canvas.ForceUpdateCanvases();
+    }
+
+    private void AddLayoutChain(List<RectTransform> roots, RectTransform start)
+    {
+        var current = start;
+        var windowRoot = transform as RectTransform;
+
+        while (current != null)
+        {
+            AddUniqueRect(roots, current);
+
+            if (current == windowRoot)
+                break;
+
+            current = current.parent as RectTransform;
+        }
+    }
+
+    private void AddUniqueRect(List<RectTransform> roots, RectTransform rect)
+    {
+        if (rect == null || roots.Contains(rect)) return;
+        roots.Add(rect);
+    }
+
     private void PopulateFromPayload(CompleteInterpretationPayload payload)
     {
         if (payload == null) return;
@@ -283,6 +402,8 @@ public class CompleteInterpretationUI : WindowBase
         SetMeaningText(payload.meaningAnalysis);
         SetActionText(payload.actionSuggestion);
         SetTopicTexts(payload.topics);
+        PopulateTodayDetailSections();
+        RequestLayoutRefresh();
     }
 
     /// <summary>
@@ -327,6 +448,8 @@ public class CompleteInterpretationUI : WindowBase
             };
             SetTopicTexts(_fallbackTopics);
         }
+        PopulateTodayDetailSections();
+        RequestLayoutRefresh();
     }
 
     #endregion
@@ -410,6 +533,83 @@ public class CompleteInterpretationUI : WindowBase
     {
         if (uiComponent.ActionSectionText != null)
             uiComponent.ActionSectionText.text = text;
+    }
+
+    private void PopulateTodayDetailSections()
+    {
+        if (_currentCard == null) return;
+
+        var content = TodayCardUI.BuildContentForCard(_currentCard, _currentUpright);
+        SetTodayDetailTexts(content);
+        RequestTodayDetailContentIfNeeded();
+    }
+
+    private void SetTodayDetailTexts(TodayCardDetailContent content)
+    {
+        if (content == null) return;
+
+        SetSuitableText(FormatTodayList(content.dos));
+        SetNotSuitableText(FormatTodayList(content.donts));
+        SetMoodReminderText(content.emotionReminder);
+    }
+
+    private void SetSuitableText(string text)
+    {
+        if (uiComponent.suitableText != null)
+            uiComponent.suitableText.text = text ?? "";
+    }
+
+    private void SetNotSuitableText(string text)
+    {
+        if (uiComponent.notSuitableText != null)
+            uiComponent.notSuitableText.text = text ?? "";
+    }
+
+    private void SetMoodReminderText(string text)
+    {
+        if (uiComponent.moodReminderText != null)
+            uiComponent.moodReminderText.text = text ?? "";
+    }
+
+    private string FormatTodayList(List<string> values)
+    {
+        if (values == null || values.Count == 0) return "";
+
+        var lines = new List<string>();
+        for (int i = 0; i < values.Count; i++)
+        {
+            var value = values[i];
+            if (string.IsNullOrWhiteSpace(value)) continue;
+            lines.Add($"{lines.Count + 1}. {value.Trim()}");
+        }
+
+        return string.Join("\n", lines);
+    }
+
+    private void RequestTodayDetailContentIfNeeded()
+    {
+        if (_isPreparingTodayDetailContent || _currentCard == null) return;
+
+        var oracleService = DailyOracleService.Instance;
+        if (oracleService == null) return;
+        if (oracleService.IsCachedPreparedReadingFor(_currentCard, _currentUpright)) return;
+        if (oracleService.IsLoading) return;
+
+        var requestedCard = _currentCard;
+        var requestedUpright = _currentUpright;
+        _isPreparingTodayDetailContent = true;
+
+        oracleService.PrepareTodayReading(requestedCard, requestedUpright, (prepared) =>
+        {
+            _isPreparingTodayDetailContent = false;
+
+            if (this == null || uiComponent == null || !uiComponent.gameObject.activeInHierarchy) return;
+            if (prepared == null || !prepared.IsFor(requestedCard, requestedUpright)) return;
+            if (_currentCard == null || _currentCard.cardId != requestedCard.cardId || _currentUpright != requestedUpright) return;
+
+            SetTodayDetailTexts(TodayCardUI.BuildContentForCard(_currentCard, _currentUpright));
+            RequestLayoutRefresh();
+        });
     }
 
     private void SetTopicTexts(List<string> topics)

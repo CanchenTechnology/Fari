@@ -24,8 +24,11 @@ public class DeepSeekAPI : MonoBehaviour
     [Tooltip("仅用于 Unity Editor 调试的 DeepSeek API Key。请使用单独的调试 Key，不要提交真实生产 Key。")]
     public string editorDeepSeekApiKey = "";
 
-    [Tooltip("Editor 没有配置调试 Key、未登录 Firebase 或 Functions 尚未部署时，使用本地模拟回复，避免 Play Mode 被后端依赖卡住。正式包不生效。")]
-    public bool useEditorMockWhenBackendUnavailable = true;
+    [Tooltip("Editor 下没有真实 Firebase 用户时，自动使用游客登录拿到 Token，再调用正式的 Cloud Functions。")]
+    public bool editorAutoAnonymousSignIn = true;
+
+    [Tooltip("Editor 后端不可用时是否返回本地模拟回复。正常联调建议关闭，否则会把真实错误伪装成成功回复。正式包不生效。")]
+    public bool useEditorMockWhenBackendUnavailable = false;
 
     public bool HasEditorDirectDeepSeekConfig()
     {
@@ -494,6 +497,136 @@ public class DeepSeekAPI : MonoBehaviour
         return useEditorDirectDeepSeek && !string.IsNullOrWhiteSpace(editorDeepSeekApiKey);
     }
 
+    private IEnumerator SignInAnonymouslyForEditor(Action<FirebaseUser> onSuccess, Action<string> onError)
+    {
+        FirebaseAuth auth = null;
+        try
+        {
+            auth = FirebaseAuth.DefaultInstance;
+        }
+        catch (Exception e)
+        {
+            onError?.Invoke("Firebase Auth 初始化失败: " + e.Message);
+            yield break;
+        }
+
+        if (auth.CurrentUser != null)
+        {
+            onSuccess?.Invoke(auth.CurrentUser);
+            yield break;
+        }
+
+        Debug.Log("[DeepSeekAPI] Editor 未检测到 Firebase 用户，正在自动游客登录后调用 AI 后端。");
+
+        FirebaseAuthManager authManager = null;
+        try
+        {
+            authManager = FirebaseAuthManager.Instance;
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("[DeepSeekAPI] 获取 FirebaseAuthManager 失败，将直接使用 Firebase Auth 游客登录: " + e.Message);
+        }
+
+        if (authManager != null)
+        {
+            float initDeadline = Time.realtimeSinceStartup + 10f;
+            while (!authManager.IsFirebaseInitialized && Time.realtimeSinceStartup < initDeadline)
+            {
+                yield return null;
+            }
+
+            if (auth.CurrentUser != null)
+            {
+                onSuccess?.Invoke(auth.CurrentUser);
+                yield break;
+            }
+
+            if (!authManager.IsFirebaseInitialized)
+            {
+                onError?.Invoke("Firebase 初始化未完成，无法自动游客登录");
+                yield break;
+            }
+
+            float loggingDeadline = Time.realtimeSinceStartup + 10f;
+            while (authManager.IsLoggingIn && Time.realtimeSinceStartup < loggingDeadline)
+            {
+                yield return null;
+            }
+
+            if (auth.CurrentUser != null)
+            {
+                onSuccess?.Invoke(auth.CurrentUser);
+                yield break;
+            }
+
+            if (authManager.IsLoggingIn)
+            {
+                onError?.Invoke("Firebase 正在登录中，暂时无法自动游客登录");
+                yield break;
+            }
+
+            bool finished = false;
+            string signInError = null;
+            FirebaseUser signedInUser = null;
+
+            Action<AuthProvider, FirebaseUser> handleSuccess = (provider, user) =>
+            {
+                if (provider != AuthProvider.Anonymous) return;
+                signedInUser = user ?? auth.CurrentUser;
+                finished = true;
+            };
+            Action<AuthProvider, string> handleFailed = (provider, error) =>
+            {
+                if (provider != AuthProvider.Anonymous) return;
+                signInError = error;
+                finished = true;
+            };
+
+            authManager.OnLoginSuccess += handleSuccess;
+            authManager.OnLoginFailed += handleFailed;
+            authManager.SignInAnonymously();
+
+            float signInDeadline = Time.realtimeSinceStartup + 15f;
+            while (!finished && Time.realtimeSinceStartup < signInDeadline)
+            {
+                if (auth.CurrentUser != null)
+                {
+                    signedInUser = auth.CurrentUser;
+                    finished = true;
+                    break;
+                }
+
+                yield return null;
+            }
+
+            authManager.OnLoginSuccess -= handleSuccess;
+            authManager.OnLoginFailed -= handleFailed;
+
+            if (signedInUser != null)
+            {
+                onSuccess?.Invoke(signedInUser);
+                yield break;
+            }
+
+            onError?.Invoke(string.IsNullOrWhiteSpace(signInError)
+                ? "Editor 自动游客登录超时"
+                : signInError);
+            yield break;
+        }
+
+        var task = auth.SignInAnonymouslyAsync();
+        yield return new WaitUntil(() => task.IsCompleted);
+
+        if (task.IsFaulted || task.IsCanceled)
+        {
+            onError?.Invoke(task.Exception?.InnerException?.Message ?? "Editor 自动游客登录失败");
+            yield break;
+        }
+
+        onSuccess?.Invoke(task.Result.User);
+    }
+
     private IEnumerator SendEditorDirectChatRequest(string jsonBody, List<Message> messages,
         Action<string> onSuccess, Action<string> onError)
     {
@@ -625,10 +758,33 @@ public class DeepSeekAPI : MonoBehaviour
 
     private IEnumerator GetFirebaseIdToken(Action<string> onToken, Action<string> onError)
     {
-        var user = FirebaseAuth.DefaultInstance?.CurrentUser;
+        FirebaseUser user = null;
+        string editorSignInError = null;
+
+        try
+        {
+            user = FirebaseAuth.DefaultInstance?.CurrentUser;
+        }
+        catch (Exception e)
+        {
+            onError?.Invoke("Firebase Auth 初始化失败: " + e.Message);
+            yield break;
+        }
+
+#if UNITY_EDITOR
+        if (user == null && editorAutoAnonymousSignIn)
+        {
+            yield return SignInAnonymouslyForEditor(
+                signedInUser => user = signedInUser,
+                error => editorSignInError = error);
+        }
+#endif
+
         if (user == null)
         {
-            onError?.Invoke("用户未登录，无法调用 AI 服务");
+            onError?.Invoke(string.IsNullOrWhiteSpace(editorSignInError)
+                ? "用户未登录，无法调用 AI 服务"
+                : editorSignInError);
             yield break;
         }
 
@@ -647,6 +803,7 @@ public class DeepSeekAPI : MonoBehaviour
     private bool TryCompleteWithEditorMock(List<Message> messages, Action<string> onSuccess, string reason)
     {
 #if UNITY_EDITOR
+        if (IsPaymentRequiredError(reason)) return false;
         if (!useEditorMockWhenBackendUnavailable) return false;
 
         string content = BuildEditorMockResponse(messages, reason);
@@ -662,6 +819,7 @@ public class DeepSeekAPI : MonoBehaviour
         Action<string> onChunk, Action<string> onComplete, string reason)
     {
 #if UNITY_EDITOR
+        if (IsPaymentRequiredError(reason)) return false;
         if (!useEditorMockWhenBackendUnavailable) return false;
 
         string content = BuildEditorMockResponse(messages, reason);
@@ -672,6 +830,13 @@ public class DeepSeekAPI : MonoBehaviour
 #else
         return false;
 #endif
+    }
+
+    private bool IsPaymentRequiredError(string reason)
+    {
+        return !string.IsNullOrEmpty(reason)
+            && (reason.IndexOf("402", StringComparison.OrdinalIgnoreCase) >= 0
+                || reason.IndexOf("Payment Required", StringComparison.OrdinalIgnoreCase) >= 0);
     }
 
     private string BuildEditorMockResponse(List<Message> messages, string reason)
