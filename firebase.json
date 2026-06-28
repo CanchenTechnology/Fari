@@ -24,6 +24,26 @@
   "hosting": {
     "site": "fari-app-b2fd2",
     "public": "web-admin",
+    "headers": [
+      {
+        "source": "/data-admin",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-store, max-age=0"
+          }
+        ]
+      },
+      {
+        "source": "/data-admin.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-store, max-age=0"
+          }
+        ]
+      }
+    ],
     "ignore": [
       "firebase.json",
       "**/.*",

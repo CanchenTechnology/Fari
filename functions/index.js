@@ -13,9 +13,22 @@ admin.initializeApp();
 
 const db = admin.firestore();
 const realtimeDb = admin.app().database("https://fari-app-b2fd2-default-rtdb.firebaseio.com");
+const runtimeSecretCache = new Map();
+let metadataAccessToken = null;
+let metadataAccessTokenExpiresAt = 0;
+const providerKeyPoolCollection = db.collection("provider_key_pool");
+const providerKeySelectionCollection = db.collection("provider_key_selection");
+const providerKeyStatsCollection = db.collection("provider_key_stats");
+const providerKeyEventBucketsCollection = db.collection("provider_key_event_buckets");
+const providerKeyHealthRunsCollection = db.collection("provider_key_health_runs");
 
 const ALL_SECRET_NAMES = Object.freeze([
   "DEEPSEEK_API_KEY",
+  "OPENAI_API_KEY",
+  "OPENAI_ADMIN_KEY",
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_ADMIN_KEY",
+  "GOOGLE_GEMINI_API_KEY",
   "VOLC_TTS_API_KEY",
   "PAYMENT_WEBHOOK_SECRET",
   "APPLE_SHARED_SECRET",
@@ -75,6 +88,11 @@ function optionalSecret(name) {
 }
 
 const deepseekApiKey = optionalSecret("DEEPSEEK_API_KEY");
+const openaiApiKey = optionalSecret("OPENAI_API_KEY");
+const openaiAdminKey = optionalSecret("OPENAI_ADMIN_KEY");
+const anthropicApiKey = optionalSecret("ANTHROPIC_API_KEY");
+const anthropicAdminKey = optionalSecret("ANTHROPIC_ADMIN_KEY");
+const googleGeminiApiKey = optionalSecret("GOOGLE_GEMINI_API_KEY");
 const volcanoTtsApiKey = optionalSecret("VOLC_TTS_API_KEY");
 const paymentWebhookSecret = optionalSecret("PAYMENT_WEBHOOK_SECRET");
 const appleSharedSecret = optionalSecret("APPLE_SHARED_SECRET");
@@ -82,6 +100,11 @@ const googlePackageName = optionalSecret("GOOGLE_PACKAGE_NAME");
 const googleServiceAccountJson = optionalSecret("GOOGLE_SERVICE_ACCOUNT_JSON");
 const SECRET_PARAMS = Object.freeze({
   DEEPSEEK_API_KEY: deepseekApiKey,
+  OPENAI_API_KEY: openaiApiKey,
+  OPENAI_ADMIN_KEY: openaiAdminKey,
+  ANTHROPIC_API_KEY: anthropicApiKey,
+  ANTHROPIC_ADMIN_KEY: anthropicAdminKey,
+  GOOGLE_GEMINI_API_KEY: googleGeminiApiKey,
   VOLC_TTS_API_KEY: volcanoTtsApiKey,
   PAYMENT_WEBHOOK_SECRET: paymentWebhookSecret,
   APPLE_SHARED_SECRET: appleSharedSecret,
@@ -89,10 +112,69 @@ const SECRET_PARAMS = Object.freeze({
   GOOGLE_SERVICE_ACCOUNT_JSON: googleServiceAccountJson,
 });
 
+const MODEL_SECRET_CONFIGS = Object.freeze({
+  DEEPSEEK_API_KEY: {
+    provider: "deepseek",
+    label: "DeepSeek API Key",
+    keyKind: "api_key",
+    hint: "DeepSeek 的 sk- 开头密钥",
+  },
+  OPENAI_API_KEY: {
+    provider: "openai",
+    label: "OpenAI API Key",
+    keyKind: "api_key",
+    hint: "OpenAI 普通 API Key，用于验证模型接口",
+  },
+  OPENAI_ADMIN_KEY: {
+    provider: "openai",
+    label: "OpenAI Admin Key",
+    keyKind: "admin_key",
+    hint: "OpenAI Admin Key，用于读取组织成本",
+  },
+  ANTHROPIC_API_KEY: {
+    provider: "anthropic",
+    label: "Anthropic API Key",
+    keyKind: "api_key",
+    hint: "Anthropic 普通 API Key，用于验证模型接口",
+  },
+  ANTHROPIC_ADMIN_KEY: {
+    provider: "anthropic",
+    label: "Anthropic Admin Key",
+    keyKind: "admin_key",
+    hint: "Anthropic Admin Key，用于读取组织用量/成本",
+  },
+  GOOGLE_GEMINI_API_KEY: {
+    provider: "google_gemini",
+    label: "Google Gemini API Key",
+    keyKind: "api_key",
+    hint: "Google AI Studio / Gemini API Key",
+  },
+  VOLC_TTS_API_KEY: {
+    provider: "volcano_tts",
+    label: "Volcano TTS API Key",
+    keyKind: "api_key",
+    hint: "火山语音服务密钥",
+  },
+});
+const MODEL_SECRET_NAMES = Object.freeze(Object.keys(MODEL_SECRET_CONFIGS));
+
 const REGION = "us-central1";
 const FIRESTORE_TRIGGER_REGION = "asia-east2";
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
+const DEEPSEEK_BALANCE_URL = "https://api.deepseek.com/user/balance";
 const DEEPSEEK_MODEL = "deepseek-chat";
+const OPENAI_MODELS_URL = "https://api.openai.com/v1/models";
+const OPENAI_COSTS_URL = "https://api.openai.com/v1/organization/costs";
+const ANTHROPIC_MODELS_URL = "https://api.anthropic.com/v1/models";
+const ANTHROPIC_USAGE_COST_URL = "https://api.anthropic.com/v1/organizations/usage_report/messages";
+const ANTHROPIC_VERSION = "2023-06-01";
+const GEMINI_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models";
+const GOOGLE_METADATA_TOKEN_URL = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
+const SECRET_MANAGER_BASE_URL = "https://secretmanager.googleapis.com/v1";
+const SECRET_CACHE_TTL_MS = 5 * 60 * 1000;
+const PROVIDER_KEY_EVENT_RETENTION_DAYS = 30;
+const PROVIDER_KEY_HEALTH_RUN_RETENTION_DAYS = 90;
+const PROVIDER_KEY_CLEANUP_BATCH_LIMIT = 300;
 const VOLCANO_TTS_V3_URL = "https://openspeech.bytedance.com/api/v3/tts/unidirectional";
 
 const FREE_AI_DAILY_LIMIT = 30;
@@ -4040,9 +4122,1048 @@ function getOptionalSecret(secretParam) {
   }
 }
 
+function getProjectId() {
+  const config = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : {};
+  return process.env.GCLOUD_PROJECT
+    || process.env.GCP_PROJECT
+    || config.projectId
+    || "fari-app-b2fd2";
+}
+
+function normalizeSecretName(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function assertAllowedModelSecretName(secretName) {
+  const normalized = normalizeSecretName(secretName);
+  if (!MODEL_SECRET_CONFIGS[normalized]) {
+    const error = new Error("Unsupported secret name.");
+    error.status = 400;
+    throw error;
+  }
+  return normalized;
+}
+
+function validateSecretValue(secretValue) {
+  const value = String(secretValue || "").trim();
+  if (value.length < 8) {
+    const error = new Error("Secret value is too short.");
+    error.status = 400;
+    throw error;
+  }
+  if (value.length > 12000) {
+    const error = new Error("Secret value is too long.");
+    error.status = 400;
+    throw error;
+  }
+  return value;
+}
+
+function buildSecretFingerprint(secretValue) {
+  const value = String(secretValue || "");
+  return {
+    length: value.length,
+    sha256: crypto.createHash("sha256").update(value).digest("hex").slice(0, 16),
+  };
+}
+
+async function getMetadataAccessToken() {
+  const now = Date.now();
+  if (metadataAccessToken && metadataAccessTokenExpiresAt - now > 60000) {
+    return metadataAccessToken;
+  }
+
+  const response = await fetch(GOOGLE_METADATA_TOKEN_URL, {
+    headers: {
+      "Metadata-Flavor": "Google",
+    },
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    const error = new Error(`Metadata token request failed with HTTP ${response.status}: ${text.slice(0, 200)}`);
+    error.status = 503;
+    throw error;
+  }
+  const data = await response.json();
+  if (!data.access_token) {
+    const error = new Error("Metadata token response did not include an access token.");
+    error.status = 503;
+    throw error;
+  }
+  metadataAccessToken = data.access_token;
+  metadataAccessTokenExpiresAt = now + Math.max(Number(data.expires_in || 300) - 30, 60) * 1000;
+  return metadataAccessToken;
+}
+
+async function secretManagerFetch(pathname, options = {}) {
+  const token = await getMetadataAccessToken();
+  const response = await fetch(`${SECRET_MANAGER_BASE_URL}${pathname}`, {
+    method: options.method || "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+    body: options.body,
+  });
+  const text = await response.text();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch (error) {
+    data = { raw: text.slice(0, 500) };
+  }
+  if (!response.ok) {
+    const error = new Error(data?.error?.message || `Secret Manager request failed with HTTP ${response.status}`);
+    error.status = response.status;
+    error.details = data;
+    throw error;
+  }
+  return data;
+}
+
+async function ensureSecretExists(secretName) {
+  const projectId = getProjectId();
+  const encodedName = encodeURIComponent(secretName);
+  try {
+    await secretManagerFetch(`/projects/${projectId}/secrets/${encodedName}`);
+    return { created: false };
+  } catch (error) {
+    if (error.status !== 404) throw error;
+  }
+
+  try {
+    await secretManagerFetch(`/projects/${projectId}/secrets?secretId=${encodedName}`, {
+      method: "POST",
+      body: JSON.stringify({
+        replication: {
+          automatic: {},
+        },
+      }),
+    });
+    return { created: true };
+  } catch (error) {
+    if (error.status === 409) return { created: false };
+    throw error;
+  }
+}
+
+async function addSecretVersion(secretName, secretValue) {
+  const value = validateSecretValue(secretValue);
+  await ensureSecretExists(secretName);
+  const projectId = getProjectId();
+  const encodedName = encodeURIComponent(secretName);
+  const data = await secretManagerFetch(`/projects/${projectId}/secrets/${encodedName}:addVersion`, {
+    method: "POST",
+    body: JSON.stringify({
+      payload: {
+        data: Buffer.from(value, "utf8").toString("base64"),
+      },
+    }),
+  });
+  runtimeSecretCache.delete(secretName);
+  return {
+    name: data.name || "",
+    fingerprint: buildSecretFingerprint(value),
+  };
+}
+
+async function deleteManagedPoolSecret(secretName) {
+  const normalized = normalizeSecretName(secretName);
+  if (!normalized.startsWith("MOONLY_POOL_")) {
+    throw createHttpError(400, "Only managed pool secrets can be deleted.");
+  }
+  const projectId = getProjectId();
+  const encodedName = encodeURIComponent(normalized);
+  try {
+    await secretManagerFetch(`/projects/${projectId}/secrets/${encodedName}`, {
+      method: "DELETE",
+    });
+    runtimeSecretCache.delete(normalized);
+    return true;
+  } catch (error) {
+    if (error.status === 404) return false;
+    throw error;
+  }
+}
+
+async function accessSecretVersion(secretName) {
+  const projectId = getProjectId();
+  const encodedName = encodeURIComponent(secretName);
+  const data = await secretManagerFetch(`/projects/${projectId}/secrets/${encodedName}/versions/latest:access`);
+  const encoded = data?.payload?.data || "";
+  return encoded ? Buffer.from(encoded, "base64").toString("utf8") : "";
+}
+
+async function getRuntimeSecretValue(secretName, fallbackParam = null, options = {}) {
+  const normalized = normalizeSecretName(secretName);
+  const fallback = fallbackParam ? getOptionalSecret(fallbackParam) : "";
+  if (!IS_FUNCTION_RUNTIME) return fallback;
+
+  const cached = runtimeSecretCache.get(normalized);
+  if (!options.forceRefresh && cached && cached.expiresAt > Date.now()) {
+    return cached.value || fallback;
+  }
+
+  try {
+    const value = await accessSecretVersion(normalized);
+    runtimeSecretCache.set(normalized, {
+      value,
+      expiresAt: Date.now() + SECRET_CACHE_TTL_MS,
+    });
+    return value || fallback;
+  } catch (error) {
+    if (fallback) return fallback;
+    return "";
+  }
+}
+
+function buildSecretCatalog() {
+  return MODEL_SECRET_NAMES.map((secretName) => {
+    const config = MODEL_SECRET_CONFIGS[secretName];
+    return {
+      secretName,
+      ...config,
+      poolSupported: config.keyKind === "api_key",
+    };
+  });
+}
+
+function normalizePoolProvider(provider) {
+  return String(provider || "").trim().toLowerCase();
+}
+
+function buildPoolSecretName(baseSecretName, keyId) {
+  return `MOONLY_POOL_${normalizeSecretName(baseSecretName)}_${String(keyId || "").replace(/[^A-Za-z0-9_]/g, "_").toUpperCase()}`;
+}
+
+function createPoolKeyLabel(config, index) {
+  return `${config?.label || config?.provider || "Provider"} #${index}`;
+}
+
+function poolStatusTone(status) {
+  const normalized = String(status || "").toLowerCase();
+  if (["active", "available", "configured"].includes(normalized)) return "ok";
+  if (["exhausted", "invalid", "invalid_secret", "missing_secret"].includes(normalized)) return "danger";
+  if (["rate_limited", "disabled", "request_failed", "network_error"].includes(normalized)) return "warn";
+  return "";
+}
+
+function getMillisFromFirestoreValue(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (typeof value.seconds === "number") return value.seconds * 1000;
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function serializeFirestoreTime(value) {
+  const millis = getMillisFromFirestoreValue(value);
+  return millis > 0 ? new Date(millis).toISOString() : null;
+}
+
+function serializePoolKeyDoc(doc) {
+  const data = doc.data() || {};
+  return {
+    id: doc.id,
+    provider: data.provider || "",
+    baseSecretName: data.baseSecretName || "",
+    keyKind: data.keyKind || "api_key",
+    label: data.label || doc.id,
+    status: data.status || "active",
+    priority: Number(data.priority || 0),
+    fingerprint: data.fingerprint || null,
+    lastUsedAt: serializeFirestoreTime(data.lastUsedAt),
+    lastSuccessAt: serializeFirestoreTime(data.lastSuccessAt),
+    lastFailureAt: serializeFirestoreTime(data.lastFailureAt),
+    lastFailureStatus: data.lastFailureStatus || "",
+    lastFailureMessage: data.lastFailureMessage || "",
+    disabledAt: serializeFirestoreTime(data.disabledAt),
+    createdAt: serializeFirestoreTime(data.createdAt),
+    updatedAt: serializeFirestoreTime(data.updatedAt),
+  };
+}
+
+function buildProviderKeyStatsId(provider, keyId) {
+  return `${normalizePoolProvider(provider)}__${String(keyId || "primary").replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+}
+
+function serializeProviderKeyStatsDoc(doc) {
+  const data = doc.data() || {};
+  return {
+    provider: data.provider || "",
+    keyId: data.keyId || doc.id,
+    successCount: Number(data.successCount || 0),
+    failureCount: Number(data.failureCount || 0),
+    lastEventAt: serializeFirestoreTime(data.lastEventAt),
+    lastSuccessAt: serializeFirestoreTime(data.lastSuccessAt),
+    lastFailureAt: serializeFirestoreTime(data.lastFailureAt),
+    lastStatus: data.lastStatus || "",
+    lastMessage: data.lastMessage || "",
+  };
+}
+
+function serializeProviderKeyEventDoc(doc) {
+  const data = doc.data() || {};
+  return {
+    id: doc.id,
+    provider: data.provider || "",
+    keyId: data.keyId || "",
+    label: data.label || "",
+    source: data.source || "",
+    baseSecretName: data.baseSecretName || "",
+    outcome: data.outcome || "",
+    status: data.status || "",
+    message: data.message || "",
+    createdAt: serializeFirestoreTime(data.createdAt),
+  };
+}
+
+function serializeProviderKeyHealthRunDoc(doc) {
+  const data = doc.data() || {};
+  return {
+    id: doc.id,
+    ok: data.ok === true,
+    checkedAt: serializeFirestoreTime(data.checkedAt),
+    providerCount: Number(data.providerCount || 0),
+    checkedKeyCount: Number(data.checkedKeyCount || 0),
+    okKeyCount: Number(data.okKeyCount || 0),
+    failedKeyCount: Number(data.failedKeyCount || 0),
+    repairedCount: Number(data.repairedCount || 0),
+    results: Array.isArray(data.results) ? data.results.map((item) => ({
+      provider: item.provider || "",
+      ok: item.ok === true,
+      checkedCount: Number(item.checkedCount || 0),
+      okCount: Number(item.okCount || 0),
+      failedCount: Number(item.failedCount || 0),
+      repaired: item.repaired === true,
+      previousSelectedKeyId: item.previousSelectedKeyId || "",
+      selectedKeyId: item.selectedKeyId || "",
+      error: item.error || "",
+    })) : [],
+  };
+}
+
+async function getProviderKeyStatsMap(provider) {
+  const normalizedProvider = normalizePoolProvider(provider);
+  const snap = await providerKeyStatsCollection.where("provider", "==", normalizedProvider).get().catch(() => null);
+  const map = new Map();
+  if (!snap) return map;
+  for (const doc of snap.docs) {
+    const stats = serializeProviderKeyStatsDoc(doc);
+    map.set(stats.keyId, stats);
+  }
+  return map;
+}
+
+function emptyProviderKeyStats(provider, keyId) {
+  return {
+    provider: normalizePoolProvider(provider),
+    keyId: keyId || "primary",
+    successCount: 0,
+    failureCount: 0,
+    lastEventAt: null,
+    lastSuccessAt: null,
+    lastFailureAt: null,
+    lastStatus: "",
+    lastMessage: "",
+  };
+}
+
+async function recordProviderKeyEvent(candidate, outcome, status = "", message = "") {
+  if (!candidate?.provider || !candidate?.id) return;
+  const provider = normalizePoolProvider(candidate.provider);
+  const keyId = String(candidate.id || "primary");
+  const ref = providerKeyStatsCollection.doc(buildProviderKeyStatsId(provider, keyId));
+  const success = outcome === "success";
+  const cleanStatus = cleanString(status || (success ? "success" : "failure"), "", 80);
+  const cleanMessage = cleanString(message, "", 300);
+  await ref.set({
+    provider,
+    keyId,
+    label: candidate.label || "",
+    source: candidate.source || "",
+    baseSecretName: candidate.baseSecretName || "",
+    successCount: admin.firestore.FieldValue.increment(success ? 1 : 0),
+    failureCount: admin.firestore.FieldValue.increment(success ? 0 : 1),
+    lastEventAt: admin.firestore.FieldValue.serverTimestamp(),
+    lastStatus: cleanStatus,
+    lastMessage: cleanMessage,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    ...(success
+      ? { lastSuccessAt: admin.firestore.FieldValue.serverTimestamp() }
+      : { lastFailureAt: admin.firestore.FieldValue.serverTimestamp() }),
+  }, { merge: true }).catch(() => null);
+
+  const eventId = `${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+  await providerKeyEventBucketsCollection
+    .doc(provider)
+    .set({
+      provider,
+      lastEventAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true })
+    .catch(() => null);
+
+  await providerKeyEventBucketsCollection
+    .doc(provider)
+    .collection("events")
+    .doc(eventId)
+    .set({
+      provider,
+      keyId,
+      label: candidate.label || "",
+      source: candidate.source || "",
+      baseSecretName: candidate.baseSecretName || "",
+      outcome: success ? "success" : "failure",
+      status: cleanStatus,
+      message: cleanMessage,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    })
+    .catch(() => null);
+}
+
+async function listProviderKeyEvents(provider, keyId = "", limitValue = 30) {
+  const normalizedProvider = normalizePoolProvider(provider);
+  const cleanKeyId = cleanString(keyId, "", 80);
+  if (!normalizedProvider) throw createHttpError(400, "provider is required");
+
+  const limit = getAdminLimit(limitValue, 30, 100);
+  const fetchLimit = cleanKeyId ? Math.min(limit * 4, 200) : limit;
+  const snap = await providerKeyEventBucketsCollection
+    .doc(normalizedProvider)
+    .collection("events")
+    .orderBy("createdAt", "desc")
+    .limit(fetchLimit)
+    .get();
+  const events = snap.docs
+    .map(serializeProviderKeyEventDoc)
+    .filter((event) => !cleanKeyId || event.keyId === cleanKeyId)
+    .slice(0, limit);
+
+  return {
+    provider: normalizedProvider,
+    keyId: cleanKeyId,
+    limit,
+    events,
+  };
+}
+
+async function listProviderPoolKeyDocs(provider, options = {}) {
+  const normalizedProvider = normalizePoolProvider(provider);
+  const snap = await providerKeyPoolCollection.where("provider", "==", normalizedProvider).get();
+  const includeInactive = options.includeInactive === true;
+  return snap.docs
+    .map((doc) => ({ doc, data: doc.data() || {} }))
+    .filter(({ data }) => String(data.status || "active") !== "deleted" && !data.deletedAt)
+    .filter(({ data }) => includeInactive || !["disabled", "invalid", "exhausted"].includes(String(data.status || "active")))
+    .sort((a, b) => {
+      const ap = Number(a.data.priority || 0);
+      const bp = Number(b.data.priority || 0);
+      if (ap !== bp) return ap - bp;
+      return getMillisFromFirestoreValue(a.data.createdAt) - getMillisFromFirestoreValue(b.data.createdAt);
+    });
+}
+
+async function getProviderSelectedKeyId(provider) {
+  const selection = await getProviderKeySelection(provider);
+  return selection.keyId || "primary";
+}
+
+async function getProviderKeySelection(provider) {
+  const normalizedProvider = normalizePoolProvider(provider);
+  const snap = await providerKeySelectionCollection.doc(normalizedProvider).get().catch(() => null);
+  const data = snap?.exists ? snap.data() || {} : {};
+  const keyId = cleanString(data.keyId, "primary", 80) || "primary";
+  return {
+    provider: normalizedProvider,
+    keyId,
+    autoSelected: data.autoSelected === true,
+    autoSelectedReason: data.autoSelectedReason || "",
+    selectedAt: serializeFirestoreTime(data.selectedAt),
+    selectedBy: data.selectedBy || "",
+    selectedByEmail: data.selectedByEmail || "",
+  };
+}
+
+async function setProviderSelectedKey(provider, keyId, decoded = null, req = null) {
+  const normalizedProvider = normalizePoolProvider(provider);
+  const cleanKeyId = cleanString(keyId, "primary", 80);
+  if (!normalizedProvider) throw createHttpError(400, "provider is required");
+  if (!cleanKeyId) throw createHttpError(400, "keyId is required");
+
+  if (cleanKeyId !== "primary") {
+    const snap = await providerKeyPoolCollection.doc(cleanKeyId).get();
+    if (!snap.exists) throw createHttpError(404, "Key not found");
+    const data = snap.data() || {};
+    if (data.provider !== normalizedProvider) throw createHttpError(400, "Key does not belong to this provider");
+    if (["deleted", "disabled", "invalid", "exhausted"].includes(String(data.status || "active"))) {
+      throw createHttpError(400, "This key is not selectable");
+    }
+  }
+
+  await providerKeySelectionCollection.doc(normalizedProvider).set({
+    provider: normalizedProvider,
+    keyId: cleanKeyId,
+    selectedAt: admin.firestore.FieldValue.serverTimestamp(),
+    selectedBy: decoded?.uid || "",
+    selectedByEmail: decoded?.email || "",
+    autoSelected: false,
+    autoSelectedReason: "",
+  }, { merge: true });
+
+  if (decoded) {
+    await writeAdminAuditLog(decoded, "provider_key_pool.select", {
+      type: "provider_key_pool",
+      id: cleanKeyId,
+    }, {
+      provider: normalizedProvider,
+      keyId: cleanKeyId,
+    }, req);
+  }
+
+  return { provider: normalizedProvider, keyId: cleanKeyId };
+}
+
+async function autoSelectProviderKey(provider, keyId, reason) {
+  const normalizedProvider = normalizePoolProvider(provider);
+  const cleanKeyId = cleanString(keyId, "primary", 80) || "primary";
+  if (!normalizedProvider || !cleanKeyId) return null;
+
+  await providerKeySelectionCollection.doc(normalizedProvider).set({
+    provider: normalizedProvider,
+    keyId: cleanKeyId,
+    selectedAt: admin.firestore.FieldValue.serverTimestamp(),
+    selectedBy: "system",
+    selectedByEmail: "",
+    autoSelected: true,
+    autoSelectedReason: cleanString(reason, "auto_switch", 120),
+  }, { merge: true });
+
+  return {
+    provider: normalizedProvider,
+    keyId: cleanKeyId,
+    reason: cleanString(reason, "auto_switch", 120),
+  };
+}
+
+async function deleteProviderPoolKey(provider, keyId, decoded, req) {
+  const normalizedProvider = normalizePoolProvider(provider);
+  const cleanKeyId = cleanString(keyId, "", 80);
+  if (!normalizedProvider) throw createHttpError(400, "provider is required");
+  if (!cleanKeyId || cleanKeyId === "primary") throw createHttpError(400, "Only fallback keys can be deleted");
+
+  const ref = providerKeyPoolCollection.doc(cleanKeyId);
+  const snap = await ref.get();
+  if (!snap.exists) throw createHttpError(404, "Key not found");
+  const data = snap.data() || {};
+  if (data.provider !== normalizedProvider) throw createHttpError(400, "Key does not belong to this provider");
+  const secretDeleted = data.secretName ? await deleteManagedPoolSecret(data.secretName) : false;
+
+  await ref.set({
+    status: "deleted",
+    secretDeleted,
+    deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+    deletedBy: decoded?.uid || "",
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  const selectedKeyId = await getProviderSelectedKeyId(normalizedProvider);
+  if (selectedKeyId === cleanKeyId) {
+    await setProviderSelectedKey(normalizedProvider, "primary");
+  }
+
+  await writeAdminAuditLog(decoded, "provider_key_pool.delete", {
+    type: "provider_key_pool",
+    id: cleanKeyId,
+  }, {
+    provider: normalizedProvider,
+    label: data.label || cleanKeyId,
+    baseSecretName: data.baseSecretName || "",
+    fingerprint: data.fingerprint || null,
+    }, req);
+
+  return { provider: normalizedProvider, keyId: cleanKeyId, secretDeleted };
+}
+
+async function updateProviderPoolKeyStatus(provider, keyId, status, decoded, req) {
+  const normalizedProvider = normalizePoolProvider(provider);
+  const cleanKeyId = cleanString(keyId, "", 80);
+  const nextStatus = cleanString(status, "", 40).toLowerCase();
+  if (!normalizedProvider) throw createHttpError(400, "provider is required");
+  if (!cleanKeyId || cleanKeyId === "primary") throw createHttpError(400, "Only fallback keys can be changed");
+  if (!["active", "disabled"].includes(nextStatus)) {
+    throw createHttpError(400, "status must be active or disabled");
+  }
+
+  const ref = providerKeyPoolCollection.doc(cleanKeyId);
+  const snap = await ref.get();
+  if (!snap.exists) throw createHttpError(404, "Key not found");
+  const data = snap.data() || {};
+  if (data.provider !== normalizedProvider) throw createHttpError(400, "Key does not belong to this provider");
+  if (String(data.status || "active") === "deleted" || data.deletedAt) {
+    throw createHttpError(400, "Deleted key cannot be changed");
+  }
+
+  const patch = {
+    status: nextStatus,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+  if (nextStatus === "active") {
+    patch.enabledAt = admin.firestore.FieldValue.serverTimestamp();
+    patch.enabledBy = decoded?.uid || "";
+    patch.lastFailureStatus = "";
+    patch.lastFailureMessage = "";
+  } else {
+    patch.disabledAt = admin.firestore.FieldValue.serverTimestamp();
+    patch.disabledBy = decoded?.uid || "";
+  }
+
+  await ref.set(patch, { merge: true });
+  const selectedKeyId = await getProviderSelectedKeyId(normalizedProvider);
+  if (nextStatus === "disabled" && selectedKeyId === cleanKeyId) {
+    await setProviderSelectedKey(normalizedProvider, "primary");
+  }
+
+  await writeAdminAuditLog(decoded, "provider_key_pool.status_update", {
+    type: "provider_key_pool",
+    id: cleanKeyId,
+  }, {
+    provider: normalizedProvider,
+    status: nextStatus,
+    previousStatus: data.status || "active",
+    label: data.label || cleanKeyId,
+  }, req);
+
+  return { provider: normalizedProvider, keyId: cleanKeyId, status: nextStatus };
+}
+
+async function resetProviderPoolKeyFailures(provider, decoded, req) {
+  const normalizedProvider = normalizePoolProvider(provider);
+  if (!normalizedProvider) throw createHttpError(400, "provider is required");
+
+  const docs = await listProviderPoolKeyDocs(normalizedProvider, { includeInactive: true });
+  const resettable = docs.filter(({ data }) => ["exhausted", "invalid"].includes(String(data.status || "active")));
+  if (!resettable.length) {
+    return {
+      provider: normalizedProvider,
+      resetCount: 0,
+      keyIds: [],
+    };
+  }
+
+  const batch = db.batch();
+  for (const { doc } of resettable) {
+    batch.set(doc.ref, {
+      status: "active",
+      lastFailureStatus: "",
+      lastFailureMessage: "",
+      resetAt: admin.firestore.FieldValue.serverTimestamp(),
+      resetBy: decoded?.uid || "",
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
+  await batch.commit();
+
+  const keyIds = resettable.map(({ doc }) => doc.id);
+  await writeAdminAuditLog(decoded, "provider_key_pool.reset_failures", {
+    type: "provider_key_pool",
+    id: normalizedProvider,
+  }, {
+    provider: normalizedProvider,
+    resetCount: keyIds.length,
+    keyIds,
+  }, req);
+
+  return {
+    provider: normalizedProvider,
+    resetCount: keyIds.length,
+    keyIds,
+  };
+}
+
+async function updateProviderPoolKeyMetadata(provider, keyId, updates = {}, decoded, req) {
+  const normalizedProvider = normalizePoolProvider(provider);
+  const cleanKeyId = cleanString(keyId, "", 80);
+  if (!normalizedProvider) throw createHttpError(400, "provider is required");
+  if (!cleanKeyId || cleanKeyId === "primary") throw createHttpError(400, "Only fallback keys can be changed");
+
+  const ref = providerKeyPoolCollection.doc(cleanKeyId);
+  const snap = await ref.get();
+  if (!snap.exists) throw createHttpError(404, "Key not found");
+  const data = snap.data() || {};
+  if (data.provider !== normalizedProvider) throw createHttpError(400, "Key does not belong to this provider");
+  if (String(data.status || "active") === "deleted" || data.deletedAt) {
+    throw createHttpError(400, "Deleted key cannot be changed");
+  }
+
+  const patch = {
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    metadataUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    metadataUpdatedBy: decoded?.uid || "",
+  };
+  if (Object.prototype.hasOwnProperty.call(updates, "label")) {
+    const label = cleanString(updates.label, "", 80);
+    if (!label) throw createHttpError(400, "label is required");
+    patch.label = label;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "priority")) {
+    const priority = Number(updates.priority);
+    if (!Number.isFinite(priority)) throw createHttpError(400, "priority must be a number");
+    patch.priority = Math.max(1, Math.min(9999, Math.round(priority)));
+  }
+  if (!Object.prototype.hasOwnProperty.call(patch, "label")
+    && !Object.prototype.hasOwnProperty.call(patch, "priority")) {
+    throw createHttpError(400, "label or priority is required");
+  }
+
+  await ref.set(patch, { merge: true });
+  await writeAdminAuditLog(decoded, "provider_key_pool.metadata_update", {
+    type: "provider_key_pool",
+    id: cleanKeyId,
+  }, {
+    provider: normalizedProvider,
+    previousLabel: data.label || cleanKeyId,
+    label: patch.label || data.label || cleanKeyId,
+    previousPriority: Number(data.priority || 0),
+    priority: Number(patch.priority || data.priority || 0),
+  }, req);
+
+  return {
+    provider: normalizedProvider,
+    keyId: cleanKeyId,
+    label: patch.label || data.label || cleanKeyId,
+    priority: Number(patch.priority || data.priority || 0),
+  };
+}
+
+async function moveProviderPoolKey(provider, keyId, direction, decoded, req) {
+  const normalizedProvider = normalizePoolProvider(provider);
+  const cleanKeyId = cleanString(keyId, "", 80);
+  const normalizedDirection = cleanString(direction, "", 12).toLowerCase();
+  if (!normalizedProvider) throw createHttpError(400, "provider is required");
+  if (!cleanKeyId || cleanKeyId === "primary") throw createHttpError(400, "Only fallback keys can be moved");
+  if (!["up", "down"].includes(normalizedDirection)) {
+    throw createHttpError(400, "direction must be up or down");
+  }
+
+  const docs = await listProviderPoolKeyDocs(normalizedProvider, { includeInactive: true });
+  const currentIndex = docs.findIndex(({ doc }) => doc.id === cleanKeyId);
+  if (currentIndex < 0) throw createHttpError(404, "Key not found");
+  const currentData = docs[currentIndex].data || {};
+  if (currentData.provider !== normalizedProvider) throw createHttpError(400, "Key does not belong to this provider");
+
+  const nextIndex = normalizedDirection === "up" ? currentIndex - 1 : currentIndex + 1;
+  if (nextIndex < 0 || nextIndex >= docs.length) {
+    return {
+      provider: normalizedProvider,
+      keyId: cleanKeyId,
+      direction: normalizedDirection,
+      moved: false,
+      priority: Number(currentData.priority || currentIndex + 1),
+    };
+  }
+
+  const reordered = [...docs];
+  const [current] = reordered.splice(currentIndex, 1);
+  reordered.splice(nextIndex, 0, current);
+  const batch = db.batch();
+  reordered.forEach(({ doc }, index) => {
+    batch.set(doc.ref, {
+      priority: index + 1,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      metadataUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      metadataUpdatedBy: decoded?.uid || "",
+    }, { merge: true });
+  });
+  await batch.commit();
+
+  await writeAdminAuditLog(decoded, "provider_key_pool.move", {
+    type: "provider_key_pool",
+    id: cleanKeyId,
+  }, {
+    provider: normalizedProvider,
+    direction: normalizedDirection,
+    from: currentIndex + 1,
+    to: nextIndex + 1,
+    label: currentData.label || cleanKeyId,
+  }, req);
+
+  return {
+    provider: normalizedProvider,
+    keyId: cleanKeyId,
+    direction: normalizedDirection,
+    moved: true,
+    priority: nextIndex + 1,
+  };
+}
+
+async function getProviderPoolSummary(provider) {
+  const docs = await listProviderPoolKeyDocs(provider, { includeInactive: true }).catch(() => []);
+  const keys = docs.map(({ doc }) => serializePoolKeyDoc(doc));
+  const selection = await getProviderKeySelection(provider);
+  const selectedKeyId = selection.keyId || "primary";
+  const statsMap = await getProviderKeyStatsMap(provider);
+  const statsByKeyId = Object.fromEntries(statsMap.entries());
+  const counts = {};
+  for (const key of keys) {
+    counts[key.status] = (counts[key.status] || 0) + 1;
+  }
+  return {
+    supported: true,
+    total: keys.length,
+    activeCount: keys.filter((key) => key.status === "active").length,
+    exhaustedCount: keys.filter((key) => key.status === "exhausted").length,
+    invalidCount: keys.filter((key) => key.status === "invalid").length,
+    disabledCount: keys.filter((key) => key.status === "disabled").length,
+    counts,
+    selectedKeyId,
+    selection,
+    statsByKeyId,
+    keys: keys.map((key) => ({
+      ...key,
+      stats: statsMap.get(key.id) || emptyProviderKeyStats(provider, key.id),
+      selected: key.id === selectedKeyId,
+    })),
+  };
+}
+
+async function createProviderPoolKey(baseSecretName, secretValue, options = {}) {
+  const normalizedBaseSecretName = assertAllowedModelSecretName(baseSecretName);
+  const config = MODEL_SECRET_CONFIGS[normalizedBaseSecretName];
+  const value = validateSecretValue(secretValue);
+  const keyId = crypto.randomBytes(6).toString("hex");
+  const poolSecretName = buildPoolSecretName(normalizedBaseSecretName, keyId);
+  const fingerprint = buildSecretFingerprint(value);
+  const existingDocs = await listProviderPoolKeyDocs(config.provider, { includeInactive: true }).catch(() => []);
+  const label = cleanString(
+    options.label,
+    createPoolKeyLabel(config, existingDocs.length + 1),
+    80,
+  );
+  const priority = Number.isFinite(Number(options.priority))
+    ? Number(options.priority)
+    : existingDocs.length + 1;
+
+  const result = await addSecretVersion(poolSecretName, value);
+  await providerKeyPoolCollection.doc(keyId).set({
+    provider: config.provider,
+    baseSecretName: normalizedBaseSecretName,
+    secretName: poolSecretName,
+    keyKind: config.keyKind,
+    label,
+    status: "active",
+    priority,
+    fingerprint,
+    secretVersion: result.name || "",
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  return {
+    id: keyId,
+    provider: config.provider,
+    baseSecretName: normalizedBaseSecretName,
+    label,
+    status: "active",
+    priority,
+    secretName: poolSecretName,
+    secretVersion: result.name || "",
+    fingerprint,
+  };
+}
+
+async function getProviderKeyCandidates(provider, primarySecretName, primarySecretParam, options = {}) {
+  const candidates = [];
+  const normalizedProvider = normalizePoolProvider(provider);
+  const selectedKeyId = await getProviderSelectedKeyId(normalizedProvider);
+  const primaryValue = await getRuntimeSecretValue(primarySecretName, primarySecretParam);
+  if (primaryValue) {
+    candidates.push({
+      id: "primary",
+      source: "primary",
+      label: "Primary SK",
+      provider,
+      baseSecretName: primarySecretName,
+      secretName: primarySecretName,
+      value: primaryValue,
+      priority: 0,
+      selected: selectedKeyId === "primary",
+    });
+  }
+
+  const docs = await listProviderPoolKeyDocs(normalizedProvider, {
+    includeInactive: options.includeInactive === true,
+  }).catch(() => []);
+  for (const { doc, data } of docs) {
+    if (String(data.status || "active") === "disabled" && options.includeDisabled !== true) continue;
+    const secretName = data.secretName || "";
+    if (!secretName) continue;
+    const value = await getRuntimeSecretValue(secretName, null, {
+      forceRefresh: options.forceRefresh === true,
+    });
+    if (!value) continue;
+    candidates.push({
+      id: doc.id,
+      source: "pool",
+      label: data.label || doc.id,
+      provider,
+      baseSecretName: data.baseSecretName || primarySecretName,
+      secretName,
+      value,
+      priority: Number(data.priority || 0),
+      selected: doc.id === selectedKeyId,
+    });
+  }
+
+  return candidates.sort((a, b) => {
+    if (a.selected !== b.selected) return a.selected ? -1 : 1;
+    if (a.source === "primary" && b.source !== "primary") return -1;
+    if (a.source !== "primary" && b.source === "primary") return 1;
+    return Number(a.priority || 0) - Number(b.priority || 0);
+  });
+}
+
+function getProviderPrimarySecretBinding(provider) {
+  const normalizedProvider = normalizePoolProvider(provider);
+  if (normalizedProvider === "deepseek") return ["DEEPSEEK_API_KEY", deepseekApiKey];
+  if (normalizedProvider === "openai") return ["OPENAI_API_KEY", openaiApiKey];
+  if (normalizedProvider === "anthropic") return ["ANTHROPIC_API_KEY", anthropicApiKey];
+  if (normalizedProvider === "google_gemini") return ["GOOGLE_GEMINI_API_KEY", googleGeminiApiKey];
+  if (normalizedProvider === "volcano_tts") return ["VOLC_TTS_API_KEY", volcanoTtsApiKey];
+  return ["", null];
+}
+
+async function getProviderKeyCandidateById(provider, keyId) {
+  const normalizedProvider = normalizePoolProvider(provider);
+  const cleanKeyId = cleanString(keyId, "primary", 80) || "primary";
+  const [primarySecretName, primarySecretParam] = getProviderPrimarySecretBinding(normalizedProvider);
+  if (!primarySecretName) throw createHttpError(400, "Unsupported provider");
+
+  const selectedKeyId = await getProviderSelectedKeyId(normalizedProvider);
+  if (cleanKeyId === "primary") {
+    const value = await getRuntimeSecretValue(primarySecretName, primarySecretParam, { forceRefresh: true });
+    if (!value) throw createHttpError(404, "Primary key is not configured");
+    return {
+      id: "primary",
+      source: "primary",
+      label: "Primary SK",
+      provider: normalizedProvider,
+      baseSecretName: primarySecretName,
+      secretName: primarySecretName,
+      value,
+      priority: 0,
+      selected: selectedKeyId === "primary",
+    };
+  }
+
+  const snap = await providerKeyPoolCollection.doc(cleanKeyId).get();
+  if (!snap.exists) throw createHttpError(404, "Key not found");
+  const data = snap.data() || {};
+  if (data.provider !== normalizedProvider) throw createHttpError(400, "Key does not belong to this provider");
+  if (String(data.status || "active") === "deleted" || data.deletedAt) {
+    throw createHttpError(400, "Deleted key cannot be checked");
+  }
+
+  const secretName = data.secretName || "";
+  const value = secretName ? await getRuntimeSecretValue(secretName, null, { forceRefresh: true }) : "";
+  if (!value) throw createHttpError(404, "Key secret is not readable");
+  return {
+    id: snap.id,
+    source: "pool",
+    label: data.label || snap.id,
+    provider: normalizedProvider,
+    baseSecretName: data.baseSecretName || primarySecretName,
+    secretName,
+    value,
+    priority: Number(data.priority || 0),
+    selected: snap.id === selectedKeyId,
+  };
+}
+
+async function markPoolKeySuccess(candidate) {
+  await recordProviderKeyEvent(candidate, "success", "success", "");
+  if (candidate?.source !== "pool" || !candidate.id) return;
+  await providerKeyPoolCollection.doc(candidate.id).set({
+    status: "active",
+    lastUsedAt: admin.firestore.FieldValue.serverTimestamp(),
+    lastSuccessAt: admin.firestore.FieldValue.serverTimestamp(),
+    lastFailureStatus: "",
+    lastFailureMessage: "",
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true }).catch(() => null);
+}
+
+async function markPoolKeyFailure(candidate, status, message) {
+  await recordProviderKeyEvent(candidate, "failure", status, message);
+  if (candidate?.source !== "pool" || !candidate.id) return;
+  const normalized = String(status || "request_failed");
+  const persistentStatus = normalized === "insufficient_balance"
+    ? "exhausted"
+    : normalized === "invalid_secret"
+      ? "invalid"
+      : "active";
+  await providerKeyPoolCollection.doc(candidate.id).set({
+    status: persistentStatus,
+    lastFailureAt: admin.firestore.FieldValue.serverTimestamp(),
+    lastFailureStatus: normalized,
+    lastFailureMessage: cleanString(message, "", 300),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true }).catch(() => null);
+}
+
+function shouldTryNextProviderKey(status) {
+  return ["insufficient_balance", "invalid_secret", "rate_limited"].includes(String(status || ""));
+}
+
+async function attachProviderKeyPool(providerStatus, primarySecretName, primarySecretParam) {
+  const provider = normalizePoolProvider(providerStatus?.provider);
+  const summary = await getProviderPoolSummary(provider);
+  const selectedKeyId = summary.selectedKeyId || "primary";
+  const primaryValue = primarySecretName
+    ? await getRuntimeSecretValue(primarySecretName, primarySecretParam)
+    : "";
+  const keys = [];
+  if (primaryValue) {
+    keys.push({
+      id: "primary",
+      source: "primary",
+      provider,
+      baseSecretName: primarySecretName,
+      label: "主 SK",
+      status: selectedKeyId === "primary" ? providerStatus.status || "active" : "active",
+      ok: selectedKeyId === "primary" ? providerStatus.ok === true : true,
+      stats: summary.statsByKeyId?.primary || emptyProviderKeyStats(provider, "primary"),
+      selected: selectedKeyId === "primary",
+    });
+  }
+
+  keys.push(...summary.keys.map((key) => ({
+    ...key,
+    selected: key.id === selectedKeyId,
+  })));
+
+  return {
+    ...providerStatus,
+    activeKeyId: selectedKeyId,
+    keyPool: {
+      ...summary,
+      total: keys.filter((key) => key.source !== "primary").length,
+      keyCount: keys.length,
+      activeCount: keys.filter((key) => ["active", "available"].includes(String(key.status || ""))).length,
+      keys,
+    },
+  };
+}
+
 function buildSecretReadiness() {
   return {
     deepseekApiKey: Boolean(getOptionalSecret(deepseekApiKey)),
+    openaiApiKey: Boolean(getOptionalSecret(openaiApiKey)),
+    openaiAdminKey: Boolean(getOptionalSecret(openaiAdminKey)),
+    anthropicApiKey: Boolean(getOptionalSecret(anthropicApiKey)),
+    anthropicAdminKey: Boolean(getOptionalSecret(anthropicAdminKey)),
+    googleGeminiApiKey: Boolean(getOptionalSecret(googleGeminiApiKey)),
     volcanoTtsApiKey: Boolean(getOptionalSecret(volcanoTtsApiKey)),
     paymentWebhookSecret: Boolean(getOptionalSecret(paymentWebhookSecret)),
     appleSharedSecret: Boolean(getOptionalSecret(appleSharedSecret)),
@@ -4054,6 +5175,11 @@ function buildSecretReadiness() {
 function buildSecretDiagnostics(secrets) {
   const inspectedSecrets = [
     secrets.deepseekApiKey ? "DEEPSEEK_API_KEY" : "",
+    secrets.openaiApiKey ? "OPENAI_API_KEY" : "",
+    secrets.openaiAdminKey ? "OPENAI_ADMIN_KEY" : "",
+    secrets.anthropicApiKey ? "ANTHROPIC_API_KEY" : "",
+    secrets.anthropicAdminKey ? "ANTHROPIC_ADMIN_KEY" : "",
+    secrets.googleGeminiApiKey ? "GOOGLE_GEMINI_API_KEY" : "",
     secrets.volcanoTtsApiKey ? "VOLC_TTS_API_KEY" : "",
     secrets.paymentWebhookSecret ? "PAYMENT_WEBHOOK_SECRET" : "",
     secrets.appleSharedSecret ? "APPLE_SHARED_SECRET" : "",
@@ -4341,9 +5467,6 @@ function buildFallbackExpiry(productId) {
 }
 
 async function callDeepSeek(body, stream) {
-  const key = deepseekApiKey.value();
-  if (!key) throw new Error("DEEPSEEK_API_KEY is not configured");
-
   const messages = sanitizeMessages(body.messages);
   if (messages.length === 0) {
     const err = new Error("messages is required");
@@ -4359,23 +5482,994 @@ async function callDeepSeek(body, stream) {
     stream,
   };
 
-  const response = await fetch(DEEPSEEK_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${key}`,
-    },
-    body: JSON.stringify(payload),
-  });
+  const candidates = await getProviderKeyCandidates("deepseek", "DEEPSEEK_API_KEY", deepseekApiKey);
+  if (!candidates.length) throw new Error("DEEPSEEK_API_KEY is not configured");
 
-  if (!response.ok) {
+  const failures = [];
+  for (const candidate of candidates) {
+    const response = await fetch(DEEPSEEK_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${candidate.value}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (response.ok) {
+      await markPoolKeySuccess(candidate);
+      if (!candidate.selected) {
+        await autoSelectProviderKey("deepseek", candidate.id, "chat_fallback_success");
+      }
+      return response;
+    }
+
     const text = await response.text();
-    const err = new Error(`DeepSeek error ${response.status}: ${text.slice(0, 500)}`);
-    err.status = response.status;
-    throw err;
+    const data = parseProviderJson(text);
+    const status = providerErrorStatus(response.status);
+    const message = compactProviderError(data) || text.slice(0, 500) || `HTTP ${response.status}`;
+    failures.push(`${candidate.label}: ${response.status} ${message}`.slice(0, 700));
+    await markPoolKeyFailure(candidate, status, message);
+    if (!shouldTryNextProviderKey(status)) {
+      const err = new Error(`DeepSeek error ${response.status}: ${message}`);
+      err.status = response.status;
+      throw err;
+    }
   }
 
-  return response;
+  const err = new Error(`All DeepSeek keys failed: ${failures.join(" | ")}`);
+  err.status = failures.length ? 402 : 500;
+  throw err;
+}
+
+function parseMoneyAmount(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+function normalizeDeepSeekBalanceInfo(info) {
+  const source = info && typeof info === "object" ? info : {};
+  return {
+    currency: String(source.currency || "").toUpperCase(),
+    totalBalance: source.total_balance ?? null,
+    grantedBalance: source.granted_balance ?? null,
+    toppedUpBalance: source.topped_up_balance ?? null,
+    totalBalanceNumber: parseMoneyAmount(source.total_balance),
+    grantedBalanceNumber: parseMoneyAmount(source.granted_balance),
+    toppedUpBalanceNumber: parseMoneyAmount(source.topped_up_balance),
+  };
+}
+
+function sumDeepSeekBalance(balanceInfos) {
+  let total = 0;
+  let hasNumber = false;
+  for (const info of balanceInfos) {
+    if (typeof info.totalBalanceNumber === "number") {
+      total += info.totalBalanceNumber;
+      hasNumber = true;
+    }
+  }
+  return hasNumber ? total : null;
+}
+
+async function checkDeepSeekCandidateBalance(candidate) {
+  try {
+    const response = await fetch(DEEPSEEK_BALANCE_URL, {
+      method: "GET",
+      headers: {
+        "Accept": "application/json",
+        "Authorization": `Bearer ${candidate.value}`,
+      },
+    });
+    const text = await response.text();
+    const data = parseProviderJson(text);
+
+    if (!response.ok) {
+      const status = providerErrorStatus(response.status);
+      const message = compactProviderError(data) || `DeepSeek balance check failed with HTTP ${response.status}.`;
+      await markPoolKeyFailure(candidate, status, message);
+      return {
+        keyId: candidate.id,
+        source: candidate.source,
+        label: candidate.label,
+        ok: false,
+        status,
+        httpStatus: response.status,
+        message,
+      };
+    }
+
+    const balanceInfos = Array.isArray(data.balance_infos)
+      ? data.balance_infos.map(normalizeDeepSeekBalanceInfo)
+      : [];
+    const totalBalance = sumDeepSeekBalance(balanceInfos);
+    const isAvailable = data.is_available === true;
+    const ok = isAvailable && (totalBalance === null || totalBalance > 0);
+    if (ok) {
+      await markPoolKeySuccess(candidate);
+    } else {
+      await markPoolKeyFailure(candidate, "insufficient_balance", "DeepSeek reports insufficient balance.");
+    }
+
+    return {
+      keyId: candidate.id,
+      source: candidate.source,
+      label: candidate.label,
+      ok,
+      status: ok ? "available" : "insufficient_balance",
+      httpStatus: response.status,
+      isAvailable,
+      balanceInfos,
+      totalBalance,
+    };
+  } catch (error) {
+    await markPoolKeyFailure(candidate, "network_error", error.message || "DeepSeek balance check failed.");
+    return {
+      keyId: candidate.id,
+      source: candidate.source,
+      label: candidate.label,
+      ok: false,
+      status: "network_error",
+      message: error.message || "DeepSeek balance check failed.",
+    };
+  }
+}
+
+async function checkOpenAIKeyCandidate(candidate) {
+  try {
+    const response = await fetch(OPENAI_MODELS_URL, {
+      headers: {
+        Authorization: `Bearer ${candidate.value}`,
+      },
+    });
+    const text = await response.text();
+    const data = parseProviderJson(text);
+    if (!response.ok) {
+      const status = providerErrorStatus(response.status);
+      const message = compactProviderError(data) || `OpenAI model check failed with HTTP ${response.status}.`;
+      await markPoolKeyFailure(candidate, status, message);
+      return {
+        keyId: candidate.id,
+        source: candidate.source,
+        label: candidate.label,
+        ok: false,
+        status,
+        httpStatus: response.status,
+        message,
+      };
+    }
+
+    const models = Array.isArray(data.data) ? data.data : [];
+    await markPoolKeySuccess(candidate);
+    return {
+      keyId: candidate.id,
+      source: candidate.source,
+      label: candidate.label,
+      ok: true,
+      status: "available",
+      httpStatus: response.status,
+      modelCount: models.length,
+      sampleModels: topModelIds(models),
+      message: "OpenAI API key is available.",
+    };
+  } catch (error) {
+    await markPoolKeyFailure(candidate, "network_error", error.message || "OpenAI check failed.");
+    return {
+      keyId: candidate.id,
+      source: candidate.source,
+      label: candidate.label,
+      ok: false,
+      status: "network_error",
+      message: error.message || "OpenAI check failed.",
+    };
+  }
+}
+
+async function checkAnthropicKeyCandidate(candidate) {
+  try {
+    const response = await fetch(ANTHROPIC_MODELS_URL, {
+      headers: {
+        "x-api-key": candidate.value,
+        "anthropic-version": ANTHROPIC_VERSION,
+      },
+    });
+    const text = await response.text();
+    const data = parseProviderJson(text);
+    if (!response.ok) {
+      const status = providerErrorStatus(response.status);
+      const message = compactProviderError(data) || `Anthropic model check failed with HTTP ${response.status}.`;
+      await markPoolKeyFailure(candidate, status, message);
+      return {
+        keyId: candidate.id,
+        source: candidate.source,
+        label: candidate.label,
+        ok: false,
+        status,
+        httpStatus: response.status,
+        message,
+      };
+    }
+
+    const models = Array.isArray(data.data) ? data.data : [];
+    await markPoolKeySuccess(candidate);
+    return {
+      keyId: candidate.id,
+      source: candidate.source,
+      label: candidate.label,
+      ok: true,
+      status: "available",
+      httpStatus: response.status,
+      modelCount: models.length,
+      sampleModels: topModelIds(models),
+      message: "Anthropic API key is available.",
+    };
+  } catch (error) {
+    await markPoolKeyFailure(candidate, "network_error", error.message || "Anthropic check failed.");
+    return {
+      keyId: candidate.id,
+      source: candidate.source,
+      label: candidate.label,
+      ok: false,
+      status: "network_error",
+      message: error.message || "Anthropic check failed.",
+    };
+  }
+}
+
+async function checkGeminiKeyCandidate(candidate) {
+  try {
+    const url = new URL(GEMINI_MODELS_URL);
+    url.searchParams.set("key", candidate.value);
+    const response = await fetch(url);
+    const text = await response.text();
+    const data = parseProviderJson(text);
+    if (!response.ok) {
+      const status = providerErrorStatus(response.status);
+      const message = compactProviderError(data) || `Gemini model check failed with HTTP ${response.status}.`;
+      await markPoolKeyFailure(candidate, status, message);
+      return {
+        keyId: candidate.id,
+        source: candidate.source,
+        label: candidate.label,
+        ok: false,
+        status,
+        httpStatus: response.status,
+        message,
+      };
+    }
+
+    const models = Array.isArray(data.models) ? data.models : [];
+    await markPoolKeySuccess(candidate);
+    return {
+      keyId: candidate.id,
+      source: candidate.source,
+      label: candidate.label,
+      ok: true,
+      status: "available",
+      httpStatus: response.status,
+      modelCount: models.length,
+      sampleModels: topModelIds(models),
+      message: "Gemini API key is available.",
+    };
+  } catch (error) {
+    await markPoolKeyFailure(candidate, "network_error", error.message || "Gemini check failed.");
+    return {
+      keyId: candidate.id,
+      source: candidate.source,
+      label: candidate.label,
+      ok: false,
+      status: "network_error",
+      message: error.message || "Gemini check failed.",
+    };
+  }
+}
+
+async function checkVolcanoTtsKeyCandidate(candidate) {
+  await markPoolKeySuccess(candidate);
+  return {
+    keyId: candidate.id,
+    source: candidate.source,
+    label: candidate.label,
+    ok: true,
+    status: "configured",
+    message: "TTS key is readable. Remote synthesis is not run during key check.",
+  };
+}
+
+async function checkProviderKeyCandidate(candidate) {
+  if (candidate.provider === "deepseek") return checkDeepSeekCandidateBalance(candidate);
+  if (candidate.provider === "openai") return checkOpenAIKeyCandidate(candidate);
+  if (candidate.provider === "anthropic") return checkAnthropicKeyCandidate(candidate);
+  if (candidate.provider === "google_gemini") return checkGeminiKeyCandidate(candidate);
+  if (candidate.provider === "volcano_tts") return checkVolcanoTtsKeyCandidate(candidate);
+  throw createHttpError(400, "Unsupported provider");
+}
+
+async function checkProviderKeyPool(provider, options = {}) {
+  const normalizedProvider = normalizePoolProvider(provider);
+  const [primarySecretName, primarySecretParam] = getProviderPrimarySecretBinding(normalizedProvider);
+  if (!primarySecretName) throw createHttpError(400, "Unsupported provider");
+
+  const previousSelectedKeyId = await getProviderSelectedKeyId(normalizedProvider);
+  const candidates = await getProviderKeyCandidates(normalizedProvider, primarySecretName, primarySecretParam, {
+    includeInactive: true,
+    includeDisabled: false,
+    forceRefresh: true,
+  });
+  if (!candidates.length) {
+    return {
+      provider: normalizedProvider,
+      checkedCount: 0,
+      okCount: 0,
+      failedCount: 0,
+      results: [],
+      previousSelectedKeyId,
+      selectedKeyId: previousSelectedKeyId,
+      repaired: false,
+      message: "No readable keys found for this provider.",
+    };
+  }
+
+  const results = [];
+  for (const candidate of candidates) {
+    const result = await checkProviderKeyCandidate(candidate);
+    results.push({
+      keyId: candidate.id,
+      source: candidate.source,
+      label: candidate.label,
+      selected: candidate.selected === true,
+      ...result,
+    });
+  }
+
+  const okCount = results.filter((result) => result.ok === true).length;
+  const selectedResult = results.find((result) => result.keyId === previousSelectedKeyId) || null;
+  const availableResult = results.find((result) => result.ok === true) || null;
+  let selectedKeyId = previousSelectedKeyId;
+  let repaired = false;
+  let repairReason = "";
+  if (options.autoSelect === true && availableResult && selectedResult?.ok !== true) {
+    if (options.systemAutoSelect === true) {
+      await autoSelectProviderKey(
+        normalizedProvider,
+        availableResult.keyId,
+        options.selectionReason || "scheduled_health_check",
+      );
+    } else {
+      await setProviderSelectedKey(
+        normalizedProvider,
+        availableResult.keyId,
+        options.decoded || null,
+        options.req || null,
+      );
+    }
+    selectedKeyId = availableResult.keyId;
+    repaired = selectedKeyId !== previousSelectedKeyId;
+    repairReason = selectedResult
+      ? `previous key status: ${selectedResult.status || "unknown"}`
+      : "previous selected key was not checkable";
+  }
+
+  return {
+    provider: normalizedProvider,
+    checkedCount: results.length,
+    okCount,
+    failedCount: results.length - okCount,
+    previousSelectedKeyId,
+    selectedKeyId,
+    repaired,
+    repairedKeyId: repaired ? selectedKeyId : "",
+    repairReason,
+    results,
+  };
+}
+
+function getModelApiKeyProviders() {
+  return [...new Set(
+    Object.values(MODEL_SECRET_CONFIGS)
+      .filter((config) => config.keyKind === "api_key")
+      .map((config) => config.provider),
+  )];
+}
+
+async function runScheduledProviderKeyHealthCheck() {
+  const providers = getModelApiKeyProviders();
+  const results = [];
+  for (const provider of providers) {
+    try {
+      const result = await checkProviderKeyPool(provider, {
+        autoSelect: true,
+        systemAutoSelect: true,
+        selectionReason: "scheduled_health_check",
+      });
+      results.push({
+        provider,
+        ok: result.failedCount === 0 && result.okCount > 0,
+        checkedCount: result.checkedCount,
+        okCount: result.okCount,
+        failedCount: result.failedCount,
+        repaired: result.repaired === true,
+        previousSelectedKeyId: result.previousSelectedKeyId || "",
+        selectedKeyId: result.selectedKeyId || "",
+      });
+    } catch (error) {
+      results.push({
+        provider,
+        ok: false,
+        checkedCount: 0,
+        okCount: 0,
+        failedCount: 0,
+        repaired: false,
+        error: cleanString(error.message || "Provider key health check failed", "", 300),
+      });
+    }
+  }
+
+  const summary = {
+    ok: results.every((result) => result.ok || result.checkedCount === 0),
+    checkedAt: admin.firestore.FieldValue.serverTimestamp(),
+    providerCount: providers.length,
+    checkedKeyCount: results.reduce((sum, result) => sum + Number(result.checkedCount || 0), 0),
+    okKeyCount: results.reduce((sum, result) => sum + Number(result.okCount || 0), 0),
+    failedKeyCount: results.reduce((sum, result) => sum + Number(result.failedCount || 0), 0),
+    repairedCount: results.filter((result) => result.repaired).length,
+    results,
+  };
+  const ref = await providerKeyHealthRunsCollection.add(summary);
+  return {
+    id: ref.id,
+    ...summary,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+async function listProviderKeyHealthRuns(limitValue = 20) {
+  const limit = getAdminLimit(limitValue, 20, 100);
+  const snap = await providerKeyHealthRunsCollection
+    .orderBy("checkedAt", "desc")
+    .limit(limit)
+    .get();
+  return {
+    limit,
+    runs: snap.docs.map(serializeProviderKeyHealthRunDoc),
+  };
+}
+
+async function deleteDocsInBatches(query, maxBatches = 5) {
+  let deleted = 0;
+  for (let batchIndex = 0; batchIndex < maxBatches; batchIndex += 1) {
+    const snap = await query.limit(PROVIDER_KEY_CLEANUP_BATCH_LIMIT).get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+    deleted += snap.size;
+    if (snap.size < PROVIDER_KEY_CLEANUP_BATCH_LIMIT) break;
+  }
+  return deleted;
+}
+
+async function cleanupProviderKeyMaintenanceData() {
+  const now = Date.now();
+  const eventCutoff = new Date(now - PROVIDER_KEY_EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const healthRunCutoff = new Date(now - PROVIDER_KEY_HEALTH_RUN_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const providers = getModelApiKeyProviders();
+  let deletedEvents = 0;
+  const eventResults = [];
+
+  for (const provider of providers) {
+    const deleted = await deleteDocsInBatches(
+      providerKeyEventBucketsCollection
+        .doc(provider)
+        .collection("events")
+        .where("createdAt", "<", eventCutoff)
+        .orderBy("createdAt", "asc"),
+    );
+    deletedEvents += deleted;
+    eventResults.push({ provider, deleted });
+  }
+
+  const deletedHealthRuns = await deleteDocsInBatches(
+    providerKeyHealthRunsCollection
+      .where("checkedAt", "<", healthRunCutoff)
+      .orderBy("checkedAt", "asc"),
+  );
+
+  return {
+    eventRetentionDays: PROVIDER_KEY_EVENT_RETENTION_DAYS,
+    healthRunRetentionDays: PROVIDER_KEY_HEALTH_RUN_RETENTION_DAYS,
+    deletedEvents,
+    deletedHealthRuns,
+    eventResults,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+async function checkDeepSeekBalance() {
+  const keyPool = await getProviderPoolSummary("deepseek");
+  const candidates = await getProviderKeyCandidates("deepseek", "DEEPSEEK_API_KEY", deepseekApiKey);
+  if (!candidates.length) {
+    return {
+      ...buildMissingProvider("deepseek", "DeepSeek", "llm", "DEEPSEEK_API_KEY", true),
+      keyPool,
+    };
+  }
+
+  const keyChecks = await Promise.all(candidates.map(checkDeepSeekCandidateBalance));
+  const available = keyChecks.find((item) => item.ok) || null;
+  const first = keyChecks[0] || {};
+  let selectedKeyId = keyPool.selectedKeyId || "primary";
+  let autoSwitch = null;
+  if (available && available.keyId !== selectedKeyId) {
+    autoSwitch = await autoSelectProviderKey("deepseek", available.keyId, "balance_check_available");
+    selectedKeyId = available.keyId;
+  }
+  const poolById = new Map(keyPool.keys.map((key) => [key.id, key]));
+  const statsByKeyId = keyPool.statsByKeyId || {};
+  const enrichedPoolKeys = keyChecks.map((check) => ({
+    ...(poolById.get(check.keyId) || {}),
+    id: check.keyId,
+    source: check.source,
+    label: check.label,
+    status: check.status,
+    ok: check.ok,
+    selected: check.keyId === selectedKeyId,
+    stats: statsByKeyId[check.keyId] || emptyProviderKeyStats("deepseek", check.keyId),
+    totalBalance: check.totalBalance,
+    balanceInfos: check.balanceInfos || [],
+    message: check.message || "",
+  }));
+
+  return {
+    provider: "deepseek",
+    label: "DeepSeek",
+    kind: "llm",
+    configured: true,
+    quotaInspectable: true,
+    ok: Boolean(available),
+    status: available ? "available" : (first.status || "unavailable"),
+    httpStatus: available?.httpStatus || first.httpStatus || null,
+    isAvailable: Boolean(available),
+    balanceInfos: available?.balanceInfos || first.balanceInfos || [],
+    totalBalance: available?.totalBalance ?? first.totalBalance ?? null,
+    secretNames: ["DEEPSEEK_API_KEY"],
+    activeKeyId: selectedKeyId,
+    autoSwitch,
+    keyPool: {
+      ...keyPool,
+      selectedKeyId,
+      selection: {
+        ...(keyPool.selection || {}),
+        keyId: selectedKeyId,
+        autoSelected: Boolean(autoSwitch) || keyPool.selection?.autoSelected === true,
+        autoSelectedReason: autoSwitch?.reason || keyPool.selection?.autoSelectedReason || "",
+      },
+      autoSwitch,
+      keyCount: enrichedPoolKeys.length,
+      activeCount: keyChecks.filter((item) => item.ok).length,
+      exhaustedCount: keyChecks.filter((item) => item.status === "insufficient_balance").length,
+      invalidCount: keyChecks.filter((item) => item.status === "invalid_secret").length,
+      keys: enrichedPoolKeys,
+    },
+    message: available
+      ? "DeepSeek key pool has at least one available key."
+      : "No available DeepSeek key found. Add another SK or recharge an exhausted key.",
+  };
+}
+
+function buildMissingProvider(provider, label, kind, secretName, quotaInspectable = false) {
+  return {
+    provider,
+    label,
+    kind,
+    configured: false,
+    quotaInspectable,
+    ok: false,
+    status: "missing_secret",
+    missingSecrets: [secretName],
+    secretNames: [secretName],
+    message: `${secretName} is not configured.`,
+  };
+}
+
+function parseProviderJson(text) {
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch (error) {
+    return { raw: String(text || "").slice(0, 500) };
+  }
+}
+
+function providerErrorStatus(httpStatus) {
+  if (httpStatus === 401 || httpStatus === 403) return "invalid_secret";
+  if (httpStatus === 402) return "insufficient_balance";
+  if (httpStatus === 429) return "rate_limited";
+  return "request_failed";
+}
+
+function compactProviderError(data) {
+  return data?.error?.message
+    || data?.message
+    || data?.error?.status
+    || (data?.raw ? String(data.raw).slice(0, 180) : "");
+}
+
+function topModelIds(models, limit = 5) {
+  return models
+    .map((model) => model.id || model.name || "")
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function sumCostAmount(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (Array.isArray(value)) return value.reduce((sum, item) => sum + sumCostAmount(item), 0);
+  if (!value || typeof value !== "object") return 0;
+  if (typeof value.value === "number") return value.value;
+  if (typeof value.amount === "number") return value.amount;
+  if (typeof value.cost === "number") return value.cost;
+  return Object.values(value).reduce((sum, item) => sum + sumCostAmount(item), 0);
+}
+
+function parseOpenAICostSummary(data) {
+  const buckets = Array.isArray(data?.data) ? data.data : [];
+  let total = 0;
+  let currency = "usd";
+  for (const bucket of buckets) {
+    for (const result of bucket.results || []) {
+      const amount = result.amount || {};
+      if (amount.currency) currency = amount.currency;
+      total += Number(amount.value || 0);
+    }
+  }
+  return {
+    windowDays: 7,
+    total,
+    currency: String(currency || "usd").toUpperCase(),
+    bucketCount: buckets.length,
+  };
+}
+
+function parseAnthropicUsageCostSummary(data) {
+  const items = Array.isArray(data?.data) ? data.data : Array.isArray(data?.results) ? data.results : [];
+  const total = sumCostAmount(items);
+  return {
+    windowDays: 7,
+    total,
+    currency: String(data?.currency || "USD").toUpperCase(),
+    bucketCount: items.length,
+  };
+}
+
+async function checkOpenAICost(adminKey) {
+  if (!adminKey) return null;
+  const startTime = Math.floor((Date.now() - 7 * 24 * 60 * 60 * 1000) / 1000);
+  const url = new URL(OPENAI_COSTS_URL);
+  url.searchParams.set("start_time", String(startTime));
+  url.searchParams.set("bucket_width", "1d");
+  url.searchParams.set("limit", "7");
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${adminKey}`,
+    },
+  });
+  const text = await response.text();
+  const data = parseProviderJson(text);
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: providerErrorStatus(response.status),
+      httpStatus: response.status,
+      message: compactProviderError(data) || `OpenAI cost check failed with HTTP ${response.status}.`,
+    };
+  }
+
+  return {
+    ok: true,
+    status: "available",
+    ...parseOpenAICostSummary(data),
+  };
+}
+
+async function checkAnthropicCost(adminKey) {
+  if (!adminKey) return null;
+  const endingAt = new Date();
+  const startingAt = new Date(endingAt.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const url = new URL(ANTHROPIC_USAGE_COST_URL);
+  url.searchParams.set("starting_at", startingAt.toISOString());
+  url.searchParams.set("ending_at", endingAt.toISOString());
+  url.searchParams.set("bucket_width", "1d");
+
+  const response = await fetch(url, {
+    headers: {
+      "x-api-key": adminKey,
+      "anthropic-version": ANTHROPIC_VERSION,
+    },
+  });
+  const text = await response.text();
+  const data = parseProviderJson(text);
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: providerErrorStatus(response.status),
+      httpStatus: response.status,
+      message: compactProviderError(data) || `Anthropic cost check failed with HTTP ${response.status}.`,
+    };
+  }
+
+  return {
+    ok: true,
+    status: "available",
+    ...parseAnthropicUsageCostSummary(data),
+  };
+}
+
+async function checkOpenAIStatus() {
+  const keyCandidates = await getProviderKeyCandidates("openai", "OPENAI_API_KEY", openaiApiKey);
+  const keyCandidate = keyCandidates[0] || null;
+  const adminKey = await getRuntimeSecretValue("OPENAI_ADMIN_KEY", openaiAdminKey);
+  const secretNames = ["OPENAI_API_KEY", "OPENAI_ADMIN_KEY"];
+  if (!keyCandidate) {
+    return buildMissingProvider("openai", "OpenAI", "llm", "OPENAI_API_KEY", false);
+  }
+
+  try {
+    const response = await fetch(OPENAI_MODELS_URL, {
+      headers: {
+        Authorization: `Bearer ${keyCandidate.value}`,
+      },
+    });
+    const text = await response.text();
+    const data = parseProviderJson(text);
+    if (!response.ok) {
+      const status = providerErrorStatus(response.status);
+      await markPoolKeyFailure(keyCandidate, status, compactProviderError(data));
+      return {
+        provider: "openai",
+        label: "OpenAI",
+        kind: "llm",
+        configured: true,
+        quotaInspectable: Boolean(adminKey),
+        ok: false,
+        status,
+        httpStatus: response.status,
+        secretNames,
+        message: compactProviderError(data) || `OpenAI model check failed with HTTP ${response.status}.`,
+      };
+    }
+
+    const models = Array.isArray(data.data) ? data.data : [];
+    await markPoolKeySuccess(keyCandidate);
+    const cost = await checkOpenAICost(adminKey).catch((error) => ({
+      ok: false,
+      status: "request_failed",
+      message: error.message || "OpenAI cost check failed.",
+    }));
+    return {
+      provider: "openai",
+      label: "OpenAI",
+      kind: "llm",
+      configured: true,
+      quotaInspectable: Boolean(adminKey),
+      ok: true,
+      status: "available",
+      httpStatus: response.status,
+      activeKeyId: keyCandidate.id,
+      modelCount: models.length,
+      sampleModels: topModelIds(models),
+      usageCost: cost,
+      missingSecrets: adminKey ? [] : ["OPENAI_ADMIN_KEY"],
+      secretNames,
+      message: adminKey
+        ? "OpenAI API key is available. Admin key cost check is included."
+        : "OpenAI API key is available. Add OPENAI_ADMIN_KEY to show organization cost.",
+    };
+  } catch (error) {
+    await markPoolKeyFailure(keyCandidate, "network_error", error.message || "OpenAI check failed.");
+    return {
+      provider: "openai",
+      label: "OpenAI",
+      kind: "llm",
+      configured: true,
+      quotaInspectable: Boolean(adminKey),
+      ok: false,
+      status: "network_error",
+      secretNames,
+      message: error.message || "OpenAI check failed.",
+    };
+  }
+}
+
+async function checkAnthropicStatus() {
+  const keyCandidates = await getProviderKeyCandidates("anthropic", "ANTHROPIC_API_KEY", anthropicApiKey);
+  const keyCandidate = keyCandidates[0] || null;
+  const adminKey = await getRuntimeSecretValue("ANTHROPIC_ADMIN_KEY", anthropicAdminKey);
+  const secretNames = ["ANTHROPIC_API_KEY", "ANTHROPIC_ADMIN_KEY"];
+  if (!keyCandidate) {
+    return buildMissingProvider("anthropic", "Anthropic Claude", "llm", "ANTHROPIC_API_KEY", false);
+  }
+
+  try {
+    const response = await fetch(ANTHROPIC_MODELS_URL, {
+      headers: {
+        "x-api-key": keyCandidate.value,
+        "anthropic-version": ANTHROPIC_VERSION,
+      },
+    });
+    const text = await response.text();
+    const data = parseProviderJson(text);
+    if (!response.ok) {
+      const status = providerErrorStatus(response.status);
+      await markPoolKeyFailure(keyCandidate, status, compactProviderError(data));
+      return {
+        provider: "anthropic",
+        label: "Anthropic Claude",
+        kind: "llm",
+        configured: true,
+        quotaInspectable: Boolean(adminKey),
+        ok: false,
+        status,
+        httpStatus: response.status,
+        secretNames,
+        message: compactProviderError(data) || `Anthropic model check failed with HTTP ${response.status}.`,
+      };
+    }
+
+    const models = Array.isArray(data.data) ? data.data : [];
+    await markPoolKeySuccess(keyCandidate);
+    const cost = await checkAnthropicCost(adminKey).catch((error) => ({
+      ok: false,
+      status: "request_failed",
+      message: error.message || "Anthropic cost check failed.",
+    }));
+    return {
+      provider: "anthropic",
+      label: "Anthropic Claude",
+      kind: "llm",
+      configured: true,
+      quotaInspectable: Boolean(adminKey),
+      ok: true,
+      status: "available",
+      httpStatus: response.status,
+      activeKeyId: keyCandidate.id,
+      modelCount: models.length,
+      sampleModels: topModelIds(models),
+      usageCost: cost,
+      missingSecrets: adminKey ? [] : ["ANTHROPIC_ADMIN_KEY"],
+      secretNames,
+      message: adminKey
+        ? "Anthropic API key is available. Admin key usage/cost check is included."
+        : "Anthropic API key is available. Add ANTHROPIC_ADMIN_KEY to show usage/cost.",
+    };
+  } catch (error) {
+    await markPoolKeyFailure(keyCandidate, "network_error", error.message || "Anthropic check failed.");
+    return {
+      provider: "anthropic",
+      label: "Anthropic Claude",
+      kind: "llm",
+      configured: true,
+      quotaInspectable: Boolean(adminKey),
+      ok: false,
+      status: "network_error",
+      secretNames,
+      message: error.message || "Anthropic check failed.",
+    };
+  }
+}
+
+async function checkGeminiStatus() {
+  const keyCandidates = await getProviderKeyCandidates("google_gemini", "GOOGLE_GEMINI_API_KEY", googleGeminiApiKey);
+  const keyCandidate = keyCandidates[0] || null;
+  if (!keyCandidate) {
+    return buildMissingProvider("google_gemini", "Google Gemini", "llm", "GOOGLE_GEMINI_API_KEY", false);
+  }
+
+  try {
+    const url = new URL(GEMINI_MODELS_URL);
+    url.searchParams.set("key", keyCandidate.value);
+    const response = await fetch(url);
+    const text = await response.text();
+    const data = parseProviderJson(text);
+    if (!response.ok) {
+      const status = providerErrorStatus(response.status);
+      await markPoolKeyFailure(keyCandidate, status, compactProviderError(data));
+      return {
+        provider: "google_gemini",
+        label: "Google Gemini",
+        kind: "llm",
+        configured: true,
+        quotaInspectable: false,
+        ok: false,
+        status,
+        httpStatus: response.status,
+        secretNames: ["GOOGLE_GEMINI_API_KEY"],
+        message: compactProviderError(data) || `Gemini model check failed with HTTP ${response.status}.`,
+      };
+    }
+
+    const models = Array.isArray(data.models) ? data.models : [];
+    await markPoolKeySuccess(keyCandidate);
+    return {
+      provider: "google_gemini",
+      label: "Google Gemini",
+      kind: "llm",
+      configured: true,
+      quotaInspectable: false,
+      ok: true,
+      status: "available",
+      httpStatus: response.status,
+      activeKeyId: keyCandidate.id,
+      modelCount: models.length,
+      sampleModels: topModelIds(models),
+      secretNames: ["GOOGLE_GEMINI_API_KEY"],
+      message: "Gemini API key is available. Google does not expose remaining balance through this API.",
+    };
+  } catch (error) {
+    await markPoolKeyFailure(keyCandidate, "network_error", error.message || "Gemini check failed.");
+    return {
+      provider: "google_gemini",
+      label: "Google Gemini",
+      kind: "llm",
+      configured: true,
+      quotaInspectable: false,
+      ok: false,
+      status: "network_error",
+      secretNames: ["GOOGLE_GEMINI_API_KEY"],
+      message: error.message || "Gemini check failed.",
+    };
+  }
+}
+
+async function buildTtsProviderStatus() {
+  const keyCandidates = await getProviderKeyCandidates("volcano_tts", "VOLC_TTS_API_KEY", volcanoTtsApiKey);
+  const configured = keyCandidates.length > 0;
+  return {
+    provider: "volcano_tts",
+    label: "Volcano TTS",
+    kind: "tts",
+    configured,
+    quotaInspectable: false,
+    ok: configured,
+    status: configured ? "configured" : "missing_secret",
+    missingSecrets: configured ? [] : ["VOLC_TTS_API_KEY"],
+    secretNames: ["VOLC_TTS_API_KEY"],
+    activeKeyId: keyCandidates[0]?.id || "primary",
+    message: "This backend can verify whether VOLC_TTS_API_KEY is configured, but no balance endpoint is wired for this provider.",
+  };
+}
+
+async function buildModelQuotaStatus() {
+  const providers = await Promise.all([
+    checkDeepSeekBalance(),
+    checkOpenAIStatus(),
+    checkAnthropicStatus(),
+    checkGeminiStatus(),
+    buildTtsProviderStatus(),
+  ]);
+  const poolSecrets = {
+    deepseek: ["DEEPSEEK_API_KEY", deepseekApiKey],
+    openai: ["OPENAI_API_KEY", openaiApiKey],
+    anthropic: ["ANTHROPIC_API_KEY", anthropicApiKey],
+    google_gemini: ["GOOGLE_GEMINI_API_KEY", googleGeminiApiKey],
+    volcano_tts: ["VOLC_TTS_API_KEY", volcanoTtsApiKey],
+  };
+  const providersWithPools = await Promise.all(providers.map(async (provider) => {
+    if (provider.keyPool?.keys?.some((key) => key.source === "primary")) return provider;
+    const [secretName, secretParam] = poolSecrets[provider.provider] || [];
+    return attachProviderKeyPool(provider, secretName, secretParam);
+  }));
+  const latestHealthRun = await listProviderKeyHealthRuns(1)
+    .then((data) => data.runs[0] || null)
+    .catch(() => null);
+
+  return {
+    ok: providersWithPools.some((provider) => provider.provider === "deepseek" && provider.ok),
+    checkedAt: new Date().toISOString(),
+    latestHealthRun,
+    secretCatalog: buildSecretCatalog(),
+    providers: providersWithPools,
+  };
 }
 
 exports.membershipStatus = onRequest(runtime, async (req, res) => {
@@ -4463,6 +6557,74 @@ exports.readinessStatus = onRequest({
         deployedByDefaultWhenConfigured: true,
         configured: secrets.deepseekApiKey,
         missingSecrets: secrets.deepseekApiKey ? [] : ["DEEPSEEK_API_KEY"],
+      },
+      adminModelQuotaStatus: {
+        deployed: true,
+        configured: secrets.deepseekApiKey || secrets.volcanoTtsApiKey,
+        missingSecrets: [
+          secrets.deepseekApiKey ? "" : "DEEPSEEK_API_KEY",
+          secrets.volcanoTtsApiKey ? "" : "VOLC_TTS_API_KEY",
+        ].filter(Boolean),
+      },
+      adminProviderSecretUpdate: {
+        deployed: true,
+        configured: true,
+      },
+      adminProviderKeyPoolAdd: {
+        deployed: true,
+        configured: true,
+      },
+      adminProviderKeyPoolSelect: {
+        deployed: true,
+        configured: true,
+      },
+      adminProviderKeyPoolDelete: {
+        deployed: true,
+        configured: true,
+      },
+      adminProviderKeyPoolStatusUpdate: {
+        deployed: true,
+        configured: true,
+      },
+      adminProviderKeyPoolResetFailures: {
+        deployed: true,
+        configured: true,
+      },
+      adminProviderKeyPoolMetadataUpdate: {
+        deployed: true,
+        configured: true,
+      },
+      adminProviderKeyPoolCheck: {
+        deployed: true,
+        configured: true,
+      },
+      adminProviderKeyPoolCheckAll: {
+        deployed: true,
+        configured: true,
+      },
+      adminProviderKeyEvents: {
+        deployed: true,
+        configured: true,
+      },
+      scheduledProviderKeyHealthCheck: {
+        deployed: true,
+        configured: true,
+      },
+      adminProviderKeyHealthRuns: {
+        deployed: true,
+        configured: true,
+      },
+      adminProviderKeyHealthRunNow: {
+        deployed: true,
+        configured: true,
+      },
+      cleanupProviderKeyMaintenanceData: {
+        deployed: true,
+        configured: true,
+      },
+      adminProviderKeyMaintenanceCleanupNow: {
+        deployed: true,
+        configured: true,
       },
       ttsSynthesize: {
         deployedByDefaultWhenConfigured: true,
@@ -4745,6 +6907,388 @@ exports.adminConfigOverview = onRequest(runtime, async (req, res) => {
   } catch (error) {
     console.error("[adminConfigOverview]", error);
     json(res, error.status || 500, { error: error.message || "Load config overview failed" });
+  }
+});
+
+exports.adminModelQuotaStatus = onRequest({
+  ...runtime,
+  secrets: boundSecrets("DEEPSEEK_API_KEY", "VOLC_TTS_API_KEY"),
+}, async (req, res) => {
+  if (!requireMethod(req, res, "GET")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const status = await buildModelQuotaStatus();
+    await writeAdminAuditLog(decoded, "model_quota.check", {
+      type: "provider_quota",
+      id: "llm",
+    }, {
+      providers: status.providers.map((provider) => ({
+        provider: provider.provider,
+        status: provider.status,
+        ok: provider.ok,
+        configured: provider.configured,
+      })),
+    }, req);
+    json(res, 200, status);
+  } catch (error) {
+    console.error("[adminModelQuotaStatus]", error);
+    json(res, error.status || 500, { error: error.message || "Load model quota status failed" });
+  }
+});
+
+exports.adminProviderSecretUpdate = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const secretName = assertAllowedModelSecretName(req.body?.secretName);
+    const config = MODEL_SECRET_CONFIGS[secretName];
+    const secretValue = validateSecretValue(req.body?.secretValue);
+    const result = await addSecretVersion(secretName, secretValue);
+    await writeAdminAuditLog(decoded, "provider_secret.update", {
+      type: "provider_secret",
+      id: secretName,
+    }, {
+      provider: config.provider,
+      secretName,
+      keyKind: config.keyKind,
+      secretVersion: result.name ? result.name.split("/").slice(-2).join("/") : "",
+      fingerprint: result.fingerprint,
+    }, req);
+
+    json(res, 200, {
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      secretName,
+      provider: config.provider,
+      label: config.label,
+      secretVersion: result.name,
+      fingerprint: result.fingerprint,
+    });
+  } catch (error) {
+    console.error("[adminProviderSecretUpdate]", error);
+    json(res, error.status || 500, {
+      error: error.status === 403
+        ? "Secret Manager permission denied. Grant the function service account Secret Manager Admin permission and retry."
+        : error.message || "Update provider secret failed",
+    });
+  }
+});
+
+exports.adminProviderKeyPoolAdd = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const baseSecretName = assertAllowedModelSecretName(req.body?.secretName || req.body?.baseSecretName);
+    const config = MODEL_SECRET_CONFIGS[baseSecretName];
+    if (config.keyKind !== "api_key") {
+      throw createHttpError(400, "Only API keys can be added to the fallback pool.");
+    }
+    const result = await createProviderPoolKey(baseSecretName, req.body?.secretValue, {
+      label: req.body?.label,
+      priority: req.body?.priority,
+    });
+    await writeAdminAuditLog(decoded, "provider_key_pool.add", {
+      type: "provider_key_pool",
+      id: result.id,
+    }, {
+      provider: result.provider,
+      baseSecretName: result.baseSecretName,
+      label: result.label,
+      priority: result.priority,
+      secretVersion: result.secretVersion ? result.secretVersion.split("/").slice(-2).join("/") : "",
+      fingerprint: result.fingerprint,
+    }, req);
+
+    json(res, 200, {
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      key: {
+        id: result.id,
+        provider: result.provider,
+        baseSecretName: result.baseSecretName,
+        label: result.label,
+        status: result.status,
+        priority: result.priority,
+        fingerprint: result.fingerprint,
+      },
+    });
+  } catch (error) {
+    console.error("[adminProviderKeyPoolAdd]", error);
+    json(res, error.status || 500, {
+      error: error.status === 403
+        ? "Secret Manager permission denied. Grant the function service account Secret Manager Admin permission and retry."
+        : error.message || "Add provider key failed",
+    });
+  }
+});
+
+exports.adminProviderKeyPoolSelect = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const result = await setProviderSelectedKey(req.body?.provider, req.body?.keyId, decoded, req);
+    json(res, 200, {
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      ...result,
+    });
+  } catch (error) {
+    console.error("[adminProviderKeyPoolSelect]", error);
+    json(res, error.status || 500, { error: error.message || "Select provider key failed" });
+  }
+});
+
+exports.adminProviderKeyPoolDelete = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const result = await deleteProviderPoolKey(req.body?.provider, req.body?.keyId, decoded, req);
+    json(res, 200, {
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      ...result,
+    });
+  } catch (error) {
+    console.error("[adminProviderKeyPoolDelete]", error);
+    json(res, error.status || 500, { error: error.message || "Delete provider key failed" });
+  }
+});
+
+exports.adminProviderKeyPoolStatusUpdate = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const result = await updateProviderPoolKeyStatus(
+      req.body?.provider,
+      req.body?.keyId,
+      req.body?.status,
+      decoded,
+      req,
+    );
+    json(res, 200, {
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      ...result,
+    });
+  } catch (error) {
+    console.error("[adminProviderKeyPoolStatusUpdate]", error);
+    json(res, error.status || 500, { error: error.message || "Update provider key status failed" });
+  }
+});
+
+exports.adminProviderKeyPoolResetFailures = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const result = await resetProviderPoolKeyFailures(req.body?.provider, decoded, req);
+    json(res, 200, {
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      ...result,
+    });
+  } catch (error) {
+    console.error("[adminProviderKeyPoolResetFailures]", error);
+    json(res, error.status || 500, { error: error.message || "Reset provider key failures failed" });
+  }
+});
+
+exports.adminProviderKeyPoolMetadataUpdate = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const direction = cleanString(req.body?.direction, "", 12);
+    const result = direction
+      ? await moveProviderPoolKey(req.body?.provider, req.body?.keyId, direction, decoded, req)
+      : await updateProviderPoolKeyMetadata(
+        req.body?.provider,
+        req.body?.keyId,
+        {
+          ...(Object.prototype.hasOwnProperty.call(req.body || {}, "label") ? { label: req.body.label } : {}),
+          ...(Object.prototype.hasOwnProperty.call(req.body || {}, "priority") ? { priority: req.body.priority } : {}),
+        },
+        decoded,
+        req,
+      );
+    json(res, 200, {
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      ...result,
+    });
+  } catch (error) {
+    console.error("[adminProviderKeyPoolMetadataUpdate]", error);
+    json(res, error.status || 500, { error: error.message || "Update provider key metadata failed" });
+  }
+});
+
+exports.adminProviderKeyPoolCheck = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const candidate = await getProviderKeyCandidateById(req.body?.provider, req.body?.keyId);
+    const result = await checkProviderKeyCandidate(candidate);
+    await writeAdminAuditLog(decoded, "provider_key_pool.check", {
+      type: "provider_key_pool",
+      id: candidate.id,
+    }, {
+      provider: candidate.provider,
+      keyId: candidate.id,
+      status: result.status,
+      ok: result.ok === true,
+      httpStatus: result.httpStatus || null,
+    }, req);
+    json(res, 200, {
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      provider: candidate.provider,
+      keyId: candidate.id,
+      result,
+    });
+  } catch (error) {
+    console.error("[adminProviderKeyPoolCheck]", error);
+    json(res, error.status || 500, { error: error.message || "Check provider key failed" });
+  }
+});
+
+exports.adminProviderKeyPoolCheckAll = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const autoSelect = req.body?.autoSelect === true;
+    const result = await checkProviderKeyPool(req.body?.provider, {
+      autoSelect,
+      decoded,
+      req,
+    });
+    await writeAdminAuditLog(decoded, "provider_key_pool.check_all", {
+      type: "provider_key_pool",
+      id: result.provider,
+    }, {
+      provider: result.provider,
+      checkedCount: result.checkedCount,
+      okCount: result.okCount,
+      failedCount: result.failedCount,
+      autoSelect,
+      repaired: result.repaired,
+      previousSelectedKeyId: result.previousSelectedKeyId,
+      selectedKeyId: result.selectedKeyId,
+      keyIds: result.results.map((item) => item.keyId),
+    }, req);
+    json(res, 200, {
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      ...result,
+    });
+  } catch (error) {
+    console.error("[adminProviderKeyPoolCheckAll]", error);
+    json(res, error.status || 500, { error: error.message || "Check provider keys failed" });
+  }
+});
+
+exports.adminProviderKeyEvents = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "GET")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const result = await listProviderKeyEvents(req.query?.provider, req.query?.keyId, req.query?.limit);
+    json(res, 200, {
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      ...result,
+    });
+  } catch (error) {
+    console.error("[adminProviderKeyEvents]", error);
+    json(res, error.status || 500, { error: error.message || "Load provider key events failed" });
+  }
+});
+
+exports.adminProviderKeyHealthRuns = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "GET")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const result = await listProviderKeyHealthRuns(req.query?.limit);
+    json(res, 200, {
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      ...result,
+    });
+  } catch (error) {
+    console.error("[adminProviderKeyHealthRuns]", error);
+    json(res, error.status || 500, { error: error.message || "Load provider key health runs failed" });
+  }
+});
+
+exports.adminProviderKeyHealthRunNow = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const result = await runScheduledProviderKeyHealthCheck();
+    await writeAdminAuditLog(decoded, "provider_key_health.run_now", {
+      type: "provider_key_health",
+      id: result.id,
+    }, {
+      checkedKeyCount: result.checkedKeyCount,
+      okKeyCount: result.okKeyCount,
+      failedKeyCount: result.failedKeyCount,
+      repairedCount: result.repairedCount,
+    }, req);
+    json(res, 200, {
+      ok: true,
+      ...result,
+    });
+  } catch (error) {
+    console.error("[adminProviderKeyHealthRunNow]", error);
+    json(res, error.status || 500, { error: error.message || "Run provider key health check failed" });
+  }
+});
+
+exports.adminProviderKeyMaintenanceCleanupNow = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const result = await cleanupProviderKeyMaintenanceData();
+    await writeAdminAuditLog(decoded, "provider_key_maintenance.cleanup_now", {
+      type: "provider_key_maintenance",
+      id: "cleanup",
+    }, {
+      deletedEvents: result.deletedEvents,
+      deletedHealthRuns: result.deletedHealthRuns,
+      eventRetentionDays: result.eventRetentionDays,
+      healthRunRetentionDays: result.healthRunRetentionDays,
+    }, req);
+    json(res, 200, {
+      ok: true,
+      ...result,
+    });
+  } catch (error) {
+    console.error("[adminProviderKeyMaintenanceCleanupNow]", error);
+    json(res, error.status || 500, { error: error.message || "Cleanup provider key maintenance data failed" });
   }
 });
 
@@ -6784,6 +9328,40 @@ exports.processStaleDialogueReplyJobs = onSchedule({
   console.log("[processStaleDialogueReplyJobs]", { processed, skipped });
 });
 
+exports.scheduledProviderKeyHealthCheck = onSchedule({
+  schedule: "every day 03:20",
+  timeZone: "Asia/Shanghai",
+  region: REGION,
+  timeoutSeconds: 540,
+  memory: "512MiB",
+}, async () => {
+  const result = await runScheduledProviderKeyHealthCheck();
+  console.log("[scheduledProviderKeyHealthCheck]", {
+    runId: result.id,
+    providerCount: result.providerCount,
+    checkedKeyCount: result.checkedKeyCount,
+    okKeyCount: result.okKeyCount,
+    failedKeyCount: result.failedKeyCount,
+    repairedCount: result.repairedCount,
+  });
+});
+
+exports.cleanupProviderKeyMaintenanceData = onSchedule({
+  schedule: "every day 04:10",
+  timeZone: "Asia/Shanghai",
+  region: REGION,
+  timeoutSeconds: 300,
+  memory: "512MiB",
+}, async () => {
+  const result = await cleanupProviderKeyMaintenanceData();
+  console.log("[cleanupProviderKeyMaintenanceData]", {
+    deletedEvents: result.deletedEvents,
+    deletedHealthRuns: result.deletedHealthRuns,
+    eventRetentionDays: result.eventRetentionDays,
+    healthRunRetentionDays: result.healthRunRetentionDays,
+  });
+});
+
 exports.ttsSynthesize = onRequest({
   ...runtime,
   secrets: boundSecrets("VOLC_TTS_API_KEY"),
@@ -6809,7 +9387,9 @@ exports.ttsSynthesize = onRequest({
     usageReserved = true;
 
     const encoding = req.body?.encoding || "mp3";
-    const apiKey = volcanoTtsApiKey.value();
+    const ttsKeyCandidates = await getProviderKeyCandidates("volcano_tts", "VOLC_TTS_API_KEY", volcanoTtsApiKey);
+    const ttsKeyCandidate = ttsKeyCandidates[0] || null;
+    const apiKey = ttsKeyCandidate?.value || "";
     if (!apiKey) throw new Error("VOLC_TTS_API_KEY is not configured");
 
     const result = await callVolcanoTtsV3({
@@ -6822,6 +9402,10 @@ exports.ttsSynthesize = onRequest({
       speedRatio: Number(req.body?.speedRatio || 1.0),
       volumeRatio: Number(req.body?.volumeRatio || 1.0),
     });
+    await markPoolKeySuccess(ttsKeyCandidate);
+    if (!ttsKeyCandidate.selected) {
+      await autoSelectProviderKey("volcano_tts", ttsKeyCandidate.id, "tts_fallback_success");
+    }
 
     json(res, 200, {
       audioBase64: result.audioBase64,

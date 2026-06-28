@@ -29,15 +29,14 @@ public class QuickDivinationPanel : MonoBehaviour
     [Header("面板容器")]
     public CanvasGroup canvasGroup;
 
+    public Button exitBtn;
+
     [Header("标题区域")]
     public Button toggleBtn;            // 收起/展开按钮
-    public TMP_Text toggleBtnText;          // 按钮文字（收起⌃ / 展开⌄）
+    public TMP_Text toggleBtnText;          // 按钮文字（收起 / 展开）
 
     [Header("话题标签按钮 (4个)")]
-    public Button selfBtn;
-    public Button loveBtn;
-    public Button workBtn;
-    public Button socialBtn;
+    public TMP_Dropdown topicDropdown;
 
     // → 扩展：占星师/冥想师有不同标签，这里保留字典方便切换
     private Dictionary<string, Button> mTopicButtons =new();
@@ -50,13 +49,16 @@ public class QuickDivinationPanel : MonoBehaviour
 
     [Header("展开/收起数量")]
     public int collapsedQuestionCount = 3;
-    public int expandedQuestionCount = 8;
+    public int expandedQuestionCount = 5;
+    public int scrollableQuestionCount = 8;
 
     [Header("Content 自动高度")]
     public RectTransform contentRoot;
     public RectTransform questionListRect;
     public float questionItemHeight = 70f;
     public float questionListPadding = 10f;
+    public float questionListTopPadding = 6f;
+    public float questionListBottomPadding = 18f;
     public float minPanelHeight = 0f;
     public float minQuestionListHeight = 0f;
     [Tooltip("展开后的面板最大高度。小于等于 0 时保持 prefab 初始高度，避免压住输入框和底部导航。")]
@@ -69,11 +71,18 @@ public class QuickDivinationPanel : MonoBehaviour
     public RectTransform headerRoot;
     public RectTransform topicRoot;
     public float layoutTopPadding = 8f;
-    public float headerTopicSpacing = 10f;
+    public float headerTopicSpacing = 4f;
+    public float headerLayoutHeight = 0f;
     public float topicListSpacing = 8f;
-    public float layoutBottomPadding = 10f;
+    public float layoutBottomPadding = 24f;
     [Tooltip("勾选后面板底部保持贴近输入框，收起时顶部下移，避免列表和输入框之间留大空位。")]
     public bool keepPanelBottomFixed = true;
+    public RectTransform chatBoundsRect;
+    public bool clampInsideChatBounds = true;
+    public float chatBoundsPadding = 0f;
+    public RectTransform followTargetRect;
+    public bool followTargetWhenVisible = true;
+    public float followTargetSpacing = 20f;
 
     [Header("动画")]
     public float fadeDuration = 0.3f;
@@ -90,9 +99,12 @@ public class QuickDivinationPanel : MonoBehaviour
     private string mInspectorCurrentTopicKey;
     private readonly Dictionary<string, List<string>> mGeneratedQuestions = new Dictionary<string, List<string>>();
     private readonly Vector3[] mWorldCorners = new Vector3[4];
+    private readonly Vector3[] mFollowTargetWorldCorners = new Vector3[4];
+    private bool mSuppressDropdownCallback;
 
     /// <summary> 用户点击问题后的回调（传给 DialogSystem 开始占卜） </summary>
     public event Action<string> OnQuestionSelected;
+    public bool IsVisible => mIsVisible;
 
     #region 生命周期
 
@@ -104,14 +116,7 @@ public class QuickDivinationPanel : MonoBehaviour
         if (canvasGroup == null)
             canvasGroup = gameObject.AddComponent<CanvasGroup>();
 
-        // 初始化话题按钮映射（按 key 绑定）
-        mTopicButtons = new Dictionary<string, Button>
-        {
-            { "self",   selfBtn   },
-            { "love",   loveBtn   },
-            { "work",   workBtn   },
-            { "social", socialBtn },
-        };
+
         mTopicOrder = new List<string> { "self", "love", "work", "social" };
 
         // 列表初始化 —— 必须在 Awake 完成，因为 OnEnable 就会调 RefreshAll → RefreshQuestionList
@@ -125,6 +130,10 @@ public class QuickDivinationPanel : MonoBehaviour
         if (questionListRect == null && loopListView2 != null)
             questionListRect = loopListView2.GetComponent<RectTransform>();
 
+        ResolveExitButton();
+        ResolveTopicDropdown();
+        BindExitButton();
+        BindTopicDropdown();
         CacheCollapsedHeights();
     }
 
@@ -147,6 +156,7 @@ public class QuickDivinationPanel : MonoBehaviour
         }
 
         // 订阅角色切换事件 → 刷新题库
+        BindTopicDropdown();
         EventSystem.AddEventListener<int>(GameDataStr.UpdateRoleInfo, OnRoleChanged);
 
         // 初始隐藏
@@ -155,7 +165,13 @@ public class QuickDivinationPanel : MonoBehaviour
 
     private void OnDestroy()
     {
+        Canvas.willRenderCanvases -= OnWillRenderCanvases;
         EventSystem.RemoveEventListener<int>(GameDataStr.UpdateRoleInfo, OnRoleChanged);
+        if (topicDropdown != null)
+            topicDropdown.onValueChanged.RemoveListener(OnTopicDropdownValueChanged);
+        if (exitBtn != null)
+            exitBtn.onClick.RemoveListener(OnExitButtonClick);
+
         if (mResizeCoroutine != null)
         {
             StopCoroutine(mResizeCoroutine);
@@ -165,7 +181,20 @@ public class QuickDivinationPanel : MonoBehaviour
 
     private void OnEnable()
     {
+        Canvas.willRenderCanvases -= OnWillRenderCanvases;
+        Canvas.willRenderCanvases += OnWillRenderCanvases;
         RefreshAll();
+    }
+
+    private void OnDisable()
+    {
+        Canvas.willRenderCanvases -= OnWillRenderCanvases;
+    }
+
+    private void OnWillRenderCanvases()
+    {
+        if (mIsVisible)
+            AlignAboveFollowTarget();
     }
 
     #endregion
@@ -242,6 +271,7 @@ public class QuickDivinationPanel : MonoBehaviour
     {
         collapsedQuestionCount = Mathf.Max(0, collapsedCount);
         expandedQuestionCount = Mathf.Max(collapsedQuestionCount, expandedCount);
+        scrollableQuestionCount = Mathf.Max(scrollableQuestionCount, expandedQuestionCount + 1);
         RefreshQuestionList();
         UpdateToggleButtonText();
     }
@@ -302,6 +332,11 @@ public class QuickDivinationPanel : MonoBehaviour
             ExpandContent();
     }
 
+    private void OnExitButtonClick()
+    {
+        HidePanel();
+    }
+
     #endregion
 
     #region 话题切换
@@ -314,8 +349,20 @@ public class QuickDivinationPanel : MonoBehaviour
             QuickDivinationData.Instance.SwitchTopic(topicKey);
 
         UpdateTopicButtonStates();
+        SyncTopicDropdownSelection();
         UpdateToggleButtonText();
-        RefreshQuestionList();
+        RefreshQuestionList(true);
+    }
+
+    private void OnTopicDropdownValueChanged(int optionIndex)
+    {
+        if (mSuppressDropdownCallback)
+            return;
+
+        if (optionIndex < 0 || optionIndex >= mTopicOrder.Count)
+            return;
+
+        OnTopicButtonClick(mTopicOrder[optionIndex]);
     }
 
     #endregion
@@ -324,7 +371,7 @@ public class QuickDivinationPanel : MonoBehaviour
 
     LoopListViewItem2 OnGetItemByIndex(LoopListView2 listView, int index)
     {
-        var questions = GetVisibleQuestions();
+        var questions = GetListQuestions();
         if (index < 0 || index >= questions.Count)
         {
             return null;
@@ -342,6 +389,8 @@ public class QuickDivinationPanel : MonoBehaviour
 
         string question = questions[index];
         itemScript.SetItemData(question, () => OnQuestionClick(question));
+        itemScript.RefreshLayout();
+        listView.OnItemSizeChanged(item.ItemIndex);
 
         return item;
     }
@@ -386,7 +435,13 @@ public class QuickDivinationPanel : MonoBehaviour
     private void UpdateTopicButtonLabels()
     {
         var allTopics = GetSourceTopics();
-        if (allTopics == null || allTopics.Count == 0) return;
+        if (allTopics == null || allTopics.Count == 0)
+        {
+            mTopicButtons.Clear();
+            mTopicOrder.Clear();
+            RefreshTopicDropdownOptions(allTopics);
+            return;
+        }
         EnsureCurrentTopicKey(allTopics);
 
         // 先清空旧的映射，按 config 中的话题重新绑定
@@ -394,38 +449,11 @@ public class QuickDivinationPanel : MonoBehaviour
         mTopicButtons.Clear();
         mTopicOrder.Clear();
 
-        for (int i = 0; i < allTopics.Count && i < 4; i++)
-        {
-            var topic = allTopics[i];
-            mTopicOrder.Add(topic.key);
-
-            // 找到对应的按钮（按顺序: selfBtn=0, loveBtn=1, workBtn=2, socialBtn=3）
-            Button btn = GetTopicButtonByIndex(i);
-            if (btn == null) continue;
-
-            mTopicButtons[topic.key] = btn;
-
-            // 更新按钮文字
-            var label = btn.GetComponentInChildren<TMP_Text>();
-            if (label != null) label.text = $"{topic.icon} {topic.label}";
-
-            string topicKey = topic.key;
-            btn.onClick.RemoveAllListeners();
-            btn.onClick.AddListener(() => OnTopicButtonClick(topicKey));
-        }
+       
+        RefreshTopicDropdownOptions(allTopics);
     }
 
-    private Button GetTopicButtonByIndex(int index)
-    {
-        return index switch
-        {
-            0 => selfBtn,
-            1 => loveBtn,
-            2 => workBtn,
-            3 => socialBtn,
-            _ => null,
-        };
-    }
+
 
     /// <summary> 更新话题按钮高亮状态 </summary>
     private void UpdateTopicButtonStates()
@@ -451,56 +479,153 @@ public class QuickDivinationPanel : MonoBehaviour
             if (label != null)
                 label.color = isActive ? Color.white : new Color(0.8f, 0.8f, 0.85f);
         }
+
+        SyncTopicDropdownSelection();
+    }
+
+    private void ResolveTopicDropdown()
+    {
+        if (topicDropdown == null)
+            topicDropdown = GetComponentInChildren<TMP_Dropdown>(true);
+    }
+
+    private void ResolveExitButton()
+    {
+        if (exitBtn != null)
+            return;
+
+        Button[] buttons = GetComponentsInChildren<Button>(true);
+        foreach (Button button in buttons)
+        {
+            if (button != null && string.Equals(button.name, "exitBtn", StringComparison.OrdinalIgnoreCase))
+            {
+                exitBtn = button;
+                return;
+            }
+        }
+    }
+
+    private void BindExitButton()
+    {
+        ResolveExitButton();
+        if (exitBtn == null)
+            return;
+
+        exitBtn.onClick.RemoveListener(OnExitButtonClick);
+        exitBtn.onClick.AddListener(OnExitButtonClick);
+    }
+
+    private void BindTopicDropdown()
+    {
+        ResolveTopicDropdown();
+        if (topicDropdown == null)
+            return;
+
+        topicDropdown.onValueChanged.RemoveListener(OnTopicDropdownValueChanged);
+        topicDropdown.onValueChanged.AddListener(OnTopicDropdownValueChanged);
+    }
+
+    private void RefreshTopicDropdownOptions(List<QuickTopic> topics)
+    {
+        ResolveTopicDropdown();
+        if (topicDropdown == null)
+            return;
+
+        mSuppressDropdownCallback = true;
+        topicDropdown.ClearOptions();
+        mTopicOrder.Clear();
+
+        if (topics != null && topics.Count > 0)
+        {
+            List<string> labels = new List<string>(topics.Count);
+            foreach (QuickTopic topic in topics)
+            {
+                if (topic == null || string.IsNullOrEmpty(topic.key))
+                    continue;
+
+                mTopicOrder.Add(topic.key);
+                labels.Add(GetTopicDropdownLabel(topic));
+            }
+
+            topicDropdown.AddOptions(labels);
+        }
+
+        mSuppressDropdownCallback = false;
+        SyncTopicDropdownSelection();
+    }
+
+    private void SyncTopicDropdownSelection()
+    {
+        ResolveTopicDropdown();
+        if (topicDropdown == null || mTopicOrder.Count == 0)
+            return;
+
+        int index = Mathf.Max(0, mTopicOrder.IndexOf(GetCurrentTopicKey()));
+        mSuppressDropdownCallback = true;
+        topicDropdown.SetValueWithoutNotify(index);
+        topicDropdown.RefreshShownValue();
+        mSuppressDropdownCallback = false;
+    }
+
+    private static string GetTopicDropdownLabel(QuickTopic topic)
+    {
+        if (topic == null)
+            return string.Empty;
+
+        if (!string.IsNullOrWhiteSpace(topic.label))
+            return topic.label.Trim();
+
+        return topic.key ?? string.Empty;
     }
 
     private void UpdateToggleButtonText()
     {
-        int expandedLimit = Mathf.Max(collapsedQuestionCount, expandedQuestionCount);
-        var totalCount = GetCurrentSourceQuestions(expandedLimit).Count;
-        var visibleCount = QuickDivinationData.Instance.IsExpanded
-            ? Mathf.Min(expandedLimit, totalCount)
-            : Mathf.Min(collapsedQuestionCount, totalCount);
+        int visibleLimit = GetVisibleQuestionCapacity();
+        int totalCount = GetListQuestions().Count;
+        int visibleCount = Mathf.Min(visibleLimit, totalCount);
 
         if (toggleBtnText != null)
         {
             toggleBtnText.text = QuickDivinationData.Instance.IsExpanded
-                ? $"收起⌃"
-                : "展开⌄";
+                ? "收起"
+                : "展开";
         }
 
         if (toggleBtn != null)
             toggleBtn.gameObject.SetActive(totalCount > visibleCount || QuickDivinationData.Instance.IsExpanded);
     }
 
-    private void RefreshQuestionList()
+    private void RefreshQuestionList(bool resetScrollPosition = false)
     {
         if (loopListView2 == null) return;
         if (loopListView2.ScrollRect == null) return; // InitListView 尚未完成，跳过
 
-        var questions = GetVisibleQuestions();
-        ApplyContentHeight(questions.Count);
-        loopListView2.SetListItemCount(questions.Count);
+        var questions = GetListQuestions();
+        ApplyContentHeight(questions);
+        ConfigureQuestionListScroll(questions);
+        loopListView2.SetListItemCount(questions.Count, resetScrollPosition);
+        if (resetScrollPosition && questions.Count > 0)
+            loopListView2.MovePanelToItemIndex(0, 0);
         loopListView2.RefreshAllShownItem();
     }
 
-    private List<string> GetVisibleQuestions()
+    private List<string> GetListQuestions()
     {
-        var source = GetCurrentSourceQuestions();
-        int maxCount = QuickDivinationData.Instance.IsExpanded
-            ? Mathf.Max(collapsedQuestionCount, expandedQuestionCount)
-            : collapsedQuestionCount;
-
-        int count = Mathf.Clamp(maxCount, 0, source.Count);
-        return source.GetRange(0, count);
+        return GetCurrentSourceQuestions(ResolveQuestionDataCount());
     }
 
-    private List<string> GetCurrentSourceQuestions()
+    private int GetVisibleQuestionCapacity()
     {
-        int requiredCount = QuickDivinationData.Instance.IsExpanded
-            ? Mathf.Max(collapsedQuestionCount, expandedQuestionCount)
+        return QuickDivinationData.Instance.IsExpanded
+            ? Mathf.Max(1, expandedQuestionCount)
             : collapsedQuestionCount;
+    }
 
-        return GetCurrentSourceQuestions(requiredCount);
+    private int ResolveQuestionDataCount()
+    {
+        int visibleCount = Mathf.Max(collapsedQuestionCount, expandedQuestionCount);
+        int scrollCount = Mathf.Max(visibleCount + 1, scrollableQuestionCount);
+        return Mathf.Max(0, scrollCount);
     }
 
     private List<string> GetCurrentSourceQuestions(int requiredCount)
@@ -661,7 +786,7 @@ public class QuickDivinationPanel : MonoBehaviour
         }
     }
 
-    private void ApplyContentHeight(int visibleQuestionCount)
+    private void ApplyContentHeight(List<string> visibleQuestions)
     {
         ResolveLayoutRects();
 
@@ -672,13 +797,9 @@ public class QuickDivinationPanel : MonoBehaviour
 
         ArrangeStaticSections();
 
-        float rawListHeight = Mathf.Max(
-            minQuestionListHeight,
-            visibleQuestionCount * questionItemHeight + questionListPadding);
-
         float panelLimit = ResolveMaxPanelHeight();
         float listLimit = ResolveMaxQuestionListHeight(panelLimit);
-        float targetListHeight = Mathf.Min(rawListHeight, listLimit);
+        float targetListHeight = ResolveWholeItemListHeight(visibleQuestions, listLimit);
 
         float targetPanelHeight = Mathf.Max(minPanelHeight, mListTopInset + targetListHeight + mPanelBottomPadding);
         if (contentRoot != null && questionListRect != null)
@@ -744,24 +865,41 @@ public class QuickDivinationPanel : MonoBehaviour
             contentRoot.sizeDelta = size;
 
             // 默认保持底部不动，让收起态贴近输入框；必要时可改成顶部固定。
-            var anchoredPosition = contentRoot.anchoredPosition;
-            float deltaHeight = panelHeight - oldPanelHeight;
-            anchoredPosition.y += keepPanelBottomFixed
-                ? deltaHeight * contentRoot.pivot.y
-                : -deltaHeight * (1f - contentRoot.pivot.y);
-            contentRoot.anchoredPosition = anchoredPosition;
+            if (!AlignAboveFollowTarget(false))
+            {
+                var anchoredPosition = contentRoot.anchoredPosition;
+                float deltaHeight = panelHeight - oldPanelHeight;
+                anchoredPosition.y += keepPanelBottomFixed
+                    ? deltaHeight * contentRoot.pivot.y
+                    : -deltaHeight * (1f - contentRoot.pivot.y);
+                contentRoot.anchoredPosition = anchoredPosition;
+            }
         }
 
         if (loopListView2 != null)
             loopListView2.UpdateAllShownItemSnapData();
+
+        KeepPanelInsideChatBounds();
     }
 
     private float ResolveMaxPanelHeight()
     {
-        if (maxPanelHeight > 0f)
-            return Mathf.Max(mCollapsedPanelHeight, maxPanelHeight);
+        float boundsLimit = ResolveChatBoundsHeightLimit();
+        float followLimit = ResolveFollowTargetHeightLimit();
+        float preferredHeight = maxPanelHeight > 0f
+            ? Mathf.Max(mCollapsedPanelHeight, maxPanelHeight)
+            : mCollapsedPanelHeight;
 
-        return mCollapsedPanelHeight;
+        float resolvedHeight = preferredHeight;
+        if (boundsLimit > 0f)
+            resolvedHeight = Mathf.Min(resolvedHeight, boundsLimit);
+        if (followLimit > 0f)
+            resolvedHeight = Mathf.Min(resolvedHeight, followLimit);
+
+        if (maxPanelHeight > 0f)
+            return Mathf.Max(minPanelHeight, resolvedHeight);
+
+        return Mathf.Max(minPanelHeight, resolvedHeight);
     }
 
     private float ResolveMaxQuestionListHeight(float panelLimit)
@@ -770,6 +908,305 @@ public class QuickDivinationPanel : MonoBehaviour
             return Mathf.Max(minQuestionListHeight, maxQuestionListHeight);
 
         return Mathf.Max(minQuestionListHeight, panelLimit - mListTopInset - mPanelBottomPadding);
+    }
+
+    private float ResolveWholeItemListHeight(List<string> questions, float listLimit)
+    {
+        float safeLimit = Mathf.Max(0f, listLimit);
+        if (questions == null || questions.Count == 0)
+            return Mathf.Min(GetQuestionListVerticalPadding(), safeLimit);
+
+        int maxItems = Mathf.Min(questions.Count, Mathf.Max(0, GetVisibleQuestionCapacity()));
+        if (maxItems <= 0)
+            return 0f;
+
+        float preferredHeight = EstimateQuestionListHeight(questions, maxItems);
+        if (preferredHeight <= safeLimit + 0.5f)
+            return Mathf.Max(0f, preferredHeight);
+
+        float itemPadding = GetQuestionItemPadding();
+        float fittedHeight = GetQuestionListVerticalPadding();
+        int fittedCount = 0;
+
+        for (int i = 0; i < maxItems; i++)
+        {
+            float itemHeight = EstimateQuestionItemHeight(questions[i]);
+            float nextHeight = fittedHeight
+                + (fittedCount > 0 ? itemPadding : 0f)
+                + itemHeight;
+
+            if (nextHeight > safeLimit + 0.5f)
+                break;
+
+            fittedHeight = nextHeight;
+            fittedCount++;
+        }
+
+        if (fittedCount > 0)
+            return Mathf.Max(0f, fittedHeight);
+
+        return Mathf.Min(safeLimit, EstimateQuestionListHeight(questions, 1));
+    }
+
+    private void ConfigureQuestionListScroll(List<string> questions)
+    {
+        if (loopListView2 == null || loopListView2.ScrollRect == null)
+            return;
+
+        ScrollRect scrollRect = loopListView2.ScrollRect;
+        scrollRect.horizontal = false;
+        scrollRect.vertical = questions != null && questions.Count > 0;
+        if (scrollRect.movementType == ScrollRect.MovementType.Unrestricted)
+            scrollRect.movementType = ScrollRect.MovementType.Elastic;
+    }
+
+    private float EstimateQuestionListHeight(List<string> visibleQuestions, int maxItems = int.MaxValue)
+    {
+        if (visibleQuestions == null || visibleQuestions.Count == 0)
+            return GetQuestionListVerticalPadding();
+
+        float itemPadding = GetQuestionItemPadding();
+        float totalHeight = GetQuestionListVerticalPadding();
+        int count = Mathf.Min(visibleQuestions.Count, Mathf.Max(0, maxItems));
+        for (int i = 0; i < count; i++)
+        {
+            totalHeight += EstimateQuestionItemHeight(visibleQuestions[i]);
+        }
+
+        totalHeight += itemPadding * Mathf.Max(0, count - 1);
+        return totalHeight;
+    }
+
+    private float EstimateQuestionItemHeight(string question)
+    {
+        return QuestionItem.EstimatePreferredHeight(
+            question,
+            questionListRect,
+            questionItemHeight);
+    }
+
+    private float GetQuestionListTopPadding()
+    {
+        return questionListTopPadding > 0f
+            ? questionListTopPadding
+            : Mathf.Max(0f, questionListPadding * 0.5f);
+    }
+
+    private float GetQuestionListBottomPadding()
+    {
+        return questionListBottomPadding > 0f
+            ? questionListBottomPadding
+            : Mathf.Max(0f, questionListPadding);
+    }
+
+    private float GetQuestionListVerticalPadding()
+    {
+        return GetQuestionListTopPadding() + GetQuestionListBottomPadding();
+    }
+
+    private float GetQuestionItemPadding()
+    {
+        if (loopListView2 == null)
+            return 0f;
+
+        LoopListViewItem2 shownItem = loopListView2.GetShownItemByItemIndex(0);
+        if (shownItem != null)
+            return Mathf.Max(0f, shownItem.Padding);
+
+        return GetConfiguredQuestionItemPadding();
+    }
+
+    private float GetConfiguredQuestionItemPadding()
+    {
+        if (loopListView2 == null || loopListView2.ItemPrefabDataList == null)
+            return 0f;
+
+        foreach (ItemPrefabConfData data in loopListView2.ItemPrefabDataList)
+        {
+            if (data == null || data.mItemPrefab == null)
+                continue;
+
+            if (data.mItemPrefab.name == "QuestionItem")
+                return Mathf.Max(0f, data.mPadding);
+        }
+
+        return loopListView2.ItemPrefabDataList.Count > 0
+            ? Mathf.Max(0f, loopListView2.ItemPrefabDataList[0].mPadding)
+            : 0f;
+    }
+
+    private float ResolveChatBoundsHeightLimit()
+    {
+        ResolveChatBoundsRect();
+        if (!clampInsideChatBounds || chatBoundsRect == null)
+            return 0f;
+
+        return Mathf.Max(0f, chatBoundsRect.rect.height - Mathf.Max(0f, chatBoundsPadding) * 2f);
+    }
+
+    private float ResolveFollowTargetHeightLimit()
+    {
+        if (!followTargetWhenVisible || contentRoot == null)
+            return 0f;
+
+        ResolveFollowTargetRect();
+        if (followTargetRect == null)
+            return 0f;
+
+        RectTransform parentRect = contentRoot.parent as RectTransform;
+        if (parentRect == null)
+            return 0f;
+
+        followTargetRect.GetWorldCorners(mFollowTargetWorldCorners);
+        float targetTopY = float.MinValue;
+        for (int i = 0; i < mFollowTargetWorldCorners.Length; i++)
+        {
+            float localY = parentRect.InverseTransformPoint(mFollowTargetWorldCorners[i]).y;
+            if (localY > targetTopY)
+                targetTopY = localY;
+        }
+
+        float boundsTopY = parentRect.rect.yMax;
+        ResolveChatBoundsRect();
+        if (chatBoundsRect != null)
+        {
+            chatBoundsRect.GetWorldCorners(mWorldCorners);
+            boundsTopY = float.MinValue;
+            for (int i = 0; i < mWorldCorners.Length; i++)
+            {
+                float localY = parentRect.InverseTransformPoint(mWorldCorners[i]).y;
+                if (localY > boundsTopY)
+                    boundsTopY = localY;
+            }
+        }
+
+        float padding = clampInsideChatBounds ? Mathf.Max(0f, chatBoundsPadding) : 0f;
+        return Mathf.Max(0f, boundsTopY - padding - targetTopY - Mathf.Max(0f, followTargetSpacing));
+    }
+
+    private void ResolveChatBoundsRect()
+    {
+        if (chatBoundsRect == null && contentRoot != null)
+            chatBoundsRect = contentRoot.parent as RectTransform;
+    }
+
+    private void ResolveFollowTargetRect()
+    {
+        if (followTargetRect != null)
+            return;
+
+        ResolveChatBoundsRect();
+        RectTransform searchRoot = chatBoundsRect != null
+            ? chatBoundsRect
+            : contentRoot != null ? contentRoot.parent as RectTransform : null;
+
+        followTargetRect = FindChildRectTransform(searchRoot, "FooterInputPanel");
+        if (followTargetRect == null)
+            followTargetRect = FindChildRectTransform(searchRoot, "InputBg");
+    }
+
+    private bool AlignAboveFollowTarget(bool clampToBounds = true)
+    {
+        if (!followTargetWhenVisible || contentRoot == null)
+            return false;
+
+        ResolveFollowTargetRect();
+        if (followTargetRect == null)
+            return false;
+
+        RectTransform parentRect = contentRoot.parent as RectTransform;
+        if (parentRect == null)
+            return false;
+
+        followTargetRect.GetWorldCorners(mFollowTargetWorldCorners);
+        float targetTopY = float.MinValue;
+        for (int i = 0; i < mFollowTargetWorldCorners.Length; i++)
+        {
+            float localY = parentRect.InverseTransformPoint(mFollowTargetWorldCorners[i]).y;
+            if (localY > targetTopY)
+                targetTopY = localY;
+        }
+
+        contentRoot.GetWorldCorners(mWorldCorners);
+        float panelBottomY = float.MaxValue;
+        for (int i = 0; i < mWorldCorners.Length; i++)
+        {
+            float localY = parentRect.InverseTransformPoint(mWorldCorners[i]).y;
+            if (localY < panelBottomY)
+                panelBottomY = localY;
+        }
+
+        float deltaY = targetTopY + Mathf.Max(0f, followTargetSpacing) - panelBottomY;
+        if (Mathf.Abs(deltaY) > 0.01f)
+        {
+            var anchoredPosition = contentRoot.anchoredPosition;
+            anchoredPosition.y += deltaY;
+            contentRoot.anchoredPosition = anchoredPosition;
+        }
+
+        if (clampToBounds)
+            KeepPanelInsideChatBounds();
+
+        return true;
+    }
+
+    private void KeepPanelInsideChatBounds()
+    {
+        if (!clampInsideChatBounds || contentRoot == null)
+            return;
+
+        ResolveChatBoundsRect();
+        if (chatBoundsRect == null)
+            return;
+
+        Rect rect = chatBoundsRect.rect;
+        float padding = Mathf.Max(0f, chatBoundsPadding);
+        float minX = float.MaxValue;
+        float maxX = float.MinValue;
+        float minY = float.MaxValue;
+        float maxY = float.MinValue;
+
+        contentRoot.GetWorldCorners(mWorldCorners);
+        for (int i = 0; i < mWorldCorners.Length; i++)
+        {
+            Vector3 localPoint = chatBoundsRect.InverseTransformPoint(mWorldCorners[i]);
+            minX = Mathf.Min(minX, localPoint.x);
+            maxX = Mathf.Max(maxX, localPoint.x);
+            minY = Mathf.Min(minY, localPoint.y);
+            maxY = Mathf.Max(maxY, localPoint.y);
+        }
+
+        Vector2 offset = Vector2.zero;
+
+        if (minX < rect.xMin + padding)
+            offset.x += rect.xMin + padding - minX;
+        if (maxX > rect.xMax - padding)
+            offset.x -= maxX - (rect.xMax - padding);
+        if (minY < rect.yMin + padding)
+            offset.y += rect.yMin + padding - minY;
+        if (maxY > rect.yMax - padding)
+            offset.y -= maxY - (rect.yMax - padding);
+
+        if (offset.sqrMagnitude > 0.01f)
+            contentRoot.anchoredPosition += offset;
+    }
+
+    private static RectTransform FindChildRectTransform(Transform root, string childName)
+    {
+        if (root == null || string.IsNullOrEmpty(childName))
+            return null;
+
+        if (root.name == childName)
+            return root as RectTransform;
+
+        for (int i = 0; i < root.childCount; i++)
+        {
+            RectTransform child = FindChildRectTransform(root.GetChild(i), childName);
+            if (child != null)
+                return child;
+        }
+
+        return null;
     }
 
     private void ResolveLayoutRects()
@@ -783,17 +1220,20 @@ public class QuickDivinationPanel : MonoBehaviour
             contentRoot = rect;
         }
 
+        ResolveTopicDropdown();
+
         if (headerRoot == null && toggleBtn != null)
         {
             var toggleTransform = toggleBtn.transform as RectTransform;
             headerRoot = toggleTransform?.parent as RectTransform;
         }
 
-        if (topicRoot == null && selfBtn != null)
-        {
-            var selfTransform = selfBtn.transform as RectTransform;
-            topicRoot = selfTransform?.parent as RectTransform;
-        }
+
+        if (topicRoot == null && topicDropdown != null)
+            topicRoot = topicDropdown.transform as RectTransform;
+
+        ResolveChatBoundsRect();
+        ResolveFollowTargetRect();
 
         if (mCollapsedPanelHeight <= 0f || mCollapsedListHeight <= 0f)
             CacheCollapsedHeights();
@@ -833,7 +1273,8 @@ public class QuickDivinationPanel : MonoBehaviour
         if (headerRoot != null)
         {
             PinSectionToTop(headerRoot, cursor);
-            cursor += Mathf.Max(0f, headerRoot.rect.height) + Mathf.Max(0f, headerTopicSpacing);
+            float layoutHeight = headerLayoutHeight > 0f ? headerLayoutHeight : headerRoot.rect.height;
+            cursor += Mathf.Max(0f, layoutHeight) + headerTopicSpacing;
         }
 
         if (topicRoot != null)
@@ -848,17 +1289,17 @@ public class QuickDivinationPanel : MonoBehaviour
 
     private void ResolveHeaderAndTopicRoots()
     {
+        ResolveTopicDropdown();
+
         if (headerRoot == null && toggleBtn != null)
         {
             var toggleTransform = toggleBtn.transform as RectTransform;
             headerRoot = toggleTransform?.parent as RectTransform;
         }
 
-        if (topicRoot == null && selfBtn != null)
-        {
-            var selfTransform = selfBtn.transform as RectTransform;
-            topicRoot = selfTransform?.parent as RectTransform;
-        }
+
+        if (topicRoot == null && topicDropdown != null)
+            topicRoot = topicDropdown.transform as RectTransform;
     }
 
     private void PinSectionToTop(RectTransform section, float topInset)

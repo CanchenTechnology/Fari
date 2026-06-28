@@ -30,6 +30,11 @@ resolve_secret_bindings() {
   if [[ "${MOONLY_BIND_ALL_SECRETS:-0}" == "1" ]]; then
     RESOLVED_SECRET_NAMES=(
       DEEPSEEK_API_KEY
+      OPENAI_API_KEY
+      OPENAI_ADMIN_KEY
+      ANTHROPIC_API_KEY
+      ANTHROPIC_ADMIN_KEY
+      GOOGLE_GEMINI_API_KEY
       VOLC_TTS_API_KEY
       PAYMENT_WEBHOOK_SECRET
       APPLE_SHARED_SECRET
@@ -67,6 +72,22 @@ build_default_targets() {
     "functions:adminPublicConfigUpdate"
     "functions:adminDashboardSummary"
     "functions:adminConfigOverview"
+    "functions:adminModelQuotaStatus"
+    "functions:adminProviderSecretUpdate"
+    "functions:adminProviderKeyPoolAdd"
+    "functions:adminProviderKeyPoolSelect"
+    "functions:adminProviderKeyPoolDelete"
+    "functions:adminProviderKeyPoolStatusUpdate"
+    "functions:adminProviderKeyPoolResetFailures"
+    "functions:adminProviderKeyPoolMetadataUpdate"
+    "functions:adminProviderKeyPoolCheck"
+    "functions:adminProviderKeyPoolCheckAll"
+    "functions:adminProviderKeyEvents"
+    "functions:scheduledProviderKeyHealthCheck"
+    "functions:adminProviderKeyHealthRuns"
+    "functions:adminProviderKeyHealthRunNow"
+    "functions:cleanupProviderKeyMaintenanceData"
+    "functions:adminProviderKeyMaintenanceCleanupNow"
     "functions:adminUserSearch"
     "functions:adminUserDetail"
     "functions:adminMembershipOverview"
@@ -123,6 +144,11 @@ const path = process.argv[2];
 const raw = String(process.argv[3] || "").trim();
 const allSecrets = [
   "DEEPSEEK_API_KEY",
+  "OPENAI_API_KEY",
+  "OPENAI_ADMIN_KEY",
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_ADMIN_KEY",
+  "GOOGLE_GEMINI_API_KEY",
   "VOLC_TTS_API_KEY",
   "PAYMENT_WEBHOOK_SECRET",
   "APPLE_SHARED_SECRET",

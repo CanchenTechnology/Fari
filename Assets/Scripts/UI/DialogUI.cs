@@ -181,6 +181,7 @@ public class DialogUI : WindowBase
         RefreshQuestionInputLayout();
         LoadCloudDialogState();
     }
+
     // 物体隐藏时执行
     public override void OnHide()
     {
@@ -481,6 +482,12 @@ public class DialogUI : WindowBase
             _keyboardInputAdapter = footerPanel.gameObject.AddComponent<MobileKeyboardInputAdapter>();
 
         _keyboardInputAdapter.Bind(footerPanel, uiComponent.questionInputField);
+
+        QuickDivinationPanel quickPanel = uiComponent?.QuickDivinationPanelTransform != null
+            ? uiComponent.QuickDivinationPanelTransform.GetComponent<QuickDivinationPanel>()
+            : null;
+        if (quickPanel != null)
+            quickPanel.followTargetRect = footerPanel;
     }
 
     private void SetupExpandingQuestionInput()
@@ -1763,19 +1770,14 @@ public class DialogUI : WindowBase
     private void RefreshAtFriendBox()
     {
         bool hasFriend = _activeAtFriend != null;
-        string activeContextPreview = !hasFriend && dialogSystem != null
-            ? dialogSystem.BuildActiveContextPreview()
-            : "";
-        bool hasContextPreview = !string.IsNullOrWhiteSpace(activeContextPreview);
         if (uiComponent?.artFriendRectTransfrom != null)
         {
-            uiComponent.artFriendRectTransfrom.gameObject.SetActive(hasFriend || hasContextPreview);
+            uiComponent.artFriendRectTransfrom.gameObject.SetActive(hasFriend);
         }
 
-        string label = hasFriend ? $"@{GetAtFriendDisplayName(_activeAtFriend)}" : activeContextPreview;
         if (uiComponent?.artFriendNameText != null)
         {
-            uiComponent.artFriendNameText.text = label;
+            uiComponent.artFriendNameText.text = hasFriend ? $"@{GetAtFriendDisplayName(_activeAtFriend)}" : "";
         }
 
         // @ 好友框已经独立放到输入框上方，输入框布局完全交给 prefab 控制。
@@ -1870,16 +1872,26 @@ public class DialogUI : WindowBase
     public void OnquestionButtonClick()
     {
         // 显示快速占卜面板
-        QuickDivinationPanel panel = uiComponent.QuickDivinationPanelTransform.GetComponent<QuickDivinationPanel>();
-        isShowQuickDivinationPanel = !isShowQuickDivinationPanel;
-        if(isShowQuickDivinationPanel)
-        {
-            panel.ShowPanel();           
-        }
+        QuickDivinationPanel panel = uiComponent?.QuickDivinationPanelTransform != null
+            ? uiComponent.QuickDivinationPanelTransform.GetComponent<QuickDivinationPanel>()
+            : null;
+        bool isVisible = panel != null ? panel.IsVisible : isShowQuickDivinationPanel;
+        SetQuickDivinationPanelVisible(!isVisible);
+    }
+
+    private void SetQuickDivinationPanelVisible(bool visible)
+    {
+        QuickDivinationPanel panel = uiComponent?.QuickDivinationPanelTransform != null
+            ? uiComponent.QuickDivinationPanelTransform.GetComponent<QuickDivinationPanel>()
+            : null;
+        if (panel == null)
+            return;
+
+        isShowQuickDivinationPanel = visible;
+        if (visible)
+            panel.ShowPanel();
         else
-        {
             panel.HidePanel();
-        }
     }
 
     /// <summary>
@@ -1995,6 +2007,8 @@ public class DialogUI : WindowBase
     {
         Debug.Log($"[DialogUI] 快速占卜问题: {question}");
         if (string.IsNullOrEmpty(question)) return;
+        SetQuickDivinationPanelVisible(false);
+
         if (mIsLoading)
         {
             EnqueueAIRequest(() => OnQuickQuestionSelected(question));
@@ -3059,9 +3073,23 @@ public static class TMPInputFieldScrollUtility
         if (inputField == null || inputField.textComponent == null || inputField.textViewport == null)
             return false;
 
-        inputField.textComponent.ForceMeshUpdate();
-        return inputField.textComponent.textInfo.lineCount > 1
-            && GetContentHeight(inputField) > GetViewportHeight(inputField) + tolerance;
+        try
+        {
+            inputField.textComponent.ForceMeshUpdate();
+            int lineCount = inputField.textComponent.textInfo != null
+                ? inputField.textComponent.textInfo.lineCount
+                : 0;
+            if (lineCount <= 1)
+                return false;
+
+            float contentHeight = GetContentHeight(inputField);
+            float viewportHeight = GetViewportHeight(inputField);
+            return contentHeight > viewportHeight + tolerance;
+        }
+        catch (System.NullReferenceException)
+        {
+            return false;
+        }
     }
 
     public static float GetContentHeight(TMP_InputField inputField)
@@ -3069,14 +3097,28 @@ public static class TMPInputFieldScrollUtility
         if (inputField == null || inputField.textComponent == null)
             return 1f;
 
-        return Mathf.Max(1f, inputField.textComponent.preferredHeight);
+        try
+        {
+            return Mathf.Max(1f, inputField.textComponent.preferredHeight);
+        }
+        catch (System.NullReferenceException)
+        {
+            return 1f;
+        }
     }
 
     public static float GetViewportHeight(TMP_InputField inputField)
     {
-        return inputField != null && inputField.textViewport != null
-            ? Mathf.Max(1f, inputField.textViewport.rect.height)
-            : 1f;
+        try
+        {
+            return inputField != null && inputField.textViewport != null
+                ? Mathf.Max(1f, inputField.textViewport.rect.height)
+                : 1f;
+        }
+        catch (System.NullReferenceException)
+        {
+            return 1f;
+        }
     }
 }
 

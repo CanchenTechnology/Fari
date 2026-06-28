@@ -357,6 +357,169 @@
       line-height: 1;
     }
 
+    .model-quota-summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .model-quota-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .model-quota-card {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .model-quota-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .model-quota-meta {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 720;
+    }
+
+    .model-quota-balance {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .model-quota-line {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-soft);
+      padding: 9px;
+    }
+
+    .model-quota-note {
+      min-width: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .model-quota-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .model-reliability {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-soft);
+      padding: 9px;
+      display: grid;
+      gap: 5px;
+    }
+
+    .model-reliability.warn {
+      border-color: rgba(155, 100, 31, 0.35);
+      background: var(--amber-soft);
+    }
+
+    .model-reliability.danger {
+      border-color: rgba(179, 38, 30, 0.35);
+      background: var(--red-soft);
+    }
+
+    .model-reliability-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .model-key-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .model-key-card {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-soft);
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .model-key-card.selected {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+      box-shadow: inset 3px 0 0 var(--primary);
+    }
+
+    .model-key-card.disabled {
+      opacity: 0.65;
+      cursor: default;
+    }
+
+    .model-key-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: flex-start;
+    }
+
+    .model-key-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .model-key-route {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+
+    .model-key-step {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      max-width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface-soft);
+      color: var(--muted);
+      padding: 4px 8px;
+      font-size: 12px;
+      font-weight: 760;
+      overflow-wrap: anywhere;
+    }
+
+    .model-key-step.current {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+      color: var(--primary);
+    }
+
     .split {
       display: grid;
       grid-template-columns: minmax(0, 1fr) 390px;
@@ -1033,6 +1196,9 @@
       }
 
       .grid-4,
+      .model-quota-grid,
+      .model-quota-balance,
+      .model-key-grid,
       .config-grid,
       .agent-toolbar,
       .agent-map-grid,
@@ -1152,6 +1318,13 @@
             <button id="refreshDashboardButton" type="button">刷新</button>
           </div>
           <div id="dashboardMetrics" class="grid-4"></div>
+          <div class="panel">
+            <div class="panel-title">
+              <h2>模型额度</h2>
+              <button id="refreshModelQuotaButton" type="button" class="secondary">刷新额度</button>
+            </div>
+            <div id="modelQuotaStatus"></div>
+          </div>
           <div class="split">
             <div class="panel">
               <div class="panel-title"><h2>最近动态</h2></div>
@@ -1626,6 +1799,58 @@
     </form>
   </dialog>
 
+  <dialog id="providerSecretDialog">
+    <form id="providerSecretForm" class="dialog-body">
+      <div class="dialog-head">
+        <h2 id="providerSecretDialogTitle">替换模型密钥</h2>
+        <button type="button" class="ghost icon" data-close-dialog="providerSecretDialog">×</button>
+      </div>
+      <input name="mode" type="hidden" value="replace">
+      <div class="form-grid">
+        <label class="full">密钥类型<select name="secretName" required></select></label>
+        <div id="providerSecretHint" class="status full"></div>
+        <label id="providerSecretLabelField" class="full" hidden>备用名称<input name="label" autocomplete="off" placeholder="例如 DeepSeek 备用 1"></label>
+        <label id="providerSecretSingleField" class="full">新的 SK / Key<input name="secretValue" type="password" autocomplete="off" spellcheck="false"></label>
+        <label id="providerSecretBatchField" class="full" hidden>备用 SK / Key<textarea name="secretValues" autocomplete="off" spellcheck="false" style="min-height: 130px;" placeholder="一行一个 SK，例如：&#10;sk-xxxx&#10;sk-yyyy"></textarea></label>
+        <label id="providerSecretAutoCheckField" class="inline-check full" hidden>
+          <input name="autoCheckAfterAdd" type="checkbox" checked>
+          添加后自动检测并修复当前服务
+        </label>
+      </div>
+      <div id="providerSecretSubmitNote" class="status">提交后会写入 Google Secret Manager。页面不会保存或回显完整密钥。</div>
+      <div class="row">
+        <button id="providerSecretSubmitButton" type="submit">确认替换</button>
+        <button type="button" class="secondary" data-close-dialog="providerSecretDialog">取消</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="providerKeyEventsDialog">
+    <div class="dialog-body">
+      <div class="dialog-head">
+        <h2 id="providerKeyEventsTitle">Key 日志</h2>
+        <button type="button" class="ghost icon" data-close-dialog="providerKeyEventsDialog">×</button>
+      </div>
+      <div id="providerKeyEventsBody" class="stack"></div>
+      <div class="row">
+        <button type="button" class="secondary" data-close-dialog="providerKeyEventsDialog">关闭</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="providerHealthRunsDialog">
+    <div class="dialog-body">
+      <div class="dialog-head">
+        <h2>Key 巡检记录</h2>
+        <button type="button" class="ghost icon" data-close-dialog="providerHealthRunsDialog">×</button>
+      </div>
+      <div id="providerHealthRunsBody" class="stack"></div>
+      <div class="row">
+        <button type="button" class="secondary" data-close-dialog="providerHealthRunsDialog">关闭</button>
+      </div>
+    </div>
+  </dialog>
+
   <div id="messageBox" class="message-box" hidden></div>
 
   <script type="module">
@@ -1658,6 +1883,12 @@
       activeModule: "dashboard",
       currentUser: null,
       dashboard: null,
+      modelQuota: null,
+      modelQuotaOnlyIssues: false,
+      modelQuotaAutoRefresh: false,
+      modelQuotaAutoRefreshTimer: null,
+      modelQuotaLoading: false,
+      modelQuotaRepairing: false,
       users: [],
       userListMeta: null,
       userDetail: null,
@@ -1723,6 +1954,7 @@
       if (!user) {
         state.token = "";
         state.currentUser = null;
+        setModelQuotaAutoRefresh(false, { silent: true });
         $("authView").hidden = false;
         $("appView").hidden = true;
         return;
@@ -1778,6 +2010,131 @@
     });
 
     $("refreshDashboardButton").addEventListener("click", loadDashboard);
+    $("refreshModelQuotaButton").addEventListener("click", () => loadModelQuotaStatus(true));
+    $("providerSecretForm").addEventListener("submit", handleProviderSecretSubmit);
+    $("providerSecretForm").elements.secretName.addEventListener("change", renderProviderSecretHint);
+    document.addEventListener("click", (event) => {
+      const modelIssuesToggle = event.target.closest("[data-toggle-model-issues]");
+      if (modelIssuesToggle) {
+        event.stopPropagation();
+        state.modelQuotaOnlyIssues = !state.modelQuotaOnlyIssues;
+        renderModelQuotaStatus();
+        return;
+      }
+      const modelAutoRefreshToggle = event.target.closest("[data-toggle-model-auto-refresh]");
+      if (modelAutoRefreshToggle) {
+        event.stopPropagation();
+        setModelQuotaAutoRefresh(!state.modelQuotaAutoRefresh);
+        return;
+      }
+      const copyModelIssueButton = event.target.closest("[data-copy-model-issue-report]");
+      if (copyModelIssueButton) {
+        event.stopPropagation();
+        copyModelIssueReport();
+        return;
+      }
+      const repairModelIssuesButton = event.target.closest("[data-repair-model-issues]");
+      if (repairModelIssuesButton) {
+        event.stopPropagation();
+        repairModelIssueKeys();
+        return;
+      }
+      const healthRunsButton = event.target.closest("[data-provider-health-runs]");
+      if (healthRunsButton) {
+        event.stopPropagation();
+        openProviderHealthRuns();
+        return;
+      }
+      const runHealthButton = event.target.closest("[data-run-provider-health]");
+      if (runHealthButton) {
+        event.stopPropagation();
+        runProviderHealthNow();
+        return;
+      }
+      const cleanupMaintenanceButton = event.target.closest("[data-cleanup-provider-maintenance]");
+      if (cleanupMaintenanceButton) {
+        event.stopPropagation();
+        cleanupProviderMaintenanceNow();
+        return;
+      }
+      const checkProviderButton = event.target.closest("[data-check-provider-keys]");
+      if (checkProviderButton) {
+        event.stopPropagation();
+        checkProviderKeys(
+          checkProviderButton.dataset.checkProviderKeys,
+          checkProviderButton.dataset.autoSelect === "true",
+        );
+        return;
+      }
+      const checkButton = event.target.closest("[data-check-key]");
+      if (checkButton) {
+        event.stopPropagation();
+        checkProviderKey(checkButton.dataset.provider, checkButton.dataset.checkKey);
+        return;
+      }
+      const statusButton = event.target.closest("[data-key-status]");
+      if (statusButton) {
+        event.stopPropagation();
+        updateProviderKeyStatus(
+          statusButton.dataset.provider,
+          statusButton.dataset.keyId,
+          statusButton.dataset.keyStatus,
+        );
+        return;
+      }
+      const resetProviderButton = event.target.closest("[data-reset-provider-keys]");
+      if (resetProviderButton) {
+        event.stopPropagation();
+        resetProviderKeyFailures(resetProviderButton.dataset.resetProviderKeys);
+        return;
+      }
+      const keyEventsButton = event.target.closest("[data-provider-key-events]");
+      if (keyEventsButton) {
+        event.stopPropagation();
+        openProviderKeyEvents(
+          keyEventsButton.dataset.provider,
+          keyEventsButton.dataset.keyId || "",
+          keyEventsButton.dataset.label || "",
+        );
+        return;
+      }
+      const renameButton = event.target.closest("[data-rename-key]");
+      if (renameButton) {
+        event.stopPropagation();
+        renameProviderKey(
+          renameButton.dataset.provider,
+          renameButton.dataset.renameKey,
+          renameButton.dataset.currentLabel || "",
+        );
+        return;
+      }
+      const moveButton = event.target.closest("[data-move-key]");
+      if (moveButton) {
+        event.stopPropagation();
+        moveProviderKey(
+          moveButton.dataset.provider,
+          moveButton.dataset.moveKey,
+          moveButton.dataset.direction,
+        );
+        return;
+      }
+      const deleteButton = event.target.closest("[data-delete-key]");
+      if (deleteButton) {
+        event.stopPropagation();
+        deleteProviderKey(deleteButton.dataset.provider, deleteButton.dataset.deleteKey);
+        return;
+      }
+      const selectButton = event.target.closest("[data-select-key]");
+      if (selectButton) {
+        if (selectButton.classList.contains("disabled")) return;
+        selectProviderKey(selectButton.dataset.provider, selectButton.dataset.selectKey);
+        return;
+      }
+      const button = event.target.closest("[data-replace-secret]");
+      if (button) openProviderSecretDialog(button.dataset.replaceSecret);
+      const addButton = event.target.closest("[data-add-secret]");
+      if (addButton) openProviderSecretDialog(addButton.dataset.addSecret, "pool");
+    });
     $("refreshUsersButton").addEventListener("click", () => loadUsers($("userSearchInput").value.trim()));
     $("userSearchButton").addEventListener("click", () => loadUsers($("userSearchInput").value.trim()));
     $("userClearButton").addEventListener("click", () => {
@@ -2009,12 +2366,1228 @@
 
     async function loadDashboard() {
       setLoading($("dashboardMetrics"), "加载总览...");
-      try {
-        state.dashboard = await callFunction("/adminDashboardSummary?limit=8");
-        renderDashboard();
-      } catch (error) {
-        showMessage(error.message, "warn");
+      const dashboardRequest = callFunction("/adminDashboardSummary?limit=8")
+        .then((data) => {
+          state.dashboard = data;
+          renderDashboard();
+        })
+        .catch((error) => {
+          const message = error.message || "加载总览失败";
+          setInlineError($("dashboardMetrics"), message);
+          showMessage(message, "warn");
+      });
+      const quotaRequest = loadModelQuotaStatus(false);
+      await Promise.allSettled([dashboardRequest, quotaRequest]);
+    }
+
+    const modelQuotaAutoRefreshIntervalMs = 60 * 1000;
+
+    function setModelQuotaAutoRefresh(enabled, options = {}) {
+      state.modelQuotaAutoRefresh = Boolean(enabled);
+      if (state.modelQuotaAutoRefreshTimer) {
+        clearInterval(state.modelQuotaAutoRefreshTimer);
+        state.modelQuotaAutoRefreshTimer = null;
       }
+      if (state.modelQuotaAutoRefresh) {
+        state.modelQuotaAutoRefreshTimer = setInterval(() => {
+          if (state.activeModule !== "dashboard" || !state.token || state.modelQuotaLoading || state.modelQuotaRepairing) return;
+          loadModelQuotaStatus(false);
+        }, modelQuotaAutoRefreshIntervalMs);
+      }
+      renderModelQuotaStatus();
+      if (options.silent) return;
+      showMessage(
+        state.modelQuotaAutoRefresh ? "已开启自动刷新，每 60 秒更新一次" : "已关闭自动刷新",
+        state.modelQuotaAutoRefresh ? "ok" : "",
+      );
+    }
+
+    async function loadModelQuotaStatus(showToast = false) {
+      if (state.modelQuotaLoading) {
+        if (showToast) showMessage("模型额度正在刷新", "");
+        return;
+      }
+      state.modelQuotaLoading = true;
+      setLoading($("modelQuotaStatus"), "加载模型额度...");
+      try {
+        state.modelQuota = await callFunction("/adminModelQuotaStatus");
+        renderModelQuotaStatus();
+        if (showToast) showMessage("模型额度已刷新", "ok");
+      } catch (error) {
+        const message = error.message || "加载模型额度失败";
+        state.modelQuota = { error: message };
+        renderModelQuotaStatus();
+        if (showToast) showMessage(message, "warn");
+      } finally {
+        state.modelQuotaLoading = false;
+      }
+    }
+
+    function getSecretCatalog() {
+      const catalog = state.modelQuota?.secretCatalog;
+      if (Array.isArray(catalog) && catalog.length) return catalog;
+      return [
+        { secretName: "DEEPSEEK_API_KEY", label: "DeepSeek API Key", provider: "deepseek", hint: "DeepSeek 的 sk- 开头密钥" },
+        { secretName: "OPENAI_API_KEY", label: "OpenAI API Key", provider: "openai", hint: "OpenAI 普通 API Key" },
+        { secretName: "OPENAI_ADMIN_KEY", label: "OpenAI Admin Key", provider: "openai", hint: "用于读取 OpenAI 组织成本" },
+        { secretName: "ANTHROPIC_API_KEY", label: "Anthropic API Key", provider: "anthropic", hint: "Anthropic 普通 API Key" },
+        { secretName: "ANTHROPIC_ADMIN_KEY", label: "Anthropic Admin Key", provider: "anthropic", hint: "用于读取 Anthropic 用量/成本" },
+        { secretName: "GOOGLE_GEMINI_API_KEY", label: "Google Gemini API Key", provider: "google_gemini", hint: "Google AI Studio / Gemini API Key" },
+        { secretName: "VOLC_TTS_API_KEY", label: "Volcano TTS API Key", provider: "volcano_tts", hint: "火山语音服务密钥" },
+      ];
+    }
+
+    function getSecretConfig(secretName) {
+      return getSecretCatalog().find((item) => item.secretName === secretName) || {
+        secretName,
+        label: secretName,
+        hint: "",
+      };
+    }
+
+    function openProviderSecretDialog(secretName = "", mode = "replace") {
+      const form = $("providerSecretForm");
+      const select = form.elements.secretName;
+      const catalog = mode === "pool"
+        ? getSecretCatalog().filter((item) => item.poolSupported !== false && item.keyKind !== "admin_key")
+        : getSecretCatalog();
+      select.innerHTML = catalog.map((item) => `
+        <option value="${escapeAttr(item.secretName)}">${escapeHtml(item.label || item.secretName)}</option>
+      `).join("");
+      select.value = secretName || catalog[0]?.secretName || "";
+      form.elements.mode.value = mode;
+      form.elements.label.value = "";
+      form.elements.secretValue.value = "";
+      form.elements.secretValues.value = "";
+      form.elements.autoCheckAfterAdd.checked = true;
+      $("providerSecretDialogTitle").textContent = mode === "pool" ? "批量添加备用 SK" : "替换模型密钥";
+      $("providerSecretLabelField").hidden = mode !== "pool";
+      $("providerSecretSingleField").hidden = mode === "pool";
+      $("providerSecretBatchField").hidden = mode !== "pool";
+      $("providerSecretAutoCheckField").hidden = mode !== "pool";
+      $("providerSecretSubmitButton").textContent = mode === "pool" ? "添加备用 SK" : "确认替换";
+      $("providerSecretSubmitNote").textContent = mode === "pool"
+        ? "可以一次粘贴多个备用 SK，一行一个；添加后可自动检测并切到可用 Key。"
+        : "提交后会写入 Google Secret Manager。页面不会保存或回显完整密钥。";
+      renderProviderSecretHint();
+      $("providerSecretDialog").showModal();
+      (mode === "pool" ? form.elements.secretValues : form.elements.secretValue).focus();
+    }
+
+    function renderProviderSecretHint() {
+      const form = $("providerSecretForm");
+      const secretName = form.elements.secretName.value;
+      const config = getSecretConfig(secretName);
+      const mode = form.elements.mode.value || "replace";
+      const batchHint = mode === "pool" ? "；支持一行一个批量添加" : "";
+      $("providerSecretHint").textContent = `${config.secretName}${config.hint ? `：${config.hint}` : ""}${batchHint}`;
+    }
+
+    async function handleProviderSecretSubmit(event) {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const mode = form.elements.mode.value || "replace";
+      const secretName = form.elements.secretName.value;
+      const secretValues = mode === "pool"
+        ? parseSecretValues(form.elements.secretValues.value)
+        : [form.elements.secretValue.value.trim()].filter(Boolean);
+      if (!secretValues.length) {
+        showMessage("请输入新的 SK / Key", "warn");
+        return;
+      }
+
+      const button = $("providerSecretSubmitButton");
+      button.disabled = true;
+      button.textContent = mode === "pool" ? "添加中..." : "替换中...";
+      try {
+        if (mode === "pool") {
+          const result = await addProviderPoolSecrets(form, secretName, secretValues, button);
+          await maybeCheckAddedProviderKeys(form, secretName, result, button);
+        } else {
+          await callFunction("/adminProviderSecretUpdate", {
+            method: "POST",
+            body: JSON.stringify({
+              secretName,
+              secretValue: secretValues[0],
+              label: form.elements.label.value.trim(),
+            }),
+          });
+          $("providerSecretDialog").close();
+          form.elements.secretValue.value = "";
+          showMessage("密钥已替换，正在刷新状态", "ok");
+        }
+        await loadModelQuotaStatus(false);
+      } catch (error) {
+        showMessage(error.message || (mode === "pool" ? "添加备用 SK 失败" : "替换密钥失败"), "warn");
+      } finally {
+        button.disabled = false;
+        button.textContent = mode === "pool" ? "添加备用 SK" : "确认替换";
+      }
+    }
+
+    function parseSecretValues(value = "") {
+      return String(value || "")
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+
+    function getBatchSecretLabel(baseLabel, index, total) {
+      const label = String(baseLabel || "").trim();
+      if (!label || total <= 1) return label;
+      return `${label} ${index + 1}`;
+    }
+
+    async function addProviderPoolSecrets(form, secretName, secretValues, button) {
+      const baseLabel = form.elements.label.value.trim();
+      const failures = [];
+      let addedCount = 0;
+      for (let index = 0; index < secretValues.length; index += 1) {
+        button.textContent = secretValues.length > 1
+          ? `添加中 ${index + 1}/${secretValues.length}...`
+          : "添加中...";
+        try {
+          await callFunction("/adminProviderKeyPoolAdd", {
+            method: "POST",
+            body: JSON.stringify({
+              secretName,
+              secretValue: secretValues[index],
+              label: getBatchSecretLabel(baseLabel, index, secretValues.length),
+            }),
+          });
+          addedCount += 1;
+        } catch (error) {
+          failures.push({
+            secretValue: secretValues[index],
+            message: error.message || "添加失败",
+          });
+        }
+      }
+
+      if (failures.length) {
+        form.elements.secretValues.value = failures.map((item) => item.secretValue).join("\n");
+        const firstMessage = failures[0]?.message || "添加失败";
+        showMessage(`已添加 ${addedCount} 个，失败 ${failures.length} 个：${firstMessage}`, "warn");
+        return { addedCount, failures };
+      }
+
+      form.elements.secretValues.value = "";
+      return { addedCount, failures };
+    }
+
+    async function maybeCheckAddedProviderKeys(form, secretName, addResult, button) {
+      const addedCount = Number(addResult?.addedCount || 0);
+      const failureCount = Array.isArray(addResult?.failures) ? addResult.failures.length : 0;
+      const config = getSecretConfig(secretName);
+      const shouldCheck = form.elements.autoCheckAfterAdd.checked && config.provider && addedCount > 0;
+
+      if (!shouldCheck) {
+        if (!failureCount) $("providerSecretDialog").close();
+        showMessage(`已添加 ${addedCount} 个备用 SK，正在刷新状态`, failureCount ? "warn" : "ok");
+        return;
+      }
+
+      if (!failureCount) $("providerSecretDialog").close();
+      button.textContent = "检测并修复中...";
+      try {
+        const data = await callFunction("/adminProviderKeyPoolCheckAll", {
+          method: "POST",
+          body: JSON.stringify({ provider: config.provider, autoSelect: true }),
+        });
+        const checked = Number(data.checkedCount || 0);
+        const okCount = Number(data.okCount || 0);
+        const failedCount = Number(data.failedCount || 0);
+        const repairText = data.repaired
+          ? `已切换到 ${data.repairedKeyId || data.selectedKeyId || "可用 Key"}`
+          : "无需切换";
+        const addText = failureCount ? `已添加 ${addedCount} 个，失败 ${failureCount} 个` : `已添加 ${addedCount} 个`;
+        showMessage(
+          `${addText}；检测完成：可用 ${okCount}/${checked}${failedCount ? `，失败 ${failedCount}` : ""}；${repairText}`,
+          failedCount || failureCount ? "warn" : "ok",
+        );
+      } catch (error) {
+        showMessage(`已添加 ${addedCount} 个，但自动检测失败：${error.message || "检测失败"}`, "warn");
+      }
+    }
+
+    async function selectProviderKey(provider, keyId) {
+      if (!provider || !keyId) return;
+      try {
+        await callFunction("/adminProviderKeyPoolSelect", {
+          method: "POST",
+          body: JSON.stringify({ provider, keyId }),
+        });
+        showMessage("已切换当前 Key", "ok");
+        await loadModelQuotaStatus(false);
+      } catch (error) {
+        showMessage(error.message || "切换 Key 失败", "warn");
+      }
+    }
+
+    async function deleteProviderKey(provider, keyId) {
+      if (!provider || !keyId || keyId === "primary") return;
+      if (!confirm("确认删除这个备用 Key？删除后后台不会再使用它。")) return;
+      try {
+        await callFunction("/adminProviderKeyPoolDelete", {
+          method: "POST",
+          body: JSON.stringify({ provider, keyId }),
+        });
+        showMessage("备用 Key 已删除", "ok");
+        await loadModelQuotaStatus(false);
+      } catch (error) {
+        showMessage(error.message || "删除 Key 失败", "warn");
+      }
+    }
+
+    async function updateProviderKeyStatus(provider, keyId, status) {
+      if (!provider || !keyId || !status || keyId === "primary") return;
+      try {
+        await callFunction("/adminProviderKeyPoolStatusUpdate", {
+          method: "POST",
+          body: JSON.stringify({ provider, keyId, status }),
+        });
+        showMessage(status === "active" ? "备用 Key 已启用" : "备用 Key 已停用", "ok");
+        await loadModelQuotaStatus(false);
+      } catch (error) {
+        showMessage(error.message || "更新 Key 状态失败", "warn");
+      }
+    }
+
+    async function resetProviderKeyFailures(provider) {
+      if (!provider) return;
+      if (!confirm("确认把这个服务下“已用尽/无效”的备用 Key 重置为可检测状态？手动停用的 Key 不会变化。")) return;
+      try {
+        const data = await callFunction("/adminProviderKeyPoolResetFailures", {
+          method: "POST",
+          body: JSON.stringify({ provider }),
+        });
+        const resetCount = Number(data.resetCount || 0);
+        showMessage(
+          resetCount
+            ? `已重置 ${resetCount} 个备用 Key，可以继续点击“检测并修复”`
+            : "没有需要重置的备用 Key",
+          resetCount ? "ok" : "warn",
+        );
+        await loadModelQuotaStatus(false);
+      } catch (error) {
+        showMessage(error.message || "重置失败状态失败", "warn");
+      }
+    }
+
+    async function renameProviderKey(provider, keyId, currentLabel = "") {
+      if (!provider || !keyId || keyId === "primary") return;
+      const label = prompt("给这个备用 Key 起个容易识别的名字", currentLabel || "");
+      if (label === null) return;
+      const trimmed = label.trim();
+      if (!trimmed) {
+        showMessage("备用 Key 名称不能为空", "warn");
+        return;
+      }
+      try {
+        await callFunction("/adminProviderKeyPoolMetadataUpdate", {
+          method: "POST",
+          body: JSON.stringify({ provider, keyId, label: trimmed }),
+        });
+        showMessage("备用 Key 名称已更新", "ok");
+        await loadModelQuotaStatus(false);
+      } catch (error) {
+        showMessage(error.message || "重命名 Key 失败", "warn");
+      }
+    }
+
+    async function moveProviderKey(provider, keyId, direction) {
+      if (!provider || !keyId || keyId === "primary" || !direction) return;
+      try {
+        const result = await callFunction("/adminProviderKeyPoolMetadataUpdate", {
+          method: "POST",
+          body: JSON.stringify({ provider, keyId, direction }),
+        });
+        const moved = result.moved !== false;
+        showMessage(moved ? "备用 Key 顺序已更新" : "这个备用 Key 已经在边界位置", moved ? "ok" : "warn");
+        await loadModelQuotaStatus(false);
+      } catch (error) {
+        showMessage(error.message || "调整 Key 顺序失败", "warn");
+      }
+    }
+
+    async function checkProviderKey(provider, keyId) {
+      if (!provider || !keyId) return;
+      try {
+        const data = await callFunction("/adminProviderKeyPoolCheck", {
+          method: "POST",
+          body: JSON.stringify({ provider, keyId }),
+        });
+        const result = data.result || {};
+        showMessage(result.ok ? "Key 检测通过" : `Key 检测失败：${providerStatusLabel(result.status)}`, result.ok ? "ok" : "warn");
+        await loadModelQuotaStatus(false);
+      } catch (error) {
+        showMessage(error.message || "检测 Key 失败", "warn");
+      }
+    }
+
+    async function checkProviderKeys(provider, autoSelect = false) {
+      if (!provider) return;
+      try {
+        const data = await callFunction("/adminProviderKeyPoolCheckAll", {
+          method: "POST",
+          body: JSON.stringify({ provider, autoSelect }),
+        });
+        const checked = Number(data.checkedCount || 0);
+        const okCount = Number(data.okCount || 0);
+        const failedCount = Number(data.failedCount || 0);
+        const resultText = Array.isArray(data.results)
+          ? data.results
+            .slice(0, 3)
+            .map((item) => `${item.label || item.keyId}: ${providerStatusLabel(item.status)}`)
+            .join("；")
+          : "";
+        const summary = checked
+          ? `检测完成：可用 ${okCount}/${checked}${failedCount ? `，失败 ${failedCount}` : ""}`
+          : "没有找到可检测的 Key";
+        const repairText = autoSelect
+          ? data.repaired
+            ? `已自动切换到 ${data.repairedKeyId || data.selectedKeyId}`
+            : "当前 Key 不需要切换"
+          : "";
+        const parts = [summary, repairText, resultText].filter(Boolean);
+        showMessage(parts.join("。"), failedCount && !data.repaired ? "warn" : "ok");
+        await loadModelQuotaStatus(false);
+      } catch (error) {
+        showMessage(error.message || (autoSelect ? "检测并修复 Key 失败" : "批量检测 Key 失败"), "warn");
+      }
+    }
+
+    async function openProviderKeyEvents(provider, keyId = "", label = "") {
+      if (!provider) return;
+      const titleParts = [label || provider, keyId && keyId !== "primary" ? keyId : ""].filter(Boolean);
+      $("providerKeyEventsTitle").textContent = `Key 日志：${titleParts.join(" / ") || provider}`;
+      setLoading($("providerKeyEventsBody"), "加载 Key 日志...");
+      $("providerKeyEventsDialog").showModal();
+      try {
+        const params = new URLSearchParams({ provider, limit: "40" });
+        if (keyId) params.set("keyId", keyId);
+        const data = await callFunction(`/adminProviderKeyEvents?${params.toString()}`);
+        renderProviderKeyEvents(data);
+      } catch (error) {
+        setInlineError($("providerKeyEventsBody"), error.message || "加载 Key 日志失败");
+      }
+    }
+
+    function renderProviderKeyEvents(data = {}) {
+      const events = Array.isArray(data.events) ? data.events : [];
+      if (!events.length) {
+        $("providerKeyEventsBody").innerHTML = `<div class="empty">暂无 Key 事件。可以先点“检测全部 Key”生成新的检测记录。</div>`;
+        return;
+      }
+
+      $("providerKeyEventsBody").innerHTML = events.map((event) => {
+        const ok = event.outcome === "success";
+        const tone = ok ? "ok" : providerTone({ status: event.status });
+        return `
+          <div class="list-row">
+            <div class="row" style="justify-content: space-between;">
+              <div>
+                <div class="strong">${escapeHtml(event.label || event.keyId || "Key")}</div>
+                <div class="muted">${escapeHtml(event.keyId || "")}${event.source ? ` · ${escapeHtml(event.source)}` : ""}</div>
+              </div>
+              <span class="pill ${tone}">${escapeHtml(providerStatusLabel(event.status || event.outcome))}</span>
+            </div>
+            <div class="compact-fields">
+              <div class="compact-line"><span class="compact-label">时间</span><span class="compact-value">${escapeHtml(formatDate(event.createdAt) || "未知")}</span></div>
+              <div class="compact-line"><span class="compact-label">结果</span><span class="compact-value">${escapeHtml(ok ? "成功" : "失败")}</span></div>
+              ${event.message ? `<div class="compact-line"><span class="compact-label">信息</span><span class="compact-value">${escapeHtml(event.message)}</span></div>` : ""}
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function openProviderHealthRuns() {
+      setLoading($("providerHealthRunsBody"), "加载巡检记录...");
+      $("providerHealthRunsDialog").showModal();
+      try {
+        const data = await callFunction("/adminProviderKeyHealthRuns?limit=30");
+        renderProviderHealthRuns(data);
+      } catch (error) {
+        setInlineError($("providerHealthRunsBody"), error.message || "加载巡检记录失败");
+      }
+    }
+
+    async function runProviderHealthNow() {
+      if (!confirm("立即巡检所有模型 Key？这会检测各服务 Key，并在当前 Key 不可用时自动切换。")) return;
+      try {
+        const data = await callFunction("/adminProviderKeyHealthRunNow", {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+        showMessage(
+          `巡检完成：可用 ${Number(data.okKeyCount || 0)}/${Number(data.checkedKeyCount || 0)}，修复 ${Number(data.repairedCount || 0)}`,
+          Number(data.failedKeyCount || 0) ? "warn" : "ok",
+        );
+        await loadModelQuotaStatus(false);
+        if ($("providerHealthRunsDialog").open) {
+          await openProviderHealthRuns();
+        }
+      } catch (error) {
+        showMessage(error.message || "立即巡检失败", "warn");
+      }
+    }
+
+    async function cleanupProviderMaintenanceNow() {
+      if (!confirm("立即清理旧 Key 日志和旧巡检记录？不会删除 Key、密钥或累计统计。")) return;
+      try {
+        const data = await callFunction("/adminProviderKeyMaintenanceCleanupNow", {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+        showMessage(
+          `清理完成：Key 日志 ${Number(data.deletedEvents || 0)} 条，巡检记录 ${Number(data.deletedHealthRuns || 0)} 条`,
+          "ok",
+        );
+        if ($("providerHealthRunsDialog").open) {
+          await openProviderHealthRuns();
+        }
+      } catch (error) {
+        showMessage(error.message || "清理旧日志失败", "warn");
+      }
+    }
+
+    function renderProviderHealthRuns(data = {}) {
+      const runs = Array.isArray(data.runs) ? data.runs : [];
+      if (!runs.length) {
+        $("providerHealthRunsBody").innerHTML = `<div class="empty">暂无巡检记录。可以点“立即巡检”生成一条记录。</div>`;
+        return;
+      }
+
+      $("providerHealthRunsBody").innerHTML = runs.map((run) => {
+        const resultLines = Array.isArray(run.results)
+          ? run.results.map((item) => {
+            const repaired = item.repaired ? `，切换 ${item.previousSelectedKeyId || "旧 Key"} → ${item.selectedKeyId || "新 Key"}` : "";
+            const error = item.error ? `，${item.error}` : "";
+            return `${item.provider}: 可用 ${Number(item.okCount || 0)}/${Number(item.checkedCount || 0)}${Number(item.failedCount || 0) ? `，失败 ${Number(item.failedCount || 0)}` : ""}${repaired}${error}`;
+          })
+          : [];
+        return `
+          <div class="list-row">
+            <div class="row" style="justify-content: space-between;">
+              <div>
+                <div class="strong">${escapeHtml(formatDate(run.checkedAt) || "未知时间")}</div>
+                <div class="muted">${escapeHtml(run.id || "")}</div>
+              </div>
+              <span class="pill ${run.failedKeyCount ? "warn" : "ok"}">${escapeHtml(run.failedKeyCount ? "有异常" : "正常")}</span>
+            </div>
+            <div class="compact-fields">
+              <div class="compact-line"><span class="compact-label">Key</span><span class="compact-value">可用 ${escapeHtml(run.okKeyCount || 0)} / ${escapeHtml(run.checkedKeyCount || 0)}</span></div>
+              <div class="compact-line"><span class="compact-label">修复</span><span class="compact-value">${escapeHtml(run.repairedCount || 0)}</span></div>
+              ${resultLines.length ? `<div class="compact-line"><span class="compact-label">服务</span><span class="compact-value">${resultLines.map(escapeHtml).join("<br>")}</span></div>` : ""}
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    const modelIssueStatuses = new Set([
+      "deleted",
+      "disabled",
+      "exhausted",
+      "insufficient_balance",
+      "invalid",
+      "invalid_secret",
+      "missing_secret",
+      "network_error",
+      "not_configured",
+      "not_wired",
+      "pending_configuration",
+      "rate_limited",
+      "request_failed",
+      "unavailable",
+    ]);
+
+    function isModelIssueStatus(status) {
+      return modelIssueStatuses.has(String(status || "").toLowerCase());
+    }
+
+    function getTimeValue(value) {
+      const time = Date.parse(value || "");
+      return Number.isFinite(time) ? time : 0;
+    }
+
+    function hasUnresolvedKeyFailure(key = {}) {
+      const stats = key.stats || {};
+      const lastFailure = Math.max(getTimeValue(stats.lastFailureAt), getTimeValue(key.lastFailureAt));
+      if (!lastFailure) return false;
+      const lastSuccess = Math.max(getTimeValue(stats.lastSuccessAt), getTimeValue(key.lastSuccessAt));
+      return lastFailure >= lastSuccess;
+    }
+
+    function isProviderKeyIssue(key = {}) {
+      return key.ok === false
+        || isModelIssueStatus(key.status)
+        || Boolean(key.error || key.lastFailureMessage)
+        || hasUnresolvedKeyFailure(key);
+    }
+
+    function isProviderIssue(provider = {}) {
+      const keys = Array.isArray(provider.keyPool?.keys) ? provider.keyPool.keys : [];
+      return provider.ok === false
+        || isModelIssueStatus(provider.status)
+        || Boolean(provider.error)
+        || (Array.isArray(provider.missingSecrets) && provider.missingSecrets.length > 0)
+        || keys.some(isProviderKeyIssue);
+    }
+
+    function getModelIssueSummary(providers = []) {
+      return providers.reduce((summary, provider) => {
+        const keys = Array.isArray(provider.keyPool?.keys) ? provider.keyPool.keys : [];
+        const issueKeyCount = keys.filter(isProviderKeyIssue).length;
+        summary.providerCount += isProviderIssue(provider) ? 1 : 0;
+        summary.keyCount += issueKeyCount;
+        summary.totalKeyCount += keys.length;
+        return summary;
+      }, {
+        providerCount: 0,
+        keyCount: 0,
+        totalKeyCount: 0,
+      });
+    }
+
+    function getRepairableIssueProviders(providers = []) {
+      return providers.filter((provider) => {
+        const keys = Array.isArray(provider.keyPool?.keys) ? provider.keyPool.keys : [];
+        return isProviderIssue(provider) && keys.length > 0;
+      });
+    }
+
+    async function repairModelIssueKeys() {
+      if (state.modelQuotaRepairing) return;
+      const providers = Array.isArray(state.modelQuota?.providers) ? state.modelQuota.providers : [];
+      const repairableProviders = getRepairableIssueProviders(providers);
+      if (!repairableProviders.length) {
+        showMessage("没有可自动修复的异常 Key；缺密钥的服务需要先添加 SK", "warn");
+        return;
+      }
+
+      state.modelQuotaRepairing = true;
+      renderModelQuotaStatus();
+      const results = [];
+      try {
+        for (const provider of repairableProviders) {
+          const data = await callFunction("/adminProviderKeyPoolCheckAll", {
+            method: "POST",
+            body: JSON.stringify({ provider: provider.provider, autoSelect: true }),
+          });
+          results.push({
+            provider: provider.label || provider.provider,
+            checked: Number(data.checkedCount || 0),
+            ok: Number(data.okCount || 0),
+            failed: Number(data.failedCount || 0),
+            repaired: Boolean(data.repaired),
+          });
+        }
+        const checked = results.reduce((sum, item) => sum + item.checked, 0);
+        const ok = results.reduce((sum, item) => sum + item.ok, 0);
+        const failed = results.reduce((sum, item) => sum + item.failed, 0);
+        const repaired = results.filter((item) => item.repaired).length;
+        const failedProviders = results.filter((item) => item.failed && !item.repaired).map((item) => item.provider);
+        const message = [
+          `已检测 ${repairableProviders.length} 个服务，Key 可用 ${ok}/${checked}`,
+          failed ? `失败 ${failed}` : "",
+          repaired ? `自动切换 ${repaired} 个服务` : "无需切换",
+          failedProviders.length ? `仍需处理：${failedProviders.slice(0, 3).join("、")}` : "",
+        ].filter(Boolean).join("，");
+        showMessage(message, failedProviders.length ? "warn" : "ok");
+      } catch (error) {
+        showMessage(error.message || "一键修复异常 Key 失败", "warn");
+      } finally {
+        state.modelQuotaRepairing = false;
+        await loadModelQuotaStatus(false);
+      }
+    }
+
+    async function copyModelIssueReport() {
+      const report = buildModelIssueReport();
+      if (!report) {
+        showMessage("暂无可复制的模型额度数据", "warn");
+        return;
+      }
+      try {
+        await writeClipboardText(report);
+        showMessage("异常报告已复制", "ok");
+      } catch (error) {
+        console.warn("[modelQuota] copy report failed", error);
+        showMessage("复制失败，可以刷新后再试", "warn");
+      }
+    }
+
+    async function writeClipboardText(text) {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      if (!ok) throw new Error("Clipboard copy failed");
+    }
+
+    function buildModelIssueReport() {
+      const data = state.modelQuota;
+      if (!data || data.error) return "";
+      const providers = Array.isArray(data.providers) ? data.providers : [];
+      if (!providers.length) return "";
+
+      const issueSummary = getModelIssueSummary(providers);
+      const issueProviders = providers.filter(isProviderIssue);
+      const latestRun = data.latestHealthRun || {};
+      const lines = [
+        "模型额度异常报告",
+        `生成时间：${formatDate(new Date())}`,
+        data.checkedAt ? `额度更新时间：${formatDate(data.checkedAt)}` : "额度更新时间：暂无",
+      ];
+
+      if (latestRun.checkedAt) {
+        const checked = Number(latestRun.checkedKeyCount || 0);
+        const ok = Number(latestRun.okKeyCount || 0);
+        const failed = Number(latestRun.failedKeyCount || 0);
+        const repaired = Number(latestRun.repairedCount || 0);
+        lines.push(`最近巡检：${formatDate(latestRun.checkedAt)}，Key 可用 ${ok}/${checked}，失败 ${failed}，修复 ${repaired}`);
+      }
+
+      lines.push(`异常服务：${issueSummary.providerCount}/${providers.length}`);
+      lines.push(`异常 Key：${issueSummary.keyCount}/${issueSummary.totalKeyCount}`);
+
+      if (!issueProviders.length) {
+        lines.push("");
+        lines.push("当前没有异常服务或 Key。");
+        return lines.join("\n");
+      }
+
+      issueProviders.forEach((provider, index) => {
+        const keys = Array.isArray(provider.keyPool?.keys) ? provider.keyPool.keys : [];
+        const issueKeys = keys.filter(isProviderKeyIssue);
+        const selectedKey = keys.find((key) => key.selected);
+        const providerName = provider.label || provider.provider || "Provider";
+        const message = compactReportText(provider.error || provider.message || providerSecretNote(provider));
+        const reliability = getProviderReliability(provider);
+
+        lines.push("");
+        lines.push(`${index + 1}. ${providerName}${provider.provider ? `（${provider.provider}）` : ""}`);
+        lines.push(`   状态：${providerStatusLabel(provider.status)}${provider.ok === false ? " / 不可用" : ""}`);
+        lines.push(`   Key 保障：${reliability.label}，${reliability.summary}${reliability.action ? ` ${reliability.action}` : ""}`);
+        if (message) lines.push(`   说明：${message}`);
+        getProviderBalanceReportLines(provider).forEach((line) => lines.push(`   ${line}`));
+        if (selectedKey) lines.push(`   当前 Key：${getProviderKeyReportName(selectedKey)}（${providerStatusLabel(selectedKey.status)}）`);
+        if (issueKeys.length) {
+          lines.push(`   异常 Key：${issueKeys.length}/${keys.length}`);
+          issueKeys.forEach((key) => {
+            const keyDetails = getProviderKeyReportDetails(key);
+            lines.push(`   - ${getProviderKeyReportName(key)}：${providerStatusLabel(key.status)}${key.selected ? "，当前使用" : ""}${keyDetails.length ? `，${keyDetails.join("，")}` : ""}`);
+          });
+        } else if (keys.length) {
+          lines.push(`   Key：${keys.length} 个，暂无异常 Key`);
+        }
+      });
+
+      return lines.join("\n");
+    }
+
+    function compactReportText(value) {
+      return String(value || "").replace(/\s+/g, " ").trim();
+    }
+
+    function getProviderKeyReportName(key = {}) {
+      const base = key.source === "primary" ? "主 SK" : key.label || "备用 SK";
+      if (!key.id || key.id === "primary") return base;
+      return `${base} (${key.id})`;
+    }
+
+    function getProviderBalanceReportLines(provider = {}) {
+      const balanceInfos = Array.isArray(provider.balanceInfos) ? provider.balanceInfos : [];
+      if (balanceInfos.length) {
+        return balanceInfos.map((info) => {
+          const currency = info.currency || "余额";
+          return `余额 ${currency}：${formatMoneyValue(info.totalBalance, currency)}，赠送 ${formatMoneyValue(info.grantedBalance, currency)}，充值 ${formatMoneyValue(info.toppedUpBalance, currency)}`;
+        });
+      }
+      if (provider.totalBalance !== undefined && provider.totalBalance !== null) {
+        return [`余额：${formatMoneyValue(provider.totalBalance)}`];
+      }
+      return [];
+    }
+
+    function getProviderKeyReportDetails(key = {}) {
+      const stats = key.stats || {};
+      const details = [];
+      if (key.source !== "primary") details.push(`顺序 ${Number(key.priority || 0)}`);
+      if (key.fingerprint?.sha256) details.push(`指纹 ${key.fingerprint.sha256}`);
+      if (key.totalBalance !== undefined && key.totalBalance !== null) details.push(`余额 ${formatMoneyValue(key.totalBalance)}`);
+      if (stats.successCount !== undefined || stats.failureCount !== undefined) {
+        details.push(`成功 ${Number(stats.successCount || 0)} / 失败 ${Number(stats.failureCount || 0)}`);
+      }
+      const lastFailure = formatDate(stats.lastFailureAt || key.lastFailureAt);
+      if (lastFailure) details.push(`最近失败 ${lastFailure}`);
+      const message = compactReportText(key.lastFailureMessage || stats.lastMessage || key.message || key.error);
+      if (message) details.push(message);
+      return details;
+    }
+
+    function renderModelQuotaStatus() {
+      const target = $("modelQuotaStatus");
+      const data = state.modelQuota;
+      if (!data) {
+        setLoading(target, "加载模型额度...");
+        return;
+      }
+      if (data.error) {
+        setInlineError(target, data.error);
+        return;
+      }
+
+      const providers = Array.isArray(data.providers) ? data.providers : [];
+      if (!providers.length) {
+        target.innerHTML = `<div class="empty">暂无模型额度数据</div>`;
+        return;
+      }
+
+      const checkedAt = formatDate(data.checkedAt);
+      const healthSummary = renderLatestProviderHealthRun(data.latestHealthRun);
+      const issueSummary = getModelIssueSummary(providers);
+      const reliabilitySummary = getProviderReliabilitySummary(providers);
+      const repairableProviderCount = getRepairableIssueProviders(providers).length;
+      const visibleProviders = state.modelQuotaOnlyIssues ? providers.filter(isProviderIssue) : providers;
+      target.innerHTML = `
+        <div class="model-quota-summary">
+          <span class="pill ${data.ok ? "ok" : "warn"}">${data.ok ? "DeepSeek 可用" : "DeepSeek 需要检查"}</span>
+          <span class="pill ${issueSummary.providerCount || issueSummary.keyCount ? "warn" : "ok"}">异常服务 ${escapeHtml(issueSummary.providerCount)} / Key ${escapeHtml(issueSummary.keyCount)}</span>
+          <span class="pill ${reliabilitySummary.dangerCount ? "danger" : reliabilitySummary.warnCount ? "warn" : "ok"}">Key 保障 ${escapeHtml(reliabilitySummary.dangerCount ? `高风险 ${reliabilitySummary.dangerCount}` : reliabilitySummary.warnCount ? `需关注 ${reliabilitySummary.warnCount}` : "稳定")}</span>
+          <span class="muted">${checkedAt ? `更新时间 ${escapeHtml(checkedAt)}` : "暂未记录更新时间"}</span>
+          ${healthSummary}
+          <button type="button" class="secondary" data-toggle-model-issues>${state.modelQuotaOnlyIssues ? "显示全部" : "只看异常"}</button>
+          <button type="button" class="secondary" data-toggle-model-auto-refresh>${state.modelQuotaAutoRefresh ? "停止自动刷新" : "自动刷新"}</button>
+          ${state.modelQuotaAutoRefresh ? `<span class="muted">每 60 秒自动更新</span>` : ""}
+          <button type="button" class="secondary" data-repair-model-issues ${repairableProviderCount && !state.modelQuotaRepairing ? "" : "disabled"}>${state.modelQuotaRepairing ? "修复中..." : "一键修复异常 Key"}</button>
+          <button type="button" class="secondary" data-copy-model-issue-report>复制异常报告</button>
+          <button type="button" class="secondary" data-run-provider-health>立即巡检</button>
+          <button type="button" class="secondary" data-provider-health-runs>巡检记录</button>
+          <button type="button" class="secondary" data-cleanup-provider-maintenance>清理旧日志</button>
+        </div>
+        ${visibleProviders.length
+          ? `<div class="model-quota-grid">${visibleProviders.map(renderModelProviderCard).join("")}</div>`
+          : `<div class="empty">当前没有异常服务或 Key。</div>`}
+      `;
+    }
+
+    function renderLatestProviderHealthRun(run) {
+      if (!run || !run.checkedAt) return "";
+      const failed = Number(run.failedKeyCount || 0);
+      const repaired = Number(run.repairedCount || 0);
+      const checked = Number(run.checkedKeyCount || 0);
+      const ok = Number(run.okKeyCount || 0);
+      const tone = failed ? "warn" : "ok";
+      return `
+        <span class="pill ${tone}">最近巡检 ${escapeHtml(formatDate(run.checkedAt) || "")}</span>
+        <span class="muted">Key 可用 ${escapeHtml(ok)} / ${escapeHtml(checked)}${failed ? `，失败 ${escapeHtml(failed)}` : ""}${repaired ? `，修复 ${escapeHtml(repaired)}` : ""}</span>
+      `;
+    }
+
+    function renderModelProviderCard(provider) {
+      const tone = providerTone(provider);
+      const message = provider.error || provider.message || providerSecretNote(provider) || providerDefaultNote(provider);
+      return `
+        <div class="model-quota-card">
+          <div class="model-quota-head">
+            <div>
+              <div class="strong">${escapeHtml(provider.label || provider.provider || "Provider")}</div>
+              <div class="model-quota-meta">${escapeHtml(providerKindLabel(provider.kind))}</div>
+            </div>
+            <span class="pill ${tone}">${escapeHtml(providerStatusLabel(provider.status))}</span>
+          </div>
+          ${renderProviderBalance(provider)}
+          ${renderProviderReliability(provider)}
+          ${renderProviderKeyPool(provider)}
+          ${message ? `<div class="model-quota-note">${escapeHtml(message)}</div>` : ""}
+          ${renderProviderSecretActions(provider)}
+        </div>
+      `;
+    }
+
+    function getProviderReliability(provider = {}) {
+      const keys = Array.isArray(provider.keyPool?.keys) ? provider.keyPool.keys : [];
+      const route = getProviderRuntimeKeyRoute(keys);
+      const issueKeys = keys.filter(isProviderKeyIssue);
+      const selectedKey = keys.find((key) => key.selected);
+      const backupCount = route.filter((key) => key.source !== "primary").length;
+      const hasMissingSecrets = Array.isArray(provider.missingSecrets) && provider.missingSecrets.length > 0;
+      const selectedIssue = selectedKey ? isProviderKeyIssue(selectedKey) : false;
+
+      if (hasMissingSecrets || provider.configured === false || !route.length) {
+        return {
+          tone: "danger",
+          label: "高风险",
+          summary: "当前没有可用于运行调用的 Key。",
+          action: "先替换主密钥，或批量添加备用 SK。",
+        };
+      }
+
+      if (provider.ok === false || isModelIssueStatus(provider.status) || selectedIssue) {
+        return {
+          tone: "danger",
+          label: "高风险",
+          summary: selectedIssue ? "当前优先使用的 Key 有异常。" : "当前服务状态异常。",
+          action: "建议点击一键修复异常 Key，或补充新的备用 SK。",
+        };
+      }
+
+      if (route.length < 2) {
+        return {
+          tone: "warn",
+          label: "单 Key",
+          summary: "运行时只有 1 个可用 Key。",
+          action: "建议至少添加 1 个备用 SK，避免余额或限流时中断。",
+        };
+      }
+
+      if (issueKeys.length) {
+        return {
+          tone: "warn",
+          label: "有隐患",
+          summary: `仍有 ${issueKeys.length} 个 Key 最近异常，当前运行候选 ${route.length} 个。`,
+          action: "可以查看 Key 日志，或重置失败状态后重新检测。",
+        };
+      }
+
+      return {
+        tone: "ok",
+        label: "稳",
+        summary: `运行候选 ${route.length} 个，备用 ${backupCount} 个。`,
+        action: "当前有可切换余量。",
+      };
+    }
+
+    function getProviderReliabilitySummary(providers = []) {
+      return providers.reduce((summary, provider) => {
+        const reliability = getProviderReliability(provider);
+        if (reliability.tone === "danger") summary.dangerCount += 1;
+        if (reliability.tone === "warn") summary.warnCount += 1;
+        if (reliability.tone === "ok") summary.okCount += 1;
+        return summary;
+      }, {
+        dangerCount: 0,
+        warnCount: 0,
+        okCount: 0,
+      });
+    }
+
+    function renderProviderReliability(provider = {}) {
+      const reliability = getProviderReliability(provider);
+      return `
+        <div class="model-reliability ${reliability.tone === "ok" ? "" : reliability.tone}">
+          <div class="model-reliability-head">
+            <div class="strong">Key 保障</div>
+            <span class="pill ${reliability.tone}">${escapeHtml(reliability.label)}</span>
+          </div>
+          <div class="model-quota-note">${escapeHtml(reliability.summary)}</div>
+          ${reliability.action ? `<div class="model-quota-note">${escapeHtml(reliability.action)}</div>` : ""}
+        </div>
+      `;
+    }
+
+    function renderProviderSecretActions(provider) {
+      const secretNames = Array.isArray(provider.secretNames) && provider.secretNames.length
+        ? provider.secretNames
+        : Array.isArray(provider.missingSecrets) ? provider.missingSecrets : [];
+      const keys = Array.isArray(provider.keyPool?.keys) ? provider.keyPool.keys : [];
+      const checkAllAction = keys.length
+        ? `
+          <button type="button" class="secondary" data-check-provider-keys="${escapeAttr(provider.provider)}">检测全部 Key</button>
+          <button type="button" class="secondary" data-check-provider-keys="${escapeAttr(provider.provider)}" data-auto-select="true">检测并修复</button>
+          <button type="button" class="secondary" data-reset-provider-keys="${escapeAttr(provider.provider)}">重置失败状态</button>
+          <button type="button" class="secondary" data-provider="${escapeAttr(provider.provider)}" data-provider-key-events data-label="${escapeAttr(provider.label || provider.provider)}">查看 Key 日志</button>
+        `
+        : "";
+      if (!secretNames.length && !checkAllAction) return "";
+      const poolSecretNames = secretNames.filter((secretName) => {
+        const config = getSecretConfig(secretName);
+        return config.poolSupported !== false && config.keyKind !== "admin_key";
+      });
+      return `
+        <div class="model-quota-actions">
+          ${checkAllAction}
+          ${secretNames.map((secretName) => {
+            const config = getSecretConfig(secretName);
+            return `<button type="button" class="secondary" data-replace-secret="${escapeAttr(secretName)}">${escapeHtml(secretActionLabel(config))}</button>`;
+          }).join("")}
+          ${poolSecretNames.map((secretName) => {
+            const config = getSecretConfig(secretName);
+            return `<button type="button" class="secondary" data-add-secret="${escapeAttr(secretName)}">批量添加备用 ${escapeHtml(config.label || "SK")}</button>`;
+          }).join("")}
+        </div>
+      `;
+    }
+
+    function secretActionLabel(config) {
+      if (config.keyKind === "admin_key") return `替换 ${config.label || config.secretName}`;
+      return `替换 ${config.label || "SK"}`;
+    }
+
+    function renderProviderBalance(provider) {
+      const balanceInfos = Array.isArray(provider.balanceInfos) ? provider.balanceInfos : [];
+      if (balanceInfos.length) {
+        return `
+          <div class="model-quota-balance">
+            ${balanceInfos.map((info) => `
+              <div class="model-quota-line">
+                <div class="kv-label">${escapeHtml(info.currency || "余额")}</div>
+                <div class="kv-value">${escapeHtml(formatMoneyValue(info.totalBalance, info.currency))}</div>
+                <div class="model-quota-note">
+                  赠送 ${escapeHtml(formatMoneyValue(info.grantedBalance, info.currency))}
+                  <br>
+                  充值 ${escapeHtml(formatMoneyValue(info.toppedUpBalance, info.currency))}
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        `;
+      }
+
+      const lines = [];
+      if (provider.modelCount !== undefined && provider.modelCount !== null) {
+        lines.push(`
+          <div class="model-quota-line">
+            <div class="kv-label">可用模型</div>
+            <div class="kv-value">${escapeHtml(provider.modelCount)}</div>
+            ${Array.isArray(provider.sampleModels) && provider.sampleModels.length
+              ? `<div class="model-quota-note">${escapeHtml(provider.sampleModels.join(", "))}</div>`
+              : ""}
+          </div>
+        `);
+      }
+      if (provider.usageCost) {
+        const cost = provider.usageCost;
+        lines.push(`
+          <div class="model-quota-line">
+            <div class="kv-label">近 7 天成本</div>
+            <div class="kv-value">${cost.ok ? escapeHtml(formatMoneyValue(cost.total || 0, cost.currency || "USD")) : escapeHtml(providerStatusLabel(cost.status))}</div>
+            ${cost.message ? `<div class="model-quota-note">${escapeHtml(cost.message)}</div>` : ""}
+          </div>
+        `);
+      }
+      if (lines.length) {
+        return `<div class="model-quota-balance">${lines.join("")}</div>`;
+      }
+
+      if (provider.totalBalance !== undefined && provider.totalBalance !== null) {
+        return `
+          <div class="model-quota-balance">
+            <div class="model-quota-line">
+              <div class="kv-label">总余额</div>
+              <div class="kv-value">${escapeHtml(formatMoneyValue(provider.totalBalance))}</div>
+            </div>
+          </div>
+        `;
+      }
+
+      return `<div class="model-quota-note">${escapeHtml(providerDefaultNote(provider))}</div>`;
+    }
+
+    function renderProviderKeyPool(provider) {
+      const pool = provider.keyPool || {};
+      const keys = Array.isArray(pool.keys) ? pool.keys : [];
+      const visibleKeys = state.modelQuotaOnlyIssues ? keys.filter(isProviderKeyIssue) : keys;
+      const poolCount = Number(pool.total ?? keys.filter((key) => key.source !== "primary").length);
+      if (!keys.length) {
+        return `<div class="model-quota-note">Key：暂无可用 Key。可以先添加备用 SK。</div>`;
+      }
+
+      return `
+        <div class="model-quota-note">
+          Key：${escapeHtml(keys.length)} 个，备用 ${escapeHtml(poolCount)} 个。点击卡片即可切换当前优先使用的 Key。
+        </div>
+        ${renderProviderRuntimeKeyRoute(keys)}
+        ${renderProviderKeySelectionNote(pool)}
+        ${visibleKeys.length
+          ? `<div class="model-key-grid">${visibleKeys.map((key) => renderProviderKeyCard(provider, key)).join("")}</div>`
+          : `<div class="model-quota-note">当前服务没有异常 Key。</div>`}
+      `;
+    }
+
+    function renderProviderRuntimeKeyRoute(keys = []) {
+      const route = getProviderRuntimeKeyRoute(keys);
+      if (!route.length) return "";
+      return `
+        <div class="model-quota-note">
+          运行调用顺序：
+          <div class="model-key-route">
+            ${route.map((key, index) => `
+              <span class="model-key-step ${key.selected ? "current" : ""}">
+                ${escapeHtml(index + 1)}. ${escapeHtml(getProviderKeyRouteLabel(key))}
+              </span>
+            `).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    function getProviderRuntimeKeyRoute(keys = []) {
+      return keys
+        .filter(isRuntimeKeyCandidate)
+        .slice()
+        .sort((a, b) => {
+          if (a.selected !== b.selected) return a.selected ? -1 : 1;
+          if (a.source === "primary" && b.source !== "primary") return -1;
+          if (a.source !== "primary" && b.source === "primary") return 1;
+          return Number(a.priority || 0) - Number(b.priority || 0);
+        });
+    }
+
+    function isRuntimeKeyCandidate(key = {}) {
+      if (key.source === "primary") return true;
+      return !["deleted", "disabled", "invalid", "exhausted"].includes(String(key.status || "active"));
+    }
+
+    function getProviderKeyRouteLabel(key = {}) {
+      const name = key.source === "primary" ? "主 SK" : key.label || key.id || "备用 SK";
+      return key.selected ? `${name}（当前）` : name;
+    }
+
+    function renderProviderKeySelectionNote(pool = {}) {
+      const selection = pool.selection || {};
+      const autoSwitch = pool.autoSwitch || null;
+      if (autoSwitch?.keyId) {
+        return `<div class="model-quota-note">已自动切换到 ${escapeHtml(autoSwitch.keyId)}，原因：${escapeHtml(autoSwitch.reason || "检测到可用 Key")}</div>`;
+      }
+      if (selection.autoSelected) {
+        return `<div class="model-quota-note">当前 Key 由系统自动选择${selection.autoSelectedReason ? `：${escapeHtml(selection.autoSelectedReason)}` : ""}</div>`;
+      }
+      return "";
+    }
+
+    function renderProviderKeyCard(provider, key) {
+      const status = String(key.status || "active");
+      const disabled = ["deleted", "disabled", "invalid", "exhausted"].includes(status);
+      return `
+        <div class="model-key-card ${key.selected ? "selected" : ""} ${disabled ? "disabled" : ""}"
+          data-select-key="${escapeAttr(key.id)}"
+          data-provider="${escapeAttr(provider.provider)}">
+          <div class="model-key-head">
+            <div>
+              <div class="strong">${escapeHtml(key.source === "primary" ? "主 SK" : key.label || key.id)}</div>
+              <div class="model-quota-note">${escapeHtml(key.id === "primary" ? "Primary" : key.id)}</div>
+            </div>
+            <span class="pill ${key.selected ? "ok" : providerTone(key)}">${escapeHtml(key.selected ? "当前使用" : providerStatusLabel(key.status))}</span>
+          </div>
+          ${renderProviderKeyCardDetails(key)}
+          <div class="model-key-actions">
+            ${renderProviderKeyCardActions(provider, key, disabled)}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderProviderKeyCardDetails(key) {
+      const lines = [];
+      const stats = key.stats || {};
+      if (key.source !== "primary") lines.push(`顺序 ${Number(key.priority || 0)}`);
+      if (key.fingerprint?.sha256) lines.push(`指纹 ${key.fingerprint.sha256}`);
+      if (stats.successCount !== undefined || stats.failureCount !== undefined) {
+        lines.push(`运行统计 成功 ${Number(stats.successCount || 0)} / 失败 ${Number(stats.failureCount || 0)}`);
+      }
+      if (key.totalBalance !== undefined && key.totalBalance !== null) lines.push(`余额 ${formatMoneyValue(key.totalBalance)}`);
+      if (stats.lastSuccessAt) lines.push(`最近成功 ${formatDate(stats.lastSuccessAt)}`);
+      if (stats.lastFailureAt) lines.push(`最近失败 ${formatDate(stats.lastFailureAt)}`);
+      if (stats.lastMessage) lines.push(`最近事件 ${stats.lastMessage}`);
+      if (key.lastUsedAt) lines.push(`最后使用 ${formatDate(key.lastUsedAt)}`);
+      if (key.lastFailureAt) lines.push(`最后失败 ${formatDate(key.lastFailureAt)}`);
+      if (key.lastFailureMessage) lines.push(key.lastFailureMessage);
+      if (key.message) lines.push(key.message);
+      return lines.length
+        ? `<div class="model-quota-note">${lines.map(escapeHtml).join("<br>")}</div>`
+        : "";
+    }
+
+    function renderProviderKeyCardActions(provider, key, disabled) {
+      const providerAttr = escapeAttr(provider.provider);
+      const keyAttr = escapeAttr(key.id);
+      const labelAttr = escapeAttr(key.label || key.id);
+      const actions = [];
+      actions.push(`<button type="button" class="secondary" data-provider="${providerAttr}" data-check-key="${keyAttr}">检测</button>`);
+      actions.push(`<button type="button" class="secondary" data-provider="${providerAttr}" data-provider-key-events data-key-id="${keyAttr}" data-label="${labelAttr}">日志</button>`);
+      if (!key.selected && !disabled) {
+        actions.push(`<button type="button" class="secondary" data-provider="${providerAttr}" data-select-key="${keyAttr}">使用这个</button>`);
+      }
+      if (key.source !== "primary") {
+        actions.push(`<button type="button" class="secondary" data-provider="${providerAttr}" data-rename-key="${keyAttr}" data-current-label="${labelAttr}">重命名</button>`);
+        actions.push(`<button type="button" class="secondary" data-provider="${providerAttr}" data-move-key="${keyAttr}" data-direction="up">上移</button>`);
+        actions.push(`<button type="button" class="secondary" data-provider="${providerAttr}" data-move-key="${keyAttr}" data-direction="down">下移</button>`);
+        if (String(key.status || "") === "active") {
+          actions.push(`<button type="button" class="secondary" data-provider="${providerAttr}" data-key-id="${keyAttr}" data-key-status="disabled">停用</button>`);
+        } else if (["disabled", "exhausted", "invalid"].includes(String(key.status || ""))) {
+          actions.push(`<button type="button" class="secondary" data-provider="${providerAttr}" data-key-id="${keyAttr}" data-key-status="active">启用/重试</button>`);
+        }
+        actions.push(`<button type="button" class="danger" data-provider="${providerAttr}" data-delete-key="${keyAttr}">删除</button>`);
+      }
+      return actions.join("");
+    }
+
+    function providerTone(provider = {}) {
+      const status = String(provider.status || "").toLowerCase();
+      if (provider.ok || ["active", "available", "configured"].includes(status)) return "ok";
+      if (["deleted", "exhausted", "insufficient_balance", "invalid", "missing_secret", "invalid_secret", "request_failed", "network_error"].includes(status)) return "danger";
+      if (["disabled", "not_wired", "unavailable", "pending_configuration"].includes(status)) return "warn";
+      return "";
+    }
+
+    function providerStatusLabel(status) {
+      return ({
+        active: "可用",
+        available: "可用",
+        configured: "已配置",
+        deleted: "已删除",
+        disabled: "已停用",
+        exhausted: "已用尽",
+        invalid: "无效",
+        insufficient_balance: "余额不足",
+        invalid_secret: "密钥无效",
+        missing_secret: "缺少密钥",
+        network_error: "网络异常",
+        not_wired: "未接入",
+        rate_limited: "请求受限",
+        request_failed: "查询失败",
+        unavailable: "不可用",
+      })[status] || status || "未知";
+    }
+
+    function providerKindLabel(kind) {
+      return ({
+        llm: "大模型",
+        tts: "语音服务",
+      })[kind] || "服务";
+    }
+
+    function providerSecretNote(provider = {}) {
+      const secrets = Array.isArray(provider.missingSecrets) ? provider.missingSecrets.filter(Boolean) : [];
+      return secrets.length ? `缺少 ${secrets.join(", ")}` : "";
+    }
+
+    function providerDefaultNote(provider = {}) {
+      if (provider.quotaInspectable === false) return "当前只能检查接入或密钥状态，暂未接入余额接口。";
+      if (provider.configured === false) return "需要先配置密钥后才能查询额度。";
+      return "暂未返回余额明细。";
+    }
+
+    function formatMoneyValue(value, currency = "") {
+      if (value === undefined || value === null || value === "") return "未知";
+      const number = Number(value);
+      const amount = Number.isFinite(number)
+        ? number.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+        : String(value);
+      return currency ? `${amount} ${currency}` : amount;
     }
 
     function renderDashboard() {
