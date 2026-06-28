@@ -22,8 +22,11 @@ public class DialogQuestionInputLayoutSettings : MonoBehaviour
     [Tooltip("Bottom padding between input text and the bubble edge.")]
     [Min(0f)] public float questionInputTextBottomPadding = 16f;
 
+    [Tooltip("Extra top breathing room only when the input reaches its maximum scrollable height.")]
+    [Min(0f)] public float questionInputMaxStateTopPadding = 16f;
+
     [Tooltip("Distance from the bottom edge to the left sparkle button.")]
-    [Min(0f)] public float questionInputLeftButtonBottomInset = 0f;
+    [Min(0f)] public float questionInputLeftButtonBottomInset = 4f;
 
     [Tooltip("Left inset for the text viewport, reserving room for the sparkle button.")]
     [Min(0f)] public float questionInputViewportLeftInset = 112f;
@@ -67,6 +70,7 @@ public class DialogQuestionInputLayoutSettings : MonoBehaviour
         questionInputTextTopPadding = Mathf.Max(0f, questionInputTextTopPadding);
         questionInputTextRightPadding = Mathf.Max(0f, questionInputTextRightPadding);
         questionInputTextBottomPadding = Mathf.Max(0f, questionInputTextBottomPadding);
+        questionInputMaxStateTopPadding = Mathf.Max(0f, questionInputMaxStateTopPadding);
         questionInputLeftButtonBottomInset = Mathf.Max(0f, questionInputLeftButtonBottomInset);
         questionInputViewportLeftInset = Mathf.Max(0f, questionInputViewportLeftInset);
         questionInputViewportRightInset = Mathf.Max(0f, questionInputViewportRightInset);

@@ -55,7 +55,8 @@ public class DialogUI : WindowBase
     private float questionInputTextTopPadding = 16f;
     private float questionInputTextRightPadding = 28f;
     private float questionInputTextBottomPadding = 16f;
-    private float questionInputLeftButtonBottomInset = 0f;
+    private float questionInputMaxStateTopPadding = 16f;
+    private float questionInputLeftButtonBottomInset = 4f;
     private float questionInputViewportLeftInset = 112f;
     private float questionInputViewportRightInset = 64f;
     private float questionInputViewportTopInset = 0f;
@@ -83,6 +84,7 @@ public class DialogUI : WindowBase
     private DialogQuestionInputLayoutSettings _questionInputLayoutSettings;
     private RectTransform _questionInputBgRect;
     private RectTransform _questionInputRect;
+    private RectTransform _questionInputViewportRect;
     private RectTransform _questionInputTextRect;
     private RectTransform _questionInputLeftButtonRect;
     private RectTransform _questionInputScrollbarRect;
@@ -99,6 +101,11 @@ public class DialogUI : WindowBase
     private Vector2 _questionInputOriginalPivot;
     private Vector2 _questionInputOriginalAnchoredPosition;
     private Vector2 _questionInputOriginalSizeDelta;
+    private Vector2 _questionInputViewportOriginalAnchorMin;
+    private Vector2 _questionInputViewportOriginalAnchorMax;
+    private Vector2 _questionInputViewportOriginalPivot;
+    private Vector2 _questionInputViewportOriginalAnchoredPosition;
+    private Vector2 _questionInputViewportOriginalSizeDelta;
     private Vector2 _questionInputTextOriginalAnchorMin;
     private Vector2 _questionInputTextOriginalAnchorMax;
     private Vector2 _questionInputTextOriginalPivot;
@@ -116,6 +123,7 @@ public class DialogUI : WindowBase
     private const float CLOUD_DIALOG_LOAD_RETRY_INTERVAL = 0.5f;
     private const float CHAT_ITEM_DEFAULT_WITH_PADDING_SIZE = 180f;
     private const float QUESTION_INPUT_DRAG_SCROLL_SENSITIVITY = 1.2f;
+    private const string QUESTION_INPUT_TEXT_VIEWPORT_NAME = "__QuestionInputTextViewport";
 
     private class PreparedTTSAudio
     {
@@ -491,6 +499,7 @@ public class DialogUI : WindowBase
             _questionInputLeftButtonRect = FindChildRectTransform(transform, "[Button]MenuLeft");
 
         _questionInputRect = inputField.GetComponent<RectTransform>();
+        _questionInputViewportRect = EnsureQuestionInputTextViewport(inputField);
         _questionInputTextRect = inputField.textComponent != null
             ? inputField.textComponent.rectTransform
             : null;
@@ -525,6 +534,15 @@ public class DialogUI : WindowBase
         _questionInputOriginalPivot = _questionInputRect.pivot;
         _questionInputOriginalAnchoredPosition = _questionInputRect.anchoredPosition;
         _questionInputOriginalSizeDelta = _questionInputRect.sizeDelta;
+
+        if (_questionInputViewportRect != null)
+        {
+            _questionInputViewportOriginalAnchorMin = _questionInputViewportRect.anchorMin;
+            _questionInputViewportOriginalAnchorMax = _questionInputViewportRect.anchorMax;
+            _questionInputViewportOriginalPivot = _questionInputViewportRect.pivot;
+            _questionInputViewportOriginalAnchoredPosition = _questionInputViewportRect.anchoredPosition;
+            _questionInputViewportOriginalSizeDelta = _questionInputViewportRect.sizeDelta;
+        }
 
         TMP_InputField inputField = uiComponent?.questionInputField;
         if (inputField?.textComponent != null)
@@ -571,6 +589,15 @@ public class DialogUI : WindowBase
         _questionInputRect.anchoredPosition = _questionInputOriginalAnchoredPosition;
         _questionInputRect.sizeDelta = _questionInputOriginalSizeDelta;
 
+        if (_questionInputViewportRect != null)
+        {
+            _questionInputViewportRect.anchorMin = _questionInputViewportOriginalAnchorMin;
+            _questionInputViewportRect.anchorMax = _questionInputViewportOriginalAnchorMax;
+            _questionInputViewportRect.pivot = _questionInputViewportOriginalPivot;
+            _questionInputViewportRect.anchoredPosition = _questionInputViewportOriginalAnchoredPosition;
+            _questionInputViewportRect.sizeDelta = _questionInputViewportOriginalSizeDelta;
+        }
+
         if (_questionInputTextRect != null)
         {
             _questionInputTextRect.anchorMin = _questionInputTextOriginalAnchorMin;
@@ -616,6 +643,7 @@ public class DialogUI : WindowBase
         questionInputTextTopPadding = Mathf.Max(0f, _questionInputLayoutSettings.questionInputTextTopPadding);
         questionInputTextRightPadding = Mathf.Max(0f, _questionInputLayoutSettings.questionInputTextRightPadding);
         questionInputTextBottomPadding = Mathf.Max(0f, _questionInputLayoutSettings.questionInputTextBottomPadding);
+        questionInputMaxStateTopPadding = Mathf.Max(0f, _questionInputLayoutSettings.questionInputMaxStateTopPadding);
         questionInputLeftButtonBottomInset = Mathf.Max(0f, _questionInputLayoutSettings.questionInputLeftButtonBottomInset);
         questionInputViewportLeftInset = Mathf.Max(0f, _questionInputLayoutSettings.questionInputViewportLeftInset);
         questionInputViewportRightInset = Mathf.Max(0f, _questionInputLayoutSettings.questionInputViewportRightInset);
@@ -631,6 +659,7 @@ public class DialogUI : WindowBase
     {
         inputField.lineType = TMP_InputField.LineType.MultiLineNewline;
         inputField.resetOnDeActivation = false;
+        _questionInputViewportRect = EnsureQuestionInputTextViewport(inputField);
         EnsureQuestionInputRaycastTarget(inputField);
         EnsureQuestionInputViewportMask(inputField);
         EnsureQuestionInputScrollable(inputField);
@@ -649,6 +678,57 @@ public class DialogUI : WindowBase
             placeholderText.enableCulling = true;
             placeholderText.alignment = TextAlignmentOptions.MidlineLeft;
         }
+    }
+
+    private RectTransform EnsureQuestionInputTextViewport(TMP_InputField inputField)
+    {
+        if (inputField == null)
+            return null;
+
+        RectTransform inputRect = inputField.GetComponent<RectTransform>();
+        if (inputRect == null)
+            return inputField.textViewport;
+
+        RectTransform viewport = inputField.textViewport;
+        if (viewport == null || viewport == inputRect)
+        {
+            Transform existing = inputRect.Find(QUESTION_INPUT_TEXT_VIEWPORT_NAME);
+            viewport = existing as RectTransform;
+            if (viewport == null)
+            {
+                GameObject viewportObject = new GameObject(
+                    QUESTION_INPUT_TEXT_VIEWPORT_NAME,
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(RectMask2D));
+                viewport = viewportObject.GetComponent<RectTransform>();
+                viewport.SetParent(inputRect, false);
+            }
+
+            inputField.textViewport = viewport;
+        }
+
+        if (viewport.GetComponent<RectMask2D>() == null)
+            viewport.gameObject.AddComponent<RectMask2D>();
+
+        viewport.SetAsFirstSibling();
+        StretchToParent(viewport);
+
+        if (inputField.textComponent != null)
+        {
+            RectTransform textRect = inputField.textComponent.rectTransform;
+            if (textRect != null && textRect.parent != viewport)
+                textRect.SetParent(viewport, false);
+        }
+
+        if (inputField.placeholder is TMP_Text placeholderText)
+        {
+            RectTransform placeholderRect = placeholderText.rectTransform;
+            if (placeholderRect != null && placeholderRect.parent != viewport)
+                placeholderRect.SetParent(viewport, false);
+        }
+
+        return viewport;
     }
 
     private static void EnsureQuestionInputViewportMask(TMP_InputField inputField)
@@ -762,7 +842,12 @@ public class DialogUI : WindowBase
         if (scroller == null)
             scroller = inputField.gameObject.AddComponent<TMPInputFieldDragScroller>();
 
-        scroller.Bind(inputField, scrollbar, QUESTION_INPUT_DRAG_SCROLL_SENSITIVITY, questionInputScrollbarVisibleSeconds);
+        scroller.Bind(
+            inputField,
+            scrollbar,
+            QUESTION_INPUT_DRAG_SCROLL_SENSITIVITY,
+            questionInputScrollbarVisibleSeconds,
+            questionInputMaxStateTopPadding);
 
         TMPInputFieldRectStabilizer stabilizer = inputField.GetComponent<TMPInputFieldRectStabilizer>();
         if (stabilizer == null)
@@ -862,6 +947,7 @@ public class DialogUI : WindowBase
         SyncQuestionInputLayoutSettings();
         RestoreQuestionInputOriginalLayout();
         ApplyQuestionInputViewportInsets();
+        ApplyQuestionInputTextViewportLayout(0f);
         ApplyQuestionInputTextAreaAlignment(inputField);
         ApplyQuestionInputTextPadding(inputField);
 
@@ -880,6 +966,9 @@ public class DialogUI : WindowBase
 
         bool expanded = hasText && targetHeight > _questionInputBgOriginalHeight + 1f;
         bool overflowed = IsQuestionInputTextOverflowed(inputField);
+        ApplyQuestionInputTextViewportLayout(overflowed ? questionInputMaxStateTopPadding : 0f);
+        ApplyQuestionInputTextAreaAlignment(inputField);
+        ApplyQuestionInputTextPadding(inputField);
 
         if (inputField.textComponent != null)
         {
@@ -927,6 +1016,18 @@ public class DialogUI : WindowBase
         _questionInputRect.pivot = new Vector2(0.5f, 0.5f);
         _questionInputRect.offsetMin = new Vector2(questionInputViewportLeftInset, questionInputViewportBottomInset);
         _questionInputRect.offsetMax = new Vector2(-questionInputViewportRightInset, -questionInputViewportTopInset);
+    }
+
+    private void ApplyQuestionInputTextViewportLayout(float topInset)
+    {
+        if (_questionInputViewportRect == null)
+            return;
+
+        _questionInputViewportRect.anchorMin = Vector2.zero;
+        _questionInputViewportRect.anchorMax = Vector2.one;
+        _questionInputViewportRect.pivot = new Vector2(0.5f, 0.5f);
+        _questionInputViewportRect.offsetMin = Vector2.zero;
+        _questionInputViewportRect.offsetMax = new Vector2(0f, -Mathf.Max(0f, topInset));
     }
 
     private void ApplyQuestionInputTextAreaAlignment(TMP_InputField inputField)
@@ -3203,6 +3304,7 @@ public class TMPInputFieldDragScroller : MonoBehaviour, IInitializePotentialDrag
     [SerializeField] private Scrollbar verticalScrollbar;
     [SerializeField] private float dragSensitivity = 1f;
     [SerializeField] private float scrollbarVisibleSeconds = 0.7f;
+    [SerializeField] private float scrollEndTopPadding = 16f;
 
     private const float DefaultScrollbarVisibleSeconds = 0.7f;
 
@@ -3215,7 +3317,12 @@ public class TMPInputFieldDragScroller : MonoBehaviour, IInitializePotentialDrag
     private bool hasCanScrollCache;
     private bool cachedCanScroll;
 
-    public void Bind(TMP_InputField field, Scrollbar scrollbar, float sensitivity, float visibleSeconds = DefaultScrollbarVisibleSeconds)
+    public void Bind(
+        TMP_InputField field,
+        Scrollbar scrollbar,
+        float sensitivity,
+        float visibleSeconds = DefaultScrollbarVisibleSeconds,
+        float endTopPadding = 0f)
     {
         if (verticalScrollbar != null)
             verticalScrollbar.onValueChanged.RemoveListener(OnScrollbarValueChanged);
@@ -3224,6 +3331,7 @@ public class TMPInputFieldDragScroller : MonoBehaviour, IInitializePotentialDrag
         verticalScrollbar = scrollbar;
         dragSensitivity = Mathf.Max(0.1f, sensitivity);
         scrollbarVisibleSeconds = Mathf.Max(0.1f, visibleSeconds);
+        scrollEndTopPadding = Mathf.Max(0f, endTopPadding);
         rootCanvas = inputField != null ? inputField.GetComponentInParent<Canvas>() : null;
         InvalidateCanScrollCache();
 
@@ -3351,7 +3459,7 @@ public class TMPInputFieldDragScroller : MonoBehaviour, IInitializePotentialDrag
         float canvasScale = rootCanvas != null && rootCanvas.scaleFactor > 0f
             ? rootCanvas.scaleFactor
             : 1f;
-        float scrollableHeight = Mathf.Max(1f, GetContentHeight() - GetViewportHeight());
+        float scrollableHeight = Mathf.Max(1f, GetScrollableHeight());
         float normalizedDelta = (deltaY / canvasScale / scrollableHeight) * dragSensitivity;
 
         ShowScrollbar();
@@ -3421,6 +3529,11 @@ public class TMPInputFieldDragScroller : MonoBehaviour, IInitializePotentialDrag
         return TMPInputFieldScrollUtility.GetViewportHeight(inputField);
     }
 
+    private float GetScrollableHeight()
+    {
+        return Mathf.Max(0f, GetContentHeight() - GetViewportHeight() - scrollEndTopPadding);
+    }
+
     private void ShowScrollbar()
     {
         if (verticalScrollbar == null || !CanScroll())
@@ -3454,7 +3567,7 @@ public class TMPInputFieldDragScroller : MonoBehaviour, IInitializePotentialDrag
             return;
         }
 
-        float scrollableHeight = Mathf.Max(0f, GetContentHeight() - GetViewportHeight());
+        float scrollableHeight = GetScrollableHeight();
         Vector2 position = textRect.anchoredPosition;
         textRect.anchoredPosition = new Vector2(position.x, Mathf.Clamp01(value) * scrollableHeight);
         SyncCaretRectToTextRect(textRect);
