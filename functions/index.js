@@ -175,6 +175,11 @@ const SECRET_CACHE_TTL_MS = 5 * 60 * 1000;
 const PROVIDER_KEY_EVENT_RETENTION_DAYS = 30;
 const PROVIDER_KEY_HEALTH_RUN_RETENTION_DAYS = 90;
 const PROVIDER_KEY_CLEANUP_BATCH_LIMIT = 300;
+const PROVIDER_KEY_TEMPORARY_FAILURE_COOLDOWNS_MS = Object.freeze({
+  network_error: 2 * 60 * 1000,
+  provider_unavailable: 2 * 60 * 1000,
+  rate_limited: 10 * 60 * 1000,
+});
 const VOLCANO_TTS_V3_URL = "https://openspeech.bytedance.com/api/v3/tts/unidirectional";
 
 const FREE_AI_DAILY_LIMIT = 30;
@@ -4357,6 +4362,18 @@ function getMillisFromFirestoreValue(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function getProviderKeyCooldownUntilMillis(data = {}) {
+  const status = String(data.lastFailureStatus || "").toLowerCase();
+  const cooldownMs = PROVIDER_KEY_TEMPORARY_FAILURE_COOLDOWNS_MS[status] || 0;
+  if (!cooldownMs) return 0;
+  const lastFailureMillis = getMillisFromFirestoreValue(data.lastFailureAt);
+  return lastFailureMillis > 0 ? lastFailureMillis + cooldownMs : 0;
+}
+
+function isProviderKeyCoolingDown(data = {}, now = Date.now()) {
+  return getProviderKeyCooldownUntilMillis(data) > now;
+}
+
 function serializeFirestoreTime(value) {
   const millis = getMillisFromFirestoreValue(value);
   return millis > 0 ? new Date(millis).toISOString() : null;
@@ -4977,6 +4994,7 @@ async function getProviderKeyCandidates(provider, primarySecretName, primarySecr
   const candidates = [];
   const normalizedProvider = normalizePoolProvider(provider);
   const selectedKeyId = await getProviderSelectedKeyId(normalizedProvider);
+  const now = Date.now();
   const primaryValue = await getRuntimeSecretValue(primarySecretName, primarySecretParam);
   if (primaryValue) {
     candidates.push({
@@ -4989,6 +5007,8 @@ async function getProviderKeyCandidates(provider, primarySecretName, primarySecr
       value: primaryValue,
       priority: 0,
       selected: selectedKeyId === "primary",
+      coolingDown: false,
+      cooldownUntilMillis: 0,
     });
   }
 
@@ -5003,6 +5023,8 @@ async function getProviderKeyCandidates(provider, primarySecretName, primarySecr
       forceRefresh: options.forceRefresh === true,
     });
     if (!value) continue;
+    const cooldownUntilMillis = getProviderKeyCooldownUntilMillis(data);
+    const coolingDown = isProviderKeyCoolingDown(data, now);
     candidates.push({
       id: doc.id,
       source: "pool",
@@ -5013,10 +5035,15 @@ async function getProviderKeyCandidates(provider, primarySecretName, primarySecr
       value,
       priority: Number(data.priority || 0),
       selected: doc.id === selectedKeyId,
+      lastFailureStatus: data.lastFailureStatus || "",
+      lastFailureAt: data.lastFailureAt || null,
+      coolingDown,
+      cooldownUntilMillis,
     });
   }
 
   return candidates.sort((a, b) => {
+    if (a.coolingDown !== b.coolingDown) return a.coolingDown ? 1 : -1;
     if (a.selected !== b.selected) return a.selected ? -1 : 1;
     if (a.source === "primary" && b.source !== "primary") return -1;
     if (a.source !== "primary" && b.source === "primary") return 1;
@@ -5113,7 +5140,15 @@ async function markPoolKeyFailure(candidate, status, message) {
 }
 
 function shouldTryNextProviderKey(status) {
-  return ["insufficient_balance", "invalid_secret", "rate_limited"].includes(String(status || ""));
+  const normalized = String(status || "");
+  return ["insufficient_balance", "invalid_secret", "network_error", "provider_unavailable", "rate_limited"].includes(normalized);
+}
+
+function shouldTryNextProviderHttpFailure(status, httpStatus) {
+  const normalized = String(status || "");
+  if (shouldTryNextProviderKey(normalized)) return true;
+  const code = Number(httpStatus || 0);
+  return normalized === "request_failed" && (code === 408 || code >= 500);
 }
 
 async function attachProviderKeyPool(providerStatus, primarySecretName, primarySecretParam) {
@@ -5486,15 +5521,26 @@ async function callDeepSeek(body, stream) {
   if (!candidates.length) throw new Error("DEEPSEEK_API_KEY is not configured");
 
   const failures = [];
+  const failureHttpStatuses = [];
   for (const candidate of candidates) {
-    const response = await fetch(DEEPSEEK_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${candidate.value}`,
-      },
-      body: JSON.stringify(payload),
-    });
+    let response = null;
+    try {
+      response = await fetch(DEEPSEEK_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${candidate.value}`,
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch (error) {
+      const message = cleanString(error.message || "DeepSeek network request failed.", "", 300);
+      failures.push(`${candidate.label}: network_error ${message}`.slice(0, 700));
+      failureHttpStatuses.push(503);
+      await markPoolKeyFailure(candidate, "network_error", message);
+      if (shouldTryNextProviderKey("network_error")) continue;
+      throw error;
+    }
 
     if (response.ok) {
       await markPoolKeySuccess(candidate);
@@ -5505,12 +5551,13 @@ async function callDeepSeek(body, stream) {
     }
 
     const text = await response.text();
+    failureHttpStatuses.push(response.status);
     const data = parseProviderJson(text);
     const status = providerErrorStatus(response.status);
     const message = compactProviderError(data) || text.slice(0, 500) || `HTTP ${response.status}`;
     failures.push(`${candidate.label}: ${response.status} ${message}`.slice(0, 700));
     await markPoolKeyFailure(candidate, status, message);
-    if (!shouldTryNextProviderKey(status)) {
+    if (!shouldTryNextProviderHttpFailure(status, response.status)) {
       const err = new Error(`DeepSeek error ${response.status}: ${message}`);
       err.status = response.status;
       throw err;
@@ -5518,8 +5565,18 @@ async function callDeepSeek(body, stream) {
   }
 
   const err = new Error(`All DeepSeek keys failed: ${failures.join(" | ")}`);
-  err.status = failures.length ? 402 : 500;
+  err.status = getAggregateProviderFailureStatus(failureHttpStatuses);
   throw err;
+}
+
+function getAggregateProviderFailureStatus(statuses = []) {
+  const codes = statuses.map(Number).filter((code) => Number.isFinite(code) && code > 0);
+  if (!codes.length) return 500;
+  if (codes.some((code) => code === 408 || code >= 500)) return 503;
+  if (codes.some((code) => code === 429)) return 429;
+  if (codes.some((code) => code === 402)) return 402;
+  if (codes.some((code) => code === 401 || code === 403)) return 401;
+  return codes[0] || 500;
 }
 
 function parseMoneyAmount(value) {
@@ -6005,20 +6062,66 @@ async function checkDeepSeekBalance() {
     selectedKeyId = available.keyId;
   }
   const poolById = new Map(keyPool.keys.map((key) => [key.id, key]));
+  const checkByKeyId = new Map(keyChecks.map((check) => [check.keyId, check]));
   const statsByKeyId = keyPool.statsByKeyId || {};
-  const enrichedPoolKeys = keyChecks.map((check) => ({
-    ...(poolById.get(check.keyId) || {}),
-    id: check.keyId,
-    source: check.source,
-    label: check.label,
-    status: check.status,
-    ok: check.ok,
-    selected: check.keyId === selectedKeyId,
-    stats: statsByKeyId[check.keyId] || emptyProviderKeyStats("deepseek", check.keyId),
-    totalBalance: check.totalBalance,
-    balanceInfos: check.balanceInfos || [],
-    message: check.message || "",
-  }));
+  const primaryCheck = checkByKeyId.get("primary") || null;
+  const enrichedPoolKeys = [];
+
+  if (primaryCheck) {
+    enrichedPoolKeys.push({
+      id: "primary",
+      source: "primary",
+      provider: "deepseek",
+      baseSecretName: "DEEPSEEK_API_KEY",
+      label: "主 SK",
+      status: primaryCheck.status,
+      ok: primaryCheck.ok,
+      selected: selectedKeyId === "primary",
+      stats: statsByKeyId.primary || emptyProviderKeyStats("deepseek", "primary"),
+      totalBalance: primaryCheck.totalBalance,
+      balanceInfos: primaryCheck.balanceInfos || [],
+      message: primaryCheck.message || "",
+      readable: true,
+      runtimeCandidate: true,
+    });
+  }
+
+  for (const key of keyPool.keys) {
+    const check = checkByKeyId.get(key.id) || null;
+    enrichedPoolKeys.push({
+      ...key,
+      source: "pool",
+      status: check?.status || key.status || "active",
+      ok: check?.ok === true,
+      selected: key.id === selectedKeyId,
+      stats: statsByKeyId[key.id] || emptyProviderKeyStats("deepseek", key.id),
+      totalBalance: check?.totalBalance ?? key.totalBalance ?? null,
+      balanceInfos: check?.balanceInfos || key.balanceInfos || [],
+      message: check?.message || key.message || "",
+      readable: Boolean(check),
+      runtimeCandidate: Boolean(check),
+    });
+  }
+
+  for (const check of keyChecks) {
+    if (check.keyId === "primary" || poolById.has(check.keyId)) continue;
+    enrichedPoolKeys.push({
+      id: check.keyId,
+      source: check.source || "pool",
+      provider: "deepseek",
+      baseSecretName: "DEEPSEEK_API_KEY",
+      label: check.label || check.keyId,
+      status: check.status,
+      ok: check.ok,
+      selected: check.keyId === selectedKeyId,
+      stats: statsByKeyId[check.keyId] || emptyProviderKeyStats("deepseek", check.keyId),
+      totalBalance: check.totalBalance,
+      balanceInfos: check.balanceInfos || [],
+      message: check.message || "",
+      readable: true,
+      runtimeCandidate: true,
+    });
+  }
 
   return {
     provider: "deepseek",
@@ -6046,9 +6149,9 @@ async function checkDeepSeekBalance() {
       },
       autoSwitch,
       keyCount: enrichedPoolKeys.length,
-      activeCount: keyChecks.filter((item) => item.ok).length,
-      exhaustedCount: keyChecks.filter((item) => item.status === "insufficient_balance").length,
-      invalidCount: keyChecks.filter((item) => item.status === "invalid_secret").length,
+      activeCount: enrichedPoolKeys.filter((item) => item.ok === true).length,
+      exhaustedCount: enrichedPoolKeys.filter((item) => ["exhausted", "insufficient_balance"].includes(String(item.status || ""))).length,
+      invalidCount: enrichedPoolKeys.filter((item) => ["invalid", "invalid_secret"].includes(String(item.status || ""))).length,
       keys: enrichedPoolKeys,
     },
     message: available
@@ -6084,6 +6187,7 @@ function providerErrorStatus(httpStatus) {
   if (httpStatus === 401 || httpStatus === 403) return "invalid_secret";
   if (httpStatus === 402) return "insufficient_balance";
   if (httpStatus === 429) return "rate_limited";
+  if (httpStatus === 408 || httpStatus >= 500) return "provider_unavailable";
   return "request_failed";
 }
 

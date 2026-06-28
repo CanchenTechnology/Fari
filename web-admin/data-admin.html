@@ -520,6 +520,12 @@
       color: var(--primary);
     }
 
+    .model-key-step.cooldown {
+      border-color: rgba(155, 100, 31, 0.35);
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
     .split {
       display: grid;
       grid-template-columns: minmax(0, 1fr) 390px;
@@ -1885,10 +1891,13 @@
       dashboard: null,
       modelQuota: null,
       modelQuotaOnlyIssues: false,
+      modelQuotaOnlyCooldown: false,
       modelQuotaAutoRefresh: false,
       modelQuotaAutoRefreshTimer: null,
+      modelQuotaCooldownTimer: null,
       modelQuotaLoading: false,
       modelQuotaRepairing: false,
+      modelQuotaReleasingCooldown: false,
       users: [],
       userListMeta: null,
       userDetail: null,
@@ -1955,6 +1964,7 @@
         state.token = "";
         state.currentUser = null;
         setModelQuotaAutoRefresh(false, { silent: true });
+        setModelQuotaCooldownTicker(false);
         $("authView").hidden = false;
         $("appView").hidden = true;
         return;
@@ -2021,6 +2031,19 @@
         renderModelQuotaStatus();
         return;
       }
+      const modelCooldownToggle = event.target.closest("[data-toggle-model-cooldown]");
+      if (modelCooldownToggle) {
+        event.stopPropagation();
+        state.modelQuotaOnlyCooldown = !state.modelQuotaOnlyCooldown;
+        renderModelQuotaStatus();
+        return;
+      }
+      const releaseCooldownButton = event.target.closest("[data-release-model-cooldowns]");
+      if (releaseCooldownButton) {
+        event.stopPropagation();
+        releaseAllModelCooldownKeys();
+        return;
+      }
       const modelAutoRefreshToggle = event.target.closest("[data-toggle-model-auto-refresh]");
       if (modelAutoRefreshToggle) {
         event.stopPropagation();
@@ -2031,6 +2054,12 @@
       if (copyModelIssueButton) {
         event.stopPropagation();
         copyModelIssueReport();
+        return;
+      }
+      const exportKeyInventoryButton = event.target.closest("[data-export-model-key-inventory]");
+      if (exportKeyInventoryButton) {
+        event.stopPropagation();
+        exportModelKeyInventory();
         return;
       }
       const repairModelIssuesButton = event.target.closest("[data-repair-model-issues]");
@@ -2079,6 +2108,17 @@
           statusButton.dataset.provider,
           statusButton.dataset.keyId,
           statusButton.dataset.keyStatus,
+          statusButton.dataset.keyStatusIntent || "",
+        );
+        return;
+      }
+      const enableSelectButton = event.target.closest("[data-enable-select-key]");
+      if (enableSelectButton) {
+        event.stopPropagation();
+        enableAndSelectProviderKey(
+          enableSelectButton.dataset.provider,
+          enableSelectButton.dataset.enableSelectKey,
+          enableSelectButton.dataset.currentStatus || "",
         );
         return;
       }
@@ -2327,6 +2367,7 @@
 
     function setActiveModule(moduleKey) {
       state.activeModule = moduleKey;
+      if (moduleKey !== "dashboard") setModelQuotaCooldownTicker(false);
       document.querySelectorAll("[data-module]").forEach((button) => {
         button.classList.toggle("active", button.dataset.module === moduleKey);
       });
@@ -2381,6 +2422,7 @@
     }
 
     const modelQuotaAutoRefreshIntervalMs = 60 * 1000;
+    const modelQuotaCooldownTickMs = 1000;
 
     function setModelQuotaAutoRefresh(enabled, options = {}) {
       state.modelQuotaAutoRefresh = Boolean(enabled);
@@ -2390,7 +2432,7 @@
       }
       if (state.modelQuotaAutoRefresh) {
         state.modelQuotaAutoRefreshTimer = setInterval(() => {
-          if (state.activeModule !== "dashboard" || !state.token || state.modelQuotaLoading || state.modelQuotaRepairing) return;
+          if (state.activeModule !== "dashboard" || !state.token || state.modelQuotaLoading || state.modelQuotaRepairing || state.modelQuotaReleasingCooldown) return;
           loadModelQuotaStatus(false);
         }, modelQuotaAutoRefreshIntervalMs);
       }
@@ -2402,19 +2444,44 @@
       );
     }
 
+    function setModelQuotaCooldownTicker(enabled) {
+      const shouldRun = Boolean(enabled);
+      if (!shouldRun && state.modelQuotaCooldownTimer) {
+        clearInterval(state.modelQuotaCooldownTimer);
+        state.modelQuotaCooldownTimer = null;
+        return;
+      }
+      if (shouldRun && !state.modelQuotaCooldownTimer) {
+        state.modelQuotaCooldownTimer = setInterval(() => {
+          if (state.activeModule !== "dashboard" || !state.token) {
+            setModelQuotaCooldownTicker(false);
+            return;
+          }
+          if (state.modelQuotaLoading || state.modelQuotaRepairing || state.modelQuotaReleasingCooldown) return;
+          renderModelQuotaStatus();
+        }, modelQuotaCooldownTickMs);
+      }
+    }
+
     async function loadModelQuotaStatus(showToast = false) {
       if (state.modelQuotaLoading) {
         if (showToast) showMessage("模型额度正在刷新", "");
         return;
       }
+      const hasCurrentQuota = state.modelQuota && !state.modelQuota.error;
+      const shouldReplaceContent = showToast || !hasCurrentQuota;
       state.modelQuotaLoading = true;
-      setLoading($("modelQuotaStatus"), "加载模型额度...");
+      if (shouldReplaceContent) setLoading($("modelQuotaStatus"), "加载模型额度...");
       try {
         state.modelQuota = await callFunction("/adminModelQuotaStatus");
         renderModelQuotaStatus();
         if (showToast) showMessage("模型额度已刷新", "ok");
       } catch (error) {
         const message = error.message || "加载模型额度失败";
+        if (!shouldReplaceContent) {
+          showMessage(message, "warn");
+          return;
+        }
         state.modelQuota = { error: message };
         renderModelQuotaStatus();
         if (showToast) showMessage(message, "warn");
@@ -2639,17 +2706,44 @@
       }
     }
 
-    async function updateProviderKeyStatus(provider, keyId, status) {
+    async function updateProviderKeyStatus(provider, keyId, status, intent = "") {
       if (!provider || !keyId || !status || keyId === "primary") return;
       try {
         await callFunction("/adminProviderKeyPoolStatusUpdate", {
           method: "POST",
           body: JSON.stringify({ provider, keyId, status }),
         });
-        showMessage(status === "active" ? "备用 Key 已启用" : "备用 Key 已停用", "ok");
+        const message = intent === "cooldown"
+          ? "临时冷却已解除，Key 会回到运行候选顺序"
+          : status === "active" ? "备用 Key 已启用" : "备用 Key 已停用";
+        showMessage(message, "ok");
         await loadModelQuotaStatus(false);
       } catch (error) {
         showMessage(error.message || "更新 Key 状态失败", "warn");
+      }
+    }
+
+    async function enableAndSelectProviderKey(provider, keyId, currentStatus = "") {
+      if (!provider || !keyId || keyId === "primary") return;
+      const status = String(currentStatus || "").toLowerCase();
+      const prompt = status === "disabled"
+        ? "确认启用这个备用 Key，并切换为当前优先使用？"
+        : "确认把这个备用 Key 重置为可尝试状态，并切换为当前优先使用？";
+      if (!confirm(prompt)) return;
+
+      try {
+        await callFunction("/adminProviderKeyPoolStatusUpdate", {
+          method: "POST",
+          body: JSON.stringify({ provider, keyId, status: "active" }),
+        });
+        await callFunction("/adminProviderKeyPoolSelect", {
+          method: "POST",
+          body: JSON.stringify({ provider, keyId }),
+        });
+        showMessage("已启用并切换当前 Key", "ok");
+        await loadModelQuotaStatus(false);
+      } catch (error) {
+        showMessage(error.message || "启用并切换 Key 失败", "warn");
       }
     }
 
@@ -2898,10 +2992,17 @@
       "not_configured",
       "not_wired",
       "pending_configuration",
+      "provider_unavailable",
       "rate_limited",
       "request_failed",
       "unavailable",
     ]);
+
+    const modelKeyTemporaryFailureCooldownsMs = {
+      network_error: 2 * 60 * 1000,
+      provider_unavailable: 2 * 60 * 1000,
+      rate_limited: 10 * 60 * 1000,
+    };
 
     function isModelIssueStatus(status) {
       return modelIssueStatuses.has(String(status || "").toLowerCase());
@@ -2910,6 +3011,32 @@
     function getTimeValue(value) {
       const time = Date.parse(value || "");
       return Number.isFinite(time) ? time : 0;
+    }
+
+    function getRuntimeKeyCooldownUntil(key = {}) {
+      const status = String(key.lastFailureStatus || "").toLowerCase();
+      const cooldownMs = modelKeyTemporaryFailureCooldownsMs[status] || 0;
+      const lastFailure = getTimeValue(key.lastFailureAt || key.stats?.lastFailureAt);
+      return cooldownMs && lastFailure ? lastFailure + cooldownMs : 0;
+    }
+
+    function formatDurationRemaining(targetMillis) {
+      const remainingMs = Math.max(0, Number(targetMillis || 0) - Date.now());
+      if (!remainingMs) return "已恢复";
+      const totalSeconds = Math.ceil(remainingMs / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      if (minutes >= 60) {
+        const hours = Math.floor(minutes / 60);
+        const restMinutes = minutes % 60;
+        return `${hours}小时${restMinutes ? `${restMinutes}分` : ""}`;
+      }
+      if (minutes > 0) return `${minutes}分${seconds ? `${seconds}秒` : ""}`;
+      return `${seconds}秒`;
+    }
+
+    function isRuntimeKeyCoolingDown(key = {}) {
+      return key.source !== "primary" && getRuntimeKeyCooldownUntil(key) > Date.now();
     }
 
     function hasUnresolvedKeyFailure(key = {}) {
@@ -2949,6 +3076,110 @@
         keyCount: 0,
         totalKeyCount: 0,
       });
+    }
+
+    function isProviderCoolingDown(provider = {}) {
+      const keys = Array.isArray(provider.keyPool?.keys) ? provider.keyPool.keys : [];
+      return keys.some(isRuntimeKeyCoolingDown);
+    }
+
+    function getModelCooldownSummary(providers = []) {
+      return providers.reduce((summary, provider) => {
+        const keys = Array.isArray(provider.keyPool?.keys) ? provider.keyPool.keys : [];
+        const coolingKeys = keys.filter(isRuntimeKeyCoolingDown);
+        summary.providerCount += coolingKeys.length ? 1 : 0;
+        summary.keyCount += coolingKeys.length;
+        const nextCooldownUntil = coolingKeys
+          .map(getRuntimeKeyCooldownUntil)
+          .filter((time) => time > Date.now())
+          .sort((a, b) => a - b)[0] || 0;
+        if (nextCooldownUntil && (!summary.nextReadyAt || nextCooldownUntil < summary.nextReadyAt)) {
+          summary.nextReadyAt = nextCooldownUntil;
+        }
+        return summary;
+      }, {
+        providerCount: 0,
+        keyCount: 0,
+        nextReadyAt: 0,
+      });
+    }
+
+    function getVisibleModelProviders(providers = []) {
+      return providers.filter((provider) => {
+        if (state.modelQuotaOnlyIssues && !isProviderIssue(provider)) return false;
+        if (state.modelQuotaOnlyCooldown && !isProviderCoolingDown(provider)) return false;
+        return true;
+      });
+    }
+
+    function getVisibleProviderKeys(keys = []) {
+      return keys.filter((key) => {
+        if (state.modelQuotaOnlyIssues && !isProviderKeyIssue(key)) return false;
+        if (state.modelQuotaOnlyCooldown && !isRuntimeKeyCoolingDown(key)) return false;
+        return true;
+      });
+    }
+
+    function getReadyRuntimeKeyRoute(keys = []) {
+      return getProviderRuntimeKeyRoute(keys).filter((key) => !isRuntimeKeyCoolingDown(key));
+    }
+
+    function getCoolingProviderKeys(providers = []) {
+      const items = [];
+      providers.forEach((provider) => {
+        const keys = Array.isArray(provider.keyPool?.keys) ? provider.keyPool.keys : [];
+        keys.filter(isRuntimeKeyCoolingDown).forEach((key) => {
+          items.push({
+            provider: provider.provider,
+            providerLabel: provider.label || provider.provider,
+            keyId: key.id,
+            label: key.label || key.id,
+          });
+        });
+      });
+      return items.filter((item) => item.provider && item.keyId && item.keyId !== "primary");
+    }
+
+    async function releaseAllModelCooldownKeys() {
+      if (state.modelQuotaReleasingCooldown) return;
+      const providers = Array.isArray(state.modelQuota?.providers) ? state.modelQuota.providers : [];
+      const coolingKeys = getCoolingProviderKeys(providers);
+      if (!coolingKeys.length) {
+        showMessage("当前没有冷却中的备用 Key", "");
+        return;
+      }
+      if (!confirm(`确认解除 ${coolingKeys.length} 个冷却中的备用 Key？它们会立刻回到运行候选顺序。`)) return;
+
+      state.modelQuotaReleasingCooldown = true;
+      renderModelQuotaStatus();
+      const failures = [];
+      let releasedCount = 0;
+      try {
+        for (const item of coolingKeys) {
+          try {
+            await callFunction("/adminProviderKeyPoolStatusUpdate", {
+              method: "POST",
+              body: JSON.stringify({
+                provider: item.provider,
+                keyId: item.keyId,
+                status: "active",
+              }),
+            });
+            releasedCount += 1;
+          } catch (error) {
+            failures.push(`${item.providerLabel}/${item.label}: ${error.message || "失败"}`);
+          }
+        }
+        showMessage(
+          failures.length
+            ? `已解除 ${releasedCount} 个，失败 ${failures.length} 个：${failures[0]}`
+            : `已解除 ${releasedCount} 个冷却 Key`,
+          failures.length ? "warn" : "ok",
+        );
+      } finally {
+        state.modelQuotaReleasingCooldown = false;
+        await loadModelQuotaStatus(false);
+      }
     }
 
     function getRepairableIssueProviders(providers = []) {
@@ -3036,6 +3267,143 @@
       if (!ok) throw new Error("Clipboard copy failed");
     }
 
+    function exportModelKeyInventory() {
+      const csv = buildModelKeyInventoryCsv();
+      if (!csv) {
+        showMessage("暂无可导出的 Key 数据", "warn");
+        return;
+      }
+      const checkedAt = formatCompactFileDate(state.modelQuota?.checkedAt || new Date());
+      downloadTextFile(`fari-model-key-inventory-${checkedAt}.csv`, csv, "text/csv;charset=utf-8");
+      showMessage("Key 体检表已导出", "ok");
+    }
+
+    function buildModelKeyInventoryCsv() {
+      const data = state.modelQuota;
+      if (!data || data.error) return "";
+      const providers = Array.isArray(data.providers) ? data.providers : [];
+      if (!providers.length) return "";
+
+      const rows = [];
+      rows.push([
+        "服务",
+        "服务 ID",
+        "服务状态",
+        "Key 保障",
+        "Key 名称",
+        "Key ID",
+        "来源",
+        "当前使用",
+        "运行顺序",
+        "Key 状态",
+        "是否冷却",
+        "冷却剩余",
+        "冷却到",
+        "优先级",
+        "指纹",
+        "余额",
+        "成功次数",
+        "失败次数",
+        "最近成功",
+        "最近失败",
+        "最近事件",
+      ]);
+
+      providers.forEach((provider) => {
+        const keys = Array.isArray(provider.keyPool?.keys) ? provider.keyPool.keys : [];
+        const routeOrder = new Map(getProviderRuntimeKeyRoute(keys).map((key, index) => [key.id, index + 1]));
+        const reliability = getProviderReliability(provider);
+        if (!keys.length) {
+          rows.push([
+            provider.label || provider.provider || "",
+            provider.provider || "",
+            providerStatusLabel(provider.status),
+            reliability.label,
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            provider.message || provider.error || providerSecretNote(provider) || "",
+          ]);
+          return;
+        }
+
+        keys.forEach((key) => {
+          const stats = key.stats || {};
+          const cooldownUntil = getRuntimeKeyCooldownUntil(key);
+          const coolingDown = cooldownUntil > Date.now();
+          rows.push([
+            provider.label || provider.provider || "",
+            provider.provider || "",
+            providerStatusLabel(provider.status),
+            reliability.label,
+            key.source === "primary" ? "主 SK" : key.label || key.id || "",
+            key.id || "",
+            key.source === "primary" ? "主密钥" : "备用密钥",
+            key.selected ? "是" : "否",
+            routeOrder.get(key.id) || "",
+            providerStatusLabel(key.status),
+            coolingDown ? "是" : "否",
+            coolingDown ? formatDurationRemaining(cooldownUntil) : "",
+            coolingDown ? formatDate(new Date(cooldownUntil)) : "",
+            key.source !== "primary" ? Number(key.priority || 0) : "",
+            key.fingerprint?.sha256 || "",
+            key.totalBalance !== undefined && key.totalBalance !== null ? formatMoneyValue(key.totalBalance) : "",
+            stats.successCount !== undefined ? Number(stats.successCount || 0) : "",
+            stats.failureCount !== undefined ? Number(stats.failureCount || 0) : "",
+            formatDate(stats.lastSuccessAt || key.lastSuccessAt) || "",
+            formatDate(stats.lastFailureAt || key.lastFailureAt) || "",
+            stats.lastMessage || key.lastFailureMessage || key.message || key.error || "",
+          ]);
+        });
+      });
+
+      return rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
+    }
+
+    function csvCell(value) {
+      const text = String(value ?? "");
+      if (!/[",\r\n]/.test(text)) return text;
+      return `"${text.replaceAll('"', '""')}"`;
+    }
+
+    function downloadTextFile(filename, content, type = "text/plain;charset=utf-8") {
+      const blob = new Blob([`\uFEFF${content}`], { type });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    function formatCompactFileDate(value) {
+      const date = parseDate(value) || new Date();
+      const pad = (number) => String(number).padStart(2, "0");
+      return [
+        date.getFullYear(),
+        pad(date.getMonth() + 1),
+        pad(date.getDate()),
+        "-",
+        pad(date.getHours()),
+        pad(date.getMinutes()),
+      ].join("");
+    }
+
     function buildModelIssueReport() {
       const data = state.modelQuota;
       if (!data || data.error) return "";
@@ -3043,6 +3411,7 @@
       if (!providers.length) return "";
 
       const issueSummary = getModelIssueSummary(providers);
+      const cooldownSummary = getModelCooldownSummary(providers);
       const issueProviders = providers.filter(isProviderIssue);
       const latestRun = data.latestHealthRun || {};
       const lines = [
@@ -3061,6 +3430,7 @@
 
       lines.push(`异常服务：${issueSummary.providerCount}/${providers.length}`);
       lines.push(`异常 Key：${issueSummary.keyCount}/${issueSummary.totalKeyCount}`);
+      lines.push(`冷却 Key：${cooldownSummary.keyCount}${cooldownSummary.nextReadyAt ? `，最近恢复 ${formatDate(new Date(cooldownSummary.nextReadyAt))}` : ""}`);
 
       if (!issueProviders.length) {
         lines.push("");
@@ -3132,6 +3502,8 @@
       }
       const lastFailure = formatDate(stats.lastFailureAt || key.lastFailureAt);
       if (lastFailure) details.push(`最近失败 ${lastFailure}`);
+      const cooldownUntil = getRuntimeKeyCooldownUntil(key);
+      if (cooldownUntil > Date.now()) details.push(`冷却到 ${formatDate(new Date(cooldownUntil))}`);
       const message = compactReportText(key.lastFailureMessage || stats.lastMessage || key.message || key.error);
       if (message) details.push(message);
       return details;
@@ -3141,16 +3513,19 @@
       const target = $("modelQuotaStatus");
       const data = state.modelQuota;
       if (!data) {
+        setModelQuotaCooldownTicker(false);
         setLoading(target, "加载模型额度...");
         return;
       }
       if (data.error) {
+        setModelQuotaCooldownTicker(false);
         setInlineError(target, data.error);
         return;
       }
 
       const providers = Array.isArray(data.providers) ? data.providers : [];
       if (!providers.length) {
+        setModelQuotaCooldownTicker(false);
         target.innerHTML = `<div class="empty">暂无模型额度数据</div>`;
         return;
       }
@@ -3158,29 +3533,35 @@
       const checkedAt = formatDate(data.checkedAt);
       const healthSummary = renderLatestProviderHealthRun(data.latestHealthRun);
       const issueSummary = getModelIssueSummary(providers);
+      const cooldownSummary = getModelCooldownSummary(providers);
       const reliabilitySummary = getProviderReliabilitySummary(providers);
       const repairableProviderCount = getRepairableIssueProviders(providers).length;
-      const visibleProviders = state.modelQuotaOnlyIssues ? providers.filter(isProviderIssue) : providers;
+      const visibleProviders = getVisibleModelProviders(providers);
       target.innerHTML = `
         <div class="model-quota-summary">
           <span class="pill ${data.ok ? "ok" : "warn"}">${data.ok ? "DeepSeek 可用" : "DeepSeek 需要检查"}</span>
           <span class="pill ${issueSummary.providerCount || issueSummary.keyCount ? "warn" : "ok"}">异常服务 ${escapeHtml(issueSummary.providerCount)} / Key ${escapeHtml(issueSummary.keyCount)}</span>
+          <span class="pill ${cooldownSummary.keyCount ? "warn" : "ok"}">冷却 Key ${escapeHtml(cooldownSummary.keyCount)}${cooldownSummary.nextReadyAt ? `，下个 ${escapeHtml(formatDurationRemaining(cooldownSummary.nextReadyAt))}` : ""}</span>
           <span class="pill ${reliabilitySummary.dangerCount ? "danger" : reliabilitySummary.warnCount ? "warn" : "ok"}">Key 保障 ${escapeHtml(reliabilitySummary.dangerCount ? `高风险 ${reliabilitySummary.dangerCount}` : reliabilitySummary.warnCount ? `需关注 ${reliabilitySummary.warnCount}` : "稳定")}</span>
           <span class="muted">${checkedAt ? `更新时间 ${escapeHtml(checkedAt)}` : "暂未记录更新时间"}</span>
           ${healthSummary}
           <button type="button" class="secondary" data-toggle-model-issues>${state.modelQuotaOnlyIssues ? "显示全部" : "只看异常"}</button>
+          <button type="button" class="secondary" data-toggle-model-cooldown>${state.modelQuotaOnlyCooldown ? "取消冷却筛选" : "只看冷却"}</button>
+          <button type="button" class="secondary" data-release-model-cooldowns ${cooldownSummary.keyCount && !state.modelQuotaReleasingCooldown ? "" : "disabled"}>${state.modelQuotaReleasingCooldown ? "解除中..." : "解除全部冷却"}</button>
           <button type="button" class="secondary" data-toggle-model-auto-refresh>${state.modelQuotaAutoRefresh ? "停止自动刷新" : "自动刷新"}</button>
           ${state.modelQuotaAutoRefresh ? `<span class="muted">每 60 秒自动更新</span>` : ""}
           <button type="button" class="secondary" data-repair-model-issues ${repairableProviderCount && !state.modelQuotaRepairing ? "" : "disabled"}>${state.modelQuotaRepairing ? "修复中..." : "一键修复异常 Key"}</button>
           <button type="button" class="secondary" data-copy-model-issue-report>复制异常报告</button>
+          <button type="button" class="secondary" data-export-model-key-inventory>导出 Key 体检表</button>
           <button type="button" class="secondary" data-run-provider-health>立即巡检</button>
           <button type="button" class="secondary" data-provider-health-runs>巡检记录</button>
           <button type="button" class="secondary" data-cleanup-provider-maintenance>清理旧日志</button>
         </div>
         ${visibleProviders.length
           ? `<div class="model-quota-grid">${visibleProviders.map(renderModelProviderCard).join("")}</div>`
-          : `<div class="empty">当前没有异常服务或 Key。</div>`}
+          : `<div class="empty">${state.modelQuotaOnlyCooldown ? "当前没有冷却中的 Key。" : "当前没有异常服务或 Key。"}</div>`}
       `;
+      setModelQuotaCooldownTicker(cooldownSummary.keyCount > 0);
     }
 
     function renderLatestProviderHealthRun(run) {
@@ -3220,18 +3601,24 @@
     function getProviderReliability(provider = {}) {
       const keys = Array.isArray(provider.keyPool?.keys) ? provider.keyPool.keys : [];
       const route = getProviderRuntimeKeyRoute(keys);
+      const readyRoute = getReadyRuntimeKeyRoute(keys);
+      const coolingCount = route.length - readyRoute.length;
       const issueKeys = keys.filter(isProviderKeyIssue);
       const selectedKey = keys.find((key) => key.selected);
-      const backupCount = route.filter((key) => key.source !== "primary").length;
+      const backupCount = readyRoute.filter((key) => key.source !== "primary").length;
       const hasMissingSecrets = Array.isArray(provider.missingSecrets) && provider.missingSecrets.length > 0;
       const selectedIssue = selectedKey ? isProviderKeyIssue(selectedKey) : false;
 
-      if (hasMissingSecrets || provider.configured === false || !route.length) {
+      if (hasMissingSecrets || provider.configured === false || !readyRoute.length) {
         return {
           tone: "danger",
           label: "高风险",
-          summary: "当前没有可用于运行调用的 Key。",
-          action: "先替换主密钥，或批量添加备用 SK。",
+          summary: coolingCount
+            ? `当前没有可立即使用的 Key，${coolingCount} 个候选仍在冷却。`
+            : "当前没有可用于运行调用的 Key。",
+          action: coolingCount
+            ? "可以等待冷却结束，或确认恢复后解除冷却。"
+            : "先替换主密钥，或批量添加备用 SK。",
         };
       }
 
@@ -3244,12 +3631,16 @@
         };
       }
 
-      if (route.length < 2) {
+      if (readyRoute.length < 2) {
         return {
           tone: "warn",
           label: "单 Key",
-          summary: "运行时只有 1 个可用 Key。",
-          action: "建议至少添加 1 个备用 SK，避免余额或限流时中断。",
+          summary: coolingCount
+            ? `当前只有 1 个可立即使用的 Key，另有 ${coolingCount} 个在冷却。`
+            : "运行时只有 1 个可用 Key。",
+          action: coolingCount
+            ? "冷却结束前切换余量不足，建议保留更多备用 SK。"
+            : "建议至少添加 1 个备用 SK，避免余额或限流时中断。",
         };
       }
 
@@ -3257,7 +3648,7 @@
         return {
           tone: "warn",
           label: "有隐患",
-          summary: `仍有 ${issueKeys.length} 个 Key 最近异常，当前运行候选 ${route.length} 个。`,
+          summary: `仍有 ${issueKeys.length} 个 Key 最近异常，可立即使用 ${readyRoute.length} 个${coolingCount ? `，冷却 ${coolingCount} 个` : ""}。`,
           action: "可以查看 Key 日志，或重置失败状态后重新检测。",
         };
       }
@@ -3265,8 +3656,8 @@
       return {
         tone: "ok",
         label: "稳",
-        summary: `运行候选 ${route.length} 个，备用 ${backupCount} 个。`,
-        action: "当前有可切换余量。",
+        summary: `可立即使用 ${readyRoute.length} 个，备用 ${backupCount} 个${coolingCount ? `，冷却 ${coolingCount} 个` : ""}。`,
+        action: coolingCount ? "冷却结束后可用余量会自动恢复。" : "当前有可切换余量。",
       };
     }
 
@@ -3399,21 +3790,33 @@
     function renderProviderKeyPool(provider) {
       const pool = provider.keyPool || {};
       const keys = Array.isArray(pool.keys) ? pool.keys : [];
-      const visibleKeys = state.modelQuotaOnlyIssues ? keys.filter(isProviderKeyIssue) : keys;
-      const poolCount = Number(pool.total ?? keys.filter((key) => key.source !== "primary").length);
+      const visibleKeys = getVisibleProviderKeys(keys);
+      const runtimeKeys = getProviderRuntimeKeyRoute(keys);
+      const backupKeys = keys.filter((key) => key.source !== "primary");
+      const rawPoolCount = Number(pool.total ?? backupKeys.length);
+      const poolCount = Number.isFinite(rawPoolCount) ? Math.max(0, rawPoolCount) : backupKeys.length;
+      const hiddenBackupCount = Math.max(0, poolCount - backupKeys.length);
+      const filterNote = state.modelQuotaOnlyIssues || state.modelQuotaOnlyCooldown
+        ? `<div class="model-quota-note">当前筛选显示：${escapeHtml(visibleKeys.length)} 个 Key。</div>`
+        : "";
+      const hiddenBackupNote = hiddenBackupCount
+        ? `<div class="model-quota-note">另有 ${escapeHtml(hiddenBackupCount)} 个备用 Key 没进入当前运行候选，可能已用尽、无效、已停用、密钥不可读，或被当前筛选隐藏。</div>`
+        : "";
       if (!keys.length) {
         return `<div class="model-quota-note">Key：暂无可用 Key。可以先添加备用 SK。</div>`;
       }
 
       return `
         <div class="model-quota-note">
-          Key：${escapeHtml(keys.length)} 个，备用 ${escapeHtml(poolCount)} 个。点击卡片即可切换当前优先使用的 Key。
+          当前运行候选：${escapeHtml(runtimeKeys.length)} 个；页面显示 Key：${escapeHtml(keys.length)} 个；备用池记录：${escapeHtml(poolCount)} 个。点击卡片即可切换当前优先使用的 Key。
         </div>
+        ${filterNote}
+        ${hiddenBackupNote}
         ${renderProviderRuntimeKeyRoute(keys)}
         ${renderProviderKeySelectionNote(pool)}
         ${visibleKeys.length
           ? `<div class="model-key-grid">${visibleKeys.map((key) => renderProviderKeyCard(provider, key)).join("")}</div>`
-          : `<div class="model-quota-note">当前服务没有异常 Key。</div>`}
+          : `<div class="model-quota-note">${state.modelQuotaOnlyCooldown ? "当前服务没有冷却中的 Key。" : "当前服务没有异常 Key。"}</div>`}
       `;
     }
 
@@ -3425,7 +3828,7 @@
           运行调用顺序：
           <div class="model-key-route">
             ${route.map((key, index) => `
-              <span class="model-key-step ${key.selected ? "current" : ""}">
+              <span class="model-key-step ${isRuntimeKeyCoolingDown(key) ? "cooldown" : key.selected ? "current" : ""}">
                 ${escapeHtml(index + 1)}. ${escapeHtml(getProviderKeyRouteLabel(key))}
               </span>
             `).join("")}
@@ -3439,6 +3842,9 @@
         .filter(isRuntimeKeyCandidate)
         .slice()
         .sort((a, b) => {
+          const aCooling = isRuntimeKeyCoolingDown(a);
+          const bCooling = isRuntimeKeyCoolingDown(b);
+          if (aCooling !== bCooling) return aCooling ? 1 : -1;
           if (a.selected !== b.selected) return a.selected ? -1 : 1;
           if (a.source === "primary" && b.source !== "primary") return -1;
           if (a.source !== "primary" && b.source === "primary") return 1;
@@ -3448,11 +3854,13 @@
 
     function isRuntimeKeyCandidate(key = {}) {
       if (key.source === "primary") return true;
-      return !["deleted", "disabled", "invalid", "exhausted"].includes(String(key.status || "active"));
+      return !["deleted", "disabled", "invalid", "invalid_secret", "exhausted", "insufficient_balance", "missing_secret"].includes(String(key.status || "active"));
     }
 
     function getProviderKeyRouteLabel(key = {}) {
       const name = key.source === "primary" ? "主 SK" : key.label || key.id || "备用 SK";
+      const cooldownUntil = getRuntimeKeyCooldownUntil(key);
+      if (cooldownUntil > Date.now()) return `${name}（冷却 ${formatDurationRemaining(cooldownUntil)}）`;
       return key.selected ? `${name}（当前）` : name;
     }
 
@@ -3470,7 +3878,7 @@
 
     function renderProviderKeyCard(provider, key) {
       const status = String(key.status || "active");
-      const disabled = ["deleted", "disabled", "invalid", "exhausted"].includes(status);
+      const disabled = key.source !== "primary" && ["deleted", "disabled", "invalid", "invalid_secret", "exhausted", "insufficient_balance", "missing_secret"].includes(status);
       return `
         <div class="model-key-card ${key.selected ? "selected" : ""} ${disabled ? "disabled" : ""}"
           data-select-key="${escapeAttr(key.id)}"
@@ -3501,10 +3909,13 @@
       if (key.totalBalance !== undefined && key.totalBalance !== null) lines.push(`余额 ${formatMoneyValue(key.totalBalance)}`);
       if (stats.lastSuccessAt) lines.push(`最近成功 ${formatDate(stats.lastSuccessAt)}`);
       if (stats.lastFailureAt) lines.push(`最近失败 ${formatDate(stats.lastFailureAt)}`);
+      const cooldownUntil = getRuntimeKeyCooldownUntil(key);
+      if (cooldownUntil > Date.now()) lines.push(`临时冷却 ${formatDurationRemaining(cooldownUntil)}，到 ${formatDate(new Date(cooldownUntil))}`);
       if (stats.lastMessage) lines.push(`最近事件 ${stats.lastMessage}`);
       if (key.lastUsedAt) lines.push(`最后使用 ${formatDate(key.lastUsedAt)}`);
       if (key.lastFailureAt) lines.push(`最后失败 ${formatDate(key.lastFailureAt)}`);
       if (key.lastFailureMessage) lines.push(key.lastFailureMessage);
+      if (key.source !== "primary" && key.runtimeCandidate === false) lines.push("未进入当前运行候选，可先启用/重试后再使用。");
       if (key.message) lines.push(key.message);
       return lines.length
         ? `<div class="model-quota-note">${lines.map(escapeHtml).join("<br>")}</div>`
@@ -3515,6 +3926,7 @@
       const providerAttr = escapeAttr(provider.provider);
       const keyAttr = escapeAttr(key.id);
       const labelAttr = escapeAttr(key.label || key.id);
+      const coolingDown = isRuntimeKeyCoolingDown(key);
       const actions = [];
       actions.push(`<button type="button" class="secondary" data-provider="${providerAttr}" data-check-key="${keyAttr}">检测</button>`);
       actions.push(`<button type="button" class="secondary" data-provider="${providerAttr}" data-provider-key-events data-key-id="${keyAttr}" data-label="${labelAttr}">日志</button>`);
@@ -3527,8 +3939,15 @@
         actions.push(`<button type="button" class="secondary" data-provider="${providerAttr}" data-move-key="${keyAttr}" data-direction="down">下移</button>`);
         if (String(key.status || "") === "active") {
           actions.push(`<button type="button" class="secondary" data-provider="${providerAttr}" data-key-id="${keyAttr}" data-key-status="disabled">停用</button>`);
-        } else if (["disabled", "exhausted", "invalid"].includes(String(key.status || ""))) {
+        } else if (["disabled", "exhausted", "invalid", "insufficient_balance", "invalid_secret", "missing_secret"].includes(String(key.status || ""))) {
           actions.push(`<button type="button" class="secondary" data-provider="${providerAttr}" data-key-id="${keyAttr}" data-key-status="active">启用/重试</button>`);
+          if (!key.selected) {
+            const actionText = String(key.status || "") === "disabled" ? "启用并使用" : "重试并使用";
+            actions.push(`<button type="button" class="secondary" data-provider="${providerAttr}" data-enable-select-key="${keyAttr}" data-current-status="${escapeAttr(key.status || "")}">${actionText}</button>`);
+          }
+        }
+        if (coolingDown) {
+          actions.push(`<button type="button" class="secondary" data-provider="${providerAttr}" data-key-id="${keyAttr}" data-key-status="active" data-key-status-intent="cooldown">解除冷却</button>`);
         }
         actions.push(`<button type="button" class="danger" data-provider="${providerAttr}" data-delete-key="${keyAttr}">删除</button>`);
       }
@@ -3538,8 +3957,8 @@
     function providerTone(provider = {}) {
       const status = String(provider.status || "").toLowerCase();
       if (provider.ok || ["active", "available", "configured"].includes(status)) return "ok";
-      if (["deleted", "exhausted", "insufficient_balance", "invalid", "missing_secret", "invalid_secret", "request_failed", "network_error"].includes(status)) return "danger";
-      if (["disabled", "not_wired", "unavailable", "pending_configuration"].includes(status)) return "warn";
+      if (["deleted", "exhausted", "insufficient_balance", "invalid", "missing_secret", "invalid_secret"].includes(status)) return "danger";
+      if (["disabled", "network_error", "not_wired", "provider_unavailable", "request_failed", "unavailable", "pending_configuration"].includes(status)) return "warn";
       return "";
     }
 
@@ -3557,6 +3976,7 @@
         missing_secret: "缺少密钥",
         network_error: "网络异常",
         not_wired: "未接入",
+        provider_unavailable: "服务临时异常",
         rate_limited: "请求受限",
         request_failed: "查询失败",
         unavailable: "不可用",

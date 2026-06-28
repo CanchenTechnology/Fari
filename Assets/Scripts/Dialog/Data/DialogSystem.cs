@@ -654,7 +654,14 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     {
         content = string.IsNullOrWhiteSpace(content) ? BuildTodayCardMessageContent() : content.Trim();
 
-         ChatMessageData data = new ChatMessageData
+        ChatMessageData existing = GetTodayDivinationMessageForCurrentCard();
+        if (existing != null)
+        {
+            RemoveDuplicateTodayDivinationMessagesForCurrentCard();
+            return existing;
+        }
+
+        ChatMessageData data = new ChatMessageData
         {
             id = mMessageIdCounter++,
             roleType = DialogRoleType.AI,
@@ -672,6 +679,153 @@ public class DialogSystem : MonoSingleton<DialogSystem>
 
         SaveCloudDialogHistory();
         return data;
+    }
+
+    public bool HasTodayDivinationMessageForCurrentCard()
+    {
+        return GetTodayDivinationMessageForCurrentCard() != null;
+    }
+
+    public bool RemoveDuplicateTodayDivinationMessagesForCurrentCard()
+    {
+        ChatMessageData keep = GetTodayDivinationMessageForCurrentCard();
+        if (keep == null) return false;
+
+        bool removed = false;
+        for (int i = mChatMessageList.Count - 1; i >= 0; i--)
+        {
+            ChatMessageData message = mChatMessageList[i];
+            if (ReferenceEquals(message, keep)) continue;
+            if (!IsTodayDivinationMessageForCurrentCard(message)) continue;
+
+            RemoveApiHistoryAssistantMessage(message.content);
+            mChatMessageList.RemoveAt(i);
+            removed = true;
+        }
+
+        if (removed)
+            SaveCloudDialogHistory();
+
+        return removed;
+    }
+
+    private ChatMessageData GetTodayDivinationMessageForCurrentCard()
+    {
+        for (int i = mChatMessageList.Count - 1; i >= 0; i--)
+        {
+            ChatMessageData message = mChatMessageList[i];
+            if (IsTodayDivinationMessageForCurrentCard(message))
+                return message;
+        }
+
+        return null;
+    }
+
+    private bool IsTodayDivinationMessageForCurrentCard(ChatMessageData message)
+    {
+        if (message == null || message.messageType != MsgType.DailyCard)
+            return false;
+
+        string targetContextId = BuildTodayCardContextId(todayCardPayload);
+        string targetDate = ExtractDateKey(todayCardPayload?.generatedAt);
+        if (string.IsNullOrEmpty(targetContextId))
+            return true;
+
+        bool contextMatches = false;
+        if (message.contextAttachments != null)
+        {
+            foreach (ChatContextAttachment context in message.contextAttachments)
+            {
+                if (context == null || context.contextType != ChatContextType.DailyOracle) continue;
+                if (NormalizeContextKey(context.id) == targetContextId)
+                {
+                    contextMatches = true;
+                    break;
+                }
+            }
+        }
+
+        string messageDate = ExtractDailyCardMessageDate(message);
+        if (!contextMatches)
+            return !string.IsNullOrEmpty(targetDate) && (string.IsNullOrEmpty(messageDate) || messageDate == targetDate);
+
+        return string.IsNullOrEmpty(targetDate) || string.IsNullOrEmpty(messageDate) || messageDate == targetDate;
+    }
+
+    private static string BuildTodayCardContextId(TodayCardPayload payload)
+    {
+        if (payload == null || string.IsNullOrWhiteSpace(payload.cardId))
+            return "";
+
+        string orientation = string.IsNullOrWhiteSpace(payload.orientation) ? "upright" : payload.orientation.Trim();
+        return NormalizeContextKey($"today:{payload.cardId.Trim()}:{orientation}");
+    }
+
+    private static string ExtractDailyCardMessageDate(ChatMessageData message)
+    {
+        string date = ExtractDateKey(message?.content);
+        if (!string.IsNullOrEmpty(date)) return date;
+
+        if (message?.contextAttachments == null) return "";
+        foreach (ChatContextAttachment context in message.contextAttachments)
+        {
+            if (context == null || context.contextType != ChatContextType.DailyOracle) continue;
+
+            date = ExtractDateKey(context.createdAt);
+            if (!string.IsNullOrEmpty(date)) return date;
+
+            date = ExtractDateKey(context.payload);
+            if (!string.IsNullOrEmpty(date)) return date;
+        }
+
+        return "";
+    }
+
+    private static string ExtractDateKey(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "";
+
+        if (DateTime.TryParse(value, out DateTime parsed))
+            return parsed.ToString("yyyy-MM-dd");
+
+        for (int i = 0; i <= value.Length - 10; i++)
+        {
+            if (IsDateAt(value, i))
+                return value.Substring(i, 10);
+        }
+
+        return "";
+    }
+
+    private static bool IsDateAt(string value, int start)
+    {
+        return char.IsDigit(value[start])
+            && char.IsDigit(value[start + 1])
+            && char.IsDigit(value[start + 2])
+            && char.IsDigit(value[start + 3])
+            && value[start + 4] == '-'
+            && char.IsDigit(value[start + 5])
+            && char.IsDigit(value[start + 6])
+            && value[start + 7] == '-'
+            && char.IsDigit(value[start + 8])
+            && char.IsDigit(value[start + 9]);
+    }
+
+    private void RemoveApiHistoryAssistantMessage(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return;
+
+        string targetContent = content.Trim();
+        for (int i = mApiMessageHistory.Count - 1; i >= 0; i--)
+        {
+            DeepSeekAPI.Message message = mApiMessageHistory[i];
+            if (message == null) continue;
+            if (!string.Equals(message.role, "assistant", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!string.Equals((message.content ?? "").Trim(), targetContent, StringComparison.Ordinal)) continue;
+
+            mApiMessageHistory.RemoveAt(i);
+            return;
+        }
     }
     public ChatMessageData AddAtFriendMessage(string content)
     {
@@ -2606,9 +2760,14 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     {
         todayCardPayload = payload;
         if (payload == null)
+        {
             RemoveActiveChatContext(ChatContextType.DailyOracle);
+        }
         else
+        {
             AddTodayCardChatContext(payload);
+            RemoveDuplicateTodayDivinationMessagesForCurrentCard();
+        }
     }
 
     /// <summary>

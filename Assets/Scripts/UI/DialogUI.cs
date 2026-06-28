@@ -1613,8 +1613,19 @@ public class DialogUI : WindowBase
     /// </summary>
     public void SendTodayOracleMessage()
     {
+        if (dialogSystem == null)
+            return;
+
+        if (dialogSystem.HasTodayDivinationMessageForCurrentCard())
+        {
+            dialogSystem.RemoveDuplicateTodayDivinationMessagesForCurrentCard();
+            ToastManager.ShowToast("今日神谕已经在对话里了");
+            UpdateChatScrollView();
+            return;
+        }
+
         string content = dialogSystem != null ? dialogSystem.BuildTodayCardMessageContent() : string.Empty;
-        dialogSystem?.AddTodayDivinationMessage(content);
+        dialogSystem.AddTodayDivinationMessage(content);
         UpdateChatScrollView();
     }
     public void SendAtFriendsMessage()

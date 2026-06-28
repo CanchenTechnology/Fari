@@ -372,12 +372,15 @@ public class ChatItem : MonoBehaviour
         msgRect.anchoredPosition = pos;
     }
 
-    private void ApplyItemHeight(float contentHeight, Transform contentTrans, float avatarExtraHeight)
+    private void ApplyItemHeight(float contentHeight, Transform contentTrans, float avatarExtraHeight, bool usePivotAwareTopOffset = false)
     {
         RectTransform tf = gameObject.GetComponent<RectTransform>();
         if (tf == null) return;
 
-        float y = GetTopOffset(contentTrans) + contentHeight;
+        float topOffset = usePivotAwareTopOffset
+            ? GetPivotAwareTopOffset(contentTrans)
+            : GetTopOffset(contentTrans);
+        float y = topOffset + contentHeight;
 
         if (headImage != null && headImage.gameObject.activeSelf && headImage.TryGetComponent(out RectTransform headRect))
             y = Mathf.Max(y, headRect.sizeDelta.y + avatarExtraHeight);
@@ -392,6 +395,18 @@ public class ChatItem : MonoBehaviour
             return Mathf.Max(0f, -contentRect.anchoredPosition.y);
 
         return 0f;
+    }
+
+    private float GetPivotAwareTopOffset(Transform contentTrans)
+    {
+        if (!(contentTrans is RectTransform contentRect))
+            return GetTopOffset(contentTrans);
+
+        float height = contentRect.rect.height;
+        if (height <= 0f)
+            height = Mathf.Abs(contentRect.sizeDelta.y);
+
+        return Mathf.Max(0f, -contentRect.anchoredPosition.y - (1f - contentRect.pivot.y) * height);
     }
 
     private float GetMaxTextWidth()
@@ -520,6 +535,20 @@ public class ChatItem : MonoBehaviour
 
         ApplyItemHeight(targetRect.sizeDelta.y, targetTrans, 0f);
     }
+
+    private void SetDailyCardContentSizeMessage(Transform targetTrans)
+    {
+        if (targetTrans == null) return;
+
+        RectTransform targetRect = targetTrans.GetComponent<RectTransform>();
+        if (targetRect == null) return;
+
+        float height = targetRect.rect.height;
+        if (height <= 0f)
+            height = Mathf.Abs(targetRect.sizeDelta.y);
+
+        ApplyItemHeight(height, targetTrans, 0f, true);
+    }
     private void SetDailyCardMessage()
     {
         // 从 dailyCardTrans 获取 DailyCardBox 组件并填充今日牌数据
@@ -547,7 +576,7 @@ public class ChatItem : MonoBehaviour
                     if (dailyCardBox != null && dailyCardBox.gameObject.activeInHierarchy)
                     {
                         dailyCardBox.SetCardData(card, upright, payload, cardSprite);
-                        SetContentSizeMessage(dailyCardTrans);
+                        SetDailyCardContentSizeMessage(dailyCardTrans);
                     }
                 });
             }
@@ -557,7 +586,7 @@ public class ChatItem : MonoBehaviour
             Debug.LogWarning($"[ChatItem] DailyCardBox 跳过赋值: dailyCardBox={dailyCardBox != null}, TodayCard={DivinationEngine.Instance?.TodayCard.HasValue}");
         }
 
-        SetContentSizeMessage(dailyCardTrans);
+        SetDailyCardContentSizeMessage(dailyCardTrans);
     }
     public void SetFriendContentMessage()
     {
