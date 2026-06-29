@@ -23,12 +23,44 @@ public static class SpreadShuffleBridge
     /// <summary>洗牌完成事件（InteractionCard 订阅）</summary>
     public static event Action<List<(TarotCard card, bool upright)>> ShuffleCompleted;
 
+    private static int _pendingDialogRevealMessageId = -1;
+    private static string _pendingDialogRevealReadingId;
+
     /// <summary>
     /// 洗牌完成时调用（由 TarorSingleSpreadShuffleUI 触发）
     /// </summary>
     public static void NotifyComplete(List<(TarotCard card, bool upright)> drawnCards)
     {
         ShuffleCompleted?.Invoke(drawnCards);
+    }
+
+    /// <summary>
+    /// 标记刚完成抽牌的对话消息。对话卡片恢复这条消息时，应播放一次翻牌动画。
+    /// </summary>
+    public static void MarkPendingDialogReveal(ChatMessageData message)
+    {
+        if (message == null) return;
+
+        _pendingDialogRevealMessageId = message.id;
+        _pendingDialogRevealReadingId = message.readingId;
+    }
+
+    /// <summary>
+    /// 如果当前恢复的是刚抽完的消息，则消费标记并返回 true。
+    /// </summary>
+    public static bool ConsumePendingDialogReveal(ChatMessageData message)
+    {
+        if (message == null) return false;
+
+        bool sameMessage = _pendingDialogRevealMessageId >= 0 && message.id == _pendingDialogRevealMessageId;
+        bool sameReading = !string.IsNullOrEmpty(_pendingDialogRevealReadingId)
+            && message.readingId == _pendingDialogRevealReadingId;
+        if (!sameMessage && !sameReading)
+            return false;
+
+        _pendingDialogRevealMessageId = -1;
+        _pendingDialogRevealReadingId = null;
+        return true;
     }
 
     /// <summary>
@@ -39,5 +71,7 @@ public static class SpreadShuffleBridge
         PendingSpread = null;
         PendingMessageData = null;
         ShuffleCompleted = null;
+        _pendingDialogRevealMessageId = -1;
+        _pendingDialogRevealReadingId = null;
     }
 }

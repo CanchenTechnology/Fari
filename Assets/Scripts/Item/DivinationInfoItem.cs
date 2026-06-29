@@ -17,7 +17,6 @@ public class DivinationInfoItem : MonoBehaviour
         if (iconImage != null)
         {
             iconImage.sprite = iconSprite;
-            iconImage.preserveAspect = true;
         }
         if (cardName != null)
             cardName.text = cardNameStr;

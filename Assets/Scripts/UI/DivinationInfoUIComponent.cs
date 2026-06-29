@@ -13,9 +13,10 @@ using UnityEngine;
 public class DivinationInfoUIComponent:MonoBehaviour
 {
 	public WindowLayer windowLayer = WindowLayer.MainUI;
-	public TarotItem Card1TarotItemTarotItem;
-	public TarotItem Card2TarotItemTarotItem;
-	public TarotItem Card3TarotItemTarotItem;
+	public Image tarotImage1;
+	public Image tarotImage2;
+	public Image tarotImage3;
+
 	public DivinationInfoItem Item1DivinationInfoItemDivinationInfoItem;
 	public DivinationInfoItem Item2DivinationInfoItemDivinationInfoItem;
 	public DivinationInfoItem Item3DivinationInfoItemDivinationInfoItem;
@@ -24,6 +25,7 @@ public class DivinationInfoUIComponent:MonoBehaviour
 	public QuestRowItem Question1QuestRowItem;
 	public QuestRowItem Question2QuestRowItem;
 	public QuestRowItem Question3QuestRowItem;
+	public QuestRowItem Question4QuestRowItem;
 	public Button ContinueChatButton;
 	public Button BackButton;
 	public void InitComponent(WindowBase target)

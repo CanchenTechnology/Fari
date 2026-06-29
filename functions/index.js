@@ -20,6 +20,7 @@ const providerKeySelectionCollection = db.collection("provider_key_selection");
 const providerKeyStatsCollection = db.collection("provider_key_stats");
 const providerKeyEventBucketsCollection = db.collection("provider_key_event_buckets");
 const providerKeyHealthRunsCollection = db.collection("provider_key_health_runs");
+const modelUsageLogsCollection = db.collection("model_usage_logs");
 
 const ALL_SECRET_NAMES = Object.freeze([
   "DEEPSEEK_API_KEY",
@@ -1465,12 +1466,44 @@ async function processDialogueReplyJobDoc(jobSnap) {
     const data = await response.json();
     const content = data?.choices?.[0]?.message?.content || "";
     const body = buildDialogueReplyNotificationBody(job, jobRef.id);
+    await recordModelUsageLog({
+      uid,
+      action: "dialogueReplyScheduler",
+      endpoint: "processStaleDialogueReplyJobs",
+      source: "scheduler",
+      providerMeta: response.modelUsageMeta,
+      model: data.model || response.modelUsageMeta?.model,
+      usage: data.usage || null,
+      outputChars: content.length,
+      membershipStatus: membership.status,
+      context: getModelUsageContext({ ...body, messages, divinerType: job.divinerType }),
+      ok: true,
+      httpStatus: response.modelUsageMeta?.httpStatus || 200,
+    });
 
     await completeDialogueReplyJob(uid, { ...body, messages, divinerType: job.divinerType }, content, "scheduler");
     await enqueueDialogueReplyNotification(uid, body, content);
     return { processed: 1, skipped: "" };
   } catch (error) {
     console.error("[processDialogueReplyJobDoc]", { uid, jobId: jobRef.id, error });
+    await recordModelUsageLog({
+      uid,
+      action: "dialogueReplyScheduler",
+      endpoint: "processStaleDialogueReplyJobs",
+      source: "scheduler",
+      provider: "deepseek",
+      providerMeta: error.providerUsageMeta || error.providerAttempts?.[error.providerAttempts.length - 1] || null,
+      model: job?.model || DEEPSEEK_MODEL,
+      context: getModelUsageContext({
+        ...buildDialogueReplyNotificationBody(job, jobRef.id),
+        messages,
+        divinerType: job.divinerType,
+      }),
+      ok: false,
+      status: error.code || providerErrorStatus(error.status || 500),
+      httpStatus: error.status || null,
+      error: error.message || "Dialogue reply job failed",
+    });
     await failDialogueReplyJob(jobRef, error, "scheduler");
     return { processed: 0, skipped: error.code || "error" };
   }
@@ -4604,6 +4637,281 @@ async function listProviderKeyEvents(provider, keyId = "", limitValue = 30) {
   };
 }
 
+function buildModelUsageProviderMeta(candidate = {}) {
+  return {
+    provider: normalizePoolProvider(candidate.provider || "deepseek"),
+    keyId: cleanString(candidate.id || "primary", "primary", 120),
+    keyLabel: cleanString(candidate.label || candidate.id || "Primary", "Primary", 200),
+    keySource: cleanString(candidate.source || "", "", 80),
+    baseSecretName: cleanString(candidate.baseSecretName || "", "", 120),
+  };
+}
+
+function getModelUsageContext(body = {}) {
+  const messages = sanitizeMessages(body.messages);
+  const requestId = cleanString(body.clientRequestId || body.requestId || body.jobId, "", 180);
+  const notificationType = cleanString(body.notificationType || body.notifyType, "", 80);
+  const divinerType = cleanString(body.divinerType || body.diviner || "", "", 80);
+  const sessionId = cleanString(body.sessionId || body.dialogSessionId || body.conversationId, "", 180);
+  const lastUserMessage = findLastUserMessage(messages);
+  const featureParts = [
+    notificationType,
+    divinerType ? `${divinerType} 对话` : "",
+    streamBooleanLabel(body.stream),
+  ].filter(Boolean);
+
+  return {
+    requestId,
+    jobId: getDialogueReplyJobId(body) || requestId,
+    sessionId,
+    notificationType,
+    divinerType,
+    feature: cleanString(body.feature || body.scene || body.source || featureParts.join(" / "), "", 160),
+    messageCount: messages.length,
+    requestChars: messages.reduce((total, message) => total + String(message.content || "").length, 0),
+    lastUserMessageChars: lastUserMessage.length,
+  };
+}
+
+function streamBooleanLabel(value) {
+  if (value === true) return "流式";
+  return "";
+}
+
+function normalizeModelUsageData(data = {}) {
+  const usage = data.usage && typeof data.usage === "object" ? data.usage : {};
+  const promptTokens = Number(usage.prompt_tokens ?? usage.promptTokens ?? 0);
+  const completionTokens = Number(usage.completion_tokens ?? usage.completionTokens ?? 0);
+  const totalTokens = Number(usage.total_tokens ?? usage.totalTokens ?? promptTokens + completionTokens);
+  return {
+    model: cleanString(data.model || "", "", 120),
+    usage: {
+      promptTokens: Number.isFinite(promptTokens) ? promptTokens : 0,
+      completionTokens: Number.isFinite(completionTokens) ? completionTokens : 0,
+      totalTokens: Number.isFinite(totalTokens) ? totalTokens : 0,
+    },
+  };
+}
+
+function buildModelUsageLogId() {
+  return `${Date.now()}_${crypto.randomBytes(5).toString("hex")}`;
+}
+
+async function recordModelUsageLog(entry = {}) {
+  try {
+    const providerMeta = entry.providerMeta || {};
+    const context = entry.context || {};
+    const normalizedUsage = normalizeModelUsageData({
+      model: entry.model,
+      usage: entry.usage,
+    });
+    await modelUsageLogsCollection.doc(buildModelUsageLogId()).set({
+      uid: cleanString(entry.uid, "", 200),
+      userEmail: cleanString(entry.userEmail, "", 200),
+      action: cleanString(entry.action, "", 80),
+      endpoint: cleanString(entry.endpoint, "", 120),
+      source: cleanString(entry.source, "http", 80),
+      provider: cleanString(providerMeta.provider || entry.provider, "", 80),
+      keyId: cleanString(providerMeta.keyId || entry.keyId, "", 120),
+      keyLabel: cleanString(providerMeta.keyLabel || entry.keyLabel, "", 200),
+      keySource: cleanString(providerMeta.keySource || entry.keySource, "", 80),
+      baseSecretName: cleanString(providerMeta.baseSecretName || entry.baseSecretName, "", 120),
+      model: normalizedUsage.model,
+      outcome: entry.ok === false ? "failure" : "success",
+      status: cleanString(entry.status || (entry.ok === false ? "failure" : "success"), "", 80),
+      httpStatus: Number(entry.httpStatus || 0) || null,
+      error: cleanString(entry.error, "", 500),
+      stream: entry.stream === true,
+      usage: normalizedUsage.usage,
+      outputChars: Number(entry.outputChars || 0) || 0,
+      requestId: cleanString(context.requestId || entry.requestId, "", 180),
+      jobId: cleanString(context.jobId || entry.jobId, "", 180),
+      sessionId: cleanString(context.sessionId || entry.sessionId, "", 180),
+      feature: cleanString(context.feature || entry.feature, "", 160),
+      notificationType: cleanString(context.notificationType || "", "", 80),
+      divinerType: cleanString(context.divinerType || "", "", 80),
+      messageCount: Number(context.messageCount || 0) || 0,
+      requestChars: Number(context.requestChars || 0) || 0,
+      lastUserMessageChars: Number(context.lastUserMessageChars || 0) || 0,
+      membershipStatus: cleanString(entry.membershipStatus, "", 40),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    console.warn("[modelUsage] write failed", error.message);
+  }
+}
+
+function serializeModelUsageLogDoc(doc) {
+  const data = doc.data() || {};
+  const usage = data.usage && typeof data.usage === "object" ? data.usage : {};
+  return {
+    id: doc.id,
+    uid: getAdminScalarText(data.uid, 200),
+    userEmail: getAdminScalarText(data.userEmail, 200),
+    userName: "",
+    action: getAdminScalarText(data.action, 80),
+    endpoint: getAdminScalarText(data.endpoint, 120),
+    source: getAdminScalarText(data.source, 80),
+    provider: getAdminScalarText(data.provider, 80),
+    keyId: getAdminScalarText(data.keyId, 120),
+    keyLabel: getAdminScalarText(data.keyLabel, 200),
+    keySource: getAdminScalarText(data.keySource, 80),
+    model: getAdminScalarText(data.model, 120),
+    outcome: getAdminScalarText(data.outcome, 80),
+    status: getAdminScalarText(data.status, 80),
+    httpStatus: Number(data.httpStatus || 0) || null,
+    error: getAdminScalarText(data.error, 500),
+    stream: data.stream === true,
+    usage: {
+      promptTokens: Number(usage.promptTokens || 0),
+      completionTokens: Number(usage.completionTokens || 0),
+      totalTokens: Number(usage.totalTokens || 0),
+    },
+    outputChars: Number(data.outputChars || 0),
+    requestId: getAdminScalarText(data.requestId, 180),
+    jobId: getAdminScalarText(data.jobId, 180),
+    sessionId: getAdminScalarText(data.sessionId, 180),
+    feature: getAdminScalarText(data.feature, 160),
+    notificationType: getAdminScalarText(data.notificationType, 80),
+    divinerType: getAdminScalarText(data.divinerType, 80),
+    messageCount: Number(data.messageCount || 0),
+    requestChars: Number(data.requestChars || 0),
+    lastUserMessageChars: Number(data.lastUserMessageChars || 0),
+    membershipStatus: getAdminScalarText(data.membershipStatus, 40),
+    createdAt: serializeFirestoreTime(data.createdAt),
+    createdAtMillis: getMillisFromFirestoreValue(data.createdAt),
+  };
+}
+
+function modelUsageMatchesFilters(item, filters = {}) {
+  if (filters.provider && item.provider !== filters.provider) return false;
+  if (filters.keyId && item.keyId !== filters.keyId) return false;
+  if (filters.action && item.action !== filters.action) return false;
+  if (filters.uid && item.uid !== filters.uid) return false;
+  if (filters.outcome && item.outcome !== filters.outcome) return false;
+  if (filters.sinceMillis && item.createdAtMillis && item.createdAtMillis < filters.sinceMillis) return false;
+  return true;
+}
+
+function summarizeModelUsage(logs = []) {
+  const summary = {
+    totalCalls: logs.length,
+    successCalls: 0,
+    failedCalls: 0,
+    streamCalls: 0,
+    totalTokens: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    outputChars: 0,
+    byAction: [],
+    byKey: [],
+  };
+  const actionMap = new Map();
+  const keyMap = new Map();
+  for (const log of logs) {
+    const success = log.outcome !== "failure";
+    if (success) summary.successCalls += 1;
+    else summary.failedCalls += 1;
+    if (log.stream) summary.streamCalls += 1;
+    const promptTokens = Number(log.usage?.promptTokens || 0);
+    const completionTokens = Number(log.usage?.completionTokens || 0);
+    const totalTokens = Number(log.usage?.totalTokens || 0);
+    summary.promptTokens += promptTokens;
+    summary.completionTokens += completionTokens;
+    summary.totalTokens += totalTokens;
+    summary.outputChars += Number(log.outputChars || 0);
+
+    const actionKey = log.action || "unknown";
+    const action = actionMap.get(actionKey) || {
+      action: actionKey,
+      calls: 0,
+      failures: 0,
+      totalTokens: 0,
+      outputChars: 0,
+    };
+    action.calls += 1;
+    if (!success) action.failures += 1;
+    action.totalTokens += totalTokens;
+    action.outputChars += Number(log.outputChars || 0);
+    actionMap.set(actionKey, action);
+
+    const keyMapId = `${log.provider || "unknown"}:${log.keyId || "unknown"}`;
+    const key = keyMap.get(keyMapId) || {
+      provider: log.provider,
+      keyId: log.keyId,
+      keyLabel: log.keyLabel,
+      calls: 0,
+      failures: 0,
+      totalTokens: 0,
+      outputChars: 0,
+    };
+    key.calls += 1;
+    if (!success) key.failures += 1;
+    key.totalTokens += totalTokens;
+    key.outputChars += Number(log.outputChars || 0);
+    keyMap.set(keyMapId, key);
+  }
+  summary.byAction = Array.from(actionMap.values()).sort((a, b) => b.calls - a.calls);
+  summary.byKey = Array.from(keyMap.values()).sort((a, b) => b.calls - a.calls);
+  return summary;
+}
+
+async function attachModelUsageUsers(logs = []) {
+  const uidList = Array.from(new Set(logs.map((item) => item.uid).filter(Boolean))).slice(0, 50);
+  if (!uidList.length) return logs;
+  const userDocs = await Promise.all(uidList.map((uid) => db.collection("users").doc(uid).get().catch(() => null)));
+  const users = new Map();
+  userDocs.forEach((snap, index) => {
+    if (!snap?.exists) return;
+    const data = snap.data() || {};
+    users.set(uidList[index], {
+      name: getAdminScalarText(data.displayName || data.name || data.username, 120),
+      email: getAdminScalarText(data.email, 200),
+    });
+  });
+  return logs.map((item) => {
+    const user = users.get(item.uid) || {};
+    return {
+      ...item,
+      userName: user.name || "",
+      userEmail: item.userEmail || user.email || "",
+    };
+  });
+}
+
+async function listModelUsageDetails(options = {}) {
+  const limit = getAdminLimit(options.limit, 60, 120);
+  const days = Math.min(Math.max(Number(options.days || 7), 1), 90);
+  const filters = {
+    provider: normalizePoolProvider(options.provider || ""),
+    keyId: cleanString(options.keyId, "", 120),
+    action: cleanString(options.action, "", 80),
+    uid: cleanString(options.uid, "", 200),
+    outcome: cleanString(options.outcome, "", 80),
+    sinceMillis: Date.now() - days * 24 * 60 * 60 * 1000,
+  };
+  const fetchLimit = Math.min(Math.max(limit * 5, 120), 500);
+  const snap = await modelUsageLogsCollection
+    .orderBy("createdAt", "desc")
+    .limit(fetchLimit)
+    .get();
+  const filtered = snap.docs
+    .map(serializeModelUsageLogDoc)
+    .filter((item) => modelUsageMatchesFilters(item, filters))
+    .slice(0, limit);
+  const logs = await attachModelUsageUsers(filtered);
+  return {
+    ok: true,
+    checkedAt: new Date().toISOString(),
+    days,
+    limit,
+    filters,
+    summary: summarizeModelUsage(logs),
+    logs,
+    note: "明细从该功能上线后的模型/TTS 调用开始记录；历史调用只能查看旧 Key 日志，无法反推具体用途。",
+  };
+}
+
 async function listProviderPoolKeyDocs(provider, options = {}) {
   const normalizedProvider = normalizePoolProvider(provider);
   const snap = await providerKeyPoolCollection.where("provider", "==", normalizedProvider).get();
@@ -5961,7 +6269,9 @@ async function callDeepSeek(body, stream) {
 
   const failures = [];
   const failureHttpStatuses = [];
+  const attempts = [];
   for (const candidate of candidates) {
+    const providerMeta = buildModelUsageProviderMeta(candidate);
     let response = null;
     try {
       response = await fetch(DEEPSEEK_URL, {
@@ -5976,8 +6286,17 @@ async function callDeepSeek(body, stream) {
       const message = cleanString(error.message || "DeepSeek network request failed.", "", 300);
       failures.push(`${candidate.label}: network_error ${message}`.slice(0, 700));
       failureHttpStatuses.push(503);
+      attempts.push({
+        ...providerMeta,
+        outcome: "failure",
+        status: "network_error",
+        httpStatus: 503,
+        message,
+      });
       await markPoolKeyFailure(candidate, "network_error", message);
       if (shouldTryNextProviderKey("network_error")) continue;
+      error.providerAttempts = attempts;
+      error.providerUsageMeta = providerMeta;
       throw error;
     }
 
@@ -5986,6 +6305,11 @@ async function callDeepSeek(body, stream) {
       if (!candidate.selected) {
         await autoSelectProviderKey("deepseek", candidate.id, "chat_fallback_success");
       }
+      response.modelUsageMeta = {
+        ...providerMeta,
+        model: payload.model,
+        httpStatus: response.status,
+      };
       return response;
     }
 
@@ -5995,16 +6319,27 @@ async function callDeepSeek(body, stream) {
     const status = providerErrorStatus(response.status);
     const message = compactProviderError(data) || text.slice(0, 500) || `HTTP ${response.status}`;
     failures.push(`${candidate.label}: ${response.status} ${message}`.slice(0, 700));
+    attempts.push({
+      ...providerMeta,
+      outcome: "failure",
+      status,
+      httpStatus: response.status,
+      message,
+    });
     await markPoolKeyFailure(candidate, status, message);
     if (!shouldTryNextProviderHttpFailure(status, response.status)) {
       const err = new Error(`DeepSeek error ${response.status}: ${message}`);
       err.status = response.status;
+      err.providerAttempts = attempts;
+      err.providerUsageMeta = providerMeta;
       throw err;
     }
   }
 
   const err = new Error(`All DeepSeek keys failed: ${failures.join(" | ")}`);
   err.status = getAggregateProviderFailureStatus(failureHttpStatuses);
+  err.providerAttempts = attempts;
+  err.providerUsageMeta = attempts[attempts.length - 1] || null;
   throw err;
 }
 
@@ -7571,6 +7906,37 @@ exports.adminModelQuotaStatus = onRequest({
   } catch (error) {
     console.error("[adminModelQuotaStatus]", error);
     json(res, error.status || 500, { error: error.message || "Load model quota status failed" });
+  }
+});
+
+exports.adminModelUsageDetails = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "GET")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const details = await listModelUsageDetails({
+      limit: req.query.limit,
+      days: req.query.days,
+      provider: req.query.provider,
+      keyId: req.query.keyId,
+      action: req.query.action,
+      uid: req.query.uid,
+      outcome: req.query.outcome,
+    });
+    await writeAdminAuditLog(decoded, "model_usage.view", {
+      type: "model_usage",
+      id: "recent",
+    }, {
+      limit: details.limit,
+      days: details.days,
+      filters: details.filters,
+      returned: details.logs.length,
+    }, req);
+    json(res, 200, details);
+  } catch (error) {
+    console.error("[adminModelUsageDetails]", error);
+    json(res, error.status || 500, { error: error.message || "Load model usage details failed" });
   }
 });
 
@@ -9838,9 +10204,11 @@ exports.aiChat = onRequest({ ...runtime, secrets: boundSecrets("DEEPSEEK_API_KEY
   if (!decoded) return;
 
   let usageReserved = false;
+  let requestBody = {};
+  let membership = null;
   try {
-    const requestBody = req.body || {};
-    const membership = await getMembership(decoded.uid);
+    requestBody = req.body || {};
+    membership = await getMembership(decoded.uid);
     await incrementUsage(decoded.uid, "aiChat", membership.isPro ? PRO_AI_DAILY_LIMIT : FREE_AI_DAILY_LIMIT);
     usageReserved = true;
 
@@ -9851,6 +10219,21 @@ exports.aiChat = onRequest({ ...runtime, secrets: boundSecrets("DEEPSEEK_API_KEY
     const response = await callDeepSeek(requestBody, false);
     const data = await response.json();
     const content = data?.choices?.[0]?.message?.content || "";
+    await recordModelUsageLog({
+      uid: decoded.uid,
+      userEmail: decoded.email,
+      action: "aiChat",
+      endpoint: "aiChat",
+      source: "http",
+      providerMeta: response.modelUsageMeta,
+      model: data.model || response.modelUsageMeta?.model,
+      usage: data.usage || null,
+      outputChars: content.length,
+      membershipStatus: membership.status,
+      context: getModelUsageContext(requestBody),
+      ok: true,
+      httpStatus: response.modelUsageMeta?.httpStatus || 200,
+    });
     await completeDialogueReplyJob(decoded.uid, requestBody, content, "http");
     const notificationId = await enqueueDialogueReplyNotification(decoded.uid, requestBody, content);
     json(res, 200, {
@@ -9865,6 +10248,22 @@ exports.aiChat = onRequest({ ...runtime, secrets: boundSecrets("DEEPSEEK_API_KEY
     if (usageReserved && error.code !== "quota-exceeded") {
       await refundUsageSafely(decoded.uid, "aiChat");
     }
+    await recordModelUsageLog({
+      uid: decoded.uid,
+      userEmail: decoded.email,
+      action: "aiChat",
+      endpoint: "aiChat",
+      source: "http",
+      provider: "deepseek",
+      providerMeta: error.providerUsageMeta || error.providerAttempts?.[error.providerAttempts.length - 1] || null,
+      model: requestBody?.model || DEEPSEEK_MODEL,
+      membershipStatus: membership?.status || "",
+      context: getModelUsageContext(requestBody),
+      ok: false,
+      status: error.code || providerErrorStatus(error.status || 500),
+      httpStatus: error.status || null,
+      error: error.message || "AI request failed",
+    });
     json(res, error.status || (error.code === "quota-exceeded" ? 429 : 500), {
       error: error.message || "AI request failed",
       code: error.code || "ai-error",
@@ -9880,9 +10279,13 @@ exports.aiChatStream = onRequest({ ...runtime, secrets: boundSecrets("DEEPSEEK_A
   if (!decoded) return;
 
   let usageReserved = false;
+  let requestBody = {};
+  let membership = null;
+  let response = null;
+  const streamState = { buffer: "", fullText: "" };
   try {
-    const requestBody = req.body || {};
-    const membership = await getMembership(decoded.uid);
+    requestBody = req.body || {};
+    membership = await getMembership(decoded.uid);
     await incrementUsage(decoded.uid, "aiChat", membership.isPro ? PRO_AI_DAILY_LIMIT : FREE_AI_DAILY_LIMIT);
     usageReserved = true;
 
@@ -9890,9 +10293,8 @@ exports.aiChatStream = onRequest({ ...runtime, secrets: boundSecrets("DEEPSEEK_A
       await markDialogueReplyJobProcessing(decoded.uid, requestBody, "http");
     }
 
-    const response = await callDeepSeek(requestBody, true);
+    response = await callDeepSeek(requestBody, true);
     const decoder = new TextDecoder();
-    const streamState = { buffer: "", fullText: "" };
     let clientOpen = true;
     res.on("close", () => {
       clientOpen = false;
@@ -9920,6 +10322,21 @@ exports.aiChatStream = onRequest({ ...runtime, secrets: boundSecrets("DEEPSEEK_A
 
     await completeDialogueReplyJob(decoded.uid, requestBody, streamState.fullText, "http");
     await enqueueDialogueReplyNotification(decoded.uid, requestBody, streamState.fullText);
+    await recordModelUsageLog({
+      uid: decoded.uid,
+      userEmail: decoded.email,
+      action: "aiChatStream",
+      endpoint: "aiChatStream",
+      source: "http",
+      providerMeta: response?.modelUsageMeta,
+      model: response?.modelUsageMeta?.model || requestBody?.model || DEEPSEEK_MODEL,
+      outputChars: streamState.fullText.length,
+      membershipStatus: membership.status,
+      context: getModelUsageContext({ ...requestBody, stream: true }),
+      stream: true,
+      ok: true,
+      httpStatus: response?.modelUsageMeta?.httpStatus || 200,
+    });
 
     if (clientOpen && !res.destroyed && !res.writableEnded) {
       res.end();
@@ -9929,6 +10346,24 @@ exports.aiChatStream = onRequest({ ...runtime, secrets: boundSecrets("DEEPSEEK_A
     if (usageReserved && !res.headersSent && error.code !== "quota-exceeded") {
       await refundUsageSafely(decoded.uid, "aiChat");
     }
+    await recordModelUsageLog({
+      uid: decoded.uid,
+      userEmail: decoded.email,
+      action: "aiChatStream",
+      endpoint: "aiChatStream",
+      source: "http",
+      provider: "deepseek",
+      providerMeta: error.providerUsageMeta || error.providerAttempts?.[error.providerAttempts.length - 1] || response?.modelUsageMeta || null,
+      model: requestBody?.model || DEEPSEEK_MODEL,
+      outputChars: streamState.fullText.length,
+      membershipStatus: membership?.status || "",
+      context: getModelUsageContext({ ...requestBody, stream: true }),
+      stream: true,
+      ok: false,
+      status: error.code || providerErrorStatus(error.status || 500),
+      httpStatus: error.status || null,
+      error: error.message || "AI stream failed",
+    });
     if (!res.headersSent) {
       json(res, error.status || (error.code === "quota-exceeded" ? 429 : 500), {
         error: error.message || "AI stream failed",
@@ -10012,8 +10447,12 @@ exports.ttsSynthesize = onRequest({
   if (!decoded) return;
 
   let usageReserved = false;
+  let text = "";
+  let encoding = "mp3";
+  let membership = null;
+  let ttsKeyCandidate = null;
   try {
-    const text = String(req.body?.text || "").trim();
+    text = String(req.body?.text || "").trim();
     if (!text) {
       json(res, 400, { error: "text is required" });
       return;
@@ -10023,13 +10462,13 @@ exports.ttsSynthesize = onRequest({
       return;
     }
 
-    const membership = await getMembership(decoded.uid);
+    membership = await getMembership(decoded.uid);
     await incrementUsage(decoded.uid, "tts", membership.isPro ? PRO_TTS_DAILY_LIMIT : FREE_TTS_DAILY_LIMIT);
     usageReserved = true;
 
-    const encoding = req.body?.encoding || "mp3";
+    encoding = req.body?.encoding || "mp3";
     const ttsKeyCandidates = await getProviderKeyCandidates("volcano_tts", "VOLC_TTS_API_KEY", volcanoTtsApiKey);
-    const ttsKeyCandidate = ttsKeyCandidates[0] || null;
+    ttsKeyCandidate = ttsKeyCandidates[0] || null;
     const apiKey = ttsKeyCandidate?.value || "";
     if (!apiKey) throw new Error("VOLC_TTS_API_KEY is not configured");
 
@@ -10047,6 +10486,21 @@ exports.ttsSynthesize = onRequest({
     if (!ttsKeyCandidate.selected) {
       await autoSelectProviderKey("volcano_tts", ttsKeyCandidate.id, "tts_fallback_success");
     }
+    await recordModelUsageLog({
+      uid: decoded.uid,
+      userEmail: decoded.email,
+      action: "tts",
+      endpoint: "ttsSynthesize",
+      source: "http",
+      providerMeta: buildModelUsageProviderMeta(ttsKeyCandidate),
+      model: result.encoding || encoding,
+      outputChars: text.length,
+      membershipStatus: membership.status,
+      feature: "TTS 语音合成",
+      requestId: result.reqid,
+      ok: true,
+      httpStatus: 200,
+    });
 
     json(res, 200, {
       audioBase64: result.audioBase64,
@@ -10059,6 +10513,23 @@ exports.ttsSynthesize = onRequest({
     if (usageReserved && error.code !== "quota-exceeded") {
       await refundUsageSafely(decoded.uid, "tts");
     }
+    await recordModelUsageLog({
+      uid: decoded.uid,
+      userEmail: decoded.email,
+      action: "tts",
+      endpoint: "ttsSynthesize",
+      source: "http",
+      provider: "volcano_tts",
+      providerMeta: ttsKeyCandidate ? buildModelUsageProviderMeta(ttsKeyCandidate) : null,
+      model: encoding,
+      outputChars: text.length,
+      membershipStatus: membership?.status || "",
+      feature: "TTS 语音合成",
+      ok: false,
+      status: error.code || "request_failed",
+      httpStatus: error.status || null,
+      error: error.message || "TTS request failed",
+    });
     json(res, error.code === "quota-exceeded" ? 429 : 500, {
       error: error.message || "TTS request failed",
       code: error.code || "tts-error",

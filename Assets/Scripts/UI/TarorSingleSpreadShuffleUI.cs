@@ -43,10 +43,9 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     private readonly List<Image> _deckImages = new List<Image>();
     private RectTransform _cardContainer;
     private Image _cardTemplateImage;
-    private Transform _slotLayer;
-    private Transform _deckLayer;
     private Tween _deckInertiaTween;
     private Sequence _drawSequence;
+    private readonly List<int> _deckSiblingOrder = new List<int>();
     private Coroutine _longPressCoroutine;
     private bool _isChoosingCard;
     private bool _isAnimatingCard;
@@ -110,11 +109,9 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         BuildSlotArray();
         _cardCount = Mathf.Clamp(_cardCount, 1, Mathf.Max(1, CountAvailableSlots()));
         ResolveDeckReferences();
-        ResolveVisualLayers();
 
         // 配置界面
         ConfigureUI();
-        KeepDeckBehindSlotLayer();
         PrepareInteractiveDeck();
 
         Debug.Log($"[TarorSingleSpreadShuffleUI] OnShow, cardCount={_cardCount}, spread={_spread?.label}");
@@ -152,35 +149,6 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         };
     }
 
-    private void ResolveVisualLayers()
-    {
-        _slotLayer = null;
-        _deckLayer = _cardContainer != null ? _cardContainer.parent : null;
-
-        if (_slots != null)
-        {
-            for (int i = 0; i < _slots.Length; i++)
-            {
-                if (_slots[i] == null) continue;
-                _slotLayer = _slots[i].transform.parent;
-                break;
-            }
-        }
-    }
-
-    private void KeepDeckBehindSlotLayer()
-    {
-        if (_slotLayer == null || _deckLayer == null)
-            ResolveVisualLayers();
-
-        if (_slotLayer == null || _deckLayer == null || _slotLayer.parent != _deckLayer.parent)
-            return;
-
-        int slotIndex = _slotLayer.GetSiblingIndex();
-        if (_deckLayer.GetSiblingIndex() > slotIndex)
-            _deckLayer.SetSiblingIndex(slotIndex);
-    }
-
     /// <summary>
     /// 根据牌阵信息配置标题、副标题、卡槽显示
     /// </summary>
@@ -188,7 +156,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     {
         var comp = uiComponent;
 
-        SetReadingKeywordTitle();
+        SetSpreadTitle();
         SetOperationStepText($"点击、长按，或向上拖动牌扇中的牌，依次抽出{_cardCount}张牌。");
         ClearCardInfoTexts();
 
@@ -230,7 +198,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     {
         1 => "单张镜像牌阵",
         5 => "五牌选择门",
-        _ => "三牌牌阵"
+        _ => "当前关注·三牌占卜"
     };
 
     private string GetDefaultSubtitle(int count) => count switch
@@ -247,16 +215,13 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         _ => "让直觉引领——点击下方按钮为当下抽出三张牌。"
     };
 
-    private void SetReadingKeywordTitle(string title = null)
+    private void SetSpreadTitle()
     {
         if (uiComponent.TitleTextText == null) return;
 
-        string text = FirstNonEmpty(
-            title,
-            _spread?.description,
-            GetDefaultSubtitle(_cardCount),
-            _spread?.label,
-            GetDefaultTitle(_cardCount));
+        string text = _cardCount == 3
+            ? "当前关注·三牌占卜"
+            : GetDefaultTitle(_cardCount);
 
         uiComponent.TitleTextText.gameObject.SetActive(!string.IsNullOrEmpty(text));
         uiComponent.TitleTextText.text = text;
@@ -266,39 +231,118 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     {
         if (uiComponent.SubtitleTextText == null) return;
 
+        text = TrimSubtitlePunctuation(text);
         uiComponent.SubtitleTextText.gameObject.SetActive(!string.IsNullOrEmpty(text));
-        uiComponent.SubtitleTextText.text = text ?? "";
+        uiComponent.SubtitleTextText.text = text;
     }
 
-    private static string BuildCardKeywordTitle(TarotCard card)
+    private static string TrimSubtitlePunctuation(string text)
     {
-        if (card?.keywords != null && card.keywords.Count > 0)
-            return string.Join(" · ", card.keywords.GetRange(0, Mathf.Min(3, card.keywords.Count)));
-
-        return card?.nameZh ?? "";
+        if (string.IsNullOrWhiteSpace(text)) return "";
+        return text.Trim().TrimEnd('。', '.', '！', '!', '？', '?');
     }
 
-    private string BuildRevealedKeywordTitle()
+    private string BuildQuestionKeywordTitle()
     {
-        if (_drawnCards == null || _drawnCards.Count == 0)
-            return "";
+        string question = FirstNonEmpty(
+            SpreadShuffleBridge.PendingMessageData?.divinationQuestion,
+            DivinationEngine.Instance?.CurrentSession?.divinationPlan?.question,
+            DivinationEngine.Instance?.CurrentSession?.question,
+            SpreadShuffleBridge.PendingMessageData?.content);
 
-        var keywords = new List<string>();
-        int count = Mathf.Clamp(_nextDrawIndex, 0, Mathf.Min(_cardCount, _drawnCards.Count));
-        for (int i = 0; i < count; i++)
+        string keyword = BuildQuestionKeyword(question);
+        return FirstNonEmpty(keyword, "当前问题");
+    }
+
+    private static string BuildQuestionKeyword(string question)
+    {
+        string value = NormalizeQuestionText(question);
+        if (string.IsNullOrWhiteSpace(value)) return "";
+
+        string mapped = MapQuestionKeyword(value);
+        if (!string.IsNullOrWhiteSpace(mapped))
+            return mapped;
+
+        value = StripQuestionNoise(value);
+        if (string.IsNullOrWhiteSpace(value)) return "";
+
+        return value.Length > 10 ? value.Substring(0, 10) : value;
+    }
+
+    private static string MapQuestionKeyword(string value)
+    {
+        string lower = value.ToLowerInvariant();
+
+        if (ContainsAny(lower, "真实感受", "真实想法", "怎么想"))
+            return "真实感受";
+        if (ContainsAny(lower, "复合", "回来", "回头"))
+            return "复合可能";
+        if (ContainsAny(lower, "关系") && ContainsAny(lower, "未来", "走向", "发展"))
+            return "关系走向";
+        if (ContainsAny(lower, "喜欢", "暧昧", "感情", "对方", "他", "她", "ta"))
+            return "情感关系";
+        if (ContainsAny(lower, "关注", "最需要"))
+            return "当前关注";
+        if (ContainsAny(lower, "选择", "要不要", "该不该", "二选一"))
+            return "选择判断";
+        if (ContainsAny(lower, "工作", "事业", "职业"))
+            return "事业方向";
+        if (ContainsAny(lower, "机会", "回报", "结果"))
+            return "机会结果";
+        if (ContainsAny(lower, "焦虑", "不安", "害怕", "担心"))
+            return "内在不安";
+        if (ContainsAny(lower, "放下", "执念", "消耗"))
+            return "需要放下的事";
+        if (ContainsAny(lower, "行动", "怎么做", "怎么办", "下一步"))
+            return "下一步行动";
+
+        return "";
+    }
+
+    private static string NormalizeQuestionText(string question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return "";
+
+        string value = question.Trim();
+        value = value.Replace("\r", " ").Replace("\n", " ");
+        value = value.Replace("“", "").Replace("”", "").Replace("\"", "");
+        value = value.Replace("？", "").Replace("?", "").Replace("。", "").Replace(".", "");
+        value = value.Replace("，", " ").Replace(",", " ").Replace("：", " ").Replace(":", " ");
+
+        while (value.Contains("  "))
+            value = value.Replace("  ", " ");
+
+        return value.Trim();
+    }
+
+    private static string StripQuestionNoise(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "";
+
+        string result = value.Trim();
+        string[] noise =
         {
-            var card = _drawnCards[i].card;
-            if (card?.keywords == null) continue;
+            "帮我", "请帮我", "我想知道", "我想问", "我当前", "我现在", "我的",
+            "是什么", "什么是", "什么", "为何", "为什么", "怎样", "如何",
+            "请问", "占卜", "塔罗", "抽牌", "三张牌", "三牌", "牌阵",
+            "一个", "一下", "看看", "看一看", "关于"
+        };
 
-            for (int j = 0; j < card.keywords.Count && keywords.Count < 5; j++)
-            {
-                string keyword = card.keywords[j];
-                if (string.IsNullOrWhiteSpace(keyword) || keywords.Contains(keyword)) continue;
-                keywords.Add(keyword);
-            }
+        foreach (string token in noise)
+            result = result.Replace(token, "");
+
+        return result.Trim(' ', '的', '了', '吗', '呢', '吧', '？', '?', '。', '.', '，', ',');
+    }
+
+    private static bool ContainsAny(string value, params string[] keywords)
+    {
+        if (string.IsNullOrEmpty(value) || keywords == null) return false;
+        foreach (string keyword in keywords)
+        {
+            if (!string.IsNullOrEmpty(keyword) && value.Contains(keyword))
+                return true;
         }
-
-        return keywords.Count > 0 ? string.Join(" · ", keywords) : "";
+        return false;
     }
 
     private string GetDefaultSlotLabel(int index, int count) => count switch
@@ -408,7 +452,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
         BuildDeckFan();
 
-        SetReadingKeywordTitle();
+        SetSpreadTitle();
         SetOperationStepText(GetDrawInstructionText());
     }
 
@@ -725,7 +769,8 @@ public class TarorSingleSpreadShuffleUI : WindowBase
             return;
         }
 
-        Image flyImage = UnityEngine.Object.Instantiate(sourceImage, _cardContainer);
+        RectTransform flyParent = ResolveFlyingCardParent(slotPoseRect);
+        Image flyImage = UnityEngine.Object.Instantiate(sourceImage, flyParent);
         flyImage.name = $"SpreadFlyingCard_{slotIndex + 1}";
         flyImage.raycastTarget = false;
         flyImage.sprite = ResolveCardBackSprite();
@@ -734,13 +779,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
         RectTransform sourceRect = sourceImage.rectTransform;
         RectTransform flyRect = flyImage.rectTransform;
-        flyRect.anchorMin = sourceRect.anchorMin;
-        flyRect.anchorMax = sourceRect.anchorMax;
-        flyRect.pivot = sourceRect.pivot;
-        flyRect.sizeDelta = sourceRect.sizeDelta;
-        flyRect.anchoredPosition = sourceRect.anchoredPosition;
-        flyRect.localScale = sourceRect.localScale;
-        flyRect.localRotation = sourceRect.localRotation;
+        CopyRectWorldPose(sourceRect, flyRect, flyParent);
         flyRect.SetAsLastSibling();
 
         Color sourceColor = sourceImage.color;
@@ -748,7 +787,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         sourceImage.color = sourceColor;
 
         ResetSlotToBack(slot, GetPositionLabel(slotIndex), ResolveCardBackSprite());
-        ResolveSlotTargetPose(slotPoseRect, out Vector2 targetPosition, out float targetRotationZ, out float targetScale);
+        ResolveSlotTargetPose(slotPoseRect, flyParent, sourceRect, out Vector2 targetPosition, out float targetRotationZ, out float targetScale);
 
         float selectDuration = Mathf.Max(0.12f, uiComponent.selectDuration);
         float flipHalfDuration = Mathf.Max(0.08f, uiComponent.flipDuration * 0.5f);
@@ -785,7 +824,44 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         });
     }
 
+    private RectTransform ResolveFlyingCardParent(RectTransform slotRect)
+    {
+        if (slotRect != null && slotRect.parent is RectTransform slotParent)
+            return slotParent;
+
+        return _cardContainer;
+    }
+
+    private static void CopyRectWorldPose(RectTransform sourceRect, RectTransform targetRect, RectTransform targetParent)
+    {
+        if (sourceRect == null || targetRect == null || targetParent == null) return;
+
+        targetRect.anchorMin = new Vector2(0.5f, 0.5f);
+        targetRect.anchorMax = new Vector2(0.5f, 0.5f);
+        targetRect.pivot = new Vector2(0.5f, 0.5f);
+        targetRect.sizeDelta = sourceRect.rect.size;
+
+        Vector3 worldCenter = sourceRect.TransformPoint(sourceRect.rect.center);
+        Vector3 localCenter = targetParent.InverseTransformPoint(worldCenter);
+        targetRect.anchoredPosition = new Vector2(localCenter.x, localCenter.y);
+        targetRect.localRotation = Quaternion.Inverse(targetParent.rotation) * sourceRect.rotation;
+
+        Vector3 sourceScale = sourceRect.lossyScale;
+        Vector3 parentScale = targetParent.lossyScale;
+        targetRect.localScale = new Vector3(
+            SafeDivide(sourceScale.x, parentScale.x),
+            SafeDivide(sourceScale.y, parentScale.y),
+            1f);
+    }
+
+    private static float SafeDivide(float value, float divisor)
+    {
+        return Mathf.Abs(divisor) <= 0.0001f ? value : value / divisor;
+    }
+
     private void ResolveSlotTargetPose(RectTransform slotRect,
+        RectTransform motionParent,
+        RectTransform sourceRect,
         out Vector2 targetPosition,
         out float targetRotationZ,
         out float targetScale)
@@ -794,25 +870,24 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         targetRotationZ = 0f;
         targetScale = _deckCardScale;
 
-        if (slotRect == null || _cardContainer == null || _cardTemplateImage == null)
+        if (slotRect == null || motionParent == null || sourceRect == null)
             return;
 
         Vector3 worldCenter = slotRect.TransformPoint(slotRect.rect.center);
-        Vector3 localCenter = _cardContainer.InverseTransformPoint(worldCenter);
+        Vector3 localCenter = motionParent.InverseTransformPoint(worldCenter);
         targetPosition = new Vector2(localCenter.x, localCenter.y);
 
-        Quaternion localRotation = Quaternion.Inverse(_cardContainer.rotation) * slotRect.rotation;
+        Quaternion localRotation = Quaternion.Inverse(motionParent.rotation) * slotRect.rotation;
         targetRotationZ = localRotation.eulerAngles.z;
 
         Vector3[] worldCorners = new Vector3[4];
         slotRect.GetWorldCorners(worldCorners);
-        Vector3 localBottomLeft = _cardContainer.InverseTransformPoint(worldCorners[0]);
-        Vector3 localTopLeft = _cardContainer.InverseTransformPoint(worldCorners[1]);
-        Vector3 localBottomRight = _cardContainer.InverseTransformPoint(worldCorners[3]);
+        Vector3 localBottomLeft = motionParent.InverseTransformPoint(worldCorners[0]);
+        Vector3 localTopLeft = motionParent.InverseTransformPoint(worldCorners[1]);
+        Vector3 localBottomRight = motionParent.InverseTransformPoint(worldCorners[3]);
 
         float targetWidth = Vector3.Distance(localBottomLeft, localBottomRight);
         float targetHeight = Vector3.Distance(localBottomLeft, localTopLeft);
-        RectTransform sourceRect = _cardTemplateImage.rectTransform;
         float sourceWidth = Mathf.Max(1f, sourceRect.rect.width);
         float sourceHeight = Mathf.Max(1f, sourceRect.rect.height);
         targetScale = Mathf.Max(0.01f, Mathf.Min(targetWidth / sourceWidth, targetHeight / sourceHeight));
@@ -824,7 +899,6 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         SetRevealedCardInfo(slotIndex, draw);
 
         _nextDrawIndex++;
-        KeepDeckBehindSlotLayer();
         _isAnimatingCard = false;
         _dragStartedFromCard = false;
         _activeDragCardIndex = -1;
@@ -836,7 +910,6 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         if (_nextDrawIndex >= _cardCount)
         {
             _isChoosingCard = false;
-            SetReadingKeywordTitle(BuildRevealedKeywordTitle());
             SetDeckVisible(false);
             SetOperationStepText($"{_cardCount}张牌已经就位，点击返回查看结果。");
             return;
@@ -920,6 +993,53 @@ public class TarorSingleSpreadShuffleUI : WindowBase
                 rect.localScale = targetScale;
             }
         }
+
+        RefreshDeckSiblingOrder();
+    }
+
+    private void RefreshDeckSiblingOrder()
+    {
+        if (_deckImages.Count <= 1) return;
+
+        _deckSiblingOrder.Clear();
+        for (int i = 0; i < _deckImages.Count; i++)
+        {
+            if (_deckImages[i] != null)
+                _deckSiblingOrder.Add(i);
+        }
+
+        _deckSiblingOrder.Sort(CompareDeckSiblingOrder);
+        for (int i = 0; i < _deckSiblingOrder.Count; i++)
+        {
+            Image image = _deckImages[_deckSiblingOrder[i]];
+            if (image != null)
+                image.rectTransform.SetAsLastSibling();
+        }
+    }
+
+    private int CompareDeckSiblingOrder(int leftIndex, int rightIndex)
+    {
+        float leftDepth = GetDeckSiblingDepth(leftIndex);
+        float rightDepth = GetDeckSiblingDepth(rightIndex);
+        int depthCompare = leftDepth.CompareTo(rightDepth);
+        if (depthCompare != 0)
+            return depthCompare;
+
+        float leftX = GetDeckFanPosition(leftIndex).x;
+        float rightX = GetDeckFanPosition(rightIndex).x;
+        return leftX.CompareTo(rightX);
+    }
+
+    private float GetDeckSiblingDepth(int index)
+    {
+        Vector2 position = GetDeckFanPosition(index);
+        float halfFanWidth = Mathf.Max(1f, _fanWidth * 0.5f);
+        float centerWeight = 1f - Mathf.Clamp01(Mathf.Abs(position.x) / halfFanWidth);
+        float verticalWeight = Mathf.InverseLerp(
+            uiComponent.fanHeightOffset + GetSettledDeckYOffset(),
+            uiComponent.fanHeightOffset + GetSettledDeckYOffset() + Mathf.Max(1f, uiComponent.fanRiseOffset),
+            position.y);
+        return centerWeight + verticalWeight * 0.25f;
     }
 
     private Vector2 GetDeckFanPosition(int index)
@@ -1112,6 +1232,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
                 upright = upright
             });
         }
+        SpreadShuffleBridge.MarkPendingDialogReveal(message);
         DialogSystem.Instance?.RecordSpreadDrawResult(message);
     }
 
@@ -1166,8 +1287,6 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         _latestRevealedIndex = index;
         int requestVersion = ++_cardInfoRequestVersion;
         _isCardInfoLoading = true;
-
-        SetReadingKeywordTitle(BuildCardKeywordTitle(draw.card));
 
         TMP_Text standaloneCardTitle = GetStandaloneCardTitleText();
         if (standaloneCardTitle != null)

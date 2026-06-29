@@ -155,7 +155,10 @@ public class SpreadInteractionCard5 : MonoBehaviour
 
         if (TryRestoreDrawnCardsFromMessage())
         {
-            RenderDrawnCardsImmediate();
+            if (SpreadShuffleBridge.ConsumePendingDialogReveal(_messageData))
+                StartRevealAfterDetailWindow();
+            else
+                RenderDrawnCardsImmediate();
         }
 
         Debug.Log($"[SpreadInteractionCard5] Setup 完成: {_currentSpread.label}");
@@ -227,12 +230,44 @@ public class SpreadInteractionCard5 : MonoBehaviour
         _drawnCards = drawnCards;
         SaveDrawnCardsToMessage();
 
-        // 逐一翻牌揭示
-        _revealCoroutine = StartCoroutine(RevealCardsRoutine());
+        StartRevealAfterDetailWindow();
+    }
+
+    private void StartRevealAfterDetailWindow()
+    {
+        PrepareSlotsForReveal();
+        if (_revealCoroutine != null)
+            StopCoroutine(_revealCoroutine);
+        _revealCoroutine = StartCoroutine(RevealCardsWhenDialogVisibleRoutine());
+    }
+
+    private IEnumerator RevealCardsWhenDialogVisibleRoutine()
+    {
+        yield return null;
+
+        while (IsDivinationInfoWindowVisible())
+            yield return null;
+
+        yield return StartCoroutine(RevealCardsRoutine());
+        _revealCoroutine = null;
+    }
+
+    private bool IsDivinationInfoWindowVisible()
+    {
+        DivinationInfoUI window = UIModule.Instance != null
+            ? UIModule.Instance.GetWindow<DivinationInfoUI>()
+            : null;
+        return window != null && window.gameObject != null && window.gameObject.activeInHierarchy;
     }
 
     private IEnumerator RevealCardsRoutine()
     {
+        if (_drawnCards == null || _drawnCards.Count < 5)
+        {
+            _revealCoroutine = null;
+            yield break;
+        }
+
         // 逐一翻牌
         yield return StartCoroutine(FlipCard(cardSlotItem1?.cardImage, _drawnCards[0]));
         if (cardSlotItem1 != null)
@@ -264,6 +299,7 @@ public class SpreadInteractionCard5 : MonoBehaviour
         SyncToDivinationEngine();
         ShowDetailButton();
         SetActionButtonsVisible(true);
+        SpreadShuffleBridge.ConsumePendingDialogReveal(_messageData);
 
         Debug.Log($"[SpreadInteractionCard5] 抽牌完成: "
             + $"{_drawnCards[0].card.nameZh}({(_drawnCards[0].upright ? "正" : "逆")}) | "
@@ -379,6 +415,7 @@ public class SpreadInteractionCard5 : MonoBehaviour
                 upright = upright
             });
         }
+        SpreadShuffleBridge.MarkPendingDialogReveal(_messageData);
         DialogSystem.Instance?.RecordSpreadDrawResult(_messageData);
     }
 
@@ -413,6 +450,36 @@ public class SpreadInteractionCard5 : MonoBehaviour
 
         if (slot.cardTag != null)
             slot.cardTag.text = $"{draw.card.nameZh}（{(draw.upright ? "正" : "逆")}）";
+    }
+
+    private void PrepareSlotsForReveal()
+    {
+        _cardsDrawn = false;
+
+        var slots = new[] { cardSlotItem1, cardSlotItem2, cardSlotItem3, cardSlotItem4, cardSlotItem5 };
+        foreach (CardSlotItem slot in slots)
+        {
+            if (slot == null) continue;
+            if (slot.cardImage != null)
+            {
+                slot.cardImage.sprite = cardBackSprite;
+                ResetCardTransform(slot.cardImage);
+            }
+        }
+
+        ApplySlotLabels();
+        SetActionButtonsVisible(false);
+
+        if (chatFirstBtn != null)
+            chatFirstBtn.gameObject.SetActive(false);
+
+        if (drawCardBtn != null)
+        {
+            drawCardBtn.gameObject.SetActive(true);
+            drawCardBtn.interactable = false;
+        }
+        if (drawCardBtnText != null)
+            drawCardBtnText.text = "正在翻牌...";
     }
 
     private void SetButtonText(Button button, string text)

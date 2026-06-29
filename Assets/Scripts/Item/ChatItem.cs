@@ -26,7 +26,7 @@ public class ChatItem : MonoBehaviour
     [Tooltip("AI 语音按钮/时长区域需要额外预留的高度。")]
     [SerializeField] private float voiceReservedHeight = 70f;
     [Tooltip("当文字气泡比头像矮时，聊天项高度在头像高度基础上额外增加的高度。")]
-    [SerializeField] private float minTextItemAvatarExtraHeight = 40f;
+    [SerializeField] private float minTextItemAvatarExtraHeight = 12f;
     [Header("Message vertical spacing")]
     [SerializeField] private float leftTextMessageTopOffset = 72f;
     [SerializeField] private float rightTextMessageTopOffset = 18f;
@@ -595,14 +595,18 @@ public class ChatItem : MonoBehaviour
 
     }
 
-    private void SetContentSizeMessage(Transform targetTrans)
+    private void SetContentSizeMessage(Transform targetTrans, bool usePivotAwareTopOffset = false)
     {
         if (targetTrans == null) return;
 
         RectTransform targetRect = targetTrans.GetComponent<RectTransform>();
         if (targetRect == null) return;
 
-        ApplyItemHeight(targetRect.sizeDelta.y, targetTrans, 0f);
+        float height = targetRect.rect.height;
+        if (height <= 0f)
+            height = Mathf.Abs(targetRect.sizeDelta.y);
+
+        ApplyItemHeight(height, targetTrans, 0f, usePivotAwareTopOffset);
     }
 
     private void SetDailyCardContentSizeMessage(Transform targetTrans)
@@ -678,7 +682,7 @@ public class ChatItem : MonoBehaviour
     }
     public void SetSpreadInteractionCard3()
     {
-        SetContentSizeMessage(interactionCard3.transform);
+        SetContentSizeMessage(interactionCard3.transform, true);
     }
 
     /// <summary>
@@ -710,12 +714,12 @@ public class ChatItem : MonoBehaviour
         if (dialogUI != null)
             dialogUI.WireUpInteractionCard3(interactionCard3);
 
-        SetContentSizeMessage(interactionCard3.transform);
+        SetContentSizeMessage(interactionCard3.transform, true);
     }
 
     public void SetSpreadInteractionCard1()
     {
-        SetContentSizeMessage(interactionCard1.transform);
+        SetContentSizeMessage(interactionCard1.transform, true);
     }
 
     /// <summary>
@@ -747,12 +751,12 @@ public class ChatItem : MonoBehaviour
         if (dialogUI != null)
             dialogUI.WireUpInteractionCard1(interactionCard1);
 
-        SetContentSizeMessage(interactionCard1.transform);
+        SetContentSizeMessage(interactionCard1.transform, true);
     }
 
     public void SetSpreadInteractionCard5()
     {
-        SetContentSizeMessage(interactionCard5.transform);
+        SetContentSizeMessage(interactionCard5.transform, true);
     }
 
     /// <summary>
@@ -784,7 +788,7 @@ public class ChatItem : MonoBehaviour
         if (dialogUI != null)
             dialogUI.WireUpInteractionCard5(interactionCard5);
 
-        SetContentSizeMessage(interactionCard5.transform);
+        SetContentSizeMessage(interactionCard5.transform, true);
     }
 
     private void LoadHeadIcon(string iconName)

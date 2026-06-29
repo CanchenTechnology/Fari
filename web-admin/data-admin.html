@@ -547,6 +547,47 @@
       color: var(--amber);
     }
 
+    .model-usage-panel {
+      margin-top: 12px;
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .model-usage-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .model-usage-filters {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(130px, 1fr)) auto;
+      gap: 8px;
+      align-items: end;
+      min-width: min(620px, 100%);
+    }
+
+    .model-usage-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .model-usage-groups {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .model-usage-list {
+      display: grid;
+      gap: 8px;
+    }
+
     .analytics-layout {
       display: grid;
       grid-template-columns: minmax(0, 1fr) 390px;
@@ -1240,6 +1281,7 @@
       .analytics-layout,
       .agent-workbench,
       .agent-prompt-layout,
+      .model-usage-groups,
       .advanced-grid {
         grid-template-columns: 1fr;
       }
@@ -1283,6 +1325,8 @@
       .grid-4,
       .model-quota-grid,
       .model-quota-balance,
+      .model-usage-filters,
+      .model-usage-metrics,
       .model-key-grid,
       .config-grid,
       .agent-toolbar,
@@ -2058,6 +2102,11 @@
       modelQuotaLoading: false,
       modelQuotaRepairing: false,
       modelQuotaReleasingCooldown: false,
+      modelUsage: null,
+      modelUsageLoading: false,
+      modelUsageDays: 7,
+      modelUsageAction: "",
+      modelUsageOutcome: "",
       users: [],
       userListMeta: null,
       userDetail: null,
@@ -2231,6 +2280,12 @@
         exportModelKeyInventory();
         return;
       }
+      const refreshModelUsageButton = event.target.closest("[data-refresh-model-usage]");
+      if (refreshModelUsageButton) {
+        event.stopPropagation();
+        loadModelUsageDetails(true);
+        return;
+      }
       const repairModelIssuesButton = event.target.closest("[data-repair-model-issues]");
       if (repairModelIssuesButton) {
         event.stopPropagation();
@@ -2343,6 +2398,22 @@
       if (button) openProviderSecretDialog(button.dataset.replaceSecret);
       const addButton = event.target.closest("[data-add-secret]");
       if (addButton) openProviderSecretDialog(addButton.dataset.addSecret, "pool");
+    });
+    document.addEventListener("change", (event) => {
+      if (event.target.closest("[data-model-usage-days]")) {
+        state.modelUsageDays = Number(event.target.value || 7);
+        loadModelUsageDetails(true);
+        return;
+      }
+      if (event.target.closest("[data-model-usage-action]")) {
+        state.modelUsageAction = event.target.value || "";
+        loadModelUsageDetails(true);
+        return;
+      }
+      if (event.target.closest("[data-model-usage-outcome]")) {
+        state.modelUsageOutcome = event.target.value || "";
+        loadModelUsageDetails(true);
+      }
     });
     $("refreshUsersButton").addEventListener("click", () => loadUsers($("userSearchInput").value.trim()));
     $("userSearchButton").addEventListener("click", () => loadUsers($("userSearchInput").value.trim()));
@@ -2644,6 +2715,7 @@
       try {
         state.modelQuota = await callFunction("/adminModelQuotaStatus");
         renderModelQuotaStatus();
+        loadModelUsageDetails(false);
         if (showToast) showMessage("模型额度已刷新", "ok");
       } catch (error) {
         const message = error.message || "加载模型额度失败";
@@ -2656,6 +2728,33 @@
         if (showToast) showMessage(message, "warn");
       } finally {
         state.modelQuotaLoading = false;
+      }
+    }
+
+    async function loadModelUsageDetails(showToast = false) {
+      if (state.modelUsageLoading) {
+        if (showToast) showMessage("用量明细正在刷新", "");
+        return;
+      }
+      state.modelUsageLoading = true;
+      renderModelQuotaStatus();
+      try {
+        const params = new URLSearchParams({
+          days: String(state.modelUsageDays || 7),
+          limit: "80",
+        });
+        if (state.modelUsageAction) params.set("action", state.modelUsageAction);
+        if (state.modelUsageOutcome) params.set("outcome", state.modelUsageOutcome);
+        state.modelUsage = await callFunction(`/adminModelUsageDetails?${params.toString()}`);
+        renderModelQuotaStatus();
+        if (showToast) showMessage("用量明细已刷新", "ok");
+      } catch (error) {
+        state.modelUsage = { error: error.message || "加载用量明细失败" };
+        renderModelQuotaStatus();
+        if (showToast) showMessage(state.modelUsage.error, "warn");
+      } finally {
+        state.modelUsageLoading = false;
+        renderModelQuotaStatus();
       }
     }
 
@@ -3722,6 +3821,7 @@
           <button type="button" class="secondary" data-repair-model-issues ${repairableProviderCount && !state.modelQuotaRepairing ? "" : "disabled"}>${state.modelQuotaRepairing ? "修复中..." : "一键修复异常 Key"}</button>
           <button type="button" class="secondary" data-copy-model-issue-report>复制异常报告</button>
           <button type="button" class="secondary" data-export-model-key-inventory>导出 Key 体检表</button>
+          <button type="button" class="secondary" data-refresh-model-usage>刷新用量明细</button>
           <button type="button" class="secondary" data-run-provider-health>立即巡检</button>
           <button type="button" class="secondary" data-provider-health-runs>巡检记录</button>
           <button type="button" class="secondary" data-cleanup-provider-maintenance>清理旧日志</button>
@@ -3729,6 +3829,7 @@
         ${visibleProviders.length
           ? `<div class="model-quota-grid">${visibleProviders.map(renderModelProviderCard).join("")}</div>`
           : `<div class="empty">${state.modelQuotaOnlyCooldown ? "当前没有冷却中的 Key。" : "当前没有异常服务或 Key。"}</div>`}
+        ${renderModelUsageSection()}
       `;
       setModelQuotaCooldownTicker(cooldownSummary.keyCount > 0);
     }
@@ -3744,6 +3845,166 @@
         <span class="pill ${tone}">最近巡检 ${escapeHtml(formatDate(run.checkedAt) || "")}</span>
         <span class="muted">Key 可用 ${escapeHtml(ok)} / ${escapeHtml(checked)}${failed ? `，失败 ${escapeHtml(failed)}` : ""}${repaired ? `，修复 ${escapeHtml(repaired)}` : ""}</span>
       `;
+    }
+
+    function renderModelUsageSection() {
+      const data = state.modelUsage;
+      const summary = data?.summary || {};
+      return `
+        <div class="model-usage-panel">
+          <div class="model-usage-head">
+            <div>
+              <div class="strong">用量明细</div>
+              <div class="model-quota-note">查看模型和 TTS 具体用在了哪个用户、哪个功能、哪个 Key。不会保存完整对话内容。</div>
+            </div>
+            <div class="model-usage-filters">
+              <label>时间范围
+                <select data-model-usage-days>
+                  ${[1, 7, 14, 30, 90].map((days) => `<option value="${days}" ${Number(state.modelUsageDays) === days ? "selected" : ""}>近 ${days} 天</option>`).join("")}
+                </select>
+              </label>
+              <label>功能
+                <select data-model-usage-action>
+                  ${renderModelUsageOption("", "全部功能", state.modelUsageAction)}
+                  ${renderModelUsageOption("aiChat", "AI 对话", state.modelUsageAction)}
+                  ${renderModelUsageOption("aiChatStream", "AI 流式对话", state.modelUsageAction)}
+                  ${renderModelUsageOption("dialogueReplyScheduler", "后台补发对话", state.modelUsageAction)}
+                  ${renderModelUsageOption("tts", "TTS 语音", state.modelUsageAction)}
+                </select>
+              </label>
+              <label>结果
+                <select data-model-usage-outcome>
+                  ${renderModelUsageOption("", "全部结果", state.modelUsageOutcome)}
+                  ${renderModelUsageOption("success", "成功", state.modelUsageOutcome)}
+                  ${renderModelUsageOption("failure", "失败", state.modelUsageOutcome)}
+                </select>
+              </label>
+              <button type="button" class="secondary" data-refresh-model-usage>${state.modelUsageLoading ? "加载中..." : "刷新"}</button>
+            </div>
+          </div>
+          ${state.modelUsageLoading && !data ? `<div class="empty">加载用量明细...</div>` : ""}
+          ${data?.error ? `<div class="empty warn">${escapeHtml(data.error)}</div>` : ""}
+          ${data && !data.error ? `
+            <div class="model-usage-metrics">
+              ${renderModelUsageMetric("调用次数", summary.totalCalls || 0)}
+              ${renderModelUsageMetric("成功 / 失败", `${summary.successCalls || 0} / ${summary.failedCalls || 0}`)}
+              ${renderModelUsageMetric("总 Token", summary.totalTokens || 0)}
+              ${renderModelUsageMetric("输出字符", summary.outputChars || 0)}
+            </div>
+            <div class="model-usage-groups">
+              ${renderModelUsageGroup("按功能", summary.byAction || [], "action")}
+              ${renderModelUsageGroup("按 Key", summary.byKey || [], "key")}
+            </div>
+            ${renderModelUsageLogs(data.logs || [], data.note || "")}
+          ` : ""}
+        </div>
+      `;
+    }
+
+    function renderModelUsageOption(value, label, selected) {
+      return `<option value="${escapeAttr(value)}" ${String(selected || "") === String(value || "") ? "selected" : ""}>${escapeHtml(label)}</option>`;
+    }
+
+    function renderModelUsageMetric(label, value) {
+      return `
+        <div class="metric-card">
+          <div class="metric-label">${escapeHtml(label)}</div>
+          <div class="metric-value">${escapeHtml(formatModelUsageNumber(value))}</div>
+        </div>
+      `;
+    }
+
+    function renderModelUsageGroup(title, rows, type) {
+      const visibleRows = rows.slice(0, 6);
+      return `
+        <div class="model-reliability">
+          <div class="model-reliability-head">
+            <div class="strong">${escapeHtml(title)}</div>
+            <span class="pill">${escapeHtml(rows.length)}</span>
+          </div>
+          ${visibleRows.length ? visibleRows.map((row) => {
+            const name = type === "key"
+              ? `${row.keyLabel || row.keyId || "未知 Key"}${row.provider ? ` / ${row.provider}` : ""}`
+              : modelUsageActionLabel(row.action);
+            return `
+              <div class="compact-line">
+                <span class="compact-label">${escapeHtml(name)}</span>
+                <span class="compact-value">${escapeHtml(row.calls || 0)} 次${row.failures ? `，失败 ${escapeHtml(row.failures)}` : ""}${row.totalTokens ? `，${escapeHtml(formatModelUsageNumber(row.totalTokens))} Token` : ""}</span>
+              </div>
+            `;
+          }).join("") : `<div class="model-quota-note">暂无汇总。</div>`}
+        </div>
+      `;
+    }
+
+    function renderModelUsageLogs(logs, note) {
+      if (!logs.length) {
+        return `<div class="empty">${escapeHtml(note || "暂无用量明细。")}</div>`;
+      }
+      return `
+        <div class="model-usage-list">
+          ${note ? `<div class="model-quota-note">${escapeHtml(note)}</div>` : ""}
+          ${logs.map(renderModelUsageLogRow).join("")}
+        </div>
+      `;
+    }
+
+    function renderModelUsageLogRow(log = {}) {
+      const ok = log.outcome !== "failure";
+      const userLabel = log.userName || log.userEmail || log.uid || "未知用户";
+      const usage = log.usage || {};
+      const tokenParts = [
+        usage.totalTokens ? `总 ${formatModelUsageNumber(usage.totalTokens)}` : "",
+        usage.promptTokens ? `输入 ${formatModelUsageNumber(usage.promptTokens)}` : "",
+        usage.completionTokens ? `输出 ${formatModelUsageNumber(usage.completionTokens)}` : "",
+      ].filter(Boolean);
+      const relation = [
+        log.sessionId ? `会话 ${log.sessionId}` : "",
+        log.jobId ? `任务 ${log.jobId}` : "",
+        log.requestId ? `请求 ${log.requestId}` : "",
+      ].filter(Boolean).join(" · ");
+      const purpose = [
+        log.feature || "",
+        log.divinerType ? `${log.divinerType}` : "",
+        log.notificationType || "",
+        log.endpoint || "",
+      ].filter(Boolean).join(" · ");
+      return `
+        <div class="list-row">
+          <div class="row" style="justify-content: space-between;">
+            <div>
+              <div class="strong">${escapeHtml(modelUsageActionLabel(log.action))}</div>
+              <div class="muted">${escapeHtml(formatDate(log.createdAt) || "未知时间")}</div>
+            </div>
+            <span class="pill ${ok ? "ok" : "danger"}">${escapeHtml(ok ? "成功" : "失败")}</span>
+          </div>
+          <div class="compact-fields">
+            <div class="compact-line"><span class="compact-label">用户</span><span class="compact-value">${escapeHtml(userLabel)}${log.uid ? `<br><span class="mono">${escapeHtml(log.uid)}</span>` : ""}</span></div>
+            <div class="compact-line"><span class="compact-label">用途</span><span class="compact-value">${escapeHtml(purpose || "未标注")}</span></div>
+            <div class="compact-line"><span class="compact-label">Key</span><span class="compact-value">${escapeHtml([log.provider, log.keyLabel || log.keyId, log.keySource].filter(Boolean).join(" · ") || "未记录")}</span></div>
+            <div class="compact-line"><span class="compact-label">模型</span><span class="compact-value">${escapeHtml([log.model, log.stream ? "流式" : ""].filter(Boolean).join(" · ") || "未记录")}</span></div>
+            <div class="compact-line"><span class="compact-label">消耗</span><span class="compact-value">${escapeHtml(tokenParts.join(" / ") || "未返回 Token")}${log.outputChars ? ` · 输出字符 ${escapeHtml(formatModelUsageNumber(log.outputChars))}` : ""}${log.requestChars ? ` · 请求字符 ${escapeHtml(formatModelUsageNumber(log.requestChars))}` : ""}</span></div>
+            ${relation ? `<div class="compact-line"><span class="compact-label">关联</span><span class="compact-value mono">${escapeHtml(relation)}</span></div>` : ""}
+            ${log.error ? `<div class="compact-line"><span class="compact-label">错误</span><span class="compact-value">${escapeHtml(log.error)}</span></div>` : ""}
+          </div>
+        </div>
+      `;
+    }
+
+    function modelUsageActionLabel(action) {
+      return ({
+        aiChat: "AI 对话",
+        aiChatStream: "AI 流式对话",
+        dialogueReplyScheduler: "后台补发对话",
+        tts: "TTS 语音",
+      })[action] || action || "未知功能";
+    }
+
+    function formatModelUsageNumber(value) {
+      if (typeof value === "string") return value;
+      const number = Number(value || 0);
+      if (!Number.isFinite(number)) return "--";
+      return number.toLocaleString("zh-CN", { maximumFractionDigits: 0 });
     }
 
     function renderModelProviderCard(provider) {
