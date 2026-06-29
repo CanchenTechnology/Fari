@@ -193,6 +193,8 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
         {
             string path = GetLocalCachePath();
             if (!File.Exists(path))
+                path = GetLegacyLocalCachePath();
+            if (!File.Exists(path))
                 return null;
 
             string json = File.ReadAllText(path);
@@ -222,6 +224,13 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
             string path = Path.Combine(dir, "dialog_default.json");
             if (File.Exists(path))
                 File.Delete(path);
+            string uid = GetCurrentUidStatic();
+            if (!string.IsNullOrWhiteSpace(uid))
+            {
+                string uidPath = Path.Combine(dir, $"dialog_{SanitizeFileName(uid)}.json");
+                if (File.Exists(uidPath))
+                    File.Delete(uidPath);
+            }
             Debug.Log("[DialogHistoryFirestore] 已清除本地对话缓存");
         }
         catch (Exception ex)
@@ -233,7 +242,25 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
     private string GetLocalCachePath()
     {
         string dir = Path.Combine(Application.persistentDataPath, "dialog_cache");
+        string uid = GetCurrentUid();
+        if (string.IsNullOrWhiteSpace(uid))
+            return GetLegacyLocalCachePath();
+        return Path.Combine(dir, $"dialog_{SanitizeFileName(uid)}.json");
+    }
+
+    private string GetLegacyLocalCachePath()
+    {
+        string dir = Path.Combine(Application.persistentDataPath, "dialog_cache");
         return Path.Combine(dir, "dialog_default.json");
+    }
+
+    private static string SanitizeFileName(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "default";
+
+        foreach (char invalid in Path.GetInvalidFileNameChars())
+            value = value.Replace(invalid, '_');
+        return value;
     }
 
     private Dictionary<string, object> SerializeSnapshot(DialogHistorySnapshot snapshot)
@@ -586,7 +613,24 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
 
     private string GetCurrentUid()
     {
-        return UserDataManager.Instance != null ? UserDataManager.Instance.FirebaseUid : "";
+        return GetCurrentUidStatic();
+    }
+
+    private static string GetCurrentUidStatic()
+    {
+        string uid = UserDataManager.Instance != null ? UserDataManager.Instance.FirebaseUid : "";
+        if (!string.IsNullOrWhiteSpace(uid))
+            return uid;
+
+        try
+        {
+            uid = FirebaseAuthManager.Instance?.CurrentUser?.UserId;
+        }
+        catch
+        {
+            uid = "";
+        }
+        return uid ?? "";
     }
 }
 

@@ -109,6 +109,7 @@ public class AccountUI : WindowBase
 
 	private void ConfirmLogout()
 	{
+		DialogSystem.Instance?.FlushCloudDialogHistory();
 		FirebaseAuthManager.Instance?.SignOut();
 		ClearAccountSessionCaches();
 		UserDataManager.Instance.Logout();
@@ -214,6 +215,8 @@ public class AccountUI : WindowBase
 		DivinationHistoryUI.SelectedRecord = null;
 		DivinationInfoUI.SelectedRecord = null;
 		DivinationHistoryCacheService.Instance.ClearMemoryCache();
+		DialogSystem.Instance?.ClearRuntimeDialogStateForAccountSwitch();
+		DivinationEngine.Instance?.ClearSession();
 	}
 
 	private void SetAccountButtonsInteractable(bool interactable)

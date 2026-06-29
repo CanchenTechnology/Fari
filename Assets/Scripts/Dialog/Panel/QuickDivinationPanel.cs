@@ -10,6 +10,8 @@ using TMPro;
 
 public class QuickDivinationPanel : MonoBehaviour
 {
+    private const string ThreeCardQuickQuestion = "给我做个三张牌的占卜";
+
     public class QuickQuestionRequest
     {
         public string topicKey;
@@ -631,6 +633,8 @@ public class QuickDivinationPanel : MonoBehaviour
     private List<string> GetCurrentSourceQuestions(int requiredCount)
     {
         var topic = GetCurrentSourceTopic();
+        if (IsThreeCardTopic(topic))
+            return new List<string> { ThreeCardQuickQuestion };
 
         var generated = GetGeneratedQuestions(topic, requiredCount);
         if (generated.Count > 0)
@@ -640,6 +644,21 @@ public class QuickDivinationPanel : MonoBehaviour
             return EnsureEnoughQuestions(topic.questions, topic, requiredCount);
 
         return EnsureEnoughQuestions(QuickDivinationData.Instance.GetCurrentQuestions(), topic, requiredCount);
+    }
+
+    private bool IsThreeCardTopic(QuickTopic topic)
+    {
+        if (topic == null) return false;
+
+        string key = topic.key ?? "";
+        string label = topic.label ?? "";
+        string value = $"{key} {label}".ToLowerInvariant();
+
+        return value.Contains("three")
+            || value.Contains("3")
+            || value.Contains("三牌")
+            || value.Contains("三排")
+            || value.Contains("三张");
     }
 
     private List<string> GetGeneratedQuestions(QuickTopic topic, int requiredCount)

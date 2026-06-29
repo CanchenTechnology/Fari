@@ -24,6 +24,7 @@ public class DailyDivinationSyncSettingsUIComponent:MonoBehaviour
 	[Header("隐私策略")]
 	public Button privacyBtn;
 	public GameObject privacyNoticePanel;
+	public Button okBtn;
 	public void InitComponent(WindowBase target)
 	{
 	    //组件事件绑定

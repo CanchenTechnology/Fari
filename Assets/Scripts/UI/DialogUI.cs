@@ -124,6 +124,16 @@ public class DialogUI : WindowBase
     private const float CHAT_ITEM_DEFAULT_WITH_PADDING_SIZE = 180f;
     private const float QUESTION_INPUT_DRAG_SCROLL_SENSITIVITY = 1.2f;
     private const string QUESTION_INPUT_TEXT_VIEWPORT_NAME = "__QuestionInputTextViewport";
+    private const string ThreeCardQuickStartQuestion = "给我做个三张牌的占卜";
+    private const string ThreeCardDirectionPrompt = "你想占卜哪个方向？请告诉我。";
+
+    private enum ThreeCardQuickFlowState
+    {
+        None,
+        AwaitingUserQuestion
+    }
+
+    private ThreeCardQuickFlowState _threeCardQuickFlowState = ThreeCardQuickFlowState.None;
 
     private class PreparedTTSAudio
     {
@@ -1353,6 +1363,15 @@ public class DialogUI : WindowBase
 		}
 
 		if (!MembershipGate.CanUse(MembershipFeature.DialogMessage)) return;
+
+        if (TryStartThreeCardQuickFlow(content))
+            return;
+
+        if (TrySendThreeCardQuickQuestion(content))
+            return;
+
+        if (TrySendExplicitThreeCardRequest(content))
+            return;
 
 		// 添加用户消息到数据层
 		dialogSystem.AddUserMessage(content);
@@ -2663,6 +2682,133 @@ public class DialogUI : WindowBase
         return phase == DivinationPhase.ChoosingSpread;
     }
 
+    private bool TryStartThreeCardQuickFlow(string content)
+    {
+        if (!IsThreeCardQuickStartQuestion(content)) return false;
+        if (dialogSystem == null) return true;
+
+        _threeCardQuickFlowState = ThreeCardQuickFlowState.AwaitingUserQuestion;
+        dialogSystem.AddUserMessage(content);
+        dialogSystem.AddAIMessage(ThreeCardDirectionPrompt);
+        UpdateChatScrollView();
+        PrepareTTSForCompletedAIMessage(dialogSystem.GetMessageCount() - 1);
+        Debug.Log("[DialogUI] 三牌快速占卜：直接追加问题引导");
+        return true;
+    }
+
+    private bool TrySendThreeCardQuickQuestion(string content)
+    {
+        if (_threeCardQuickFlowState != ThreeCardQuickFlowState.AwaitingUserQuestion)
+            return false;
+
+        if (dialogSystem == null || divinationEngine == null)
+        {
+            ResetThreeCardQuickFlow();
+            return false;
+        }
+
+        string question = (content ?? "").Trim();
+        if (string.IsNullOrEmpty(question)) return false;
+
+        dialogSystem.AddUserMessage(question);
+
+        SpreadDefinition spreadDef = ResolveExplicitThreeCardSpreadDefinition(question);
+        if (spreadDef == null)
+        {
+            Debug.LogWarning("[DialogUI] 三牌快速占卜失败：找不到三牌牌阵定义");
+            ResetThreeCardQuickFlow();
+            UpdateChatScrollView();
+            return true;
+        }
+
+        var action = new OracleClientActionRequest
+        {
+            action = "show_spread",
+            spreadKind = spreadDef.kind,
+            cardCount = 3,
+            question = question,
+            scene = "quick_three_card",
+            reason = "用户从快速占卜入口选择三张牌占卜，并补充了占卜方向。"
+        };
+
+        var plan = BuildClientActionDivinationPlan(action, spreadDef);
+        divinationEngine.ApplyRuntimeDivinationPlan(plan);
+
+        string cardIntro = BuildThreeCardQuickSpreadIntro(question, spreadDef);
+        dialogSystem.AddInteractionCard3Message(cardIntro, spreadDef.kind);
+
+        ResetThreeCardQuickFlow();
+        UpdateChatScrollView();
+        Debug.Log($"[DialogUI] 三牌快速占卜：直接追加 InteractionCard3, spreadKind={spreadDef.kind}");
+        return true;
+    }
+
+    private bool TrySendExplicitThreeCardRequest(string content)
+    {
+        if (dialogSystem == null || divinationEngine == null) return false;
+
+        string question = (content ?? "").Trim();
+        if (IsThreeCardQuickStartQuestion(question)) return false;
+        if (!IsExplicitThreeCardSpreadRequest(question)) return false;
+
+        if (divinationEngine.CurrentPhase == DivinationPhase.CardsLocked
+            || divinationEngine.CurrentPhase == DivinationPhase.Revealing
+            || divinationEngine.CurrentPhase == DivinationPhase.GeneratingVerdict)
+        {
+            return false;
+        }
+
+        SpreadDefinition spreadDef = ResolveExplicitThreeCardSpreadDefinition(question);
+        if (spreadDef == null)
+        {
+            Debug.LogWarning("[DialogUI] 明确三牌请求失败：找不到三牌牌阵定义");
+            return false;
+        }
+
+        dialogSystem.AddUserMessage(question);
+
+        var action = new OracleClientActionRequest
+        {
+            action = "show_spread",
+            spreadKind = spreadDef.kind,
+            cardCount = 3,
+            question = question,
+            scene = "direct_three_card",
+            reason = "用户明确要求抽三张牌。"
+        };
+
+        var plan = BuildClientActionDivinationPlan(action, spreadDef);
+        divinationEngine.ApplyRuntimeDivinationPlan(plan);
+
+        string cardIntro = BuildThreeCardQuickSpreadIntro(question, spreadDef);
+        dialogSystem.AddInteractionCard3Message(cardIntro, spreadDef.kind);
+        UpdateChatScrollView();
+        Debug.Log($"[DialogUI] 明确三牌请求：直接追加 InteractionCard3, spreadKind={spreadDef.kind}");
+        return true;
+    }
+
+    private string BuildThreeCardQuickSpreadIntro(string question, SpreadDefinition spreadDef)
+    {
+        string label = spreadDef != null && !string.IsNullOrWhiteSpace(spreadDef.label)
+            ? spreadDef.label
+            : "三牌牌阵";
+
+        return $"我会用「{label}」帮你看这个方向：{question}";
+    }
+
+    private bool IsThreeCardQuickStartQuestion(string question)
+    {
+        return string.Equals(
+            (question ?? "").Trim(),
+            ThreeCardQuickStartQuestion,
+            System.StringComparison.Ordinal);
+    }
+
+    private void ResetThreeCardQuickFlow()
+    {
+        _threeCardQuickFlowState = ThreeCardQuickFlowState.None;
+    }
+
     private bool TryExecuteClientAction(int streamingMessageIndex, string aiResponse)
     {
         if (dialogSystem == null) return false;
@@ -2710,9 +2856,63 @@ public class DialogUI : WindowBase
         divinationEngine.ApplyRuntimeDivinationPlan(plan);
 
         HideLoadingIndicator();
-        ConvertMessageToInteractionCard(streamingMessageIndex, aiResponse, spreadDef.cardCount);
-        RefreshChatAfterAIMessage(streamingMessageIndex);
+        PrepareTTSForCompletedAIMessage(streamingMessageIndex);
+        AddInteractionCardToChat(aiResponse);
+        RefreshChatAfterAIMessage(dialogSystem.GetMessageCount() - 1);
+        Debug.Log($"[DialogUI] client_action show_spread → 追加 InteractionCard, spreadKind={spreadDef.kind}");
         return true;
+    }
+
+    private bool IsExplicitThreeCardSpreadRequest(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+
+        string value = text.Trim().ToLowerInvariant();
+        if (ContainsAny(value, "不要抽", "别抽", "不想抽"))
+            return false;
+
+        return ContainsAny(value,
+            "抽三张", "抽 3 张", "抽3张",
+            "三张牌", "三张塔罗", "三张神谕",
+            "三牌", "三卡", "三排",
+            "3张牌", "3 张牌", "3张塔罗", "3 张塔罗",
+            "three card", "three-card", "3 card", "3-card");
+    }
+
+    private SpreadDefinition ResolveExplicitThreeCardSpreadDefinition(string text)
+    {
+        string spreadKind = IsRelationshipThreeCardRequest(text)
+            ? "relationship_tension"
+            : "self_repair";
+
+        SpreadDefinition spreadDef = divinationEngine.GetSpreadDefinition(spreadKind);
+        if (spreadDef != null && spreadDef.cardCount == 3)
+            return spreadDef;
+
+        return divinationEngine.GetSpreadDefinition(FindSpreadKindByCardCount(3));
+    }
+
+    private bool IsRelationshipThreeCardRequest(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+
+        string value = text.ToLowerInvariant();
+        return ContainsAny(value,
+            "关系", "感情", "喜欢", "暧昧", "复合", "前任",
+            "男朋友", "女朋友", "伴侣", "对方", "他", "她", "ta",
+            "relationship", "love", "crush", "ex");
+    }
+
+    private bool ContainsAny(string text, params string[] keywords)
+    {
+        if (string.IsNullOrEmpty(text) || keywords == null) return false;
+
+        foreach (string keyword in keywords)
+        {
+            if (!string.IsNullOrEmpty(keyword) && text.Contains(keyword))
+                return true;
+        }
+        return false;
     }
 
     private bool TryShowRelationshipDivinationFromClientAction(int streamingMessageIndex)
@@ -2755,8 +2955,14 @@ public class DialogUI : WindowBase
         SpreadDefinition spreadDef)
     {
         var runtimePlan = dialogSystem?.GetLastRuntimePlan()?.divinationPlan;
-        if (runtimePlan != null && runtimePlan.spreadKind == spreadDef.kind)
+        string actionQuestion = action?.question?.Trim();
+        if (runtimePlan != null
+            && runtimePlan.spreadKind == spreadDef.kind
+            && (string.IsNullOrWhiteSpace(actionQuestion)
+                || string.Equals(runtimePlan.question?.Trim(), actionQuestion, System.StringComparison.OrdinalIgnoreCase)))
+        {
             return runtimePlan;
+        }
 
         return new DivinationPlan
         {

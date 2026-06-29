@@ -100,7 +100,7 @@ public class MyUI : WindowBase
 		if (stats == null) return;
 
 		if (uiComponent.tatTodayCardValueText != null)
-			uiComponent.tatTodayCardValueText.text = stats.GetReadingDisplay(_isPro);
+			uiComponent.tatTodayCardValueText.text = stats.GetDailyOracleDisplay(_isPro);
 
 		if (uiComponent.StatTodaydialouNumText != null)
 			uiComponent.StatTodaydialouNumText.text = stats.GetDialogDisplay(_isPro);
@@ -278,6 +278,61 @@ public class MyUI : WindowBase
 	public void OnshareButtonClick()
 	{
 		UIModule.Instance.PopUpWindow<FollowusUI>();
+	}
+	public void OnExitLoginButtonClick()
+	{
+		ShowSelectWindow(
+			"退出账号",
+			"确定要退出当前账号吗？本地资料会保留，云端账号不会删除。",
+			"退出",
+			ConfirmLogout);
+	}
+
+	private void ConfirmLogout()
+	{
+		DialogSystem.Instance?.FlushCloudDialogHistory();
+		FirebaseAuthManager.Instance?.SignOut();
+		ClearAccountSessionCaches();
+		UserDataManager.Instance.Logout();
+		Debug.Log("[MyUI] 用户已退出登录");
+
+		ReturnToLogin();
+	}
+
+	private void ShowSelectWindow(string title, string content, string sureText, System.Action onSure)
+	{
+		SelectWindow selectWindow = UIModule.Instance.PopUpWindow<SelectWindow>();
+		if (selectWindow == null)
+		{
+			ToastManager.ShowToast("确认窗口打开失败");
+			return;
+		}
+
+		selectWindow.InitViewState(
+			SelectType.Normal,
+			content,
+			onSure,
+			null,
+			sureText,
+			"取消",
+			title,
+			TextAnchor.MiddleCenter);
+	}
+
+	private void ReturnToLogin()
+	{
+		UIModule.Instance.DestroyAllWindows();
+		UIModule.Instance.PopUpWindow<LoginUI>();
+	}
+
+	private void ClearAccountSessionCaches()
+	{
+		HistoryUI.SelectedRecord = null;
+		DivinationHistoryUI.SelectedRecord = null;
+		DivinationInfoUI.SelectedRecord = null;
+		DivinationHistoryCacheService.Instance.ClearMemoryCache();
+		DialogSystem.Instance?.ClearRuntimeDialogStateForAccountSwitch();
+		DivinationEngine.Instance?.ClearSession();
 	}
 	#endregion
 }

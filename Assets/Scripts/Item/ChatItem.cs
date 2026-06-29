@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text;
 using GamerFrameWork.UIFrameWork;
 using UnityEngine;
 using UnityEngine.UI;
@@ -284,7 +285,29 @@ public class ChatItem : MonoBehaviour
 
     private string BuildDisplayText(ChatMessageData data)
     {
-        return data?.content ?? "";
+        return NormalizeDisplayText(data?.content);
+    }
+
+    private string NormalizeDisplayText(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+
+        string value = text.Replace("\r\n", "\n").Replace("\r", "\n");
+        string[] lines = value.Split('\n');
+        StringBuilder builder = new StringBuilder(value.Length);
+
+        foreach (string rawLine in lines)
+        {
+            string line = rawLine.TrimEnd();
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            if (builder.Length > 0)
+                builder.Append('\n');
+            builder.Append(line);
+        }
+
+        return builder.ToString();
     }
 
     private float ApplyLastMessageBottomPadding(float height)
@@ -326,11 +349,9 @@ public class ChatItem : MonoBehaviour
         size.y = textRect.sizeDelta.y + bubbleVerticalPadding;
         bubbleRect.sizeDelta = size;
         ApplyTextPaddingToBubble(textRect, bubbleRect);
-        ApplyTextMessageTopOffset(bubbleRect);
+        ApplyTextMessageTopOffset(bubbleRect, reserveVoiceSpace);
 
-        // 调整整个Item高度
-        float extraHeight = reserveVoiceSpace ? voiceReservedHeight : 0f;
-        ApplyItemHeight(size.y + extraHeight, msgTrans, minTextItemAvatarExtraHeight);
+        ApplyTextMessageItemHeight(size.y, reserveVoiceSpace);
 
         if (layoutText != null)
             mMsgText.text = originalText;
@@ -340,6 +361,53 @@ public class ChatItem : MonoBehaviour
         // {
         //     RenderOptionButtons(data.options);
         // }
+    }
+
+    private void ApplyTextMessageItemHeight(float bubbleHeight, bool reserveVoiceSpace)
+    {
+        RectTransform tf = transform as RectTransform;
+        if (tf == null) return;
+
+        float topOffset = GetTopOffset(msgTrans);
+        float y = topOffset + bubbleHeight;
+
+        if (reserveVoiceSpace)
+            y = Mathf.Max(y, bubbleHeight + GetVoiceAreaHeight());
+
+        if (headImage != null && headImage.gameObject.activeSelf && headImage.TryGetComponent(out RectTransform headRect))
+            y = Mathf.Max(y, headRect.sizeDelta.y + minTextItemAvatarExtraHeight);
+
+        y = ApplyLastMessageBottomPadding(y);
+        tf.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, y);
+    }
+
+    private float GetVoiceAreaHeight()
+    {
+        float height = voiceReservedHeight;
+
+        RectTransform voiceRoot = null;
+        if (ttsPlayButton != null)
+            voiceRoot = ttsPlayButton.transform.parent as RectTransform;
+
+        if (voiceRoot != null)
+            height = Mathf.Max(height, ResolveRectHeight(voiceRoot));
+        else if (ttsPlayButton != null && ttsPlayButton.transform is RectTransform buttonRect)
+            height = Mathf.Max(height, ResolveRectHeight(buttonRect));
+
+        if (ttsTimeText != null && ttsTimeText.transform is RectTransform timeRect)
+            height = Mathf.Max(height, ResolveRectHeight(timeRect));
+
+        return height;
+    }
+
+    private float ResolveRectHeight(RectTransform rect)
+    {
+        if (rect == null) return 0f;
+
+        float height = rect.rect.height;
+        if (height <= 0f)
+            height = Mathf.Abs(rect.sizeDelta.y);
+        return height;
     }
 
     private void ApplyTextPaddingToBubble(RectTransform textRect, RectTransform bubbleRect)
@@ -356,16 +424,18 @@ public class ChatItem : MonoBehaviour
         textRect.anchoredPosition = textPos;
     }
 
-    private void ApplyTextMessageTopOffset(RectTransform bubbleRect)
+    private void ApplyTextMessageTopOffset(RectTransform bubbleRect, bool reserveVoiceSpace)
     {
         if (!(msgTrans is RectTransform msgRect) || bubbleRect == null) return;
 
         bool rightAligned = bubbleRect.pivot.x > 0.5f;
         float targetTopOffset = rightAligned ? rightTextMessageTopOffset : leftTextMessageTopOffset;
+        if (reserveVoiceSpace && !rightAligned)
+            targetTopOffset = Mathf.Max(targetTopOffset, GetVoiceAreaHeight());
         if (targetTopOffset < 0f) return;
 
         float currentTopOffset = GetTopOffset(msgRect);
-        if (currentTopOffset <= targetTopOffset) return;
+        if (Mathf.Abs(currentTopOffset - targetTopOffset) <= 0.1f) return;
 
         Vector2 pos = msgRect.anchoredPosition;
         pos.y = -targetTopOffset;
@@ -442,7 +512,7 @@ public class ChatItem : MonoBehaviour
     {
         if (mMsgText == null) return;
 
-        mMsgText.text = newText;
+        mMsgText.text = NormalizeDisplayText(newText);
 
         // 流式输出未完成前不开放 TTS，避免合成半句文本。
         if (ttsPlayButton != null)
@@ -462,15 +532,14 @@ public class ChatItem : MonoBehaviour
 
         SetTTSLength(durationSeconds);
         mMsgText.text = "";
-        ApplyTextBubbleLayout(reserveVoiceSpace: true, layoutText: fullText ?? "");
+        ApplyTextBubbleLayout(reserveVoiceSpace: true, layoutText: NormalizeDisplayText(fullText));
     }
 
     public void SetSyncedSpeechProgress(string fullText, float normalized)
     {
         if (mMsgText == null) return;
 
-        if (fullText == null)
-            fullText = "";
+        fullText = NormalizeDisplayText(fullText);
         int visibleCount = Mathf.Clamp(
             Mathf.CeilToInt(fullText.Length * Mathf.Clamp01(normalized)),
             0,
@@ -484,7 +553,7 @@ public class ChatItem : MonoBehaviour
     {
         if (mMsgText == null) return;
 
-        mMsgText.text = fullText ?? "";
+        mMsgText.text = NormalizeDisplayText(fullText);
         ApplyTextBubbleLayout(reserveVoiceSpace: true);
     }
 
@@ -794,7 +863,7 @@ public class ChatItem : MonoBehaviour
         }
 
         if (hasText)
-            ApplyTextBubbleLayout(reserveVoiceSpace: true, layoutText: text);
+            ApplyTextBubbleLayout(reserveVoiceSpace: true, layoutText: NormalizeDisplayText(text));
     }
 
     #endregion

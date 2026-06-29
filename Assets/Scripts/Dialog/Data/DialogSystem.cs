@@ -1847,6 +1847,46 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         });
     }
 
+    public void ResetCloudDialogHistoryLoadState()
+    {
+        _cloudHistoryLoaded = false;
+    }
+
+    public void ClearRuntimeDialogStateForAccountSwitch()
+    {
+        if (_cloudSaveCoroutine != null)
+        {
+            StopCoroutine(_cloudSaveCoroutine);
+            _cloudSaveCoroutine = null;
+        }
+
+        mChatMessageList.Clear();
+        mApiMessageHistory.Clear();
+        recentUserMessages.Clear();
+        recentAssistantReplies.Clear();
+        activeContextAttachments.Clear();
+
+        readingLock = null;
+        todayCardPayload = null;
+        activeReadingId = "";
+        activeReadingState = "";
+        activeActionKind = "";
+        activeRelationshipId = "";
+        activeFriendContext = "";
+        activeDivinationPlan = null;
+        currentRevealCardId = "";
+
+        mMessageIdCounter = 0;
+        mStreamingMessageIndex = -1;
+        streamingClientActionMessageIndex = -1;
+        lastClientActionRequest = null;
+        lastAssemblyResult = null;
+        promptRecords.Clear();
+
+        _isRestoringCloudHistory = false;
+        _cloudHistoryLoaded = false;
+    }
+
     public void SaveCloudDialogHistory(Action<bool> onComplete = null)
     {
         if (_isRestoringCloudHistory)

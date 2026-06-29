@@ -27,7 +27,8 @@ public class DailyDivinationSyncSettingsUI : WindowBase
 			return;
 		}
 		uiComponent.InitComponent(this);
-		AddButtonClickListener(uiComponent.privacyBtn, OnPrivacyNoticeButtonClick);
+		AddButtonClickListener(uiComponent.privacyBtn, OnInfoButtonClick);
+		AddButtonClickListener(uiComponent.okBtn, OnPrivacyNoticeButtonClick);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
 		base.OnAwake();
 	}
@@ -36,7 +37,7 @@ public class DailyDivinationSyncSettingsUI : WindowBase
 	{
 		base.OnShow();
 		LoadSettingsThenRefresh();
-		SetPrivacyNoticeVisible(ShouldShowPrivacyNotice());
+		SetPrivacyNoticeVisible(false);
 	}
 	// 物体隐藏时执行
 	public override void OnHide()

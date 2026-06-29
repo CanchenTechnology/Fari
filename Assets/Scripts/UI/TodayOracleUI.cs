@@ -396,10 +396,11 @@ public class TodayOracleUI : WindowBase
 		yield return PrepareAndRevealTodayCardRoutine(card, upright, flipRevealDelaySeconds);
 	}
 
-	private IEnumerator PrepareAndRevealTodayCardRoutine(TarotCard card, bool upright, float minimumRevealDelaySeconds)
+	private IEnumerator PrepareAndRevealTodayCardRoutine(TarotCard card, bool upright, float minimumRevealDelaySeconds, bool showLoadingText = true, bool openReadingWindow = true, bool revealCardImmediately = false)
 	{
 		_isPreparingFlip = true;
-		ApplyPreparingState();
+		if (!revealCardImmediately)
+			ApplyPreparingState();
 
 		if (card == null)
 		{
@@ -410,7 +411,13 @@ public class TodayOracleUI : WindowBase
 
 		_currentCard = card;
 		_currentUpright = upright;
-		ShowLoadingText(card);
+		if (revealCardImmediately)
+			RevealTodayCardShell(card, upright);
+
+		if (showLoadingText)
+			ShowLoadingText(card);
+		else
+			HideLoadingText();
 
 		EnsureDailyOracleService();
 
@@ -442,7 +449,7 @@ public class TodayOracleUI : WindowBase
 			preparedReading = BuildLocalPreparedReading(card, upright);
 
 		HideLoadingText();
-		RevealPreparedReading(preparedReading, true);
+		RevealPreparedReading(preparedReading, openReadingWindow);
 		_isPreparingFlip = false;
 		_prepareFlipCoroutine = null;
 	}
@@ -492,7 +499,7 @@ public class TodayOracleUI : WindowBase
 			return;
 		}
 
-		_prepareFlipCoroutine = uiComponent.StartCoroutine(PrepareAndRevealTodayCardRoutine(card, upright, 0.15f));
+		_prepareFlipCoroutine = uiComponent.StartCoroutine(PrepareAndRevealTodayCardRoutine(card, upright, 0f, false, false, true));
 	}
 
 	private void OnDrawCardAnimationCanceled()
@@ -542,6 +549,14 @@ public class TodayOracleUI : WindowBase
 
 		// 翻牌时预热所有今日牌相关数据，后续界面统一读取同一份缓存
 		PreloadTodayReading(card, upright);
+	}
+
+	private void RevealTodayCardShell(TarotCard card, bool upright)
+	{
+		if (card == null) return;
+
+		PopulateReadingCardContainer(card, upright);
+		ApplyDrawnState();
 	}
 
 	private void PopulateReadingCardContainer(TodayOraclePreparedReading preparedReading)

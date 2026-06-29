@@ -574,7 +574,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
 
         UserInfo mockUserInfo = new UserInfo
         {
-            uid = $"mock_editor_user_{System.DateTime.Now.Ticks}",
+            uid = $"mock_editor_user_{provider.ToString().ToLowerInvariant()}",
             displayName = GetMockDisplayName(provider),
             email = GetMockEmail(provider),
             photoUrl = "",

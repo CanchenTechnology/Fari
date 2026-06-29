@@ -120,9 +120,7 @@ public class SpreadInteractionCard3 : MonoBehaviour
                 : _currentSpread.label;
 
         if (cardSubtitle != null)
-            cardSubtitle.text = string.IsNullOrEmpty(_currentSpread.description)
-                ? "三牌牌阵：看清当下、阻碍、走向。"
-                : _currentSpread.description;
+            cardSubtitle.text = BuildQuestionSubtitle();
 
         // 槽位标签
         ApplySlotLabels();
@@ -299,6 +297,122 @@ public class SpreadInteractionCard3 : MonoBehaviour
             if (slots[i] != null)
                 slots[i].cardTag.text = _currentSpread.positions[i].label;
         }
+    }
+
+    private string BuildQuestionSubtitle()
+    {
+        string question = FirstNonEmpty(
+            _messageData?.divinationQuestion,
+            DivinationEngine.Instance?.CurrentSession?.question,
+            _messageData?.content);
+
+        string keyword = BuildQuestionKeyword(question);
+        if (string.IsNullOrWhiteSpace(keyword))
+            keyword = "这个问题";
+
+        return $"三张牌阵解读你的“{keyword}”";
+    }
+
+    private string BuildQuestionKeyword(string question)
+    {
+        string value = NormalizeQuestionText(question);
+        if (string.IsNullOrWhiteSpace(value)) return "";
+
+        string mapped = MapQuestionKeyword(value);
+        if (!string.IsNullOrWhiteSpace(mapped))
+            return mapped;
+
+        value = StripQuestionNoise(value);
+        if (string.IsNullOrWhiteSpace(value)) return "";
+
+        return value.Length > 10 ? value.Substring(0, 10) : value;
+    }
+
+    private string MapQuestionKeyword(string value)
+    {
+        string lower = value.ToLowerInvariant();
+
+        if (ContainsAny(lower, "真实感受", "真实想法", "怎么想"))
+            return "真实感受";
+        if (ContainsAny(lower, "复合", "回来", "回头"))
+            return "复合可能";
+        if (ContainsAny(lower, "关系") && ContainsAny(lower, "未来", "走向", "发展"))
+            return "关系走向";
+        if (ContainsAny(lower, "喜欢", "暧昧", "感情", "对方", "他", "她", "ta"))
+            return "情感关系";
+        if (ContainsAny(lower, "关注", "最需要"))
+            return "当前关注";
+        if (ContainsAny(lower, "选择", "要不要", "该不该", "二选一"))
+            return "选择判断";
+        if (ContainsAny(lower, "工作", "事业", "职业"))
+            return "事业方向";
+        if (ContainsAny(lower, "机会", "回报", "结果"))
+            return "机会结果";
+        if (ContainsAny(lower, "焦虑", "不安", "害怕", "担心"))
+            return "内在不安";
+        if (ContainsAny(lower, "放下", "执念", "消耗"))
+            return "需要放下的事";
+        if (ContainsAny(lower, "行动", "怎么做", "怎么办", "下一步"))
+            return "下一步行动";
+
+        return "";
+    }
+
+    private string NormalizeQuestionText(string question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return "";
+
+        string value = question.Trim();
+        value = value.Replace("\r", " ").Replace("\n", " ");
+        value = value.Replace("“", "").Replace("”", "").Replace("\"", "");
+        value = value.Replace("？", "").Replace("?", "").Replace("。", "").Replace(".", "");
+        value = value.Replace("，", " ").Replace(",", " ").Replace("：", " ").Replace(":", " ");
+
+        while (value.Contains("  "))
+            value = value.Replace("  ", " ");
+
+        return value.Trim();
+    }
+
+    private string StripQuestionNoise(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "";
+
+        string result = value.Trim();
+        string[] noise =
+        {
+            "帮我", "请帮我", "我想知道", "我想问", "我当前", "我现在", "我的",
+            "是什么", "什么是", "什么", "为何", "为什么", "怎样", "如何",
+            "请问", "占卜", "塔罗", "抽牌", "三张牌", "三牌", "牌阵",
+            "一个", "一下", "看看", "看一看", "关于"
+        };
+
+        foreach (string token in noise)
+            result = result.Replace(token, "");
+
+        return result.Trim(' ', '的', '了', '吗', '呢', '吧', '？', '?', '。', '.', '，', ',');
+    }
+
+    private static string FirstNonEmpty(params string[] values)
+    {
+        if (values == null) return "";
+        foreach (string value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value.Trim();
+        }
+        return "";
+    }
+
+    private static bool ContainsAny(string value, params string[] keywords)
+    {
+        if (string.IsNullOrEmpty(value) || keywords == null) return false;
+        foreach (string keyword in keywords)
+        {
+            if (!string.IsNullOrEmpty(keyword) && value.Contains(keyword))
+                return true;
+        }
+        return false;
     }
 
     private bool TryRestoreDrawnCardsFromMessage()

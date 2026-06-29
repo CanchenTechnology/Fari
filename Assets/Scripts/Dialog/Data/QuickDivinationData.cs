@@ -99,6 +99,11 @@ public class QuickDivinationData : MonoSingleton<QuickDivinationData>
                 {
                     key = "social", label = "社交人际", icon = "☀",
                     questions = new List<string> { "我该如何与他人更好相处？", "这段友谊/关系值得投入吗？", "如何建立更健康的人际边界？" }
+                },
+                new QuickTopic
+                {
+                    key = "three_card", label = "三牌占卜", icon = "✦",
+                    questions = new List<string> { "给我做个三张牌的占卜" }
                 }
             }
         };

@@ -14,8 +14,7 @@ admin.initializeApp();
 const db = admin.firestore();
 const realtimeDb = admin.app().database("https://fari-app-b2fd2-default-rtdb.firebaseio.com");
 const runtimeSecretCache = new Map();
-let metadataAccessToken = null;
-let metadataAccessTokenExpiresAt = 0;
+const metadataAccessTokenCache = new Map();
 const providerKeyPoolCollection = db.collection("provider_key_pool");
 const providerKeySelectionCollection = db.collection("provider_key_selection");
 const providerKeyStatsCollection = db.collection("provider_key_stats");
@@ -97,7 +96,7 @@ const volcanoTtsApiKey = optionalSecret("VOLC_TTS_API_KEY");
 const paymentWebhookSecret = optionalSecret("PAYMENT_WEBHOOK_SECRET");
 const appleSharedSecret = optionalSecret("APPLE_SHARED_SECRET");
 const googlePackageName = optionalSecret("GOOGLE_PACKAGE_NAME");
-const googleServiceAccountJson = optionalSecret("GOOGLE_SERVICE_ACCOUNT_JSON");
+const googleServiceAccountJson = defineSecret("GOOGLE_SERVICE_ACCOUNT_JSON");
 const SECRET_PARAMS = Object.freeze({
   DEEPSEEK_API_KEY: deepseekApiKey,
   OPENAI_API_KEY: openaiApiKey,
@@ -535,6 +534,34 @@ const ADMIN_ROOT_COLLECTIONS = Object.freeze([
     ],
   },
   {
+    key: "admin_settings",
+    label: "后台设置",
+    guidePage: 18,
+    collectionPath: "admin_settings",
+    scope: "root",
+    orderBy: "updatedAt",
+    orderDirection: "desc",
+    idHint: "firebase_analytics",
+    description: "后台模块配置，例如 Firebase Analytics 的 GA4 Property ID。",
+    readable: "propertyId、updatedAt、updatedBy、note",
+    writable: "非敏感后台配置字段",
+    risk: "配置错误会让后台模块无法读取对应服务数据。",
+    presets: [
+      { label: "Firebase Analytics", whereField: "__name__", whereOp: "==", whereValue: "firebase_analytics" },
+    ],
+    templates: [
+      {
+        label: "Firebase Analytics 配置",
+        merge: true,
+        data: {
+          propertyId: "",
+          note: "GA4 numeric property id",
+          updatedAt: { __type: "serverTimestamp" },
+        },
+      },
+    ],
+  },
+  {
     key: "admin_audit_logs",
     label: "管理员审计日志",
     guidePage: 18,
@@ -905,6 +932,10 @@ const AGENT_PROMPT_DRAFTS_COLLECTION = "agent_prompt_drafts";
 const AGENT_PROMPT_RELEASES_COLLECTION = "agent_prompt_releases";
 const AGENT_TURN_RATINGS_COLLECTION = "agent_turn_ratings";
 const ADMIN_AUDIT_LOG_COLLECTION = "admin_audit_logs";
+const ADMIN_SETTINGS_COLLECTION = "admin_settings";
+const FIREBASE_ANALYTICS_CONFIG_DOC = "firebase_analytics";
+const FIREBASE_ANALYTICS_SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
+const FIREBASE_ANALYTICS_API_ROOT = "https://analyticsdata.googleapis.com/v1beta";
 const ADMIN_AUDIT_REDACTION_KEYS = Object.freeze([
   "password",
   "token",
@@ -4172,13 +4203,18 @@ function buildSecretFingerprint(secretValue) {
   };
 }
 
-async function getMetadataAccessToken() {
+async function getMetadataAccessToken(scope = "") {
   const now = Date.now();
-  if (metadataAccessToken && metadataAccessTokenExpiresAt - now > 60000) {
-    return metadataAccessToken;
+  const cacheKey = scope || "default";
+  const cached = metadataAccessTokenCache.get(cacheKey);
+  if (cached?.accessToken && cached.expiresAt - now > 60000) {
+    return cached.accessToken;
   }
 
-  const response = await fetch(GOOGLE_METADATA_TOKEN_URL, {
+  const url = scope
+    ? `${GOOGLE_METADATA_TOKEN_URL}?scopes=${encodeURIComponent(scope)}`
+    : GOOGLE_METADATA_TOKEN_URL;
+  const response = await fetch(url, {
     headers: {
       "Metadata-Flavor": "Google",
     },
@@ -4195,9 +4231,11 @@ async function getMetadataAccessToken() {
     error.status = 503;
     throw error;
   }
-  metadataAccessToken = data.access_token;
-  metadataAccessTokenExpiresAt = now + Math.max(Number(data.expires_in || 300) - 30, 60) * 1000;
-  return metadataAccessToken;
+  metadataAccessTokenCache.set(cacheKey, {
+    accessToken: data.access_token,
+    expiresAt: now + Math.max(Number(data.expires_in || 300) - 30, 60) * 1000,
+  });
+  return data.access_token;
 }
 
 async function secretManagerFetch(pathname, options = {}) {
@@ -5459,13 +5497,20 @@ async function verifyGoogleReceipt(payload) {
 }
 
 async function createGoogleAccessToken(serviceAccountJson) {
+  return createGoogleServiceAccountAccessToken(
+    serviceAccountJson,
+    "https://www.googleapis.com/auth/androidpublisher",
+  );
+}
+
+async function createGoogleServiceAccountAccessToken(serviceAccountJson, scope) {
   const account = JSON.parse(serviceAccountJson);
   const nowSeconds = Math.floor(Date.now() / 1000);
   const assertion = [
     base64UrlJson({ alg: "RS256", typ: "JWT" }),
     base64UrlJson({
       iss: account.client_email,
-      scope: "https://www.googleapis.com/auth/androidpublisher",
+      scope,
       aud: "https://oauth2.googleapis.com/token",
       exp: nowSeconds + 3600,
       iat: nowSeconds,
@@ -5491,8 +5536,398 @@ async function createGoogleAccessToken(serviceAccountJson) {
   return tokenBody.access_token;
 }
 
+function getGoogleServiceAccountEmail(serviceAccountJson) {
+  try {
+    return cleanString(JSON.parse(serviceAccountJson || "{}").client_email, "", 300);
+  } catch (error) {
+    return "";
+  }
+}
+
+async function getGoogleAccessTokenForScope(scope) {
+  const serviceAccount = getOptionalSecret(googleServiceAccountJson);
+  if (serviceAccount) {
+    return {
+      accessToken: await createGoogleServiceAccountAccessToken(serviceAccount, scope),
+      source: "GOOGLE_SERVICE_ACCOUNT_JSON",
+      serviceAccountEmail: getGoogleServiceAccountEmail(serviceAccount),
+    };
+  }
+
+  try {
+    return {
+      accessToken: await getMetadataAccessToken(scope),
+      source: "metadata",
+      serviceAccountEmail: "",
+    };
+  } catch (scopedError) {
+    console.warn("[googleAuth] scoped metadata token failed, trying default token", scopedError.message);
+    return {
+      accessToken: await getMetadataAccessToken(),
+      source: "metadata_default",
+      serviceAccountEmail: "",
+    };
+  }
+}
+
 function base64UrlJson(value) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function normalizeAnalyticsPropertyId(value) {
+  const text = cleanString(value, "", 180);
+  if (!text) return "";
+
+  const direct = /^(\d{4,30})$/.exec(text);
+  if (direct) return direct[1];
+
+  const propertyPath = /(?:^|\/)properties\/(\d{4,30})(?:\D|$)/i.exec(text);
+  if (propertyPath) return propertyPath[1];
+
+  const gaUrl = /(?:[?&]p=|\/p)(\d{4,30})(?:\D|$)/i.exec(text);
+  if (gaUrl) return gaUrl[1];
+
+  throw createHttpError(400, "GA4 Property ID must be a numeric property id.");
+}
+
+function normalizeAnalyticsPropertyIdOrEmpty(value) {
+  try {
+    return normalizeAnalyticsPropertyId(value);
+  } catch (error) {
+    return "";
+  }
+}
+
+function serializeFirebaseAnalyticsConfig(data = {}) {
+  const storedPropertyId = getAdminScalarText(data.propertyId, 80);
+  const envPropertyId = normalizeAnalyticsPropertyIdOrEmpty(
+    process.env.FIREBASE_ANALYTICS_PROPERTY_ID || process.env.GA4_PROPERTY_ID,
+  );
+  const propertyId = normalizeAnalyticsPropertyIdOrEmpty(storedPropertyId) || envPropertyId;
+
+  return {
+    configured: Boolean(propertyId),
+    propertyId,
+    storedPropertyId,
+    source: normalizeAnalyticsPropertyIdOrEmpty(storedPropertyId) ? "firestore" : envPropertyId ? "env" : "",
+    updatedAt: serializeTimestamp(data.updatedAt),
+    updatedBy: getAdminScalarText(data.updatedBy, 200),
+    note: getAdminScalarText(data.note, 300),
+  };
+}
+
+async function loadFirebaseAnalyticsConfig() {
+  const snap = await db.collection(ADMIN_SETTINGS_COLLECTION).doc(FIREBASE_ANALYTICS_CONFIG_DOC).get();
+  return serializeFirebaseAnalyticsConfig(snap.exists ? snap.data() || {} : {});
+}
+
+function buildFirebaseAnalyticsSetupHints(config = {}, authInfo = {}) {
+  const hints = [];
+  if (!config.propertyId) {
+    hints.push("在 Firebase / Google Analytics 中找到 GA4 Property ID，填入并保存。");
+  }
+  const serviceAccount = authInfo.serviceAccountEmail
+    ? authInfo.serviceAccountEmail
+    : "Cloud Functions 运行服务账号";
+  hints.push(`给 ${serviceAccount} 添加 Google Analytics 属性的 Viewer 或 Analyst 权限。`);
+  hints.push("如果刚授权，等待几分钟后刷新本页。");
+  return hints;
+}
+
+function createEmptyFirebaseAnalyticsOverview(config, days, extra = {}) {
+  return {
+    ok: extra.ok !== false,
+    configured: Boolean(config.propertyId),
+    config,
+    days,
+    dateRange: {
+      startDate: `${Math.max(days - 1, 1)}daysAgo`,
+      endDate: "today",
+    },
+    summary: {
+      dau: null,
+      latestDate: "",
+      newUsers: 0,
+      eventCount: 0,
+      totalRevenue: 0,
+      nextDayRetentionRate: null,
+    },
+    retention: {
+      available: false,
+      rate: null,
+      note: extra.retentionNote || "暂未读取到留存报表。",
+    },
+    series: [],
+    platforms: [],
+    setupHints: buildFirebaseAnalyticsSetupHints(config, extra.authInfo || {}),
+    consoleUrl: `https://console.firebase.google.com/project/${getProjectId()}/analytics`,
+    ...extra,
+  };
+}
+
+async function callFirebaseAnalyticsRunReport(propertyId, accessToken, body) {
+  const response = await fetch(
+    `${FIREBASE_ANALYTICS_API_ROOT}/properties/${encodeURIComponent(propertyId)}:runReport`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    },
+  );
+  const text = await response.text();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch (error) {
+    data = { raw: text.slice(0, 600) };
+  }
+  if (!response.ok) {
+    const providerMessage = data?.error?.message || data.raw || `HTTP ${response.status}`;
+    const error = new Error(providerMessage);
+    error.status = response.status;
+    error.providerError = data;
+    throw error;
+  }
+  return data;
+}
+
+function parseAnalyticsNumber(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function parseAnalyticsReportRows(report = {}) {
+  const dimensionNames = (report.dimensionHeaders || []).map((header) => header.name);
+  const metricNames = (report.metricHeaders || []).map((header) => header.name);
+  return (report.rows || []).map((row) => {
+    const item = {};
+    dimensionNames.forEach((name, index) => {
+      item[name] = row.dimensionValues?.[index]?.value || "";
+    });
+    metricNames.forEach((name, index) => {
+      item[name] = parseAnalyticsNumber(row.metricValues?.[index]?.value);
+    });
+    return item;
+  });
+}
+
+function formatAnalyticsDateKey(date) {
+  return [
+    date.getUTCFullYear(),
+    String(date.getUTCMonth() + 1).padStart(2, "0"),
+    String(date.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function normalizeAnalyticsDateKey(value) {
+  const text = String(value || "").trim();
+  const compact = /^(\d{4})(\d{2})(\d{2})$/.exec(text);
+  if (compact) return `${compact[1]}-${compact[2]}-${compact[3]}`;
+  const dashed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (dashed) return text;
+  return text;
+}
+
+function formatAnalyticsDateLabel(key) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+  return match ? `${match[2]}/${match[3]}` : key;
+}
+
+function buildFirebaseAnalyticsDailySeries(rows, days) {
+  const byDate = new Map();
+  for (const row of rows) {
+    const date = normalizeAnalyticsDateKey(row.date);
+    if (!date) continue;
+    byDate.set(date, {
+      date,
+      label: formatAnalyticsDateLabel(date),
+      activeUsers: parseAnalyticsNumber(row.activeUsers),
+      newUsers: parseAnalyticsNumber(row.newUsers),
+      eventCount: parseAnalyticsNumber(row.eventCount),
+      totalRevenue: parseAnalyticsNumber(row.totalRevenue),
+    });
+  }
+
+  const end = new Date();
+  const start = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+  start.setUTCDate(start.getUTCDate() - Math.max(days - 1, 0));
+
+  return Array.from({ length: days }, (_, index) => {
+    const date = new Date(start.getTime());
+    date.setUTCDate(start.getUTCDate() + index);
+    const key = formatAnalyticsDateKey(date);
+    return byDate.get(key) || {
+      date: key,
+      label: formatAnalyticsDateLabel(key),
+      activeUsers: 0,
+      newUsers: 0,
+      eventCount: 0,
+      totalRevenue: 0,
+    };
+  });
+}
+
+function buildFirebaseAnalyticsPlatformRows(rows) {
+  return rows
+    .map((row) => ({
+      platform: cleanString(row.platform || "unknown", "unknown", 80),
+      activeUsers: parseAnalyticsNumber(row.activeUsers),
+      newUsers: parseAnalyticsNumber(row.newUsers),
+      eventCount: parseAnalyticsNumber(row.eventCount),
+      totalRevenue: parseAnalyticsNumber(row.totalRevenue),
+    }))
+    .sort((a, b) => b.activeUsers - a.activeUsers);
+}
+
+function summarizeFirebaseAnalytics(series, retention) {
+  const latest = series[series.length - 1] || {};
+  const total = series.reduce((acc, item) => ({
+    newUsers: acc.newUsers + parseAnalyticsNumber(item.newUsers),
+    eventCount: acc.eventCount + parseAnalyticsNumber(item.eventCount),
+    totalRevenue: acc.totalRevenue + parseAnalyticsNumber(item.totalRevenue),
+  }), { newUsers: 0, eventCount: 0, totalRevenue: 0 });
+
+  return {
+    dau: parseAnalyticsNumber(latest.activeUsers),
+    latestDate: latest.date || "",
+    newUsers: total.newUsers,
+    eventCount: total.eventCount,
+    totalRevenue: total.totalRevenue,
+    nextDayRetentionRate: retention?.rate ?? null,
+  };
+}
+
+async function fetchFirebaseAnalyticsRetention(propertyId, accessToken) {
+  try {
+    const report = await callFirebaseAnalyticsRunReport(propertyId, accessToken, {
+      dimensions: [
+        { name: "cohort" },
+        { name: "cohortNthDay" },
+      ],
+      metrics: [
+        { name: "cohortActiveUsers" },
+        { name: "cohortTotalUsers" },
+      ],
+      cohortSpec: {
+        cohorts: [
+          {
+            name: "recent_new_users",
+            dimension: "firstSessionDate",
+            dateRange: { startDate: "8daysAgo", endDate: "2daysAgo" },
+          },
+        ],
+        cohortsRange: {
+          granularity: "DAILY",
+          startOffset: 1,
+          endOffset: 1,
+        },
+      },
+    });
+    const rows = parseAnalyticsReportRows(report);
+    const totals = rows.reduce((acc, row) => ({
+      active: acc.active + parseAnalyticsNumber(row.cohortActiveUsers),
+      total: acc.total + parseAnalyticsNumber(row.cohortTotalUsers),
+    }), { active: 0, total: 0 });
+    return {
+      available: totals.total > 0,
+      rate: totals.total > 0 ? totals.active / totals.total : null,
+      activeUsers: totals.active,
+      totalUsers: totals.total,
+      note: totals.total > 0 ? "近 7 天新用户的次日留存。" : "GA4 暂未返回可计算的 cohort 留存数据。",
+    };
+  } catch (error) {
+    console.warn("[firebaseAnalytics] retention report unavailable", error.message);
+    return {
+      available: false,
+      rate: null,
+      note: getFirebaseAnalyticsFriendlyError(error, { retention: true }),
+    };
+  }
+}
+
+function getFirebaseAnalyticsFriendlyError(error, options = {}) {
+  const message = cleanString(error?.message, "", 500);
+  if (options.retention) {
+    return `留存报表暂不可用：${message || "GA4 没有返回 cohort 数据"}`;
+  }
+  if (error?.status === 400) {
+    return `Analytics 请求参数无效：${message || "请检查 GA4 Property ID 和报表口径"}`;
+  }
+  if (error?.status === 401) {
+    return "Analytics 授权失败：请检查 Google API 服务账号是否可用。";
+  }
+  if (error?.status === 403) {
+    return "Analytics 权限不足：请给 Cloud Functions 运行服务账号或 GOOGLE_SERVICE_ACCOUNT_JSON 对应服务账号添加 GA4 Viewer / Analyst 权限。";
+  }
+  if (error?.status === 404) {
+    return "没有找到这个 GA4 Property ID，或当前服务账号无权访问该属性。";
+  }
+  if (message.includes("Metadata token")) {
+    return "Cloud Functions 无法获取 Google API token，请检查运行服务账号配置。";
+  }
+  return message || "读取 Firebase Analytics 失败。";
+}
+
+function sanitizeFirebaseAnalyticsProviderError(error) {
+  const providerError = error?.providerError?.error || error?.providerError || null;
+  if (!providerError) return null;
+  return sanitizeAdminAuditValue({
+    code: providerError.code,
+    status: providerError.status,
+    message: providerError.message,
+  });
+}
+
+async function fetchFirebaseAnalyticsOverview(config, days) {
+  const authInfo = await getGoogleAccessTokenForScope(FIREBASE_ANALYTICS_SCOPE);
+  const baseMetrics = [
+    { name: "activeUsers" },
+    { name: "newUsers" },
+    { name: "eventCount" },
+    { name: "totalRevenue" },
+  ];
+  const [dailyReport, platformReport, retention] = await Promise.all([
+    callFirebaseAnalyticsRunReport(config.propertyId, authInfo.accessToken, {
+      dateRanges: [{ startDate: `${Math.max(days - 1, 1)}daysAgo`, endDate: "today" }],
+      dimensions: [{ name: "date" }],
+      metrics: baseMetrics,
+      orderBys: [{ dimension: { dimensionName: "date" } }],
+    }),
+    callFirebaseAnalyticsRunReport(config.propertyId, authInfo.accessToken, {
+      dateRanges: [{ startDate: `${Math.max(days - 1, 1)}daysAgo`, endDate: "today" }],
+      dimensions: [{ name: "platform" }],
+      metrics: baseMetrics,
+      orderBys: [{ metric: { metricName: "activeUsers" }, desc: true }],
+    }),
+    fetchFirebaseAnalyticsRetention(config.propertyId, authInfo.accessToken),
+  ]);
+
+  const series = buildFirebaseAnalyticsDailySeries(parseAnalyticsReportRows(dailyReport), days);
+  const platforms = buildFirebaseAnalyticsPlatformRows(parseAnalyticsReportRows(platformReport));
+  return {
+    ok: true,
+    configured: true,
+    config: {
+      ...config,
+      authSource: authInfo.source,
+      serviceAccountEmail: authInfo.serviceAccountEmail,
+    },
+    days,
+    dateRange: {
+      startDate: `${Math.max(days - 1, 1)}daysAgo`,
+      endDate: "today",
+    },
+    summary: summarizeFirebaseAnalytics(series, retention),
+    retention,
+    series,
+    platforms,
+    setupHints: buildFirebaseAnalyticsSetupHints(config, authInfo),
+    consoleUrl: `https://console.firebase.google.com/project/${getProjectId()}/analytics`,
+    analyticsUrl: `https://analytics.google.com/analytics/web/#/p${config.propertyId}/reports/intelligenthome`,
+  };
 }
 
 function buildFallbackExpiry(productId) {
@@ -6986,6 +7421,97 @@ exports.adminDashboardSummary = onRequest(runtime, async (req, res) => {
   } catch (error) {
     console.error("[adminDashboardSummary]", error);
     json(res, error.status || 500, { error: error.message || "Load admin dashboard failed" });
+  }
+});
+
+exports.adminFirebaseAnalyticsConfig = onRequest(runtime, async (req, res) => {
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const ref = db.collection(ADMIN_SETTINGS_COLLECTION).doc(FIREBASE_ANALYTICS_CONFIG_DOC);
+    if (req.method === "GET") {
+      const snap = await ref.get();
+      json(res, 200, {
+        ok: true,
+        config: serializeFirebaseAnalyticsConfig(snap.exists ? snap.data() || {} : {}),
+      });
+      return;
+    }
+
+    if (req.method !== "POST") {
+      json(res, 405, { error: "Use GET or POST" });
+      return;
+    }
+
+    const rawPropertyId = cleanString(req.body?.propertyId, "", 180);
+    const propertyId = rawPropertyId ? normalizeAnalyticsPropertyId(rawPropertyId) : "";
+    const note = cleanString(req.body?.note, "", 300);
+    const update = {
+      propertyId,
+      note,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: decoded.uid,
+    };
+
+    await ref.set(update, { merge: true });
+    const snap = await ref.get();
+    await writeAdminAuditLog(decoded, "firebase_analytics.config_update", {
+      type: "admin_settings",
+      id: FIREBASE_ANALYTICS_CONFIG_DOC,
+      path: `${ADMIN_SETTINGS_COLLECTION}/${FIREBASE_ANALYTICS_CONFIG_DOC}`,
+    }, {
+      propertyId,
+      hasNote: Boolean(note),
+    }, req);
+    json(res, 200, {
+      ok: true,
+      config: serializeFirebaseAnalyticsConfig(snap.data() || {}),
+    });
+  } catch (error) {
+    console.error("[adminFirebaseAnalyticsConfig]", error);
+    json(res, error.status || 500, { error: error.message || "Save Firebase Analytics config failed" });
+  }
+});
+
+exports.adminFirebaseAnalyticsOverview = onRequest({
+  ...runtime,
+  secrets: [googleServiceAccountJson],
+}, async (req, res) => {
+  if (!requireMethod(req, res, "GET")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const days = getAdminLimit(req.query.days, 14, 90);
+    const config = await loadFirebaseAnalyticsConfig();
+    if (!config.propertyId) {
+      json(res, 200, createEmptyFirebaseAnalyticsOverview(config, days, {
+        ok: true,
+        retentionNote: "请先配置 GA4 Property ID。",
+      }));
+      return;
+    }
+
+    try {
+      const overview = await fetchFirebaseAnalyticsOverview(config, days);
+      json(res, 200, overview);
+    } catch (analyticsError) {
+      console.error("[adminFirebaseAnalyticsOverview] provider failed", {
+        status: analyticsError.status,
+        message: analyticsError.message,
+      });
+      json(res, 200, createEmptyFirebaseAnalyticsOverview(config, days, {
+        ok: false,
+        error: getFirebaseAnalyticsFriendlyError(analyticsError),
+        providerStatus: analyticsError.status || null,
+        providerError: sanitizeFirebaseAnalyticsProviderError(analyticsError),
+        retentionNote: "主报表未读取成功，暂不计算留存。",
+      }));
+    }
+  } catch (error) {
+    console.error("[adminFirebaseAnalyticsOverview]", error);
+    json(res, error.status || 500, { error: error.message || "Load Firebase Analytics failed" });
   }
 });
 

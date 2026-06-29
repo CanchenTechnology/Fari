@@ -157,6 +157,23 @@
       margin-top: 14px;
     }
 
+    .button-link {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 12px;
+      color: var(--primary);
+      background: transparent;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 760;
+    }
+
+    .button-link:hover { background: var(--primary-soft); }
+
     .app-shell {
       min-height: 100vh;
       display: grid;
@@ -357,6 +374,10 @@
       line-height: 1;
     }
 
+    .metric-value.ok { color: var(--green); }
+    .metric-value.warn { color: var(--amber); }
+    .metric-value.danger { color: var(--red); }
+
     .model-quota-summary {
       display: flex;
       align-items: center;
@@ -524,6 +545,63 @@
       border-color: rgba(155, 100, 31, 0.35);
       background: var(--amber-soft);
       color: var(--amber);
+    }
+
+    .analytics-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 390px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .analytics-bars {
+      min-height: 180px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-soft);
+      padding: 14px 10px 10px;
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      overflow-x: auto;
+    }
+
+    .analytics-bar {
+      min-width: 30px;
+      flex: 1;
+      display: grid;
+      gap: 6px;
+      align-items: end;
+    }
+
+    .analytics-bar-track {
+      height: 126px;
+      display: flex;
+      align-items: flex-end;
+    }
+
+    .analytics-bar-fill {
+      width: 100%;
+      min-height: 2px;
+      border-radius: 4px 4px 0 0;
+      background: var(--primary);
+    }
+
+    .analytics-bar-fill.empty {
+      background: #d8d2c7;
+    }
+
+    .analytics-bar-label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 720;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .analytics-config-list {
+      display: grid;
+      gap: 8px;
     }
 
     .split {
@@ -1159,6 +1237,7 @@
       .split,
       .feedback-layout,
       .chat-layout,
+      .analytics-layout,
       .agent-workbench,
       .agent-prompt-layout,
       .advanced-grid {
@@ -1242,7 +1321,9 @@
         </label>
         <div class="auth-actions">
           <button type="submit">登录</button>
+          <a id="authFirebaseConsoleLink" class="button-link" target="_blank" rel="noopener">Firebase 控制台</a>
         </div>
+        <div class="status" style="margin-top: 12px;">已开启 Firebase 本地会话保持：首次登录成功后，下次会自动进入后台。</div>
         <div id="authMessage" class="status" style="margin-top: 12px;"></div>
       </form>
     </div>
@@ -1260,6 +1341,7 @@
       </div>
       <div class="account-area">
         <span id="accountLabel"></span>
+        <a id="firebaseConsoleLink" target="_blank" rel="noopener">Firebase</a>
         <a href="/admin-ui-concepts.html" target="_blank">UI蓝图</a>
         <a href="/privacy.html" target="_blank">隐私政策</a>
         <a href="/fari-firebase-data-admin-guide.md" target="_blank">管理手册</a>
@@ -1286,6 +1368,10 @@
           <button class="nav-button" type="button" data-module="feedback">
             <span class="nav-icon">反</span>
             <span class="nav-label"><strong>反馈处理</strong><span>工单状态和备注</span></span>
+          </button>
+          <button class="nav-button" type="button" data-module="analytics">
+            <span class="nav-icon">析</span>
+            <span class="nav-label"><strong>数据分析</strong><span>DAU、留存和收入</span></span>
           </button>
           <button class="nav-button" type="button" data-module="chats">
             <span class="nav-icon">聊</span>
@@ -1338,10 +1424,64 @@
               <button type="button" data-open-module="users">手动注册用户</button>
               <button type="button" data-open-module="membership" class="secondary">查询会员支付</button>
               <button type="button" data-open-module="feedback" class="secondary">处理反馈</button>
+              <button type="button" data-open-module="analytics" class="secondary">查看 Firebase 分析</button>
               <button type="button" data-open-module="config" class="secondary">编辑配置</button>
               <button type="button" data-open-module="audit" class="secondary">查看审计日志</button>
               <button type="button" data-open-module="roadmap" class="secondary">查看功能蓝图</button>
             </div>
+          </div>
+        </section>
+
+        <section id="analyticsModule" class="module">
+          <div class="module-head">
+            <div>
+              <h1 class="module-title">Firebase 数据分析</h1>
+              <p class="module-subtitle">读取 Firebase / GA4 的活跃用户、留存、事件和收入趋势。</p>
+            </div>
+            <div class="module-actions">
+              <label style="min-width: 130px;">周期
+                <select id="analyticsDaysSelect">
+                  <option value="7">7 天</option>
+                  <option value="14" selected>14 天</option>
+                  <option value="30">30 天</option>
+                  <option value="90">90 天</option>
+                </select>
+              </label>
+              <button id="refreshAnalyticsButton" type="button">刷新</button>
+            </div>
+          </div>
+          <div class="analytics-layout">
+            <div class="stack">
+              <div id="analyticsStatus" class="status"></div>
+              <div id="analyticsMetrics" class="grid-4"></div>
+              <div class="panel stack">
+                <div class="panel-title">
+                  <h2>活跃用户趋势</h2>
+                  <span id="analyticsTrendLabel" class="pill">最近 14 天</span>
+                </div>
+                <div id="analyticsTrend"></div>
+              </div>
+              <div class="panel">
+                <div class="panel-title"><h2>按平台拆分</h2></div>
+                <div id="analyticsPlatforms"></div>
+              </div>
+            </div>
+            <aside class="detail-card">
+              <div class="panel-title"><h2>Analytics 配置</h2></div>
+              <form id="firebaseAnalyticsConfigForm" class="stack">
+                <label>GA4 Property ID
+                  <input id="firebaseAnalyticsPropertyId" name="propertyId" placeholder="例如 123456789">
+                </label>
+                <label>备注
+                  <input id="firebaseAnalyticsNote" name="note" placeholder="可选：属性说明">
+                </label>
+                <div class="row">
+                  <button type="submit">保存配置</button>
+                  <a id="firebaseAnalyticsConsoleLink" class="button-link" target="_blank" rel="noopener">打开 Firebase</a>
+                </div>
+              </form>
+              <div id="firebaseAnalyticsConfigState" class="analytics-config-list"></div>
+            </aside>
           </div>
         </section>
 
@@ -1554,8 +1694,8 @@
             </div>
           </div>
           <div class="grid-4">
-            <div class="metric-card"><div class="metric-label">已落地模块</div><div class="metric-value">8</div></div>
-            <div class="metric-card"><div class="metric-label">已上线后台服务</div><div class="metric-value">14</div></div>
+            <div class="metric-card"><div class="metric-label">已落地模块</div><div class="metric-value">9</div></div>
+            <div class="metric-card"><div class="metric-label">已上线后台服务</div><div class="metric-value">16</div></div>
             <div class="metric-card"><div class="metric-label">规划能力组</div><div class="metric-value">12</div></div>
             <div class="metric-card"><div class="metric-label">审计覆盖操作</div><div class="metric-value">12</div></div>
           </div>
@@ -1625,10 +1765,11 @@
               </ul>
             </article>
             <article class="roadmap-card">
-              <div class="row"><h2>数据与分析</h2><span class="pill warn">规划中</span></div>
+              <div class="row"><h2>数据与分析</h2><span class="pill ok">部分落地</span></div>
               <ul class="roadmap-list">
+                <li>Firebase / GA4 活跃、事件、收入趋势</li>
                 <li>analytics_events 可高级查询</li>
-                <li>未来：留存、漏斗、收入、活跃用户</li>
+                <li>未来：漏斗、分群和更细的留存报表</li>
               </ul>
             </article>
           </div>
@@ -1873,7 +2014,9 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
     import {
       getAuth,
+      browserLocalPersistence,
       onAuthStateChanged,
+      setPersistence,
       signInWithEmailAndPassword,
       signOut
     } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
@@ -1888,8 +2031,13 @@
     };
 
     const functionsBaseUrl = "https://us-central1-fari-app-b2fd2.cloudfunctions.net";
+    const firebaseConsoleUrl = "https://console.firebase.google.com/project/fari-app-b2fd2/firestore/databases/-default-/data/~2Fusers";
+    const defaultAdminEmail = "1255755615qq@gmail.com";
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
+    setPersistence(auth, browserLocalPersistence).catch((error) => {
+      console.warn("[adminAuth] persistence failed", error);
+    });
     const adminAccessMessage = "当前账号没有后台权限，请让管理员为你添加后台权限。";
     const invalidLoginMessage = "账号或密码不正确，请检查邮箱拼写；如果账号无误，请让管理员为你添加后台权限。";
 
@@ -1899,6 +2047,8 @@
       activeModule: "dashboard",
       currentUser: null,
       dashboard: null,
+      firebaseAnalytics: null,
+      firebaseAnalyticsDays: 14,
       modelQuota: null,
       modelQuotaOnlyIssues: false,
       modelQuotaOnlyCooldown: false,
@@ -1968,6 +2118,9 @@
       ["closed", "已关闭"],
     ];
     const onlinePresenceTimeoutMs = 90 * 1000;
+    $("emailInput").value = defaultAdminEmail;
+    $("firebaseConsoleLink").href = firebaseConsoleUrl;
+    $("authFirebaseConsoleLink").href = firebaseConsoleUrl;
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) {
@@ -2030,6 +2183,12 @@
     });
 
     $("refreshDashboardButton").addEventListener("click", loadDashboard);
+    $("refreshAnalyticsButton").addEventListener("click", () => loadFirebaseAnalytics(true));
+    $("analyticsDaysSelect").addEventListener("change", () => {
+      state.firebaseAnalyticsDays = Number($("analyticsDaysSelect").value || 14);
+      loadFirebaseAnalytics(true);
+    });
+    $("firebaseAnalyticsConfigForm").addEventListener("submit", handleFirebaseAnalyticsConfigSubmit);
     $("refreshModelQuotaButton").addEventListener("click", () => loadModelQuotaStatus(true));
     $("providerSecretForm").addEventListener("submit", handleProviderSecretSubmit);
     $("providerSecretForm").elements.secretName.addEventListener("change", renderProviderSecretHint);
@@ -2393,6 +2552,7 @@
       if (moduleKey === "users") return loadUsers($("userSearchInput").value.trim());
       if (moduleKey === "membership") return renderMembership();
       if (moduleKey === "feedback") return loadFeedback();
+      if (moduleKey === "analytics") return loadFirebaseAnalytics(!state.firebaseAnalytics);
       if (moduleKey === "chats") return loadChatUserCandidates();
       if (moduleKey === "agent") return loadAgent();
       if (moduleKey === "modelQuota") return loadModelQuotaStatus(!state.modelQuota);
@@ -4048,6 +4208,222 @@
         ${renderRecentGroup("最近反馈", recent.feedback || [], "feedback")}
         ${renderRecentGroup("最近支付事件", recent.paymentEvents || [], "payment")}
       `;
+    }
+
+    async function loadFirebaseAnalytics(showToast = false) {
+      const days = Number($("analyticsDaysSelect").value || state.firebaseAnalyticsDays || 14);
+      state.firebaseAnalyticsDays = days;
+      $("analyticsTrendLabel").textContent = `最近 ${days} 天`;
+      setLoading($("analyticsMetrics"), "加载 Firebase Analytics...");
+      setLoading($("analyticsTrend"), "读取趋势...");
+      setLoading($("analyticsPlatforms"), "读取平台数据...");
+      try {
+        const data = await callFunction(`/adminFirebaseAnalyticsOverview?days=${encodeURIComponent(days)}`);
+        state.firebaseAnalytics = data;
+        renderFirebaseAnalytics();
+        if (showToast) {
+          showMessage(data.ok === false ? (data.error || "Analytics 需要处理配置") : "Firebase Analytics 已刷新", data.ok === false ? "warn" : "ok");
+        }
+      } catch (error) {
+        const message = error.message || "加载 Firebase Analytics 失败";
+        state.firebaseAnalytics = { ok: false, configured: false, error: message, summary: {}, series: [], platforms: [] };
+        renderFirebaseAnalytics();
+        showMessage(message, "warn");
+      }
+    }
+
+    async function handleFirebaseAnalyticsConfigSubmit(event) {
+      event.preventDefault();
+      const body = {
+        propertyId: $("firebaseAnalyticsPropertyId").value.trim(),
+        note: $("firebaseAnalyticsNote").value.trim(),
+      };
+      try {
+        const data = await callFunction("/adminFirebaseAnalyticsConfig", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        state.firebaseAnalytics = {
+          ...(state.firebaseAnalytics || {}),
+          config: data.config,
+          configured: Boolean(data.config?.propertyId),
+        };
+        showMessage(body.propertyId ? "Analytics 配置已保存，正在刷新数据" : "Analytics 配置已清空", "ok");
+        await loadFirebaseAnalytics(true);
+      } catch (error) {
+        showMessage(error.message || "保存 Analytics 配置失败", "warn");
+      }
+    }
+
+    function renderFirebaseAnalytics() {
+      const data = state.firebaseAnalytics || {};
+      const config = data.config || {};
+      $("analyticsMetrics").innerHTML = renderFirebaseAnalyticsMetrics(data);
+      $("analyticsTrend").innerHTML = renderFirebaseAnalyticsTrend(data.series || []);
+      $("analyticsPlatforms").innerHTML = renderFirebaseAnalyticsPlatforms(data.platforms || []);
+      $("analyticsStatus").innerHTML = renderFirebaseAnalyticsStatus(data);
+      renderFirebaseAnalyticsConfigState(data);
+
+      const propertyInput = $("firebaseAnalyticsPropertyId");
+      if (document.activeElement !== propertyInput) {
+        propertyInput.value = config.storedPropertyId || config.propertyId || "";
+      }
+      const noteInput = $("firebaseAnalyticsNote");
+      if (document.activeElement !== noteInput) {
+        noteInput.value = config.note || "";
+      }
+      $("firebaseAnalyticsConsoleLink").href = data.consoleUrl || firebaseConsoleUrl;
+    }
+
+    function renderFirebaseAnalyticsMetrics(data = {}) {
+      const summary = data.summary || {};
+      const configured = data.configured === true;
+      const metrics = [
+        ["日活跃用户", configured && summary.dau !== null && summary.dau !== undefined ? formatAnalyticsNumber(summary.dau) : "--", data.ok === false ? "warn" : ""],
+        ["次日留存率", summary.nextDayRetentionRate !== null && summary.nextDayRetentionRate !== undefined ? formatAnalyticsPercent(summary.nextDayRetentionRate) : "--", data.retention?.available ? "ok" : "warn"],
+        ["收入", configured ? formatAnalyticsMoney(summary.totalRevenue) : "--", ""],
+        ["事件数", configured ? formatAnalyticsNumber(summary.eventCount) : "--", ""],
+      ];
+      return metrics.map(([label, value, tone]) => `
+        <div class="metric-card">
+          <div class="metric-label">${escapeHtml(label)}</div>
+          <div class="metric-value ${tone}">${escapeHtml(value)}</div>
+        </div>
+      `).join("");
+    }
+
+    function renderFirebaseAnalyticsStatus(data = {}) {
+      const config = data.config || {};
+      const statusTone = data.error ? "warn" : config.propertyId ? "ok" : "warn";
+      const statusLabel = data.error ? "需要处理" : config.propertyId ? "已配置" : "未配置";
+      const latestDate = data.summary?.latestDate ? ` · 最近日期 ${data.summary.latestDate}` : "";
+      const source = config.source ? ` · 配置来源 ${config.source}` : "";
+      const auth = config.authSource ? ` · 授权 ${config.authSource}` : "";
+      return `
+        <div class="row">
+          <span class="pill ${statusTone}">${escapeHtml(statusLabel)}</span>
+          <span>${escapeHtml(config.propertyId ? `Property ${config.propertyId}${source}${auth}${latestDate}` : "需要先填写 GA4 Property ID")}</span>
+        </div>
+        ${data.error ? `<div class="empty warn" style="margin-top: 10px;">${escapeHtml(data.error)}</div>` : ""}
+      `;
+    }
+
+    function renderFirebaseAnalyticsTrend(series = []) {
+      if (!series.length) {
+        return `<div class="empty">配置 GA4 Property ID 后，这里会显示 DAU 趋势。</div>`;
+      }
+      const maxActiveUsers = Math.max(1, ...series.map((item) => Number(item.activeUsers || 0)));
+      const bars = series.map((item) => {
+        const activeUsers = Number(item.activeUsers || 0);
+        const height = Math.max(activeUsers ? 4 : 2, Math.round((activeUsers / maxActiveUsers) * 100));
+        return `
+          <div class="analytics-bar" title="${escapeAttr(`${item.date} DAU ${activeUsers}`)}">
+            <div class="analytics-bar-track">
+              <div class="analytics-bar-fill ${activeUsers ? "" : "empty"}" style="height: ${height}%;"></div>
+            </div>
+            <div class="analytics-bar-label">${escapeHtml(item.label || item.date)}</div>
+          </div>
+        `;
+      }).join("");
+      return `
+        <div class="analytics-bars">${bars}</div>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>DAU</th>
+              <th class="hide-mobile">新用户</th>
+              <th class="hide-mobile">事件</th>
+              <th>收入</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${series.slice().reverse().map((item) => `
+              <tr>
+                <td>${escapeHtml(item.date || "")}</td>
+                <td>${escapeHtml(formatAnalyticsNumber(item.activeUsers))}</td>
+                <td class="hide-mobile">${escapeHtml(formatAnalyticsNumber(item.newUsers))}</td>
+                <td class="hide-mobile">${escapeHtml(formatAnalyticsNumber(item.eventCount))}</td>
+                <td>${escapeHtml(formatAnalyticsMoney(item.totalRevenue))}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderFirebaseAnalyticsPlatforms(platforms = []) {
+      if (!platforms.length) {
+        return `<div class="empty">暂无平台拆分数据。</div>`;
+      }
+      return `
+        <table class="table">
+          <thead>
+            <tr>
+              <th>平台</th>
+              <th>DAU</th>
+              <th class="hide-mobile">新用户</th>
+              <th class="hide-mobile">事件</th>
+              <th>收入</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${platforms.map((item) => `
+              <tr>
+                <td><span class="pill">${escapeHtml(formatPlatformLabel(item.platform))}</span></td>
+                <td>${escapeHtml(formatAnalyticsNumber(item.activeUsers))}</td>
+                <td class="hide-mobile">${escapeHtml(formatAnalyticsNumber(item.newUsers))}</td>
+                <td class="hide-mobile">${escapeHtml(formatAnalyticsNumber(item.eventCount))}</td>
+                <td>${escapeHtml(formatAnalyticsMoney(item.totalRevenue))}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderFirebaseAnalyticsConfigState(data = {}) {
+      const config = data.config || {};
+      const hints = data.setupHints || [];
+      const links = [
+        data.analyticsUrl ? `<a class="button-link" href="${escapeAttr(data.analyticsUrl)}" target="_blank" rel="noopener">打开 GA4 报表</a>` : "",
+        data.consoleUrl ? `<a class="button-link" href="${escapeAttr(data.consoleUrl)}" target="_blank" rel="noopener">Firebase Analytics</a>` : "",
+      ].filter(Boolean).join("");
+      $("firebaseAnalyticsConfigState").innerHTML = `
+        ${kv("当前 Property ID", config.propertyId || "未配置")}
+        ${kv("服务账号", config.serviceAccountEmail || config.authSource || "读取时显示")}
+        ${kv("更新时间", formatDate(config.updatedAt) || "未保存")}
+        ${data.retention?.note ? `<div class="status">${escapeHtml(data.retention.note)}</div>` : ""}
+        ${hints.length ? `<div class="stack">${hints.map((hint) => `<div class="compact-line"><span class="compact-label">提示</span><span class="compact-value">${escapeHtml(hint)}</span></div>`).join("")}</div>` : ""}
+        ${links ? `<div class="row">${links}</div>` : ""}
+        ${data.providerError ? `<pre class="code-block">${escapeHtml(JSON.stringify(data.providerError, null, 2))}</pre>` : ""}
+      `;
+    }
+
+    function formatPlatformLabel(value) {
+      const text = String(value || "").toLowerCase();
+      if (text === "android") return "Android";
+      if (text === "ios") return "iOS";
+      if (text === "web") return "Web";
+      return value || "unknown";
+    }
+
+    function formatAnalyticsNumber(value) {
+      const number = Number(value || 0);
+      if (!Number.isFinite(number)) return "--";
+      return number.toLocaleString("zh-CN", { maximumFractionDigits: 0 });
+    }
+
+    function formatAnalyticsMoney(value) {
+      const number = Number(value || 0);
+      if (!Number.isFinite(number)) return "--";
+      return `$${number.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    function formatAnalyticsPercent(value) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return "--";
+      return `${(number * 100).toFixed(1)}%`;
     }
 
     function renderRecentGroup(title, items, type) {

@@ -53,6 +53,7 @@ public class DrawCardUI : WindowBase
 	private bool _isPullingCard;
 	private bool _isInertiaScrolling;
 	private bool _backgroundVideoHasStarted;
+	private bool _isWaitingForExit;
 
 	private int _activeDragCardIndex = -1;
 	private int _backgroundVideoPlayRequestId;
@@ -71,6 +72,8 @@ public class DrawCardUI : WindowBase
 	private float _selectedCardScale = 0.9f;
 	private float _minDeckOffsetX;
 	private float _maxDeckOffsetX;
+	private TarotCard _completedCard;
+	private bool _completedUpright = true;
 
 	public static void Prepare(Func<(TarotCard card, bool upright)> drawProvider,
 		Action<TarotCard, bool> onCompleted,
@@ -136,8 +139,17 @@ public class DrawCardUI : WindowBase
 	#region UI组件事件
 	private void OnMaskClick()
 	{
+		if (_isWaitingForExit) return;
 		if (_isAnimating || _suppressPointerClick) return;
 		CancelDraw(true);
+	}
+
+	private void OnExitButtonClicked()
+	{
+		if (!_isWaitingForExit || _finishedOrCanceled) return;
+		if (_completedCard == null) return;
+
+		CompleteDraw(_completedCard, _completedUpright);
 	}
 
 	private void OnCardClicked(int index)
@@ -215,6 +227,7 @@ public class DrawCardUI : WindowBase
 		_isScrollingDeck = false;
 		_isPullingCard = false;
 		_isInertiaScrolling = false;
+		_isWaitingForExit = false;
 		_activeDragCardIndex = -1;
 		_deckOffsetX = 0f;
 		_activePullY = 0f;
@@ -226,6 +239,8 @@ public class DrawCardUI : WindowBase
 		_minDeckOffsetX = 0f;
 		_maxDeckOffsetX = 0f;
 		_cachedCardBackSprite = null;
+		_completedCard = null;
+		_completedUpright = true;
 	}
 
 	private void SelectCardByIndex(int index)
@@ -301,10 +316,10 @@ public class DrawCardUI : WindowBase
 		if (!upright)
 			_flowSequence.Append(selectedRect.DORotate(new Vector3(0f, 0f, targetRotationZ + 180f), reverseRotateDuration).SetEase(Ease.InOutCubic));
 		_flowSequence.AppendCallback(() => CommitTargetCardResult(selectedImage, card, upright));
-		if (uiComponent.targetCard != null)
-			_flowSequence.Append(uiComponent.targetCard.rectTransform.DOPunchScale(Vector3.one * 0.035f, 0.3f, 7, 0.65f));
-		_flowSequence.AppendInterval(Mathf.Max(0f, uiComponent.resultHoldDuration));
-		_flowSequence.OnComplete(() => CompleteDraw(card, upright));
+		RectTransform punchRect = ResolveTargetCardPoseRect();
+		if (punchRect != null)
+			_flowSequence.Append(punchRect.DOPunchScale(Vector3.one * 0.035f, 0.3f, 7, 0.65f));
+		_flowSequence.OnComplete(() => EnterResultWaitingState(card, upright));
 	}
 
 	private void RevealFrontCard(Image selectedImage, TarotCard card, bool upright, float targetRotationZ)
@@ -337,9 +352,7 @@ public class DrawCardUI : WindowBase
 		targetRotationZ = 0f;
 		targetScale = _selectedCardScale;
 
-		RectTransform targetRect = uiComponent.targetCard != null
-			? uiComponent.targetCard.rectTransform
-			: null;
+		RectTransform targetRect = ResolveTargetCardPoseRect();
 		if (targetRect == null || selectedRect == null || _cardContainer == null)
 			return;
 
@@ -370,13 +383,19 @@ public class DrawCardUI : WindowBase
 		if (card == null) return;
 
 		Sprite frontSprite = LoadCardSprite(card);
-		SetTargetCardVisible(true);
 		if (uiComponent.targetCard != null)
 		{
-			uiComponent.targetCard.sprite = frontSprite != null ? frontSprite : ResolveCardBackSprite();
+			uiComponent.targetCard.sprite = ResolveCardBackSprite();
 			uiComponent.targetCard.color = Color.white;
 			uiComponent.targetCard.preserveAspect = true;
-			uiComponent.targetCard.rectTransform.localRotation = Quaternion.Euler(0f, 0f, upright ? 0f : 180f);
+			uiComponent.targetCard.rectTransform.localRotation = Quaternion.identity;
+		}
+
+		if (uiComponent.targetCardFrontImage != null)
+		{
+			uiComponent.targetCardFrontImage.sprite = frontSprite != null ? frontSprite : ResolveCardBackSprite();
+			uiComponent.targetCardFrontImage.color = Color.white;
+			uiComponent.targetCardFrontImage.preserveAspect = true;
 		}
 
 		if (uiComponent.cardNameText != null)
@@ -386,14 +405,30 @@ public class DrawCardUI : WindowBase
 			uiComponent.cardNameText.alpha = 1f;
 		}
 
+		SetTargetCardVisible(true);
+		SetTargetCardResultRotation(upright);
+
 		if (selectedImage != null)
 			selectedImage.gameObject.SetActive(false);
+	}
+
+	private void EnterResultWaitingState(TarotCard card, bool upright)
+	{
+		_isAnimating = false;
+		_isChoosing = false;
+		_isWaitingForExit = true;
+		_completedCard = card;
+		_completedUpright = upright;
+		_flowSequence = null;
+
+		SetExitButtonInteractable(true);
 	}
 
 	private void CompleteDraw(TarotCard card, bool upright)
 	{
 		_finishedOrCanceled = true;
 		_isAnimating = false;
+		_isWaitingForExit = false;
 		_flowSequence = null;
 
 		Action<TarotCard, bool> completed = PendingDrawCompleted;
@@ -408,6 +443,7 @@ public class DrawCardUI : WindowBase
 		_finishedOrCanceled = true;
 		_isChoosing = false;
 		_isAnimating = false;
+		_isWaitingForExit = false;
 		KillFlow();
 
 		Action canceled = PendingDrawCanceled;
@@ -439,21 +475,9 @@ public class DrawCardUI : WindowBase
 
 		_titleText = transform.Find("UIContent/Top/title")?.GetComponent<TMP_Text>();
 		_desText = transform.Find("UIContent/Top/des")?.GetComponent<TMP_Text>();
-		if (uiComponent.targetCardParent == null)
-			uiComponent.targetCardParent = transform.Find("UIContent/targetCard");
-		if (uiComponent.targetCard == null)
-		{
-			uiComponent.targetCard = uiComponent.targetCardParent != null
-				? uiComponent.targetCardParent.GetComponentInChildren<Image>(true)
-				: transform.Find("UIContent/targetCard")?.GetComponent<Image>();
-		}
-		if (uiComponent.cardNameText == null)
-		{
-			if (uiComponent.targetCardParent != null)
-				uiComponent.cardNameText = uiComponent.targetCardParent.GetComponentInChildren<TMP_Text>(true);
-			else if (uiComponent.targetCard != null)
-				uiComponent.cardNameText = uiComponent.targetCard.GetComponentInChildren<TMP_Text>(true);
-		}
+		ResolveTargetCardFaceReferences();
+		ResolveExitButtonReferences();
+		BindExitButton();
 
 		GameObject mask = ResolveMaskObject();
 		if (mask != null)
@@ -475,6 +499,99 @@ public class DrawCardUI : WindowBase
 			return;
 
 		uiComponent.backgroundVideoPlayer = transform.Find("video")?.GetComponent<VideoPlayer>();
+	}
+
+	private void ResolveTargetCardFaceReferences()
+	{
+		if (uiComponent == null) return;
+
+		Transform content = transform.Find("UIContent");
+		if (uiComponent.targetCardBack == null)
+			uiComponent.targetCardBack = content != null ? content.Find("CardBack") : FindChildRecursive(transform, "CardBack");
+		if (uiComponent.targetCardFront == null)
+			uiComponent.targetCardFront = content != null ? content.Find("CardFront") : FindChildRecursive(transform, "CardFront");
+
+		if (uiComponent.targetCard == null && uiComponent.targetCardBack != null)
+			uiComponent.targetCard = uiComponent.targetCardBack.GetComponentInChildren<Image>(true);
+
+		if (uiComponent.targetCardFrontImage == null && uiComponent.targetCardFront != null)
+		{
+			Transform cardImage = uiComponent.targetCardFront.Find("CardRoot/CardImage");
+			uiComponent.targetCardFrontImage = cardImage != null
+				? cardImage.GetComponent<Image>()
+				: FindImageChild(uiComponent.targetCardFront, "CardImage");
+		}
+
+		if (uiComponent.cardNameText == null)
+		{
+			if (uiComponent.targetCardFront != null)
+				uiComponent.cardNameText = uiComponent.targetCardFront.GetComponentInChildren<TMP_Text>(true);
+			else if (uiComponent.targetCardBack != null)
+				uiComponent.cardNameText = uiComponent.targetCardBack.GetComponentInChildren<TMP_Text>(true);
+			else if (uiComponent.targetCard != null)
+				uiComponent.cardNameText = uiComponent.targetCard.GetComponentInChildren<TMP_Text>(true);
+		}
+	}
+
+	private void ResolveExitButtonReferences()
+	{
+		if (uiComponent == null) return;
+
+		if (uiComponent.cardFrontParent == null)
+		{
+			Transform cardParent = FindChildRecursive(transform, "CardParent");
+			if (cardParent != null)
+				uiComponent.cardFrontParent = cardParent;
+		}
+
+		if (uiComponent.exitBtn == null)
+		{
+			Transform exitButtonTransform = FindChildRecursive(transform, "exitBtn");
+			if (exitButtonTransform != null)
+				uiComponent.exitBtn = exitButtonTransform.GetComponent<Button>();
+		}
+	}
+
+	private void BindExitButton()
+	{
+		if (uiComponent?.exitBtn == null) return;
+
+		uiComponent.exitBtn.onClick.RemoveListener(OnExitButtonClicked);
+		uiComponent.exitBtn.onClick.AddListener(OnExitButtonClicked);
+	}
+
+	private static Transform FindChildRecursive(Transform root, string childName)
+	{
+		if (root == null || string.IsNullOrEmpty(childName))
+			return null;
+
+		for (int i = 0; i < root.childCount; i++)
+		{
+			Transform child = root.GetChild(i);
+			if (child.name == childName)
+				return child;
+
+			Transform match = FindChildRecursive(child, childName);
+			if (match != null)
+				return match;
+		}
+
+		return null;
+	}
+
+	private static Image FindImageChild(Transform root, string childName)
+	{
+		Transform child = FindChildRecursive(root, childName);
+		return child != null ? child.GetComponent<Image>() : null;
+	}
+
+	private RectTransform ResolveTargetCardPoseRect()
+	{
+		if (uiComponent.targetCardFront != null)
+			return uiComponent.targetCardFront as RectTransform;
+		if (uiComponent.targetCardBack != null)
+			return uiComponent.targetCardBack as RectTransform;
+		return uiComponent.targetCard != null ? uiComponent.targetCard.rectTransform : null;
 	}
 
 	private void ConfigureBackgroundVideoPlayer()
@@ -1371,6 +1488,7 @@ public class DrawCardUI : WindowBase
 	private void ResetTargetCard()
 	{
 		SetTargetCardVisible(false);
+		SetExitButtonInteractable(false);
 
 		if (uiComponent.targetCard != null)
 		{
@@ -1379,6 +1497,15 @@ public class DrawCardUI : WindowBase
 			uiComponent.targetCard.color = Color.white;
 			uiComponent.targetCard.rectTransform.localRotation = Quaternion.identity;
 		}
+
+		if (uiComponent.targetCardFrontImage != null)
+		{
+			uiComponent.targetCardFrontImage.sprite = null;
+			uiComponent.targetCardFrontImage.color = Color.white;
+			uiComponent.targetCardFrontImage.rectTransform.localRotation = Quaternion.identity;
+		}
+
+		SetTargetCardResultRotation(true);
 
 		if (uiComponent.cardNameText != null)
 		{
@@ -1389,6 +1516,18 @@ public class DrawCardUI : WindowBase
 
 	private void SetTargetCardVisible(bool visible)
 	{
+		if (uiComponent.cardFrontParent != null)
+			uiComponent.cardFrontParent.gameObject.SetActive(visible);
+
+		if (uiComponent.targetCardBack != null || uiComponent.targetCardFront != null)
+		{
+			if (uiComponent.targetCardBack != null)
+				uiComponent.targetCardBack.gameObject.SetActive(false);
+			if (uiComponent.targetCardFront != null)
+				uiComponent.targetCardFront.gameObject.SetActive(visible);
+			return;
+		}
+
 		if (uiComponent.targetCardParent != null)
 		{
 			uiComponent.targetCardParent.gameObject.SetActive(visible);
@@ -1397,6 +1536,30 @@ public class DrawCardUI : WindowBase
 
 		if (uiComponent.targetCard != null)
 			uiComponent.targetCard.gameObject.SetActive(visible);
+	}
+
+	private void SetExitButtonInteractable(bool interactable)
+	{
+		if (uiComponent?.exitBtn == null) return;
+
+		uiComponent.exitBtn.interactable = interactable;
+	}
+
+	private void SetTargetCardResultRotation(bool upright)
+	{
+		Quaternion rotation = Quaternion.Euler(0f, 0f, upright ? 0f : 180f);
+		if (uiComponent.targetCardFront != null)
+			uiComponent.targetCardFront.localRotation = Quaternion.identity;
+
+		if (uiComponent.targetCardFrontImage != null)
+			uiComponent.targetCardFrontImage.rectTransform.localRotation = rotation;
+		else if (uiComponent.targetCard != null)
+			uiComponent.targetCard.rectTransform.localRotation = rotation;
+		else if (uiComponent.targetCardFront != null)
+			uiComponent.targetCardFront.localRotation = rotation;
+
+		if (uiComponent.targetCardBack != null)
+			uiComponent.targetCardBack.localRotation = Quaternion.identity;
 	}
 
 	private void SetCardsInteractable(bool interactable)

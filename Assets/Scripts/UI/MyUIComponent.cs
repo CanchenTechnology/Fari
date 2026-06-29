@@ -45,5 +45,6 @@ public class MyUIComponent:MonoBehaviour
 	    target.AddButtonClickListener(noticeButton,mWindow.OnnoticeButtonClick);
 	    target.AddButtonClickListener(feedbackButton,mWindow.OnfeedbackButtonClick);
 	    target.AddButtonClickListener(shareButton,mWindow.OnshareButtonClick);
+	    target.AddButtonClickListener(exitLoginButton,mWindow.OnExitLoginButtonClick);
 	}
 }
