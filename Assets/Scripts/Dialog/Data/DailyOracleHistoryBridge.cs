@@ -104,6 +104,7 @@ public static class DailyOracleHistoryBridge
         string safeDate = FirstNonEmpty(date, ExtractDate(createdAt), DateTime.Now.ToString("yyyy-MM-dd"));
         string cardId = FirstNonEmpty(cardIdOverride, card?.cardId);
         string cardName = FirstNonEmpty(cardNameOverride, card?.nameZh, "今日牌");
+        string cardDisplayName = TarotDeck.FormatDisplayName(cardName, upright);
         TodayOraclePayload safePayload = payload ?? new TodayOraclePayload();
 
         return new DivinationRecordData
@@ -123,10 +124,10 @@ public static class DailyOracleHistoryBridge
                     orientation = upright ? "upright" : "reversed"
                 }
             },
-            shortVerdict = FirstNonEmpty(safePayload.title, safePayload.oracle, $"今日神谕 · {cardName}"),
-            judgeContent = FirstNonEmpty(safePayload.oracle, safePayload.title, $"今日牌是{cardName}。"),
+            shortVerdict = FirstNonEmpty(safePayload.title, safePayload.oracle, $"今日神谕 · {cardDisplayName}"),
+            judgeContent = FirstNonEmpty(safePayload.oracle, safePayload.title, $"今日牌是{cardDisplayName}。"),
             adviceContent = BuildAdviceText(safePayload),
-            topics = BuildTopics(cardName),
+            topics = BuildTopics(cardDisplayName),
             oracleId = FirstNonEmpty(oracleIdOverride, GetCurrentOracleId()),
             createdAt = FirstNonEmpty(createdAt, BuildDateCreatedAt(safeDate), DateTime.Now.ToString("o"))
         };

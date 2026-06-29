@@ -331,7 +331,8 @@ public class DivinationRecordUI : WindowBase
 		nRt.anchoredPosition = new Vector2(0f, -14f);
 		nRt.sizeDelta = new Vector2(0f, 36f);
 		TMP_Text nameText = nameGo.AddComponent<TextMeshProUGUI>();
-		nameText.text = card.cardName ?? "";
+		bool isUpright = card.orientation == "upright";
+		nameText.text = TarotDeck.FormatDisplayName(string.IsNullOrWhiteSpace(card.cardName) ? card.cardId : card.cardName, isUpright);
 		nameText.font = TMP_Settings.defaultFontAsset;
 		nameText.fontSize = 16;
 		nameText.color = cardNameColor;
@@ -347,7 +348,6 @@ public class DivinationRecordUI : WindowBase
 		oRt.anchoredPosition = new Vector2(-12f, -14f);
 		oRt.sizeDelta = new Vector2(50f, 36f);
 		TMP_Text orientText = orientGo.AddComponent<TextMeshProUGUI>();
-		bool isUpright = card.orientation == "upright";
 		orientText.text = isUpright ? "正位 ↑" : "逆位 ↓";
 		orientText.font = TMP_Settings.defaultFontAsset;
 		orientText.fontSize = 14;
@@ -592,7 +592,8 @@ public class DivinationRecordUI : WindowBase
 			foreach (var card in _currentRecord.lockedCards)
 			{
 				bool isUpright = card.orientation == "upright";
-				text += $"\n  {card.position}：{card.cardName}（{(isUpright ? "正位" : "逆位")}）";
+				string cardName = TarotDeck.FormatDisplayName(string.IsNullOrWhiteSpace(card.cardName) ? card.cardId : card.cardName, isUpright);
+				text += $"\n  {card.position}：{cardName}";
 			}
 		}
 

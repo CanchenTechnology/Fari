@@ -7,21 +7,21 @@ using UnityEngine;
 using UnityEngine.Networking;
 
 /// <summary>
-/// DeepSeek API 客户端
-/// 用于与 DeepSeek AI 服务通信
+/// AI API 客户端
+/// 用于与阿里云 DashScope 兼容接口通信
 /// </summary>
 public class DeepSeekAPI : MonoBehaviour
 {
     private const string AI_CHAT_URL = "https://us-central1-fari-app-b2fd2.cloudfunctions.net/aiChat";
     private const string AI_CHAT_STREAM_URL = "https://us-central1-fari-app-b2fd2.cloudfunctions.net/aiChatStream";
-    private const string DEEPSEEK_CHAT_URL = "https://api.deepseek.com/chat/completions";
-    private const string MODEL = "deepseek-chat";
+    private const string DEEPSEEK_CHAT_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
+    private const string MODEL = "deepseek-v4-pro";
 
     [Header("Editor 调试")]
-    [Tooltip("Editor 下优先使用下面的调试 Key 直连 DeepSeek。正式包不生效，正式包始终走 Firebase Functions。")]
+    [Tooltip("Editor 下优先使用下面的调试 Key 直连阿里云 DashScope。正式包不生效，正式包始终走 Firebase Functions。")]
     public bool useEditorDirectDeepSeek = false;
 
-    [Tooltip("仅用于 Unity Editor 调试的 DeepSeek API Key。请使用单独的调试 Key，不要提交真实生产 Key。")]
+    [Tooltip("仅用于 Unity Editor 调试的阿里云 DashScope API Key。请使用单独的调试 Key，不要提交真实生产 Key。")]
     public string editorDeepSeekApiKey = "";
 
     [Tooltip("Editor 下没有真实 Firebase 用户时，自动使用游客登录拿到 Token，再调用正式的 Cloud Functions。")]
@@ -147,7 +147,7 @@ public class DeepSeekAPI : MonoBehaviour
     }
 
     /// <summary>
-    /// 发送对话请求到 DeepSeek API（非流式）
+    /// 发送对话请求到阿里云 DashScope API（非流式）
     /// </summary>
     /// <param name="messages">对话历史消息列表</param>
     /// <param name="onSuccess">成功回调</param>
@@ -238,7 +238,7 @@ public class DeepSeekAPI : MonoBehaviour
 #endif
             {
                 string errorMessage = BuildBackendErrorMessage(request.responseCode, request.error, request.downloadHandler.text);
-                Debug.LogError("DeepSeek API Error: " + errorMessage);
+                Debug.LogError("DashScope API Error: " + errorMessage);
                 Debug.LogError("Response: " + request.downloadHandler.text);
                 if (TryCompleteWithEditorMock(messages, onSuccess, errorMessage))
                     yield break;
@@ -247,7 +247,7 @@ public class DeepSeekAPI : MonoBehaviour
             else
             {
                 string responseText = request.downloadHandler.text;
-                Debug.Log("DeepSeek API Response: " + responseText);
+                Debug.Log("DashScope API Response: " + responseText);
 
                 try
                 {
@@ -273,7 +273,7 @@ public class DeepSeekAPI : MonoBehaviour
     #region 流式请求
 
     /// <summary>
-    /// 发送流式对话请求到 DeepSeek API
+    /// 发送流式对话请求到阿里云 DashScope API
     /// </summary>
     /// <param name="messages">对话历史消息列表</param>
     /// <param name="onChunk">每收到一个 token 的回调</param>
@@ -360,7 +360,7 @@ public class DeepSeekAPI : MonoBehaviour
                 if (!handler.HasCompleted)
                 {
                     string errorMessage = BuildBackendErrorMessage(request.responseCode, request.error, handler.ResponseText);
-                    Debug.LogError("DeepSeek Stream Error: " + errorMessage);
+                    Debug.LogError("DashScope Stream Error: " + errorMessage);
                     if (!string.IsNullOrWhiteSpace(handler.ResponseText))
                     {
                         Debug.LogError("Response: " + handler.ResponseText);
@@ -655,7 +655,7 @@ public class DeepSeekAPI : MonoBehaviour
             if (request.isNetworkError || request.isHttpError)
 #endif
             {
-                Debug.LogError("[DeepSeekAPI] Editor DeepSeek API Error: " + request.error);
+                Debug.LogError("[DeepSeekAPI] Editor DashScope API Error: " + request.error);
                 Debug.LogError("Response: " + request.downloadHandler.text);
                 if (TryCompleteWithEditorMock(messages, onSuccess, request.error))
                     yield break;
@@ -676,12 +676,12 @@ public class DeepSeekAPI : MonoBehaviour
                 }
                 else
                 {
-                    onError?.Invoke("Editor DeepSeek response has no content");
+                    onError?.Invoke("Editor DashScope response has no content");
                 }
             }
             catch (Exception e)
             {
-                Debug.LogError("[DeepSeekAPI] Editor DeepSeek parse error: " + e.Message);
+                Debug.LogError("[DeepSeekAPI] Editor DashScope parse error: " + e.Message);
                 onError?.Invoke("Parse error: " + e.Message);
             }
         }
@@ -712,7 +712,7 @@ public class DeepSeekAPI : MonoBehaviour
             {
                 if (!handler.HasCompleted)
                 {
-                    Debug.LogError("[DeepSeekAPI] Editor DeepSeek Stream Error: " + request.error);
+                    Debug.LogError("[DeepSeekAPI] Editor DashScope Stream Error: " + request.error);
                     Debug.LogError("Response: " + request.downloadHandler.text);
                     if (TryCompleteStreamWithEditorMock(messages, onChunk, onComplete, request.error))
                         yield break;
@@ -724,7 +724,7 @@ public class DeepSeekAPI : MonoBehaviour
 #endif
 
     /// <summary>
-    /// 把后端/DeepSeek 的 HTTP 错误转成可读提示。
+    /// 把后端/DashScope 的 HTTP 错误转成可读提示。
     /// </summary>
     private string BuildBackendErrorMessage(long statusCode, string requestError, string responseText)
     {
@@ -747,22 +747,22 @@ public class DeepSeekAPI : MonoBehaviour
         if (statusCode == 402)
         {
             return string.IsNullOrWhiteSpace(backendError)
-                ? "DeepSeek 余额不足（HTTP 402）。请在后台“模型额度”里充值 DeepSeek，或添加/切换到有余额的备用 Key。"
-                : $"DeepSeek 余额不足（HTTP 402）：{backendError}";
+                ? "DashScope 额度不足（HTTP 402）。请在阿里云控制台确认额度，或在后台添加/切换到可用备用 Key。"
+                : $"DashScope 额度不足（HTTP 402）：{backendError}";
         }
 
         if (statusCode == 401 || statusCode == 403)
         {
             return string.IsNullOrWhiteSpace(backendError)
-                ? $"DeepSeek 密钥无效或无权限（HTTP {statusCode}）。请在后台“模型额度”里替换 Key。"
-                : $"DeepSeek 密钥无效或无权限（HTTP {statusCode}）：{backendError}";
+                ? $"DashScope 密钥无效或无权限（HTTP {statusCode}）。请在后台“模型额度”里替换 Key。"
+                : $"DashScope 密钥无效或无权限（HTTP {statusCode}）：{backendError}";
         }
 
         if (statusCode == 429)
         {
             return string.IsNullOrWhiteSpace(backendError)
-                ? "DeepSeek 请求受限（HTTP 429）。请稍后重试，或切换备用 Key。"
-                : $"DeepSeek 请求受限（HTTP 429）：{backendError}";
+                ? "DashScope 请求受限（HTTP 429）。请稍后重试，或切换备用 Key。"
+                : $"DashScope 请求受限（HTTP 429）：{backendError}";
         }
 
         if (!string.IsNullOrWhiteSpace(backendError))

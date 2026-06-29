@@ -9,7 +9,7 @@ using GamerFrameWork.OracleRuntime;
 /// Daily Oracle Service — 每日神谕 AI 生成服务
 /// 负责：
 ///   1. 构建 daily_oracle 场景的 AI 请求（通过 ContextAssembler）
-///   2. 调用 DeepSeekAPI 获取 AI 生成内容
+///   2. 调用 AI API 获取 AI 生成内容
 ///   3. 解析 AI 响应并填充 TodayOraclePayload
 ///   4. 缓存结果供 UI 层读取
 /// </summary>
@@ -212,14 +212,14 @@ public class DailyOracleService : MonoBehaviour
             yield break;
         }
 
-        // 4. 转换为 DeepSeekAPI.Message 格式
+        // 4. 转换为 AI API Message 格式
         var apiMessages = new List<DeepSeekAPI.Message>();
         foreach (var cm in assemblyResult.messages)
         {
             apiMessages.Add(new DeepSeekAPI.Message(cm.role, cm.content));
         }
 
-        // 5. 发送到 DeepSeekAPI
+        // 5. 发送到 AI API
         string aiResponse = null;
         string errorMsg = null;
         bool completed = false;
@@ -713,13 +713,13 @@ public class DailyOracleService : MonoBehaviour
         {
             if (upright)
             {
-                return $"Today you drew {card.nameZh} ({ls.UprightLabel}), a {arcanaLabel} card guided by {elementLabel} energy. "
+                return $"Today you drew {card.DisplayName(upright)}, a {arcanaLabel} card guided by {elementLabel} energy. "
                     + $"Its keywords are {keywords}. The upright {card.nameZh} reminds you that sometimes the answer isn't out there — "
                     + $"it's in the first quiet voice that rises from within when you finally let yourself be still.";
             }
             else
             {
-                return $"The reversed {card.nameZh} has appeared on your daily spread. This {arcanaLabel} card is held by {elementLabel} energy, "
+                return $"{card.DisplayName(upright)} has appeared on your daily spread. This {arcanaLabel} card is held by {elementLabel} energy, "
                     + $"with keywords {keywords}. Reversed doesn't mean bad news — it's a gentle but firm reminder: "
                     + $"something you've been ignoring is surfacing in the moonlight. Face it.";
             }
@@ -728,13 +728,13 @@ public class DailyOracleService : MonoBehaviour
         {
             if (upright)
             {
-                return $"今天抽到了{card.nameZh}（{ls.UprightLabel}），这张牌属于{arcanaLabel}，由{elementLabel}能量引导。"
+                return $"今天抽到了{card.DisplayName(upright)}，这张牌属于{arcanaLabel}，由{elementLabel}能量引导。"
                     + $"它的关键词是{keywords}。正位的{card.nameZh}提醒你，有时候答案并不在外面，"
                     + $"而在你安静下来的那一刻，心底浮现的第一个声音里。";
             }
             else
             {
-                return $"逆位的{card.nameZh}来到了你今天的牌面。这张{arcanaLabel}的牌由{elementLabel}能量守护，"
+                return $"{card.DisplayName(upright)}来到了你今天的牌面。这张{arcanaLabel}的牌由{elementLabel}能量守护，"
                     + $"关键词是{keywords}。逆位并不代表坏消息，而是一个温柔但坚定的提醒："
                     + $"有些被忽略的东西正在月光下浮现，请正视它。";
             }
@@ -1249,12 +1249,12 @@ public class DailyOracleService : MonoBehaviour
         if (locale == "en-US")
         {
             return upright
-                ? $"Today you drew {card.nameZh} in the upright position. This card carries a gentle yet powerful energy — like a quiet nudge from the universe inviting you to notice something important."
-                : $"The reversed {card.nameZh} has appeared for you today. Sometimes a reversed card comes not as a warning but as an invitation to look at things from a different angle.";
+                ? $"Today you drew {card.DisplayName(upright)}. This card carries a gentle yet powerful energy — like a quiet nudge from the universe inviting you to notice something important."
+                : $"{card.DisplayName(upright)} has appeared for you today. Sometimes a reversed card comes not as a warning but as an invitation to look at things from a different angle.";
         }
         return upright
-            ? $"今天你抽到了正位的{card.nameZh}。这张牌带着一股温柔但有力的能量，像是宇宙在你耳边轻轻说：今天，请留意这件事。"
-            : $"逆位的{card.nameZh}出现在你今天的牌面。有时候，逆位的牌不是警告，而是一个邀请——邀请你换个角度看事情。";
+            ? $"今天你抽到了{card.DisplayName(upright)}。这张牌带着一股温柔但有力的能量，像是宇宙在你耳边轻轻说：今天，请留意这件事。"
+            : $"{card.DisplayName(upright)}出现在你今天的牌面。有时候，逆位的牌不是警告，而是一个邀请——邀请你换个角度看事情。";
     }
 
     private List<string> GetFallbackTags(TarotCard card, bool upright, string locale)

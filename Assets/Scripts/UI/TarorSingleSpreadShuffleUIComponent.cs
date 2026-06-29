@@ -23,7 +23,7 @@ public class TarorSingleSpreadShuffleUIComponent:MonoBehaviour
 	public TMP_Text cardTitleText;
 	public TMP_Text InstructionTextText;
 
-
+	public Button hideBtn;
 	[Header("卡牌动画")]
 	public Transform cardContainer;
 	public GameObject cardImageGo;
@@ -33,29 +33,30 @@ public class TarorSingleSpreadShuffleUIComponent:MonoBehaviour
 	public float cardRevealGap = 0.25f;
 	public Sprite cardBackSprite;
 
+
 	[Header("牌扇抽卡")]
 	[Tooltip("牌扇里显示的可选牌数量。")]
-	public int selectableCardCount = 12;
+	public int selectableCardCount = 7;
 	[Tooltip("牌扇宽度。填 0 时按容器宽度自动计算。")]
 	public float fanWidth = 0f;
 	[Tooltip("牌扇宽度相对容器宽度的倍率，值越大越容易延伸到屏幕外。")]
-	public float fanViewportWidthMultiplier = 1.42f;
+	public float fanViewportWidthMultiplier = 1f;
 	[Tooltip("牌扇最小宽度。")]
-	public float minFanWidth = 1120f;
+	public float minFanWidth = 0f;
 	[Tooltip("牌扇在容器内的纵向偏移。")]
 	public float fanHeightOffset = 0f;
 	[Tooltip("中间牌的上拱高度。")]
-	public float fanRiseOffset = 108f;
+	public float fanRiseOffset = 0f;
 	[Tooltip("两侧牌的最大倾斜角度。")]
-	public float fanRotation = 18f;
+	public float fanRotation = 0f;
 	[Tooltip("牌扇中卡牌的固定缩放。填 0 时自动计算。")]
 	public float deckCardScale = 0f;
-	public float minDeckCardScale = 0.5f;
-	public float maxDeckCardScale = 0.64f;
+	public float minDeckCardScale = 0.1f;
+	public float maxDeckCardScale = 0.5f;
 	[Tooltip("抽出第一张牌后，牌扇向下收拢的距离。填 0 时按容器高度自动计算。")]
 	public float drawnFanLowerOffset = 0f;
 	[Tooltip("抽出第一张牌后，剩余牌扇的缩放倍率。")]
-	public float drawnFanScaleMultiplier = 0.88f;
+	public float drawnFanScaleMultiplier = 1f;
 	[Tooltip("横向拖动牌扇的灵敏度。")]
 	public float dragSensitivity = 1f;
 	[Tooltip("拖动距离超过该值后，不再视为点击。")]

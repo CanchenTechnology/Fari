@@ -11,6 +11,7 @@ using TMPro;
 public class QuickDivinationPanel : MonoBehaviour
 {
     private const string ThreeCardQuickQuestion = "给我做个三张牌的占卜";
+    private const string SelectedTopicDropdownTextColor = "#FE8E54";
 
     public class QuickQuestionRequest
     {
@@ -36,6 +37,7 @@ public class QuickDivinationPanel : MonoBehaviour
     [Header("标题区域")]
     public Button toggleBtn;            // 收起/展开按钮
     public TMP_Text toggleBtnText;          // 按钮文字（收起 / 展开）
+    public RectTransform toggleArrowIcon;
 
     [Header("话题标签按钮 (4个)")]
     public TMP_Dropdown topicDropdown;
@@ -100,6 +102,7 @@ public class QuickDivinationPanel : MonoBehaviour
     private float mPanelBottomPadding;
     private string mInspectorCurrentTopicKey;
     private readonly Dictionary<string, List<string>> mGeneratedQuestions = new Dictionary<string, List<string>>();
+    private readonly Dictionary<string, string> mTopicDropdownLabels = new Dictionary<string, string>();
     private readonly Vector3[] mWorldCorners = new Vector3[4];
     private readonly Vector3[] mFollowTargetWorldCorners = new Vector3[4];
     private bool mSuppressDropdownCallback;
@@ -525,6 +528,7 @@ public class QuickDivinationPanel : MonoBehaviour
 
         topicDropdown.onValueChanged.RemoveListener(OnTopicDropdownValueChanged);
         topicDropdown.onValueChanged.AddListener(OnTopicDropdownValueChanged);
+        EnableTopicDropdownRichText();
     }
 
     private void RefreshTopicDropdownOptions(List<QuickTopic> topics)
@@ -536,6 +540,7 @@ public class QuickDivinationPanel : MonoBehaviour
         mSuppressDropdownCallback = true;
         topicDropdown.ClearOptions();
         mTopicOrder.Clear();
+        mTopicDropdownLabels.Clear();
 
         if (topics != null && topics.Count > 0)
         {
@@ -546,7 +551,9 @@ public class QuickDivinationPanel : MonoBehaviour
                     continue;
 
                 mTopicOrder.Add(topic.key);
-                labels.Add(GetTopicDropdownLabel(topic));
+                string label = GetTopicDropdownLabel(topic);
+                mTopicDropdownLabels[topic.key] = label;
+                labels.Add(label);
             }
 
             topicDropdown.AddOptions(labels);
@@ -565,8 +572,53 @@ public class QuickDivinationPanel : MonoBehaviour
         int index = Mathf.Max(0, mTopicOrder.IndexOf(GetCurrentTopicKey()));
         mSuppressDropdownCallback = true;
         topicDropdown.SetValueWithoutNotify(index);
+        ApplyTopicDropdownSelectedTextColor();
         topicDropdown.RefreshShownValue();
         mSuppressDropdownCallback = false;
+    }
+
+    private void EnableTopicDropdownRichText()
+    {
+        if (topicDropdown == null)
+            return;
+
+        if (topicDropdown.captionText != null)
+            topicDropdown.captionText.richText = true;
+        if (topicDropdown.itemText != null)
+            topicDropdown.itemText.richText = true;
+    }
+
+    private void ApplyTopicDropdownSelectedTextColor()
+    {
+        ResolveTopicDropdown();
+        if (topicDropdown == null)
+            return;
+
+        EnableTopicDropdownRichText();
+
+        string currentKey = GetCurrentTopicKey();
+        int count = Mathf.Min(topicDropdown.options.Count, mTopicOrder.Count);
+        for (int i = 0; i < count; i++)
+        {
+            string key = mTopicOrder[i];
+            string label = mTopicDropdownLabels.TryGetValue(key, out string cachedLabel)
+                ? cachedLabel
+                : StripTopicDropdownColor(topicDropdown.options[i].text);
+
+            topicDropdown.options[i].text = key == currentKey
+                ? $"<color={SelectedTopicDropdownTextColor}>{label}</color>"
+                : label;
+        }
+    }
+
+    private static string StripTopicDropdownColor(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return string.Empty;
+
+        return text
+            .Replace($"<color={SelectedTopicDropdownTextColor}>", string.Empty)
+            .Replace("</color>", string.Empty);
     }
 
     private static string GetTopicDropdownLabel(QuickTopic topic)
@@ -585,16 +637,51 @@ public class QuickDivinationPanel : MonoBehaviour
         int visibleLimit = GetVisibleQuestionCapacity();
         int totalCount = GetListQuestions().Count;
         int visibleCount = Mathf.Min(visibleLimit, totalCount);
+        bool isExpanded = QuickDivinationData.Instance.IsExpanded;
 
         if (toggleBtnText != null)
         {
-            toggleBtnText.text = QuickDivinationData.Instance.IsExpanded
+            toggleBtnText.text = isExpanded
                 ? "收起"
                 : "展开";
         }
 
+        UpdateToggleArrowIcon(isExpanded);
+
         if (toggleBtn != null)
-            toggleBtn.gameObject.SetActive(totalCount > visibleCount || QuickDivinationData.Instance.IsExpanded);
+            toggleBtn.gameObject.SetActive(totalCount > visibleCount || isExpanded);
+    }
+
+    private void UpdateToggleArrowIcon(bool isExpanded)
+    {
+        ResolveToggleArrowIcon();
+        if (toggleArrowIcon == null)
+            return;
+
+        toggleArrowIcon.localRotation = Quaternion.Euler(0f, 0f, isExpanded ? 180f : 0f);
+    }
+
+    private void ResolveToggleArrowIcon()
+    {
+        if (toggleArrowIcon != null || toggleBtn == null)
+            return;
+
+        Transform directIcon = toggleBtn.transform.Find("icon");
+        if (directIcon != null)
+        {
+            toggleArrowIcon = directIcon as RectTransform;
+            return;
+        }
+
+        RectTransform[] children = toggleBtn.GetComponentsInChildren<RectTransform>(true);
+        foreach (RectTransform child in children)
+        {
+            if (child != null && string.Equals(child.name, "icon", StringComparison.OrdinalIgnoreCase))
+            {
+                toggleArrowIcon = child;
+                return;
+            }
+        }
     }
 
     private void RefreshQuestionList(bool resetScrollPosition = false)

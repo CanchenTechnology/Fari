@@ -341,13 +341,14 @@ public class FriendProfileUI : WindowBase
 
 	private string BuildSummaryContext(DailyOracleSummaryRecord summary)
 	{
-		string orientation = summary.IsUpright ? "正位" : "逆位";
 		string friendName = string.IsNullOrWhiteSpace(currentFriend?.name) ? "该好友" : currentFriend.name;
-		string cardName = string.IsNullOrWhiteSpace(summary.cardName) ? "未知牌" : summary.cardName;
+		string cardName = TarotDeck.FormatDisplayName(
+			string.IsNullOrWhiteSpace(summary.cardName) ? "未知牌" : summary.cardName,
+			summary.IsUpright);
 
 		return $"【{friendName} 公开同步的每日牌摘要】\n"
 			+ $"日期：{summary.date}\n"
-			+ $"牌面：{cardName}（{orientation}）\n"
+			+ $"牌面：{cardName}\n"
 			+ $"标题：{summary.title}\n"
 			+ $"摘要：{summary.oracle}\n"
 			+ $"微行动：{summary.microAction}\n"
@@ -565,12 +566,13 @@ public class FriendProfileHistoryEntry
 
 	public static FriendProfileHistoryEntry FromSummary(DailyOracleSummaryRecord summary)
 	{
-		string orientation = summary != null && summary.IsUpright ? "正位" : "逆位";
-		string cardName = string.IsNullOrWhiteSpace(summary?.cardName) ? "每日牌" : summary.cardName;
+		string cardName = TarotDeck.FormatDisplayName(
+			string.IsNullOrWhiteSpace(summary?.cardName) ? "每日牌" : summary.cardName,
+			summary != null && summary.IsUpright);
 		return new FriendProfileHistoryEntry
 		{
-			title = string.IsNullOrWhiteSpace(summary?.title) ? $"{cardName} · {orientation}" : summary.title,
-			content = string.IsNullOrWhiteSpace(summary?.oracle) ? $"{cardName} · {orientation}" : summary.oracle,
+			title = string.IsNullOrWhiteSpace(summary?.title) ? cardName : summary.title,
+			content = string.IsNullOrWhiteSpace(summary?.oracle) ? cardName : summary.oracle,
 			date = string.IsNullOrWhiteSpace(summary?.date) ? DateTime.Now.ToString("yyyy-MM-dd") : summary.date,
 			cardSprite = !string.IsNullOrWhiteSpace(summary?.cardId) ? TarotSpriteLoader.Load(summary.cardId) : null,
 			summary = summary

@@ -271,27 +271,27 @@ public class SpreadInteractionCard5 : MonoBehaviour
         // 逐一翻牌
         yield return StartCoroutine(FlipCard(cardSlotItem1?.cardImage, _drawnCards[0]));
         if (cardSlotItem1 != null)
-            cardSlotItem1.cardTag.text = $"{_drawnCards[0].card.nameZh}（{(_drawnCards[0].upright ? "正" : "逆")}）";
+            cardSlotItem1.cardTag.text = _drawnCards[0].card.DisplayName(_drawnCards[0].upright);
         yield return new WaitForSeconds(cardRevealGap);
 
         yield return StartCoroutine(FlipCard(cardSlotItem2?.cardImage, _drawnCards[1]));
         if (cardSlotItem2 != null)
-            cardSlotItem2.cardTag.text = $"{_drawnCards[1].card.nameZh}（{(_drawnCards[1].upright ? "正" : "逆")}）";
+            cardSlotItem2.cardTag.text = _drawnCards[1].card.DisplayName(_drawnCards[1].upright);
         yield return new WaitForSeconds(cardRevealGap);
 
         yield return StartCoroutine(FlipCard(cardSlotItem3?.cardImage, _drawnCards[2]));
         if (cardSlotItem3 != null)
-            cardSlotItem3.cardTag.text = $"{_drawnCards[2].card.nameZh}（{(_drawnCards[2].upright ? "正" : "逆")}）";
+            cardSlotItem3.cardTag.text = _drawnCards[2].card.DisplayName(_drawnCards[2].upright);
         yield return new WaitForSeconds(cardRevealGap);
 
         yield return StartCoroutine(FlipCard(cardSlotItem4?.cardImage, _drawnCards[3]));
         if (cardSlotItem4 != null)
-            cardSlotItem4.cardTag.text = $"{_drawnCards[3].card.nameZh}（{(_drawnCards[3].upright ? "正" : "逆")}）";
+            cardSlotItem4.cardTag.text = _drawnCards[3].card.DisplayName(_drawnCards[3].upright);
         yield return new WaitForSeconds(cardRevealGap);
 
         yield return StartCoroutine(FlipCard(cardSlotItem5?.cardImage, _drawnCards[4]));
         if (cardSlotItem5 != null)
-            cardSlotItem5.cardTag.text = $"{_drawnCards[4].card.nameZh}（{(_drawnCards[4].upright ? "正" : "逆")}）";
+            cardSlotItem5.cardTag.text = _drawnCards[4].card.DisplayName(_drawnCards[4].upright);
 
         // 完成
         _cardsDrawn = true;
@@ -302,11 +302,11 @@ public class SpreadInteractionCard5 : MonoBehaviour
         SpreadShuffleBridge.ConsumePendingDialogReveal(_messageData);
 
         Debug.Log($"[SpreadInteractionCard5] 抽牌完成: "
-            + $"{_drawnCards[0].card.nameZh}({(_drawnCards[0].upright ? "正" : "逆")}) | "
-            + $"{_drawnCards[1].card.nameZh}({(_drawnCards[1].upright ? "正" : "逆")}) | "
-            + $"{_drawnCards[2].card.nameZh}({(_drawnCards[2].upright ? "正" : "逆")}) | "
-            + $"{_drawnCards[3].card.nameZh}({(_drawnCards[3].upright ? "正" : "逆")}) | "
-            + $"{_drawnCards[4].card.nameZh}({(_drawnCards[4].upright ? "正" : "逆")})");
+            + $"{_drawnCards[0].card.DisplayName(_drawnCards[0].upright)} | "
+            + $"{_drawnCards[1].card.DisplayName(_drawnCards[1].upright)} | "
+            + $"{_drawnCards[2].card.DisplayName(_drawnCards[2].upright)} | "
+            + $"{_drawnCards[3].card.DisplayName(_drawnCards[3].upright)} | "
+            + _drawnCards[4].card.DisplayName(_drawnCards[4].upright));
     }
 
     /// <summary>
@@ -449,7 +449,7 @@ public class SpreadInteractionCard5 : MonoBehaviour
         }
 
         if (slot.cardTag != null)
-            slot.cardTag.text = $"{draw.card.nameZh}（{(draw.upright ? "正" : "逆")}）";
+            slot.cardTag.text = draw.card.DisplayName(draw.upright);
     }
 
     private void PrepareSlotsForReveal()
@@ -591,7 +591,12 @@ public class SpreadInteractionCard5 : MonoBehaviour
     private Sprite LoadCardSprite(string cardId)
     {
         if (string.IsNullOrEmpty(cardId)) return cardBackSprite;
-        return TarotSpriteLoader.Load(cardId) ?? cardBackSprite;
+
+        Sprite sprite = TarotSpriteLoader.Load(cardId);
+        if (sprite != null) return sprite;
+
+        sprite = Resources.Load<Sprite>($"TarotCards/{cardId}");
+        return sprite != null ? sprite : cardBackSprite;
     }
 
     /// <summary>

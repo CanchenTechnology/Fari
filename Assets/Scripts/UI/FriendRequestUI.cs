@@ -20,9 +20,9 @@ public class FriendRequestUI : WindowBase
 	private const string EmptyStateTerm = "FriendRequest/EmptyState";
 	private const string AddFriendLinkId = "add_friend";
 	private const string CreateFriendLinkId = "create_friend";
-	private const string EmptyStateLinkColor = "#D58A3F";
+	private const string EmptyStateLinkColor = "#FE8E54";
 	private const string DefaultEmptyStateText =
-		"暂无好友请求，去 <link=\"add_friend\"><color=#D58A3F>添加</color></link> / <link=\"create_friend\"><color=#D58A3F>创建</color></link>";
+		"暂无好友请求，去 <link=\"add_friend\"><color=#FE8E54>添加</color></link> / <link=\"create_friend\"><color=#FE8E54>创建</color></link>";
 	public FriendRequestUIComponent uiComponent;
 	private readonly List<FriendDataManager.InviteData> requestInvites = new List<FriendDataManager.InviteData>();
 	private readonly HashSet<string> processingRequestKeys = new HashSet<string>();
@@ -497,7 +497,7 @@ public class FriendRequestUI : WindowBase
 			return DefaultEmptyStateText;
 
 		if (emptyStateText.Contains("<link="))
-			return emptyStateText;
+			return NormalizeEmptyStateLinkColor(emptyStateText);
 
 		string linkedText = emptyStateText;
 		linkedText = ReplaceFirst(linkedText, "添加", BuildEmptyStateLink(AddFriendLinkId, "添加"));
@@ -507,6 +507,16 @@ public class FriendRequestUI : WindowBase
 		linkedText = ReplaceFirst(linkedText, "add", BuildEmptyStateLink(AddFriendLinkId, "add"));
 		linkedText = ReplaceFirst(linkedText, "create", BuildEmptyStateLink(CreateFriendLinkId, "create"));
 		return linkedText;
+	}
+
+	private string NormalizeEmptyStateLinkColor(string text)
+	{
+		if (string.IsNullOrEmpty(text)) return text;
+
+		return text
+			.Replace("#D58A3F", EmptyStateLinkColor)
+			.Replace("#D58A3FCC", EmptyStateLinkColor)
+			.Replace("#FE8E54CC", EmptyStateLinkColor);
 	}
 
 	private string BuildEmptyStateLink(string linkId, string label)

@@ -29,7 +29,7 @@ public class RelationshipDivinationCard
 
     public bool IsUpright => orientation == "upright";
     public string OrientationText => IsUpright ? "正位" : "逆位";
-    public string DisplayName => $"{cardName}（{OrientationText}）";
+    public string DisplayName => TarotDeck.FormatDisplayName(cardName, IsUpright);
 }
 
 [Serializable]

@@ -114,7 +114,7 @@ public class DivinationEngine : MonoBehaviour
         TodayCard = result;
         _todayCardDate = today;
         UsageStatsManager.Instance?.TrackDailyOracle();
-        Debug.Log($"[DivinationEngine] 今日牌: {result.card.nameZh} ({(result.upright ? "正位" : "逆位")})");
+        Debug.Log($"[DivinationEngine] 今日牌: {result.card.DisplayName(result.upright)}");
         return result;
     }
 
@@ -130,7 +130,7 @@ public class DivinationEngine : MonoBehaviour
             ? DateTime.Now.ToString("yyyy-MM-dd")
             : localDate;
         UsageStatsManager.Instance?.TrackDailyOracle();
-        Debug.Log($"[DivinationEngine] 使用云端今日牌: {card.nameZh} ({(upright ? "正位" : "逆位")})");
+        Debug.Log($"[DivinationEngine] 使用云端今日牌: {card.DisplayName(upright)}");
     }
 
     public void ClearTodayCard()
@@ -338,7 +338,7 @@ public class DivinationEngine : MonoBehaviour
 
         Debug.Log($"[DivinationEngine] 选牌阵 [{spreadKind}], 抽 {cardCount} 张牌");
         foreach (var lc in lockedCards)
-            Debug.Log($"  {lc.position}: {lc.cardName} ({(lc.orientation == "upright" ? "正" : "逆")})");
+            Debug.Log($"  {lc.position}: {TarotDeck.FormatDisplayName(lc.cardName, lc.orientation)}");
 
         // 同步到 DialogSystem
         SyncToDialogSystem();

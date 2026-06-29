@@ -1106,7 +1106,7 @@ public class DivinationRecordData
             foreach (var c in lockedCards)
             {
                 string orientation = c.orientation == "upright" ? "正" : "逆";
-                names.Add($"{c.cardName}({orientation})");
+                names.Add(TarotDeck.FormatDisplayName(string.IsNullOrWhiteSpace(c.cardName) ? c.cardId : c.cardName, orientation));
             }
             return string.Join(" · ", names);
         }

@@ -83,7 +83,7 @@ function optionalSecret(name) {
   }
 
   return {
-    value: () => "",
+    value: () => process.env[name] || "",
   };
 }
 
@@ -115,9 +115,9 @@ const SECRET_PARAMS = Object.freeze({
 const MODEL_SECRET_CONFIGS = Object.freeze({
   DEEPSEEK_API_KEY: {
     provider: "deepseek",
-    label: "DeepSeek API Key",
+    label: "Aliyun DashScope API Key",
     keyKind: "api_key",
-    hint: "DeepSeek 的 sk- 开头密钥",
+    hint: "Alibaba Cloud DashScope sk- key.",
   },
   OPENAI_API_KEY: {
     provider: "openai",
@@ -160,9 +160,11 @@ const MODEL_SECRET_NAMES = Object.freeze(Object.keys(MODEL_SECRET_CONFIGS));
 
 const REGION = "us-central1";
 const FIRESTORE_TRIGGER_REGION = "asia-east2";
-const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
-const DEEPSEEK_BALANCE_URL = "https://api.deepseek.com/user/balance";
-const DEEPSEEK_MODEL = "deepseek-chat";
+const DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+const DEEPSEEK_URL = `${DASHSCOPE_BASE_URL}/chat/completions`;
+const DASHSCOPE_MODELS_URL = `${DASHSCOPE_BASE_URL}/models`;
+const DEEPSEEK_MODEL = "deepseek-v4-pro";
+const DASHSCOPE_DEEPSEEK_MODELS = new Set(["deepseek-v4-pro", "deepseek-v4-flash"]);
 const OPENAI_MODELS_URL = "https://api.openai.com/v1/models";
 const OPENAI_COSTS_URL = "https://api.openai.com/v1/organization/costs";
 const ANTHROPIC_MODELS_URL = "https://api.anthropic.com/v1/models";
@@ -1493,7 +1495,7 @@ async function processDialogueReplyJobDoc(jobSnap) {
       source: "scheduler",
       provider: "deepseek",
       providerMeta: error.providerUsageMeta || error.providerAttempts?.[error.providerAttempts.length - 1] || null,
-      model: job?.model || DEEPSEEK_MODEL,
+      model: normalizeAiChatModel(job?.model),
       context: getModelUsageContext({
         ...buildDialogueReplyNotificationBody(job, jobRef.id),
         messages,
@@ -5592,7 +5594,7 @@ function buildReadinessActions(secrets, firestoreOk, publicConfigReadiness) {
     actions.push(`Set optional IAP price labels in app_config/public for display polish: ${publicConfigReadiness.missingPriceLabels.join(", ")}.`);
   }
   if (!secrets.deepseekApiKey) {
-    actions.push("Set DEEPSEEK_API_KEY for aiChat / aiChatStream.");
+    actions.push("Set DEEPSEEK_API_KEY with an Aliyun DashScope key for aiChat / aiChatStream.");
   }
   if (!secrets.volcanoTtsApiKey) {
     actions.push("Set VOLC_TTS_API_KEY for ttsSynthesize.");
@@ -6246,6 +6248,13 @@ function buildFallbackExpiry(productId) {
   return null;
 }
 
+function normalizeAiChatModel(model) {
+  const normalized = cleanString(model, "", 120);
+  const lower = normalized.toLowerCase();
+  if (DASHSCOPE_DEEPSEEK_MODELS.has(lower)) return lower;
+  return DEEPSEEK_MODEL;
+}
+
 async function callDeepSeek(body, stream) {
   const messages = sanitizeMessages(body.messages);
   if (messages.length === 0) {
@@ -6255,7 +6264,7 @@ async function callDeepSeek(body, stream) {
   }
 
   const payload = {
-    model: body.model || DEEPSEEK_MODEL,
+    model: normalizeAiChatModel(body.model),
     messages,
     temperature: typeof body.temperature === "number" ? body.temperature : 0.7,
     max_tokens: Math.min(Number(body.max_tokens || body.maxTokens || 2000), 4000),
@@ -6265,7 +6274,7 @@ async function callDeepSeek(body, stream) {
   const candidates = await getProviderKeyCandidates("deepseek", "DEEPSEEK_API_KEY", deepseekApiKey, {
     forceRefresh: true,
   });
-  if (!candidates.length) throw new Error("DEEPSEEK_API_KEY is not configured");
+  if (!candidates.length) throw new Error("DEEPSEEK_API_KEY is not configured for DashScope");
 
   const failures = [];
   const failureHttpStatuses = [];
@@ -6283,7 +6292,7 @@ async function callDeepSeek(body, stream) {
         body: JSON.stringify(payload),
       });
     } catch (error) {
-      const message = cleanString(error.message || "DeepSeek network request failed.", "", 300);
+      const message = cleanString(error.message || "DashScope network request failed.", "", 300);
       failures.push(`${candidate.label}: network_error ${message}`.slice(0, 700));
       failureHttpStatuses.push(503);
       attempts.push({
@@ -6328,7 +6337,7 @@ async function callDeepSeek(body, stream) {
     });
     await markPoolKeyFailure(candidate, status, message);
     if (!shouldTryNextProviderHttpFailure(status, response.status)) {
-      const err = new Error(`DeepSeek error ${response.status}: ${message}`);
+      const err = new Error(`DashScope error ${response.status}: ${message}`);
       err.status = response.status;
       err.providerAttempts = attempts;
       err.providerUsageMeta = providerMeta;
@@ -6336,7 +6345,7 @@ async function callDeepSeek(body, stream) {
     }
   }
 
-  const err = new Error(`All DeepSeek keys failed: ${failures.join(" | ")}`);
+  const err = new Error(`All DashScope keys failed: ${failures.join(" | ")}`);
   err.status = getAggregateProviderFailureStatus(failureHttpStatuses);
   err.providerAttempts = attempts;
   err.providerUsageMeta = attempts[attempts.length - 1] || null;
@@ -6353,39 +6362,9 @@ function getAggregateProviderFailureStatus(statuses = []) {
   return codes[0] || 500;
 }
 
-function parseMoneyAmount(value) {
-  const amount = Number(value);
-  return Number.isFinite(amount) ? amount : null;
-}
-
-function normalizeDeepSeekBalanceInfo(info) {
-  const source = info && typeof info === "object" ? info : {};
-  return {
-    currency: String(source.currency || "").toUpperCase(),
-    totalBalance: source.total_balance ?? null,
-    grantedBalance: source.granted_balance ?? null,
-    toppedUpBalance: source.topped_up_balance ?? null,
-    totalBalanceNumber: parseMoneyAmount(source.total_balance),
-    grantedBalanceNumber: parseMoneyAmount(source.granted_balance),
-    toppedUpBalanceNumber: parseMoneyAmount(source.topped_up_balance),
-  };
-}
-
-function sumDeepSeekBalance(balanceInfos) {
-  let total = 0;
-  let hasNumber = false;
-  for (const info of balanceInfos) {
-    if (typeof info.totalBalanceNumber === "number") {
-      total += info.totalBalanceNumber;
-      hasNumber = true;
-    }
-  }
-  return hasNumber ? total : null;
-}
-
 async function checkDeepSeekCandidateBalance(candidate) {
   try {
-    const response = await fetch(DEEPSEEK_BALANCE_URL, {
+    const response = await fetch(DASHSCOPE_MODELS_URL, {
       method: "GET",
       headers: {
         "Accept": "application/json",
@@ -6397,7 +6376,7 @@ async function checkDeepSeekCandidateBalance(candidate) {
 
     if (!response.ok) {
       const status = providerErrorStatus(response.status);
-      const message = compactProviderError(data) || `DeepSeek balance check failed with HTTP ${response.status}.`;
+      const message = compactProviderError(data) || `DashScope model check failed with HTTP ${response.status}.`;
       await markPoolKeyFailure(candidate, status, message);
       return {
         keyId: candidate.id,
@@ -6410,38 +6389,30 @@ async function checkDeepSeekCandidateBalance(candidate) {
       };
     }
 
-    const balanceInfos = Array.isArray(data.balance_infos)
-      ? data.balance_infos.map(normalizeDeepSeekBalanceInfo)
-      : [];
-    const totalBalance = sumDeepSeekBalance(balanceInfos);
-    const isAvailable = data.is_available === true;
-    const ok = isAvailable && (totalBalance === null || totalBalance > 0);
-    if (ok) {
-      await markPoolKeySuccess(candidate);
-    } else {
-      await markPoolKeyFailure(candidate, "insufficient_balance", "DeepSeek reports insufficient balance.");
-    }
+    const models = Array.isArray(data.data) ? data.data : [];
+    await markPoolKeySuccess(candidate);
 
     return {
       keyId: candidate.id,
       source: candidate.source,
       label: candidate.label,
-      ok,
-      status: ok ? "available" : "insufficient_balance",
+      ok: true,
+      status: "available",
       httpStatus: response.status,
-      isAvailable,
-      balanceInfos,
-      totalBalance,
+      isAvailable: true,
+      modelCount: models.length,
+      sampleModels: topModelIds(models),
+      message: "DashScope API key is available. Balance is not inspected through the OpenAI-compatible endpoint.",
     };
   } catch (error) {
-    await markPoolKeyFailure(candidate, "network_error", error.message || "DeepSeek balance check failed.");
+    await markPoolKeyFailure(candidate, "network_error", error.message || "DashScope model check failed.");
     return {
       keyId: candidate.id,
       source: candidate.source,
       label: candidate.label,
       ok: false,
       status: "network_error",
-      message: error.message || "DeepSeek balance check failed.",
+      message: error.message || "DashScope model check failed.",
     };
   }
 }
@@ -6823,7 +6794,7 @@ async function checkDeepSeekBalance() {
   });
   if (!candidates.length) {
     return {
-      ...buildMissingProvider("deepseek", "DeepSeek", "llm", "DEEPSEEK_API_KEY", true),
+      ...buildMissingProvider("deepseek", "Aliyun DashScope", "llm", "DEEPSEEK_API_KEY", false),
       keyPool,
     };
   }
@@ -6854,8 +6825,10 @@ async function checkDeepSeekBalance() {
       ok: primaryCheck.ok,
       selected: selectedKeyId === "primary",
       stats: statsByKeyId.primary || emptyProviderKeyStats("deepseek", "primary"),
-      totalBalance: primaryCheck.totalBalance,
-      balanceInfos: primaryCheck.balanceInfos || [],
+      totalBalance: null,
+      balanceInfos: [],
+      modelCount: primaryCheck.modelCount || 0,
+      sampleModels: primaryCheck.sampleModels || [],
       message: primaryCheck.message || "",
       readable: true,
       runtimeCandidate: true,
@@ -6871,8 +6844,10 @@ async function checkDeepSeekBalance() {
       ok: check?.ok === true,
       selected: key.id === selectedKeyId,
       stats: statsByKeyId[key.id] || emptyProviderKeyStats("deepseek", key.id),
-      totalBalance: check?.totalBalance ?? key.totalBalance ?? null,
-      balanceInfos: check?.balanceInfos || key.balanceInfos || [],
+      totalBalance: null,
+      balanceInfos: [],
+      modelCount: check?.modelCount || key.modelCount || 0,
+      sampleModels: check?.sampleModels || key.sampleModels || [],
       message: check?.message || key.message || "",
       readable: Boolean(check),
       runtimeCandidate: Boolean(check),
@@ -6891,8 +6866,10 @@ async function checkDeepSeekBalance() {
       ok: check.ok,
       selected: check.keyId === selectedKeyId,
       stats: statsByKeyId[check.keyId] || emptyProviderKeyStats("deepseek", check.keyId),
-      totalBalance: check.totalBalance,
-      balanceInfos: check.balanceInfos || [],
+      totalBalance: null,
+      balanceInfos: [],
+      modelCount: check.modelCount || 0,
+      sampleModels: check.sampleModels || [],
       message: check.message || "",
       readable: true,
       runtimeCandidate: true,
@@ -6901,16 +6878,18 @@ async function checkDeepSeekBalance() {
 
   return {
     provider: "deepseek",
-    label: "DeepSeek",
+    label: "Aliyun DashScope",
     kind: "llm",
     configured: true,
-    quotaInspectable: true,
+    quotaInspectable: false,
     ok: Boolean(available),
     status: available ? "available" : (first.status || "unavailable"),
     httpStatus: available?.httpStatus || first.httpStatus || null,
     isAvailable: Boolean(available),
-    balanceInfos: available?.balanceInfos || first.balanceInfos || [],
-    totalBalance: available?.totalBalance ?? first.totalBalance ?? null,
+    balanceInfos: [],
+    totalBalance: null,
+    modelCount: available?.modelCount || first.modelCount || 0,
+    sampleModels: available?.sampleModels || first.sampleModels || [],
     secretNames: ["DEEPSEEK_API_KEY"],
     activeKeyId: selectedKeyId,
     autoSwitch,
@@ -6931,8 +6910,8 @@ async function checkDeepSeekBalance() {
       keys: enrichedPoolKeys,
     },
     message: available
-      ? "DeepSeek key pool has at least one available key."
-      : "No available DeepSeek key found. Add another SK or recharge an exhausted key.",
+      ? "DashScope key pool has at least one available key."
+      : "No available DashScope key found. Add another SK or replace an invalid key.",
   };
 }
 
@@ -10256,7 +10235,7 @@ exports.aiChat = onRequest({ ...runtime, secrets: boundSecrets("DEEPSEEK_API_KEY
       source: "http",
       provider: "deepseek",
       providerMeta: error.providerUsageMeta || error.providerAttempts?.[error.providerAttempts.length - 1] || null,
-      model: requestBody?.model || DEEPSEEK_MODEL,
+      model: normalizeAiChatModel(requestBody?.model),
       membershipStatus: membership?.status || "",
       context: getModelUsageContext(requestBody),
       ok: false,
@@ -10329,7 +10308,7 @@ exports.aiChatStream = onRequest({ ...runtime, secrets: boundSecrets("DEEPSEEK_A
       endpoint: "aiChatStream",
       source: "http",
       providerMeta: response?.modelUsageMeta,
-      model: response?.modelUsageMeta?.model || requestBody?.model || DEEPSEEK_MODEL,
+      model: response?.modelUsageMeta?.model || normalizeAiChatModel(requestBody?.model),
       outputChars: streamState.fullText.length,
       membershipStatus: membership.status,
       context: getModelUsageContext({ ...requestBody, stream: true }),
@@ -10354,7 +10333,7 @@ exports.aiChatStream = onRequest({ ...runtime, secrets: boundSecrets("DEEPSEEK_A
       source: "http",
       provider: "deepseek",
       providerMeta: error.providerUsageMeta || error.providerAttempts?.[error.providerAttempts.length - 1] || response?.modelUsageMeta || null,
-      model: requestBody?.model || DEEPSEEK_MODEL,
+      model: normalizeAiChatModel(requestBody?.model),
       outputChars: streamState.fullText.length,
       membershipStatus: membership?.status || "",
       context: getModelUsageContext({ ...requestBody, stream: true }),

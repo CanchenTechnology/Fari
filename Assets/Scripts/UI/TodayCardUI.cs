@@ -111,7 +111,7 @@ public class TodayCardUI : WindowBase
 		ApplyContent(content, card, upright);
 		RequestContentIfNeeded(card, upright);
 
-		Debug.Log($"[TodayCardUI] 详情填充完成: {card.nameZh} ({(upright ? "正位" : "逆位")})"
+		Debug.Log($"[TodayCardUI] 详情填充完成: {card.DisplayName(upright)}"
 			+ $"{(HasAIContent(card, upright) ? " [AI]" : " [Fallback]")}");
 	}
 
@@ -373,8 +373,7 @@ public class TodayCardUI : WindowBase
 
 	private static string BuildFallbackDescription(TarotCard card, bool upright)
 	{
-		var mood = upright ? "正向" : "警示";
-		return $"今天抽到了{card.nameZh}（{mood}），这张牌属于{MapArcanaZh(card.arcana)}，"
+		return $"今天抽到了{card.DisplayName(upright)}，这张牌属于{MapArcanaZh(card.arcana)}，"
 			+ $"由{MapElementZh(card.element)}能量引导。请跟随牌面的指引，"
 			+ $"让今天的每一步都更有觉知。";
 	}

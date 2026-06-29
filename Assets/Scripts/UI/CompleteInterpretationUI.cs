@@ -726,13 +726,11 @@ public class CompleteInterpretationUI : WindowBase
 
         if (locale.StartsWith("en"))
         {
-            var orientLabel = _currentUpright ? "Upright" : "Reversed";
-            cardMsg = $"I just looked at today's tarot card: {_currentCard.nameZh} ({orientLabel}). I'd like to chat more about it.";
+            cardMsg = $"I just looked at today's tarot card: {_currentCard.DisplayName(_currentUpright)}. I'd like to chat more about it.";
         }
         else
         {
-            var orientLabel = _currentUpright ? "正位" : "逆位";
-            cardMsg = $"我刚看完今天的塔罗牌：{_currentCard.nameZh}（{orientLabel}）。我想和你继续聊聊这张牌。";
+            cardMsg = $"我刚看完今天的塔罗牌：{_currentCard.DisplayName(_currentUpright)}。我想和你继续聊聊这张牌。";
         }
 
         NavigateToDialogAndSend(cardMsg);

@@ -258,19 +258,19 @@ public class SpreadInteractionCard3 : MonoBehaviour
         }
 
         // 逐一翻牌
-        yield return StartCoroutine(FlipCard(cardSlotItem1?.cardImage, _drawnCards[0]));
-        if (cardSlotItem1 != null)
-            cardSlotItem1.cardTag.text = $"{_drawnCards[0].card.nameZh}（{(_drawnCards[0].upright ? "正" : "逆")}）";
+        yield return StartCoroutine(FlipCard(cardSlotItem1, _drawnCards[0]));
+        if (cardSlotItem1?.cardTag != null)
+            cardSlotItem1.cardTag.text = _drawnCards[0].card.DisplayName(_drawnCards[0].upright);
         yield return new WaitForSeconds(cardRevealGap);
 
-        yield return StartCoroutine(FlipCard(cardSlotItem2?.cardImage, _drawnCards[1]));
-        if (cardSlotItem2 != null)
-            cardSlotItem2.cardTag.text = $"{_drawnCards[1].card.nameZh}（{(_drawnCards[1].upright ? "正" : "逆")}）";
+        yield return StartCoroutine(FlipCard(cardSlotItem2, _drawnCards[1]));
+        if (cardSlotItem2?.cardTag != null)
+            cardSlotItem2.cardTag.text = _drawnCards[1].card.DisplayName(_drawnCards[1].upright);
         yield return new WaitForSeconds(cardRevealGap);
 
-        yield return StartCoroutine(FlipCard(cardSlotItem3?.cardImage, _drawnCards[2]));
-        if (cardSlotItem3 != null)
-            cardSlotItem3.cardTag.text = $"{_drawnCards[2].card.nameZh}（{(_drawnCards[2].upright ? "正" : "逆")}）";
+        yield return StartCoroutine(FlipCard(cardSlotItem3, _drawnCards[2]));
+        if (cardSlotItem3?.cardTag != null)
+            cardSlotItem3.cardTag.text = _drawnCards[2].card.DisplayName(_drawnCards[2].upright);
 
         // 完成
         _cardsDrawn = true;
@@ -281,20 +281,22 @@ public class SpreadInteractionCard3 : MonoBehaviour
         SpreadShuffleBridge.ConsumePendingDialogReveal(_messageData);
 
         Debug.Log($"[SpreadInteractionCard3] 抽牌完成: "
-            + $"{_drawnCards[0].card.nameZh}({(_drawnCards[0].upright ? "正" : "逆")}) | "
-            + $"{_drawnCards[1].card.nameZh}({(_drawnCards[1].upright ? "正" : "逆")}) | "
-            + $"{_drawnCards[2].card.nameZh}({(_drawnCards[2].upright ? "正" : "逆")})");
+            + $"{_drawnCards[0].card.DisplayName(_drawnCards[0].upright)} | "
+            + $"{_drawnCards[1].card.DisplayName(_drawnCards[1].upright)} | "
+            + _drawnCards[2].card.DisplayName(_drawnCards[2].upright));
     }
 
     /// <summary>
     /// 翻牌动画 —— 水平缩放模拟翻转
     /// </summary>
-    private IEnumerator FlipCard(Image cardImage, (TarotCard card, bool upright) draw)
+    private IEnumerator FlipCard(CardSlotItem slot, (TarotCard card, bool upright) draw)
     {
-        if (cardImage == null) yield break;
+        if (slot == null || draw.card == null) yield break;
 
         Sprite frontSprite = LoadCardSprite(draw.card.cardId);
-        float halfDuration = flipDuration / 2f;
+        Transform flipTarget = slot.transform;
+        Vector3 originalScale = flipTarget.localScale;
+        float halfDuration = Mathf.Max(0.01f, flipDuration / 2f);
 
         // 阶段 1：缩小到 0（翻面）
         float elapsed = 0f;
@@ -304,17 +306,14 @@ public class SpreadInteractionCard3 : MonoBehaviour
             float t = Mathf.Clamp01(elapsed / halfDuration);
             // ease-in
             float scale = 1f - EaseInQuad(t);
-            cardImage.transform.localScale = new Vector3(scale, 1f, 1f);
+            flipTarget.localScale = new Vector3(originalScale.x * scale, originalScale.y, originalScale.z);
             yield return null;
         }
 
         // 切换图片
-        cardImage.sprite = frontSprite ?? cardBackSprite;
+        slot.ShowFace(frontSprite ?? cardBackSprite, draw.card.DisplayName(draw.upright), draw.upright);
 
         // 逆位旋转
-        cardImage.transform.localRotation = draw.upright
-            ? Quaternion.identity
-            : Quaternion.Euler(0, 0, 180);
 
         // 阶段 2：放大回来
         elapsed = 0f;
@@ -323,11 +322,11 @@ public class SpreadInteractionCard3 : MonoBehaviour
             elapsed += Time.deltaTime;
             float t = Mathf.Clamp01(elapsed / halfDuration);
             float scale = EaseOutQuad(t);
-            cardImage.transform.localScale = new Vector3(scale, 1f, 1f);
+            flipTarget.localScale = new Vector3(originalScale.x * scale, originalScale.y, originalScale.z);
             yield return null;
         }
 
-        cardImage.transform.localScale = Vector3.one;
+        flipTarget.localScale = originalScale;
     }
 
     // ========== 辅助方法 ==========
@@ -516,19 +515,10 @@ public class SpreadInteractionCard3 : MonoBehaviour
 
     private void SetCardSlotFace(CardSlotItem slot, (TarotCard card, bool upright) draw)
     {
-        if (slot == null) return;
+        if (slot == null || draw.card == null) return;
 
-        if (slot.cardImage != null)
-        {
-            slot.cardImage.sprite = LoadCardSprite(draw.card.cardId);
-            slot.cardImage.transform.localScale = Vector3.one;
-            slot.cardImage.transform.localRotation = draw.upright
-                ? Quaternion.identity
-                : Quaternion.Euler(0, 0, 180);
-        }
-
-        if (slot.cardTag != null)
-            slot.cardTag.text = $"{draw.card.nameZh}（{(draw.upright ? "正" : "逆")}）";
+        slot.ShowFace(LoadCardSprite(draw.card.cardId), draw.card.DisplayName(draw.upright), draw.upright);
+        ResetSlotTransform(slot);
     }
 
     private void PrepareSlotsForReveal()
@@ -539,11 +529,8 @@ public class SpreadInteractionCard3 : MonoBehaviour
         foreach (CardSlotItem slot in slots)
         {
             if (slot == null) continue;
-            if (slot.cardImage != null)
-            {
-                slot.cardImage.sprite = cardBackSprite;
-                ResetCardTransform(slot.cardImage);
-            }
+            slot.ShowBack(cardBackSprite, "");
+            ResetSlotTransform(slot);
         }
 
         ApplySlotLabels();
@@ -679,7 +666,12 @@ public class SpreadInteractionCard3 : MonoBehaviour
     private Sprite LoadCardSprite(string cardId)
     {
         if (string.IsNullOrEmpty(cardId)) return cardBackSprite;
-        return TarotSpriteLoader.Load(cardId) ?? cardBackSprite;
+
+        Sprite sprite = TarotSpriteLoader.Load(cardId);
+        if (sprite != null) return sprite;
+
+        sprite = Resources.Load<Sprite>($"TarotCards/{cardId}");
+        return sprite != null ? sprite : cardBackSprite;
     }
 
     /// <summary>
@@ -699,17 +691,14 @@ public class SpreadInteractionCard3 : MonoBehaviour
         _cardsDrawn = false;
 
         // 恢复卡牌背面
-        if (cardBackSprite != null)
-        {
-            if (cardSlotItem1 != null) cardSlotItem1.cardImage.sprite = cardBackSprite;
-            if (cardSlotItem2 != null) cardSlotItem2.cardImage.sprite = cardBackSprite;
-            if (cardSlotItem3 != null) cardSlotItem3.cardImage.sprite = cardBackSprite;
-        }
+        if (cardSlotItem1 != null) cardSlotItem1.ShowBack(cardBackSprite, "");
+        if (cardSlotItem2 != null) cardSlotItem2.ShowBack(cardBackSprite, "");
+        if (cardSlotItem3 != null) cardSlotItem3.ShowBack(cardBackSprite, "");
 
         // 恢复 Transform
-        ResetCardTransform(cardSlotItem1?.cardImage);
-        ResetCardTransform(cardSlotItem2?.cardImage);
-        ResetCardTransform(cardSlotItem3?.cardImage);
+        ResetSlotTransform(cardSlotItem1);
+        ResetSlotTransform(cardSlotItem2);
+        ResetSlotTransform(cardSlotItem3);
 
         // 按钮状态
         if (drawCardBtn != null)
@@ -736,6 +725,13 @@ public class SpreadInteractionCard3 : MonoBehaviour
     }
 
     // ========== 缓动函数 ==========
+
+    private void ResetSlotTransform(CardSlotItem slot)
+    {
+        if (slot == null) return;
+        slot.transform.localScale = Vector3.one;
+        slot.transform.localRotation = Quaternion.identity;
+    }
 
     private static float EaseInQuad(float t) => t * t;
     private static float EaseOutQuad(float t) => 1f - (1f - t) * (1f - t);

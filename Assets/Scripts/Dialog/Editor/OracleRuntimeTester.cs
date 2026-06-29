@@ -736,7 +736,7 @@ public static class OracleRuntimeAcceptanceSuite
 
         AssemblyResult cardPositionSceneCall = ContextAssembler.AssembleSceneCall(
             "card_position_description",
-            BuildScenePayload("牌阵：关系张力\n位置：你的位置\n卡牌：星星（正位）\n关键词：希望、修复、信任", oracleVoiceId, userName),
+            BuildScenePayload("牌阵：关系张力\n位置：你的位置\n卡牌：星星·正位\n关键词：希望、修复、信任", oracleVoiceId, userName),
             new MemorySource(),
             oracleVoiceId);
         Check("card position description scene is prompt-configured",
@@ -763,7 +763,7 @@ public static class OracleRuntimeAcceptanceSuite
             "\"invitation_text\"");
         CheckJsonSceneSchema("card reveal scene attaches schema",
             "card_reveal",
-            "readingId=test_lock_001，当前牌=星星（正位），牌位=你的位置",
+            "readingId=test_lock_001，当前牌=星星·正位，牌位=你的位置",
             "\"short_interpretation\"");
         CheckJsonSceneSchema("followup reading scene attaches schema",
             "followup_reading",

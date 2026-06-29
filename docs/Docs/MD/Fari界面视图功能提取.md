@@ -453,7 +453,7 @@ daily_oracle_summaries/{uid}_{yyyy-MM-dd}
   - 当前对话中与该好友相关的历史聊天片段。
   - 与该好友关系 ID 匹配的占卜连续性记录。
 - OracleRuntime 请求会通过 `ChatPayload.friendContext` 接收这份上下文包。
-- 非 OracleRuntime 的旧 DeepSeek 请求路径也会追加 system 级好友上下文，保证关闭 OracleRuntime 时仍能围绕 `@` 好友推理。
+- 非 OracleRuntime 的旧 AI 请求路径也会追加 system 级好友上下文，保证关闭 OracleRuntime 时仍能围绕 `@` 好友推理。
 
 #### 真实好友资料页
 
@@ -611,7 +611,7 @@ daily_oracle_summaries/{uid}_{yyyy-MM-dd}
 - `Assets/Scripts/UI/DialogUI.cs`
   - 接收 `JumpToDialogUI` 传入的好友和问题，进入对话并发送消息。
 - `Assets/Scripts/Dialog/Data/DialogSystem.cs`
-  - 生成 `@` 好友上下文包，接入 OracleRuntime 和旧 DeepSeek 请求路径。
+  - 生成 `@` 好友上下文包，接入 OracleRuntime 和旧 AI 请求路径。
 - `Assets/Scripts/Friend/InviteItem.cs`
   - 接受好友请求。
   - 运行时生成拒绝按钮并接入 `RejectFriendRequest`。

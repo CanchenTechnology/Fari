@@ -395,7 +395,7 @@ public class DivinationInfoUI : WindowBase
 	private static string FormatCardName(TarotCard tarotData, LockedCard lockedCard, bool upright)
 	{
 		string name = FirstNonEmpty(tarotData?.nameZh, lockedCard?.cardName, lockedCard?.cardId, "未知牌");
-		return $"{name}·{(upright ? "正位" : "逆位")}";
+		return TarotDeck.FormatDisplayName(name, upright);
 	}
 
 	private static string TrimTopicQuestion(string question)

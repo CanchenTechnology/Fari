@@ -19,7 +19,7 @@ public class TarotCard
 
     /// <summary>格式化的牌名（含正逆位标记）</summary>
     public string DisplayName(bool upright)
-        => upright ? $"{nameZh}（正位）" : $"{nameZh}（逆位）";
+        => TarotDeck.FormatDisplayName(nameZh, upright);
 
     /// <summary>用于 API 传输的卡片摘要</summary>
     public string ToSummary(bool upright)
@@ -33,6 +33,53 @@ public static class TarotDeck
 {
     private static List<TarotCard> _fullDeck;
     private static System.Random _rng = new System.Random();
+
+    public static string FormatDisplayName(string name, bool upright)
+    {
+        string safeName = StripOrientationSuffix(name);
+        if (string.IsNullOrWhiteSpace(safeName))
+            safeName = "未知牌";
+
+        return $"{safeName}·{(upright ? "正位" : "逆位")}";
+    }
+
+    public static string FormatDisplayName(string name, string orientation)
+        => FormatDisplayName(name, IsUprightOrientation(orientation));
+
+    public static bool IsUprightOrientation(string orientation)
+    {
+        if (string.IsNullOrWhiteSpace(orientation))
+            return true;
+
+        string normalized = orientation.Trim();
+        return !string.Equals(normalized, "reversed", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(normalized, "reverse", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(normalized, "逆", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(normalized, "逆位", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static string StripOrientationSuffix(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "";
+
+        string result = name.Trim();
+        string[] suffixes =
+        {
+            "·正位", "·逆位",
+            "（正位）", "（逆位）",
+            "(正位)", "(逆位)",
+            "(upright)", "(reversed)"
+        };
+
+        foreach (string suffix in suffixes)
+        {
+            if (result.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                return result.Substring(0, result.Length - suffix.Length).Trim();
+        }
+
+        return result;
+    }
 
     public static List<TarotCard> FullDeck
     {

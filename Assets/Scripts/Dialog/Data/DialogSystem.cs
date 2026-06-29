@@ -162,7 +162,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     public string AstrologyHeadIcon = "AstrologyHead";
     public string UserHeadIcon = "UserHead";
 
-    [Header("DeepSeek API")]
+    [Header("AI API")]
     public DeepSeekAPI deepSeekAPI;
 
     [Header("系统提示词")]
@@ -234,7 +234,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     // 消息列表
     private List<ChatMessageData> mChatMessageList = new List<ChatMessageData>();
 
-    // DeepSeek API 消息历史
+    // AI API 消息历史
     private List<DeepSeekAPI.Message> mApiMessageHistory = new List<DeepSeekAPI.Message>();
 
     // 当前聊天带入的上下文。用户消息会保存一份快照，防止后续切换后历史错乱。
@@ -400,8 +400,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     {
         if (card == null) return;
 
-        string orientation = upright ? "正位" : "逆位";
-        string title = $"{sourceTitle}：{card.nameZh}（{orientation}）";
+        string title = $"{sourceTitle}：{card.DisplayName(upright)}";
         string keywords = card.keywords != null && card.keywords.Count > 0
             ? string.Join("、", card.keywords)
             : "";
@@ -425,7 +424,9 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     {
         if (payload == null) return;
 
-        string displayName = FirstNonEmpty(payload.displayName, payload.nameZh, payload.cardName, "今日牌");
+        string displayName = TarotDeck.FormatDisplayName(
+            FirstNonEmpty(payload.displayName, payload.nameZh, payload.cardName, "今日牌"),
+            payload.orientation);
         string title = FirstNonEmpty(payload.title, "今日塔罗") + "：" + displayName;
         string contextPayload =
             $"{title}\n牌ID：{payload.cardId}\n牌名：{FirstNonEmpty(payload.nameZh, payload.cardName)}\n方向：{payload.orientation}\n生成时间：{payload.generatedAt}";
@@ -449,12 +450,13 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         if (todayCardPayload == null)
             return "今日神谕已加入对话。";
 
-        string displayName = FirstNonEmpty(todayCardPayload.displayName, todayCardPayload.nameZh, todayCardPayload.cardName, "今日牌");
-        string orientation = todayCardPayload.orientation == "reversed" ? "逆位" : "正位";
+        string displayName = TarotDeck.FormatDisplayName(
+            FirstNonEmpty(todayCardPayload.displayName, todayCardPayload.nameZh, todayCardPayload.cardName, "今日牌"),
+            todayCardPayload.orientation);
         string title = FirstNonEmpty(todayCardPayload.title, "今日塔罗");
         var lines = new List<string>
         {
-            $"{title}：{displayName}（{orientation}）"
+            $"{title}：{displayName}"
         };
 
         if (!string.IsNullOrWhiteSpace(todayCardPayload.oracleText))
@@ -1084,7 +1086,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
                 var cards = reading.cards != null
                     ? string.Join("，", reading.cards
                         .Where(card => card != null)
-                        .Select(card => $"{card.positionName ?? card.position}:{card.cardName ?? card.cardId}{(string.IsNullOrEmpty(card.orientation) ? "" : $"({card.orientation})")}"))
+                        .Select(card => $"{card.positionName ?? card.position}:{TarotDeck.FormatDisplayName(FirstNonEmpty(card.cardName, card.cardId, "未知牌"), card.orientation)}"))
                     : "";
 
                 return $"{reading.createdAt} {title}{(string.IsNullOrWhiteSpace(cards) ? "" : $" [{cards}]")}";
@@ -1717,8 +1719,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             string position = spreadDef?.positions != null && i < spreadDef.positions.Count
                 ? spreadDef.positions[i].label
                 : $"第{i + 1}张";
-            string orientation = draw.upright ? "正位" : "逆位";
-            parts.Add($"{position}：{card.nameZh}（{orientation}）");
+            parts.Add($"{position}：{card.DisplayName(draw.upright)}");
         }
 
         if (parts.Count == 0) return "";
@@ -1774,8 +1775,8 @@ public class DialogSystem : MonoSingleton<DialogSystem>
                 .Where(card => card != null)
                 .Select(card =>
                 {
-                    string orientation = card.orientation == "reversed" ? "逆位" : "正位";
-                    return $"{FirstNonEmpty(card.position, card.positionKey)}：{FirstNonEmpty(card.cardName, card.cardId)}（{orientation}）";
+                    string cardName = TarotDeck.FormatDisplayName(FirstNonEmpty(card.cardName, card.cardId, "未知牌"), card.orientation);
+                    return $"{FirstNonEmpty(card.position, card.positionKey)}：{cardName}";
                 })
                 .Where(text => !string.IsNullOrWhiteSpace(text))
                 .ToList();
@@ -2841,7 +2842,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     }
 
     /// <summary>
-    /// 发送消息到 DeepSeek API（非流式，保留向后兼容）
+    /// 发送消息到 AI API（非流式，保留向后兼容）
     /// 启用 OracleRuntime 时使用 ContextAssembler 组装结构化 Prompt
     /// </summary>
     public void SendMessageToAI(System.Action<string> onSuccess, System.Action<string> onError)
@@ -2918,7 +2919,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     private int mStreamingMessageIndex = -1;
 
     /// <summary>
-    /// 发送流式消息到 DeepSeek API
+    /// 发送流式消息到 AI API
     /// </summary>
     /// <param name="onChunk">每收到一个 token 的回调（delta 文本）</param>
     /// <param name="onComplete">流式完成回调（完整文本）</param>

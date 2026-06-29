@@ -401,7 +401,7 @@ public class DivinationHistoryUI : WindowBase
 			return tarotData.DisplayName(isUpright);
 
 		string name = string.IsNullOrWhiteSpace(card.cardName) ? "未知牌" : card.cardName;
-		return $"{name}（{(isUpright ? "正位" : "逆位")}）";
+		return TarotDeck.FormatDisplayName(name, isUpright);
 	}
 
 	private string BuildCardDescription(LockedCard card, int index, bool isUpright)
@@ -427,15 +427,15 @@ public class DivinationHistoryUI : WindowBase
 			return "这条记录暂时没有抽牌数据。";
 
 		if (IsDailyRecord(record))
-			return $"今日牌「{cards[0].cardName}」提醒你先看见当下的能量，再选择一个小而确定的行动。";
+			return $"今日牌「{BuildCardDisplayName(cards[0], cards[0].orientation != "reversed")}」提醒你先看见当下的能量，再选择一个小而确定的行动。";
 
 		if (cards.Count >= 3)
 		{
-			return $"这次牌面由「{cards[0].cardName}」「{cards[1].cardName}」「{cards[2].cardName}」组成。"
+			return $"这次牌面由「{BuildCardDisplayName(cards[0], cards[0].orientation != "reversed")}」「{BuildCardDisplayName(cards[1], cards[1].orientation != "reversed")}」「{BuildCardDisplayName(cards[2], cards[2].orientation != "reversed")}」组成。"
 				+ "第一张牌指出当下状态，第二张牌揭示阻碍，第三张牌给出下一步的方向。";
 		}
 
-		return $"这次牌面以「{cards[0].cardName}」为核心，重点是看清此刻真正影响你的因素。";
+		return $"这次牌面以「{BuildCardDisplayName(cards[0], cards[0].orientation != "reversed")}」为核心，重点是看清此刻真正影响你的因素。";
 	}
 
 	private string BuildDefaultAdviceText(DivinationRecordData record)

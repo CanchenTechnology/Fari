@@ -1533,7 +1533,7 @@
           <div class="module-head">
             <div>
               <h1 class="module-title">模型额度</h1>
-              <p class="module-subtitle">查看 DeepSeek 等模型余额、备用 Key、巡检记录和当前调用顺序。</p>
+              <p class="module-subtitle">查看阿里云 DashScope 等模型可用性、备用 Key、巡检记录和当前调用顺序。</p>
             </div>
             <button id="refreshModelQuotaButton" type="button">刷新额度</button>
           </div>
@@ -2010,7 +2010,7 @@
       <div class="form-grid">
         <label class="full">密钥类型<select name="secretName" required></select></label>
         <div id="providerSecretHint" class="status full"></div>
-        <label id="providerSecretLabelField" class="full" hidden>备用名称<input name="label" autocomplete="off" placeholder="例如 DeepSeek 备用 1"></label>
+        <label id="providerSecretLabelField" class="full" hidden>备用名称<input name="label" autocomplete="off" placeholder="例如 DashScope 备用 1"></label>
         <label id="providerSecretSingleField" class="full">新的 SK / Key<input name="secretValue" type="password" autocomplete="off" spellcheck="false"></label>
         <label id="providerSecretBatchField" class="full" hidden>备用 SK / Key<textarea name="secretValues" autocomplete="off" spellcheck="false" style="min-height: 130px;" placeholder="一行一个 SK，例如：&#10;sk-xxxx&#10;sk-yyyy"></textarea></label>
         <label id="providerSecretAutoCheckField" class="inline-check full" hidden>
@@ -2762,7 +2762,7 @@
       const catalog = state.modelQuota?.secretCatalog;
       if (Array.isArray(catalog) && catalog.length) return catalog;
       return [
-        { secretName: "DEEPSEEK_API_KEY", label: "DeepSeek API Key", provider: "deepseek", hint: "DeepSeek 的 sk- 开头密钥" },
+        { secretName: "DEEPSEEK_API_KEY", label: "Aliyun DashScope API Key", provider: "deepseek", hint: "阿里云 DashScope 的 sk- 开头密钥" },
         { secretName: "OPENAI_API_KEY", label: "OpenAI API Key", provider: "openai", hint: "OpenAI 普通 API Key" },
         { secretName: "OPENAI_ADMIN_KEY", label: "OpenAI Admin Key", provider: "openai", hint: "用于读取 OpenAI 组织成本" },
         { secretName: "ANTHROPIC_API_KEY", label: "Anthropic API Key", provider: "anthropic", hint: "Anthropic 普通 API Key" },
@@ -3807,7 +3807,7 @@
       const visibleProviders = getVisibleModelProviders(providers);
       target.innerHTML = `
         <div class="model-quota-summary">
-          <span class="pill ${data.ok ? "ok" : "warn"}">${data.ok ? "DeepSeek 可用" : "DeepSeek 需要检查"}</span>
+          <span class="pill ${data.ok ? "ok" : "warn"}">${data.ok ? "DashScope 可用" : "DashScope 需要检查"}</span>
           <span class="pill ${issueSummary.providerCount || issueSummary.keyCount ? "warn" : "ok"}">异常服务 ${escapeHtml(issueSummary.providerCount)} / Key ${escapeHtml(issueSummary.keyCount)}</span>
           <span class="pill ${cooldownSummary.keyCount ? "warn" : "ok"}">冷却 Key ${escapeHtml(cooldownSummary.keyCount)}${cooldownSummary.nextReadyAt ? `，下个 ${escapeHtml(formatDurationRemaining(cooldownSummary.nextReadyAt))}` : ""}</span>
           <span class="pill ${reliabilitySummary.dangerCount ? "danger" : reliabilitySummary.warnCount ? "warn" : "ok"}">Key 保障 ${escapeHtml(reliabilitySummary.dangerCount ? `高风险 ${reliabilitySummary.dangerCount}` : reliabilitySummary.warnCount ? `需关注 ${reliabilitySummary.warnCount}` : "稳定")}</span>

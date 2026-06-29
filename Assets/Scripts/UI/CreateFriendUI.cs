@@ -6,6 +6,7 @@
  * 注意: 以下文件是自动生成的，再次生成不会覆盖原有的代码，会在原有的代码上进行新增，可放心使用
 ---------------------------------*/
 using System;
+using System.Collections;
 using System.IO;
 using UnityEngine.UI;
 using UnityEngine;
@@ -20,6 +21,9 @@ public class CreateFriendUI : WindowBase
 	private const string BirthdayPlaceholder = "选择生日";
 	private const string BirthTimePlaceholder = "选择出生时间";
 	private const string CityPlaceholder = "选择出生城市";
+	private const float SuccessHideDelaySeconds = 1f;
+	private static readonly Color CreateSuccessColor = new Color32(74, 214, 124, 255);
+	private static readonly Color CreateFailColor = new Color32(255, 92, 92, 255);
 
 	private int selectedAvatarIndex = 0;
 	private Sprite selectedAvatarSprite;
@@ -33,6 +37,9 @@ public class CreateFriendUI : WindowBase
 	private TMP_InputField birthdayDateInputField;
 	private TMP_InputField birthdayTimeInputField;
 	private TMP_InputField birthdayCountryInputField;
+	private Coroutine hideAfterSuccessCoroutine;
+	private string defaultPrivacyText;
+	private Color defaultPrivacyTextColor = new Color(1f, 1f, 1f, 0.8f);
 	private string username = string.Empty;
 	private string birthday = string.Empty;
 	private string birthTime = string.Empty;
@@ -52,6 +59,10 @@ public class CreateFriendUI : WindowBase
 	{
 		base.OnShow();
 		CapturePrefabFallbackAvatar();
+		CapturePrivacyTextDefaults();
+		CancelHideAfterSuccess();
+		SetSubmitInteractable(true);
+		RestorePrivacyText();
 		HideChooseHeadPanel();
 
 		if (!formInitialized)
@@ -76,6 +87,7 @@ public class CreateFriendUI : WindowBase
 
 	public override void OnHide()
 	{
+		CancelHideAfterSuccess();
 		avatarLoadVersion++;
 		HideChooseHeadPanel();
 		base.OnHide();
@@ -164,12 +176,14 @@ public class CreateFriendUI : WindowBase
 		{
 			uiComponent.InputInputField.text = username;
 		}
+		RestorePrivacyText();
 		RefreshNameCounter();
 	}
 
 	public void OnInputInputEnd(string text)
 	{
 		username = TrimName(text);
+		RestorePrivacyText();
 		RefreshNameCounter();
 	}
 
@@ -195,12 +209,13 @@ public class CreateFriendUI : WindowBase
 		username = TrimName(username);
 		if (string.IsNullOrWhiteSpace(username))
 		{
-			ToastManager.ShowToast("请先填写好友名字");
+			ShowCreateFailure("请先填写好友名字");
 			FocusInput(uiComponent.InputInputField);
 			return;
 		}
 
-		ConfirmFriendInfoUI.Show(BuildFriendDraft(), ConfirmCreateFriend, HandleConfirmEditRequested);
+		SetSubmitInteractable(false);
+		ConfirmCreateFriend(BuildFriendDraft());
 	}
 
 	private ConfirmFriendInfoUI.FriendDraft BuildFriendDraft()
@@ -221,25 +236,37 @@ public class CreateFriendUI : WindowBase
 	{
 		if (draft == null || string.IsNullOrWhiteSpace(draft.name))
 		{
-			ToastManager.ShowToast("好友信息缺失，请返回重试");
+			ShowCreateFailure("好友信息缺失，请返回重试");
 			return;
 		}
 
-		var createdFriend = FriendDataManager.Instance.AddVirtualFriend(
-			draft.name.Trim(),
-			"好友",
-			draft.birthday.Trim(),
-			draft.birthTime.Trim(),
-			draft.city.Trim(),
-			draft.notes,
-			draft.avatarSprite,
-			draft.avatarImagePath);
+		try
+		{
+			var createdFriend = FriendDataManager.Instance.AddVirtualFriend(
+				draft.name.Trim(),
+				"好友",
+				draft.birthday.Trim(),
+				draft.birthTime.Trim(),
+				draft.city.Trim(),
+				draft.notes,
+				draft.avatarSprite,
+				draft.avatarImagePath);
 
-		SaveCreatedFriendToCloud(createdFriend);
+			if (createdFriend == null)
+			{
+				ShowCreateFailure("好友资料保存失败");
+				return;
+			}
 
-		CreateFriendSuccessUI.Show(createdFriend);
-		formInitialized = false;
-		HideWindow();
+			SaveCreatedFriendToCloud(createdFriend);
+			formInitialized = false;
+			ShowCreateSuccess();
+		}
+		catch (Exception ex)
+		{
+			Debug.LogError("[CreateFriendUI] 创建好友失败: " + ex);
+			ShowCreateFailure(string.IsNullOrWhiteSpace(ex.Message) ? "保存好友资料时出错" : ex.Message);
+		}
 	}
 
 	private void SaveCreatedFriendToCloud(FriendDataManager.FriendData createdFriend)
@@ -574,6 +601,116 @@ public class CreateFriendUI : WindowBase
 		{
 			uiComponent.UsernameCountText.text = $"{username.Length}/{MaxNameLength}";
 		}
+	}
+
+	private void CapturePrivacyTextDefaults()
+	{
+		if (uiComponent?.privacyText == null || defaultPrivacyText != null)
+		{
+			return;
+		}
+
+		defaultPrivacyText = uiComponent.privacyText.text;
+		defaultPrivacyTextColor = uiComponent.privacyText.color;
+	}
+
+	private void RestorePrivacyText()
+	{
+		if (uiComponent?.privacyText == null)
+		{
+			return;
+		}
+
+		uiComponent.privacyText.gameObject.SetActive(true);
+		uiComponent.privacyText.text = string.IsNullOrEmpty(defaultPrivacyText)
+			? "虚拟占卜伙伴，只有你可见。"
+			: defaultPrivacyText;
+		uiComponent.privacyText.color = defaultPrivacyTextColor;
+	}
+
+	private void ShowCreateSuccess()
+	{
+		SetSubmitInteractable(false);
+		ShowCreateStatus("创建成功", CreateSuccessColor);
+		StartHideAfterSuccess();
+	}
+
+	private void ShowCreateFailure(string reason)
+	{
+		CancelHideAfterSuccess();
+		SetSubmitInteractable(true);
+		string message = string.IsNullOrWhiteSpace(reason)
+			? "创建失败"
+			: $"创建失败：{reason}";
+		ShowCreateStatus(message, CreateFailColor);
+	}
+
+	private void ShowCreateStatus(string message, Color color)
+	{
+		if (uiComponent?.privacyText == null)
+		{
+			ToastManager.ShowToast(message);
+			return;
+		}
+
+		uiComponent.privacyText.gameObject.SetActive(true);
+		uiComponent.privacyText.text = message;
+		uiComponent.privacyText.color = color;
+	}
+
+	private void SetSubmitInteractable(bool interactable)
+	{
+		if (uiComponent?.SubmitButton != null)
+		{
+			uiComponent.SubmitButton.interactable = interactable;
+		}
+	}
+
+	private void StartHideAfterSuccess()
+	{
+		CancelHideAfterSuccess();
+		if (uiComponent != null)
+		{
+			hideAfterSuccessCoroutine = uiComponent.StartCoroutine(HideAfterSuccessDelay());
+		}
+	}
+
+	private void CancelHideAfterSuccess()
+	{
+		if (hideAfterSuccessCoroutine == null)
+		{
+			return;
+		}
+
+		if (uiComponent != null)
+		{
+			uiComponent.StopCoroutine(hideAfterSuccessCoroutine);
+		}
+		hideAfterSuccessCoroutine = null;
+	}
+
+	private IEnumerator HideAfterSuccessDelay()
+	{
+		yield return new WaitForSeconds(SuccessHideDelaySeconds);
+		hideAfterSuccessCoroutine = null;
+		HideWindow();
+		OpenFriendListAfterCreateSuccess();
+	}
+
+	private void OpenFriendListAfterCreateSuccess()
+	{
+		UIModule.Instance.HideWindow<AddFriendUI>();
+		UIModule.Instance.HideWindow<NoFriendUI>();
+		UIModule.Instance.HideWindow<FriendRequestUI>();
+
+		NavigationUI navigation = UIModule.Instance.PopUpWindow<NavigationUI>();
+		if (navigation != null)
+		{
+			navigation.OpenFriendUI();
+			return;
+		}
+
+		UIModule.Instance.PopUpWindow<FriendUI>();
 	}
 
 	private string TrimName(string value)

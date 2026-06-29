@@ -18,6 +18,11 @@ using UnityEngine.Video;
 
 public class DrawCardUI : WindowBase
 {
+	private const float DeckClipHorizontalPadding = 24f;
+	private const float DeckVisibleSlotCount = 7f;
+	private const float DeckCardSpacing = 12f;
+	private const int VisualDeckCardCount = 7;
+
 	public DrawCardUIComponent uiComponent;
 
 	public static Func<(TarotCard card, bool upright)> PendingDrawProvider;
@@ -30,6 +35,7 @@ public class DrawCardUI : WindowBase
 
 	private RectTransform _contentRoot;
 	private RectTransform _cardContainer;
+	private RectTransform _deckClipRoot;
 	private Image _cardTemplateImage;
 	private TMP_Text _titleText;
 	private TMP_Text _desText;
@@ -72,6 +78,7 @@ public class DrawCardUI : WindowBase
 	private float _selectedCardScale = 0.9f;
 	private float _minDeckOffsetX;
 	private float _maxDeckOffsetX;
+	private Vector2 _lastDeckViewportSize;
 	private TarotCard _completedCard;
 	private bool _completedUpright = true;
 
@@ -95,6 +102,7 @@ public class DrawCardUI : WindowBase
 		}
 
 		uiComponent.InitComponent(this);
+		ConfigureDeckSettings();
 		ResolveBackgroundVideoReference();
 		ConfigureBackgroundVideoPlayer();
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
@@ -114,6 +122,7 @@ public class DrawCardUI : WindowBase
 			CancelDraw(false);
 
 		KillFlow();
+		ClearRuntimeCards();
 		PauseBackgroundVideo();
 		base.OnHide();
 	}
@@ -124,8 +133,19 @@ public class DrawCardUI : WindowBase
 			CancelDraw(false);
 
 		KillFlow();
+		ClearRuntimeCards();
 		ReleaseBackgroundVideoTextureInstance();
 		base.OnDestroy();
+	}
+
+	private void LateUpdate()
+	{
+		if (!_isChoosing || _isAnimating || _cardImages.Count <= 1)
+			return;
+
+		RefreshDeckLayoutIfViewportChanged();
+		SanitizeDeckVisuals();
+		RestoreCardSiblingOrder();
 	}
 	#endregion
 
@@ -182,6 +202,8 @@ public class DrawCardUI : WindowBase
 			RectTransform rect = image.rectTransform;
 			Vector2 targetPosition = GetCurrentFanPosition(i);
 			float targetRotation = GetCurrentFanRotation(i);
+			bool visibleInViewport = IsDeckCardInsideViewport(targetPosition, _deckCardScale);
+			SetDeckCardViewportVisible(image, visibleInViewport);
 			Color startColor = image.color;
 			startColor.a = 0f;
 			image.color = startColor;
@@ -238,6 +260,7 @@ public class DrawCardUI : WindowBase
 		_selectedCardScale = 0.9f;
 		_minDeckOffsetX = 0f;
 		_maxDeckOffsetX = 0f;
+		_lastDeckViewportSize = Vector2.zero;
 		_cachedCardBackSprite = null;
 		_completedCard = null;
 		_completedUpright = true;
@@ -269,7 +292,11 @@ public class DrawCardUI : WindowBase
 	{
 		Image selectedImage = _cardImages[selectedIndex];
 		RectTransform selectedRect = selectedImage.rectTransform;
+		selectedImage.enabled = true;
+		selectedImage.raycastTarget = false;
+		DetachSelectedCardFromDeckClip(selectedRect);
 		selectedRect.SetAsLastSibling();
+		SetDeckCardSortingOrder(selectedImage, _cardImages.Count + 20);
 
 		Outline outline = EnsureSelectedOutline(selectedImage);
 		outline.effectColor = WithAlpha(uiComponent.selectedGlowColor, 0f);
@@ -320,6 +347,16 @@ public class DrawCardUI : WindowBase
 		if (punchRect != null)
 			_flowSequence.Append(punchRect.DOPunchScale(Vector3.one * 0.035f, 0.3f, 7, 0.65f));
 		_flowSequence.OnComplete(() => EnterResultWaitingState(card, upright));
+	}
+
+	private void DetachSelectedCardFromDeckClip(RectTransform selectedRect)
+	{
+		if (selectedRect == null || _cardContainer == null || _deckClipRoot == null)
+			return;
+		if (!selectedRect.IsChildOf(_deckClipRoot))
+			return;
+
+		selectedRect.SetParent(_cardContainer, true);
 	}
 
 	private void RevealFrontCard(Image selectedImage, TarotCard card, bool upright, float targetRotationZ)
@@ -457,6 +494,7 @@ public class DrawCardUI : WindowBase
 
 	private void ResolveRuntimeReferences()
 	{
+		ConfigureDeckSettings();
 		_contentRoot = transform.Find("UIContent") as RectTransform;
 		_cardContainer = uiComponent.cardContainer as RectTransform;
 		if (_cardContainer == null)
@@ -473,6 +511,9 @@ public class DrawCardUI : WindowBase
 			? uiComponent.cardGO.GetComponent<Image>()
 			: null;
 
+		ConfigureDeckClipRoot();
+		ClearGeneratedDeckChildren();
+
 		_titleText = transform.Find("UIContent/Top/title")?.GetComponent<TMP_Text>();
 		_desText = transform.Find("UIContent/Top/des")?.GetComponent<TMP_Text>();
 		ResolveTargetCardFaceReferences();
@@ -486,7 +527,9 @@ public class DrawCardUI : WindowBase
 			BindDeckDragSurface(mask);
 		}
 
-		if (_cardContainer != null)
+		if (_deckClipRoot != null)
+			BindDeckDragSurface(_deckClipRoot.gameObject);
+		else if (_cardContainer != null)
 			BindDeckDragSurface(_cardContainer.gameObject);
 
 		if (_titleText != null)
@@ -499,6 +542,67 @@ public class DrawCardUI : WindowBase
 			return;
 
 		uiComponent.backgroundVideoPlayer = transform.Find("video")?.GetComponent<VideoPlayer>();
+	}
+
+	private void ConfigureDeckClipRoot()
+	{
+		_deckClipRoot = null;
+		if (_cardContainer == null) return;
+
+		const string clipRootName = "DeckClipRoot";
+		Transform existing = _cardContainer.Find(clipRootName);
+		if (existing == null)
+		{
+			GameObject clipObject = new GameObject(clipRootName, typeof(RectTransform));
+			clipObject.layer = _cardContainer.gameObject.layer;
+			existing = clipObject.transform;
+			existing.SetParent(_cardContainer, false);
+		}
+
+		_deckClipRoot = existing as RectTransform;
+		if (_deckClipRoot == null) return;
+
+		_deckClipRoot.anchorMin = Vector2.zero;
+		_deckClipRoot.anchorMax = Vector2.one;
+		_deckClipRoot.pivot = new Vector2(0.5f, 0.5f);
+		_deckClipRoot.anchoredPosition = Vector2.zero;
+		_deckClipRoot.sizeDelta = new Vector2(-DeckClipHorizontalPadding * 2f, 0f);
+		_deckClipRoot.localRotation = Quaternion.identity;
+		_deckClipRoot.localScale = Vector3.one;
+		_deckClipRoot.SetAsLastSibling();
+
+		RectMask2D clipMask = _deckClipRoot.GetComponent<RectMask2D>();
+		if (clipMask == null)
+			clipMask = _deckClipRoot.gameObject.AddComponent<RectMask2D>();
+		clipMask.enabled = true;
+
+		Image raycastSurface = _deckClipRoot.GetComponent<Image>();
+		if (raycastSurface == null)
+			raycastSurface = _deckClipRoot.gameObject.AddComponent<Image>();
+		raycastSurface.enabled = true;
+		raycastSurface.color = Color.clear;
+		raycastSurface.raycastTarget = true;
+	}
+
+	private RectTransform GetDeckViewportRoot()
+	{
+		return _deckClipRoot != null ? _deckClipRoot : _cardContainer;
+	}
+
+	private void ConfigureDeckSettings()
+	{
+		if (uiComponent == null) return;
+
+		uiComponent.selectableCardCount = VisualDeckCardCount;
+		uiComponent.fanWidth = 0f;
+		uiComponent.fanViewportWidthMultiplier = 1f;
+		uiComponent.minFanWidth = 0f;
+		uiComponent.fanRiseOffset = 0f;
+		uiComponent.fanRotation = 0f;
+		uiComponent.infiniteScroll = false;
+		uiComponent.deckCardScale = 0f;
+		uiComponent.minDeckCardScale = 0.1f;
+		uiComponent.maxDeckCardScale = 0.5f;
 	}
 
 	private void ResolveTargetCardFaceReferences()
@@ -1121,10 +1225,11 @@ public class DrawCardUI : WindowBase
 	private bool TryGetContainerLocalPoint(PointerEventData pointerData, out Vector2 localPoint)
 	{
 		localPoint = Vector2.zero;
-		if (_cardContainer == null || pointerData == null) return false;
+		RectTransform viewportRoot = GetDeckViewportRoot();
+		if (viewportRoot == null || pointerData == null) return false;
 
 		return RectTransformUtility.ScreenPointToLocalPointInRectangle(
-			_cardContainer,
+			viewportRoot,
 			pointerData.position,
 			pointerData.pressEventCamera,
 			out localPoint);
@@ -1139,22 +1244,23 @@ public class DrawCardUI : WindowBase
 			return;
 		}
 
-		int cardCount = Mathf.Clamp(uiComponent.selectableCardCount, 3, 21);
+		int cardCount = GetVisualDeckCardCount();
 		Sprite backSprite = ResolveCardBackSprite();
 		CalculateFanLayout(cardCount);
+		RectTransform viewportRoot = GetDeckViewportRoot();
+		Transform deckParent = viewportRoot != null ? viewportRoot : _cardTemplateImage.transform.parent;
 
 		for (int i = 0; i < cardCount; i++)
 		{
-			Image image = i == 0
-				? _cardTemplateImage
-				: UnityEngine.Object.Instantiate(_cardTemplateImage, _cardTemplateImage.transform.parent);
+			Image image = UnityEngine.Object.Instantiate(_cardTemplateImage, deckParent);
 
-			image.name = i == 0 ? "Card" : $"DrawCard_{i + 1}";
+			image.name = $"DrawCard_{i + 1}";
 			image.gameObject.SetActive(true);
 			image.sprite = backSprite;
 			image.color = backSprite != null ? Color.white : new Color(1f, 1f, 1f, 0.72f);
 			image.preserveAspect = true;
 			image.raycastTarget = true;
+			EnsureDeckCardCanvas(image.gameObject);
 
 			Outline outline = image.GetComponent<Outline>();
 			if (outline != null)
@@ -1178,6 +1284,8 @@ public class DrawCardUI : WindowBase
 			_cardImages.Add(image);
 		}
 
+		_cardTemplateImage.gameObject.SetActive(false);
+
 		SetCardsInteractable(false);
 	}
 
@@ -1188,19 +1296,15 @@ public class DrawCardUI : WindowBase
 		_viewportHeight = ResolveViewportHeight();
 		ResolveCardScales();
 
-		float width = Mathf.Max(0f, uiComponent.fanWidth);
-		if (uiComponent.useResponsiveFanWidth)
+		if (uiComponent.fanWidth > 0f)
 		{
-			width = Mathf.Max(
-				width,
-				_viewportWidth * Mathf.Max(1f, uiComponent.fanViewportWidthMultiplier),
-				Mathf.Max(0f, uiComponent.minFanWidth));
+			float cardDrivenWidth = cardCount <= 1 ? 0f : (cardCount - 1) * GetDeckSpacing();
+			_fanWidth = Mathf.Min(uiComponent.fanWidth, cardDrivenWidth);
 		}
-
-		float cardWidth = ResolveCardWidth() * _deckCardScale;
-		float spacingCardCount = uiComponent.infiniteScroll ? cardCount : cardCount - 1;
-		float cardDrivenWidth = cardCount <= 1 ? 0f : spacingCardCount * cardWidth * 0.52f;
-		_fanWidth = Mathf.Max(width, cardDrivenWidth);
+		else
+		{
+			_fanWidth = cardCount <= 1 ? 0f : (cardCount - 1) * GetDeckSpacing();
+		}
 
 		for (int i = 0; i < cardCount; i++)
 		{
@@ -1210,6 +1314,11 @@ public class DrawCardUI : WindowBase
 		}
 
 		CalculateDeckScrollBounds();
+	}
+
+	private int GetVisualDeckCardCount()
+	{
+		return Mathf.Clamp(uiComponent.selectableCardCount, 3, VisualDeckCardCount);
 	}
 
 	private float ResolveFanLayoutT(int index, int cardCount)
@@ -1228,51 +1337,45 @@ public class DrawCardUI : WindowBase
 		float cardWidth = Mathf.Max(1f, ResolveCardWidth());
 		float cardHeight = Mathf.Max(1f, ResolveCardHeight());
 		float explicitScale = uiComponent.deckCardScale;
+		float fittedScale = ResolveFittedDeckCardScale(cardWidth, cardHeight);
 
 		if (explicitScale > 0f)
 		{
-			_deckCardScale = explicitScale;
+			_deckCardScale = Mathf.Min(explicitScale, fittedScale);
 		}
 		else
 		{
 			float heightScale = (_viewportHeight * Mathf.Clamp(uiComponent.maxDeckCardHeightRatio, 0.2f, 1f)) / cardHeight;
 			float widthScale = (_viewportWidth * Mathf.Clamp(uiComponent.maxDeckCardWidthRatio, 0.15f, 1f)) / cardWidth;
-			_deckCardScale = Mathf.Min(heightScale, widthScale);
+			_deckCardScale = Mathf.Min(heightScale, widthScale, fittedScale);
 		}
 
-		_deckCardScale = Mathf.Clamp(
-			_deckCardScale,
-			Mathf.Max(0.1f, uiComponent.minDeckCardScale),
-			Mathf.Max(0.1f, uiComponent.maxDeckCardScale));
+		float minScale = Mathf.Min(Mathf.Max(0.1f, uiComponent.minDeckCardScale), _deckCardScale);
+		float maxScale = Mathf.Max(minScale, uiComponent.maxDeckCardScale);
+		_deckCardScale = Mathf.Clamp(_deckCardScale, minScale, maxScale);
 		_selectedCardScale = Mathf.Clamp(uiComponent.selectedCardScale, _deckCardScale, 1.1f);
+	}
+
+	private float ResolveFittedDeckCardScale(float cardWidth, float cardHeight)
+	{
+		float availableWidth = Mathf.Max(1f, _viewportWidth - DeckCardSpacing * (DeckVisibleSlotCount - 1f));
+		float widthScale = (availableWidth / DeckVisibleSlotCount) / Mathf.Max(1f, cardWidth);
+		float heightScale = (_viewportHeight * 0.56f) / Mathf.Max(1f, cardHeight);
+		return Mathf.Max(0.1f, Mathf.Min(widthScale, heightScale));
 	}
 
 	private void CalculateDeckScrollBounds()
 	{
-		if (uiComponent.infiniteScroll)
-		{
-			_minDeckOffsetX = 0f;
-			_maxDeckOffsetX = 0f;
-			return;
-		}
-
-		float cardHalfWidth = ResolveCardWidth() * _deckCardScale * 0.5f;
-		float contentHalfWidth = _fanWidth * 0.5f + cardHalfWidth;
-		float viewportHalfWidth = _viewportWidth * 0.5f;
-		float baseScrollRange = Mathf.Max(0f, contentHalfWidth - viewportHalfWidth + Mathf.Max(0f, uiComponent.scrollEdgePadding));
-		float scrollRange = Mathf.Max(
-			baseScrollRange * Mathf.Max(1f, uiComponent.scrollRangeMultiplier),
-			Mathf.Max(0f, uiComponent.minScrollRange));
-
-		_minDeckOffsetX = -scrollRange;
-		_maxDeckOffsetX = scrollRange;
-		_deckOffsetX = Mathf.Clamp(_deckOffsetX, _minDeckOffsetX, _maxDeckOffsetX);
+		_minDeckOffsetX = 0f;
+		_maxDeckOffsetX = 0f;
+		_deckOffsetX = 0f;
 	}
 
 	private float ResolveViewportWidth()
 	{
-		if (_cardContainer != null && _cardContainer.rect.width > 1f)
-			return _cardContainer.rect.width;
+		RectTransform viewportRoot = GetDeckViewportRoot();
+		if (viewportRoot != null && viewportRoot.rect.width > 1f)
+			return viewportRoot.rect.width;
 
 		if (_contentRoot != null && _contentRoot.rect.width > 1f)
 			return _contentRoot.rect.width;
@@ -1282,8 +1385,9 @@ public class DrawCardUI : WindowBase
 
 	private float ResolveViewportHeight()
 	{
-		if (_cardContainer != null && _cardContainer.rect.height > 1f)
-			return _cardContainer.rect.height;
+		RectTransform viewportRoot = GetDeckViewportRoot();
+		if (viewportRoot != null && viewportRoot.rect.height > 1f)
+			return viewportRoot.rect.height;
 
 		if (_contentRoot != null && _contentRoot.rect.height > 1f)
 			return _contentRoot.rect.height;
@@ -1358,18 +1462,23 @@ public class DrawCardUI : WindowBase
 
 	private float GetFanY(float x)
 	{
-		float t = Mathf.InverseLerp(-_fanWidth * 0.5f, _fanWidth * 0.5f, x);
-		return uiComponent.fanHeightOffset + Mathf.Sin(t * Mathf.PI) * uiComponent.fanRiseOffset;
+		return uiComponent.fanHeightOffset;
 	}
 
 	private float GetFanRotation(float x)
 	{
-		float t = Mathf.InverseLerp(-_fanWidth * 0.5f, _fanWidth * 0.5f, x);
-		return Mathf.Lerp(uiComponent.fanRotation, -uiComponent.fanRotation, t);
+		return 0f;
+	}
+
+	private float GetDeckSpacing()
+	{
+		return ResolveCardWidth() * _deckCardScale + DeckCardSpacing;
 	}
 
 	private void ApplyDeckOffset(bool animated)
 	{
+		_lastDeckViewportSize = GetDeckViewportSize();
+
 		const float duration = 0.12f;
 		for (int i = 0; i < _cardImages.Count; i++)
 		{
@@ -1379,7 +1488,9 @@ public class DrawCardUI : WindowBase
 			RectTransform rect = image.rectTransform;
 			Vector2 targetPosition = GetCurrentFanPosition(i);
 			Quaternion targetRotation = Quaternion.Euler(0f, 0f, GetCurrentFanRotation(i));
+			bool visibleInViewport = IsDeckCardInsideViewport(targetPosition, _deckCardScale);
 			DOTween.Kill(rect);
+			SetDeckCardViewportVisible(image, visibleInViewport);
 
 			if (animated)
 			{
@@ -1397,10 +1508,56 @@ public class DrawCardUI : WindowBase
 		RestoreCardSiblingOrder();
 	}
 
+	private void RefreshDeckLayoutIfViewportChanged()
+	{
+		Vector2 viewportSize = GetDeckViewportSize();
+		if (viewportSize.x <= 1f || viewportSize.y <= 1f)
+			return;
+
+		if (Mathf.Abs(viewportSize.x - _lastDeckViewportSize.x) <= 0.5f
+			&& Mathf.Abs(viewportSize.y - _lastDeckViewportSize.y) <= 0.5f)
+			return;
+
+		CalculateFanLayout(_cardImages.Count);
+		ApplyDeckOffset(false);
+	}
+
+	private Vector2 GetDeckViewportSize()
+	{
+		RectTransform viewportRoot = GetDeckViewportRoot();
+		return viewportRoot != null ? viewportRoot.rect.size : Vector2.zero;
+	}
+
+	private bool IsDeckCardInsideViewport(Vector2 anchoredPosition, float scale)
+	{
+		RectTransform viewportRoot = GetDeckViewportRoot();
+		if (viewportRoot == null) return true;
+
+		float viewportHalfWidth = Mathf.Max(1f, viewportRoot.rect.width * 0.5f);
+		float viewportHalfHeight = Mathf.Max(1f, viewportRoot.rect.height * 0.5f);
+		float cardHalfWidth = ResolveCardWidth() * scale * 0.5f;
+		float cardHalfHeight = ResolveCardHeight() * scale * 0.5f;
+
+		return Mathf.Abs(anchoredPosition.x) + cardHalfWidth <= viewportHalfWidth + 0.5f
+			&& Mathf.Abs(anchoredPosition.y) + cardHalfHeight <= viewportHalfHeight + 0.5f;
+	}
+
+	private void SetDeckCardViewportVisible(Image image, bool visible)
+	{
+		if (image == null) return;
+
+		image.enabled = visible;
+		image.raycastTarget = visible && _isChoosing && !_isAnimating;
+	}
+
 	private void BringCardToFront(int index)
 	{
 		if (index < 0 || index >= _cardImages.Count) return;
-		_cardImages[index]?.rectTransform.SetAsLastSibling();
+		Image image = _cardImages[index];
+		if (image == null) return;
+
+		image.rectTransform.SetAsLastSibling();
+		SetDeckCardSortingOrder(image, _cardImages.Count + 20);
 	}
 
 	private void RestoreCardSiblingOrder()
@@ -1413,12 +1570,77 @@ public class DrawCardUI : WindowBase
 			orderedCards.Add(image);
 		}
 
-		orderedCards.Sort((left, right) =>
-			left.rectTransform.anchoredPosition.x.CompareTo(right.rectTransform.anchoredPosition.x));
+		orderedCards.Sort(CompareCardSiblingOrder);
 
 		for (int i = 0; i < orderedCards.Count; i++)
 		{
 			orderedCards[i].rectTransform.SetSiblingIndex(i);
+			SetDeckCardSortingOrder(orderedCards[i], i);
+		}
+	}
+
+	private int CompareCardSiblingOrder(Image left, Image right)
+	{
+		if (left == right)
+			return 0;
+		if (left == null)
+			return -1;
+		if (right == null)
+			return 1;
+
+		Vector2 leftPosition = left.rectTransform.anchoredPosition;
+		Vector2 rightPosition = right.rectTransform.anchoredPosition;
+
+		int leftDistanceKey = Mathf.RoundToInt(Mathf.Abs(leftPosition.x) * 100f);
+		int rightDistanceKey = Mathf.RoundToInt(Mathf.Abs(rightPosition.x) * 100f);
+
+		int distanceCompare = rightDistanceKey.CompareTo(leftDistanceKey);
+		if (distanceCompare != 0)
+			return distanceCompare;
+
+		int yCompare = Mathf.RoundToInt(leftPosition.y * 100f)
+			.CompareTo(Mathf.RoundToInt(rightPosition.y * 100f));
+		if (yCompare != 0)
+			return yCompare;
+
+		return Mathf.RoundToInt(leftPosition.x * 100f)
+			.CompareTo(Mathf.RoundToInt(rightPosition.x * 100f));
+	}
+
+	private void EnsureDeckCardCanvas(GameObject cardObject)
+	{
+		if (cardObject == null) return;
+
+		Canvas sortingCanvas = cardObject.GetComponent<Canvas>();
+		if (sortingCanvas != null)
+		{
+			sortingCanvas.overrideSorting = false;
+			sortingCanvas.sortingOrder = 0;
+			sortingCanvas.enabled = false;
+		}
+
+		GraphicRaycaster raycaster = cardObject.GetComponent<GraphicRaycaster>();
+		if (raycaster != null)
+			raycaster.enabled = false;
+
+		MaskableGraphic[] graphics = cardObject.GetComponentsInChildren<MaskableGraphic>(true);
+		for (int i = 0; i < graphics.Length; i++)
+		{
+			if (graphics[i] != null)
+				graphics[i].maskable = true;
+		}
+	}
+
+	private void SetDeckCardSortingOrder(Image image, int visualOrder)
+	{
+		if (image == null) return;
+
+		Canvas sortingCanvas = image.GetComponent<Canvas>();
+		if (sortingCanvas != null)
+		{
+			sortingCanvas.overrideSorting = false;
+			sortingCanvas.sortingOrder = 0;
+			sortingCanvas.enabled = false;
 		}
 	}
 
@@ -1568,6 +1790,7 @@ public class DrawCardUI : WindowBase
 		{
 			Image image = _cardImages[i];
 			if (image == null) continue;
+			image.raycastTarget = interactable && image.enabled;
 
 			Button button = image.GetComponent<Button>();
 			if (button != null)
@@ -1580,13 +1803,140 @@ public class DrawCardUI : WindowBase
 		for (int i = 0; i < _cardImages.Count; i++)
 		{
 			Image image = _cardImages[i];
-			if (image == null || image == _cardTemplateImage) continue;
-			UnityEngine.Object.Destroy(image.gameObject);
+			if (image == null) continue;
+			DestroyDeckObject(image.gameObject);
 		}
 
 		_cardImages.Clear();
+		ClearGeneratedDeckChildren();
 		_fanPositions.Clear();
 		ClearSparks();
+
+		if (_cardTemplateImage != null)
+			_cardTemplateImage.gameObject.SetActive(false);
+	}
+
+	private void ClearGeneratedDeckChildren()
+	{
+		ClearGeneratedDeckChildrenUnder(_deckClipRoot);
+		ClearGeneratedDeckChildrenUnder(_cardContainer);
+	}
+
+	private void SanitizeDeckVisuals()
+	{
+		bool deckChanged = TrimTrackedDeckImages();
+		ClearGeneratedDeckChildren();
+		if (deckChanged && !_isPullingCard && _cardImages.Count > 0)
+		{
+			CalculateFanLayout(_cardImages.Count);
+			ApplyDeckOffset(false);
+		}
+	}
+
+	private bool TrimTrackedDeckImages()
+	{
+		bool changed = false;
+		Transform deckParent = GetDeckViewportRoot();
+		for (int i = _cardImages.Count - 1; i >= 0; i--)
+		{
+			Image image = _cardImages[i];
+			if (image == null)
+			{
+				_cardImages.RemoveAt(i);
+				changed = true;
+				continue;
+			}
+
+			if (i >= VisualDeckCardCount)
+			{
+				DestroyDeckObject(image.gameObject);
+				_cardImages.RemoveAt(i);
+				changed = true;
+				continue;
+			}
+
+			EnsureDeckCardCanvas(image.gameObject);
+			if (!_isPullingCard && deckParent != null && image.transform.parent != deckParent)
+			{
+				image.transform.SetParent(deckParent, false);
+				changed = true;
+			}
+		}
+
+		return changed;
+	}
+
+	private void ClearGeneratedDeckChildrenUnder(Transform root)
+	{
+		if (root == null) return;
+
+		for (int i = root.childCount - 1; i >= 0; i--)
+		{
+			Transform child = root.GetChild(i);
+			if (child == null) continue;
+			if (_deckClipRoot != null && child == _deckClipRoot) continue;
+			if (_cardTemplateImage != null && child == _cardTemplateImage.transform) continue;
+
+			if (ShouldClearDeckChild(child))
+			{
+				DestroyDeckObject(child.gameObject);
+				continue;
+			}
+
+			ClearGeneratedDeckChildrenUnder(child);
+		}
+	}
+
+	private bool ShouldClearDeckChild(Transform child)
+	{
+		if (child == null) return false;
+		if (_deckClipRoot != null && child == _deckClipRoot) return false;
+		if (_cardTemplateImage != null && child == _cardTemplateImage.transform) return false;
+		if (IsTrackedDeckChild(child)) return false;
+
+		if (IsGeneratedDeckCardName(child.name))
+			return true;
+
+		if (child.name.StartsWith("DeckClipRoot", StringComparison.Ordinal))
+			return true;
+
+		if (child.GetComponent<Image>() == null)
+			return false;
+
+		return child.name.StartsWith("Card", StringComparison.Ordinal)
+			|| child.GetComponent<Button>() != null
+			|| child.GetComponent<EventTrigger>() != null;
+	}
+
+	private bool IsTrackedDeckChild(Transform child)
+	{
+		for (int i = 0; i < _cardImages.Count; i++)
+		{
+			Image image = _cardImages[i];
+			if (image != null && image.transform == child)
+				return true;
+		}
+
+		return false;
+	}
+
+	private static bool IsGeneratedDeckCardName(string objectName)
+	{
+		return !string.IsNullOrEmpty(objectName)
+			&& (objectName.StartsWith("SpreadDeckCard_", StringComparison.Ordinal)
+				|| objectName.StartsWith("DrawCard_", StringComparison.Ordinal)
+				|| objectName.StartsWith("Card(Clone)", StringComparison.Ordinal));
+	}
+
+	private static void DestroyDeckObject(GameObject target)
+	{
+		if (target == null) return;
+
+		target.SetActive(false);
+		if (Application.isPlaying)
+			UnityEngine.Object.Destroy(target);
+		else
+			UnityEngine.Object.DestroyImmediate(target);
 	}
 
 	private void PlaySparkBurst(RectTransform centerRect)
@@ -1681,12 +2031,13 @@ public class DrawCardUI : WindowBase
 	private Sprite ResolveCardBackSprite()
 	{
 		if (_cachedCardBackSprite != null) return _cachedCardBackSprite;
+		Sprite preferred = null;
 		if (uiComponent.cardBackSprite != null)
-			return _cachedCardBackSprite = uiComponent.cardBackSprite;
-		if (_cardTemplateImage != null)
-			return _cachedCardBackSprite = _cardTemplateImage.sprite;
+			preferred = uiComponent.cardBackSprite;
+		else if (_cardTemplateImage != null)
+			preferred = _cardTemplateImage.sprite;
 
-		return null;
+		return _cachedCardBackSprite = CardBackSpriteUtility.ResolveOpaqueBack(preferred);
 	}
 
 	private Sprite LoadCardSprite(TarotCard card)
@@ -1753,5 +2104,123 @@ public class DrawCardUI : WindowBase
 		PendingDrawProvider = null;
 		PendingDrawCompleted = null;
 		PendingDrawCanceled = null;
+	}
+}
+
+internal static class CardBackSpriteUtility
+{
+	private const int TextureWidth = 256;
+	private const int TextureHeight = 438;
+	private static Sprite _fallbackSprite;
+
+	public static Sprite ResolveOpaqueBack(Sprite preferred)
+	{
+		return IsKnownOpaqueBack(preferred) ? preferred : GetFallbackSprite(preferred);
+	}
+
+	private static bool IsKnownOpaqueBack(Sprite sprite)
+	{
+		if (sprite == null) return false;
+
+		return ContainsKnownOpaqueName(sprite.name)
+			|| (sprite.texture != null && ContainsKnownOpaqueName(sprite.texture.name));
+	}
+
+	private static bool ContainsKnownOpaqueName(string value)
+	{
+		return !string.IsNullOrEmpty(value)
+			&& value.IndexOf("icon_card_background", StringComparison.OrdinalIgnoreCase) >= 0;
+	}
+
+	private static Sprite GetFallbackSprite(Sprite preferred)
+	{
+		if (_fallbackSprite != null) return _fallbackSprite;
+
+		Texture2D texture = new Texture2D(TextureWidth, TextureHeight, TextureFormat.RGBA32, false)
+		{
+			name = "runtime_opaque_card_back",
+			filterMode = FilterMode.Bilinear,
+			wrapMode = TextureWrapMode.Clamp
+		};
+
+		Color32 background = new Color32(31, 31, 35, 255);
+		Color32 inner = new Color32(39, 28, 28, 255);
+		Color32 border = new Color32(254, 142, 84, 255);
+		Color32 accent = new Color32(254, 142, 84, 255);
+		Color32[] pixels = new Color32[TextureWidth * TextureHeight];
+
+		for (int y = 0; y < TextureHeight; y++)
+		{
+			for (int x = 0; x < TextureWidth; x++)
+			{
+				pixels[y * TextureWidth + x] = IsInsideRoundedRect(x, y, 8, TextureWidth - 9, 8, TextureHeight - 9, 18)
+					? inner
+					: background;
+			}
+		}
+
+		DrawRoundedRectOutline(pixels, 14, TextureWidth - 15, 14, TextureHeight - 15, 16, 4, border);
+		DrawFourPointStar(pixels, TextureWidth / 2, TextureHeight / 2, 26, 10, accent);
+		DrawFourPointStar(pixels, TextureWidth / 2 - 32, TextureHeight / 2 + 4, 10, 4, accent);
+		DrawFourPointStar(pixels, TextureWidth / 2 + 32, TextureHeight / 2 - 4, 10, 4, accent);
+
+		texture.SetPixels32(pixels);
+		texture.Apply(false, true);
+
+		float pixelsPerUnit = preferred != null ? preferred.pixelsPerUnit : 100f;
+		_fallbackSprite = Sprite.Create(
+			texture,
+			new Rect(0f, 0f, TextureWidth, TextureHeight),
+			new Vector2(0.5f, 0.5f),
+			pixelsPerUnit,
+			0,
+			SpriteMeshType.FullRect);
+		_fallbackSprite.name = "runtime_opaque_card_back";
+		return _fallbackSprite;
+	}
+
+	private static bool IsInsideRoundedRect(int x, int y, int left, int right, int bottom, int top, int radius)
+	{
+		if (x < left || x > right || y < bottom || y > top)
+			return false;
+
+		int cx = x < left + radius ? left + radius : x > right - radius ? right - radius : x;
+		int cy = y < bottom + radius ? bottom + radius : y > top - radius ? top - radius : y;
+		int dx = x - cx;
+		int dy = y - cy;
+		return dx * dx + dy * dy <= radius * radius;
+	}
+
+	private static void DrawRoundedRectOutline(Color32[] pixels, int left, int right, int bottom, int top, int radius, int thickness, Color32 color)
+	{
+		for (int y = bottom; y <= top; y++)
+		{
+			for (int x = left; x <= right; x++)
+			{
+				bool outer = IsInsideRoundedRect(x, y, left, right, bottom, top, radius);
+				bool inner = IsInsideRoundedRect(x, y, left + thickness, right - thickness, bottom + thickness, top - thickness, Mathf.Max(1, radius - thickness));
+				if (outer && !inner)
+					pixels[y * TextureWidth + x] = color;
+			}
+		}
+	}
+
+	private static void DrawFourPointStar(Color32[] pixels, int centerX, int centerY, int outerRadius, int innerRadius, Color32 color)
+	{
+		for (int y = centerY - outerRadius; y <= centerY + outerRadius; y++)
+		{
+			if (y < 0 || y >= TextureHeight) continue;
+
+			for (int x = centerX - outerRadius; x <= centerX + outerRadius; x++)
+			{
+				if (x < 0 || x >= TextureWidth) continue;
+
+				int dx = Math.Abs(x - centerX);
+				int dy = Math.Abs(y - centerY);
+				float limit = outerRadius - dy * (outerRadius - innerRadius) / Mathf.Max(1f, outerRadius);
+				if (dx + dy <= limit)
+					pixels[y * TextureWidth + x] = color;
+			}
+		}
 	}
 }

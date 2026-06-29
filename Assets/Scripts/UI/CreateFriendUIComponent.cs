@@ -25,6 +25,7 @@ public class CreateFriendUIComponent:MonoBehaviour
 	public Button Field_birthdayCountryButton;
 	public TMP_Text birthdayCountryText;
 	public Button SubmitButton;
+	public TMP_Text privacyText;
 
 	[Header("选择头像")]
 	public GameObject chooseHeadPanel;

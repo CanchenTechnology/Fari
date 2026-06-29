@@ -1149,9 +1149,8 @@ public class FriendPreviewUI : WindowBase
 
 		public static FriendPreviewHistoryEntry FromSummary(DailyOracleSummaryRecord summary)
 		{
-			string cardNames = FirstNonEmpty(summary?.cardName, "每日牌");
-			string orientation = summary != null && summary.IsUpright ? "正位" : "逆位";
-			string description = FirstNonEmpty(summary?.oracle, summary?.title, summary?.microAction, $"{cardNames} · {orientation}");
+			string cardNames = TarotDeck.FormatDisplayName(FirstNonEmpty(summary?.cardName, "每日牌"), summary != null && summary.IsUpright);
+			string description = FirstNonEmpty(summary?.oracle, summary?.title, summary?.microAction, cardNames);
 			List<Sprite> sprites = new List<Sprite>();
 			if (!string.IsNullOrWhiteSpace(summary?.cardId))
 			{
@@ -1179,8 +1178,7 @@ public class FriendPreviewUI : WindowBase
 			List<string> names = new List<string>();
 			foreach (RelationshipDivinationCard card in visibleCards)
 			{
-				string name = FirstNonEmpty(card.cardName, "关系牌");
-				names.Add(name);
+				names.Add(card != null ? card.DisplayName : "关系牌");
 				Sprite sprite = RelationshipDivinationFlow.LoadCardSprite(card);
 				if (sprite != null)
 					sprites.Add(sprite);
@@ -1208,7 +1206,7 @@ public class FriendPreviewUI : WindowBase
 				foreach (LockedCard card in record.lockedCards)
 				{
 					if (card == null) continue;
-					names.Add(FirstNonEmpty(card.cardName, "关系牌"));
+					names.Add(TarotDeck.FormatDisplayName(FirstNonEmpty(card.cardName, card.cardId, "关系牌"), card.orientation));
 					if (!string.IsNullOrWhiteSpace(card.cardId))
 					{
 						Sprite sprite = TarotSpriteLoader.Load(card.cardId);

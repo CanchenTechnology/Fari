@@ -4,6 +4,9 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using YooAsset;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 namespace GamerFrameWork.UIFrameWork
 {
     public enum UIPrefabLoadType
@@ -423,6 +426,15 @@ namespace GamerFrameWork.UIFrameWork
                 Debug.LogError($"[LoadWindow] path is null, wndName={wndName}");
                 return null;
             }
+
+#if UNITY_EDITOR
+            string editorAssetPath = path.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase)
+                ? path
+                : $"{path}.prefab";
+            GameObject editorPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(editorAssetPath);
+            if (editorPrefab != null)
+                return GameObject.Instantiate(editorPrefab, mUIRoot);
+#endif
 
             var handle = YooAssets.LoadAssetSync<GameObject>(path);
             if (handle == null || handle.AssetObject == null)

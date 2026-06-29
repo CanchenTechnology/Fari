@@ -21,6 +21,13 @@ using TMPro;
 
 public class TarorSingleSpreadShuffleUI : WindowBase
 {
+    private const string DetailEntryPrompt = "点击任意位置显示详情";
+
+    private const float DeckClipHorizontalPadding = 24f;
+    private const float DeckVisibleSlotCount = 7f;
+    private const float DeckCardSpacing = 12f;
+    private const int VisualDeckCardCount = 7;
+
     public TarorSingleSpreadShuffleUIComponent uiComponent;
 
     // ========== 内部状态 ==========
@@ -42,6 +49,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
     private readonly List<Image> _deckImages = new List<Image>();
     private RectTransform _cardContainer;
+    private RectTransform _deckClipRoot;
     private Image _cardTemplateImage;
     private Tween _deckInertiaTween;
     private Sequence _drawSequence;
@@ -65,7 +73,10 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     private float _viewportWidth;
     private float _viewportHeight;
     private float _fanWidth;
+    private float _minDeckOffsetX;
+    private float _maxDeckOffsetX;
     private float _deckCardScale = 1f;
+    private Vector2 _lastDeckViewportSize;
 
     #region 生命周期函数
 
@@ -73,6 +84,9 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     {
         uiComponent = gameObject.GetComponent<TarorSingleSpreadShuffleUIComponent>();
         uiComponent.InitComponent(this);
+        ConfigureDeckSettings();
+        AddButtonClickListener(uiComponent.hideBtn, OnHideBtnClick);
+        SetDetailEntryVisible(false);
         _deepSeekAPI = DeepSeekAPI.ResolveFor(gameObject);
         this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
         base.OnAwake();
@@ -92,6 +106,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         _cardInfoRequestVersion++;
         _isCardInfoLoading = false;
         _drawnCards = null;
+        SetDetailEntryVisible(false);
 
         // 从桥梁读取牌阵数据
         _spread = SpreadShuffleBridge.PendingSpread;
@@ -109,6 +124,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         BuildSlotArray();
         _cardCount = Mathf.Clamp(_cardCount, 1, Mathf.Max(1, CountAvailableSlots()));
         ResolveDeckReferences();
+        ClearRuntimeDeckCards();
 
         // 配置界面
         ConfigureUI();
@@ -122,15 +138,28 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         base.OnHide();
         StopShuffleCoroutine();
         KillDeckAnimation();
+        ClearRuntimeDeckCards();
         _cardInfoRequestVersion++;
+        SetDetailEntryVisible(false);
     }
 
     public override void OnDestroy()
     {
         StopShuffleCoroutine();
         KillDeckAnimation();
+        ClearRuntimeDeckCards();
         _cardInfoRequestVersion++;
         base.OnDestroy();
+    }
+
+    private void LateUpdate()
+    {
+        if (!_isChoosingCard || _deckImages.Count <= 1)
+            return;
+
+        RefreshDeckLayoutIfViewportChanged();
+        SanitizeDeckVisuals();
+        RefreshDeckSiblingOrder();
     }
 
     #endregion
@@ -159,6 +188,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         SetSpreadTitle();
         SetOperationStepText($"点击、长按，或向上拖动牌扇中的牌，依次抽出{_cardCount}张牌。");
         ClearCardInfoTexts();
+        SetDetailEntryVisible(false);
 
         // ---- 卡槽显示/隐藏 ----
         Sprite backSprite = ResolveCardBackSprite();
@@ -230,6 +260,9 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     private void SetOperationStepText(string text)
     {
         if (uiComponent.SubtitleTextText == null) return;
+
+        if (CanEnterDetail())
+            text = DetailEntryPrompt;
 
         text = TrimSubtitlePunctuation(text);
         uiComponent.SubtitleTextText.gameObject.SetActive(!string.IsNullOrEmpty(text));
@@ -399,8 +432,17 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
 
 
+    public void OnHideBtnClick()
+    {
+        if (!CanEnterDetail())
+            return;
+
+        CompleteShuffle();
+    }
+
     private void ResolveDeckReferences()
     {
+        ConfigureDeckSettings();
         _cardContainer = uiComponent.cardContainer as RectTransform;
         if (_cardContainer == null)
         {
@@ -431,8 +473,75 @@ public class TarorSingleSpreadShuffleUI : WindowBase
             _cardTemplateImage.gameObject.SetActive(false);
         }
 
-        if (_cardContainer != null)
+        ConfigureDeckClipRoot();
+        ClearGeneratedDeckChildren();
+
+        if (_deckClipRoot != null)
+            BindDeckDragSurface(_deckClipRoot.gameObject);
+        else if (_cardContainer != null)
             BindDeckDragSurface(_cardContainer.gameObject);
+    }
+
+    private void ConfigureDeckClipRoot()
+    {
+        _deckClipRoot = null;
+        if (_cardContainer == null) return;
+
+        const string clipRootName = "DeckClipRoot";
+        Transform existing = _cardContainer.Find(clipRootName);
+        if (existing == null)
+        {
+            GameObject clipObject = new GameObject(clipRootName, typeof(RectTransform));
+            clipObject.layer = _cardContainer.gameObject.layer;
+            existing = clipObject.transform;
+            existing.SetParent(_cardContainer, false);
+        }
+
+        _deckClipRoot = existing as RectTransform;
+        if (_deckClipRoot == null) return;
+
+        _deckClipRoot.anchorMin = Vector2.zero;
+        _deckClipRoot.anchorMax = Vector2.one;
+        _deckClipRoot.pivot = new Vector2(0.5f, 0.5f);
+        _deckClipRoot.anchoredPosition = Vector2.zero;
+        _deckClipRoot.sizeDelta = new Vector2(-DeckClipHorizontalPadding * 2f, 0f);
+        _deckClipRoot.localRotation = Quaternion.identity;
+        _deckClipRoot.localScale = Vector3.one;
+        _deckClipRoot.SetAsLastSibling();
+
+        RectMask2D clipMask = _deckClipRoot.GetComponent<RectMask2D>();
+        if (clipMask == null)
+            clipMask = _deckClipRoot.gameObject.AddComponent<RectMask2D>();
+        clipMask.enabled = true;
+
+        Image raycastSurface = _deckClipRoot.GetComponent<Image>();
+        if (raycastSurface == null)
+            raycastSurface = _deckClipRoot.gameObject.AddComponent<Image>();
+        raycastSurface.enabled = true;
+        raycastSurface.color = Color.clear;
+        raycastSurface.raycastTarget = true;
+    }
+
+    private RectTransform GetDeckViewportRoot()
+    {
+        return _deckClipRoot != null ? _deckClipRoot : _cardContainer;
+    }
+
+    private void ConfigureDeckSettings()
+    {
+        if (uiComponent == null) return;
+
+        uiComponent.selectableCardCount = VisualDeckCardCount;
+        uiComponent.fanWidth = 0f;
+        uiComponent.fanViewportWidthMultiplier = 1f;
+        uiComponent.minFanWidth = 0f;
+        uiComponent.fanRiseOffset = 0f;
+        uiComponent.fanRotation = 0f;
+        uiComponent.deckCardScale = 0f;
+        uiComponent.minDeckCardScale = 0.1f;
+        uiComponent.maxDeckCardScale = 0.5f;
+        uiComponent.drawnFanLowerOffset = 0f;
+        uiComponent.drawnFanScaleMultiplier = 1f;
     }
 
     private void PrepareInteractiveDeck()
@@ -449,11 +558,13 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         _nextDrawIndex = 0;
         _deckOffsetX = 0f;
         _scrollVelocityX = 0f;
+        _lastDeckViewportSize = Vector2.zero;
 
         BuildDeckFan();
 
         SetSpreadTitle();
         SetOperationStepText(GetDrawInstructionText());
+        SetDetailEntryVisible(false);
     }
 
     private string GetDrawInstructionText()
@@ -474,19 +585,21 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     {
         if (_cardContainer == null || _cardTemplateImage == null) return;
 
-        Rect rect = _cardContainer.rect;
+        RectTransform viewportRoot = GetDeckViewportRoot();
+        Rect rect = viewportRoot != null ? viewportRoot.rect : _cardContainer.rect;
         _viewportWidth = Mathf.Max(1f, rect.width);
         _viewportHeight = Mathf.Max(1f, rect.height);
-        _fanWidth = uiComponent.fanWidth > 0f
-            ? uiComponent.fanWidth
-            : Mathf.Max(uiComponent.minFanWidth, _viewportWidth * Mathf.Max(1f, uiComponent.fanViewportWidthMultiplier));
+        _fanWidth = uiComponent.fanWidth > 0f ? uiComponent.fanWidth : _viewportWidth;
         _deckCardScale = ResolveDeckCardScale();
 
-        int count = Mathf.Max(3, uiComponent.selectableCardCount);
+        int count = GetVisualDeckCardCount();
+        _fanWidth = ResolveDeckFanWidth(count);
+        ResolveDeckScrollBounds();
         Sprite backSprite = ResolveCardBackSprite();
+        Transform deckParent = viewportRoot != null ? viewportRoot : _cardContainer;
         for (int i = 0; i < count; i++)
         {
-            GameObject cardObject = UnityEngine.Object.Instantiate(_cardTemplateImage.gameObject, _cardContainer);
+            GameObject cardObject = UnityEngine.Object.Instantiate(_cardTemplateImage.gameObject, deckParent);
             cardObject.name = $"SpreadDeckCard_{i + 1}";
             cardObject.SetActive(true);
 
@@ -498,6 +611,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
             image.color = Color.white;
             image.preserveAspect = true;
             image.raycastTarget = true;
+            EnsureDeckCardCanvas(cardObject);
 
             RectTransform cardRect = image.rectTransform;
             cardRect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -515,15 +629,46 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
     private float ResolveDeckCardScale()
     {
-        if (uiComponent.deckCardScale > 0f)
-            return uiComponent.deckCardScale;
+        float sourceWidth = ResolveDeckCardSourceWidth();
+        float sourceHeight = ResolveDeckCardSourceHeight();
+        float fittedScale = ResolveFittedDeckCardScale(sourceWidth, sourceHeight);
+        float targetScale = uiComponent.deckCardScale > 0f
+            ? Mathf.Min(uiComponent.deckCardScale, fittedScale)
+            : fittedScale;
+        float minScale = Mathf.Min(Mathf.Max(0.1f, uiComponent.minDeckCardScale), targetScale);
+        float maxScale = Mathf.Max(minScale, uiComponent.maxDeckCardScale);
+        return Mathf.Clamp(targetScale, minScale, maxScale);
+    }
 
+    private int GetVisualDeckCardCount()
+    {
+        return Mathf.Clamp(uiComponent.selectableCardCount, 3, VisualDeckCardCount);
+    }
+
+    private float ResolveFittedDeckCardScale(float sourceWidth, float sourceHeight)
+    {
+        float availableWidth = Mathf.Max(1f, _viewportWidth - DeckCardSpacing * (DeckVisibleSlotCount - 1f));
+        float widthScale = (availableWidth / DeckVisibleSlotCount) / Mathf.Max(1f, sourceWidth);
+        float heightScale = (_viewportHeight * 0.56f) / Mathf.Max(1f, sourceHeight);
+        return Mathf.Max(0.1f, Mathf.Min(widthScale, heightScale));
+    }
+
+    private float ResolveDeckFanWidth(int cardCount)
+    {
+        float cardDrivenWidth = Mathf.Max(1, cardCount - 1) * GetDeckSpacing();
+        return uiComponent.fanWidth > 0f ? Mathf.Min(uiComponent.fanWidth, cardDrivenWidth) : cardDrivenWidth;
+    }
+
+    private float ResolveDeckCardSourceWidth()
+    {
         RectTransform templateRect = _cardTemplateImage != null ? _cardTemplateImage.rectTransform : null;
-        float sourceWidth = templateRect != null ? Mathf.Max(1f, templateRect.rect.width) : 285f;
-        float sourceHeight = templateRect != null ? Mathf.Max(1f, templateRect.rect.height) : 487f;
-        float widthScale = (_viewportWidth * 0.34f) / sourceWidth;
-        float heightScale = (_viewportHeight * 0.56f) / sourceHeight;
-        return Mathf.Clamp(Mathf.Min(widthScale, heightScale), uiComponent.minDeckCardScale, uiComponent.maxDeckCardScale);
+        return templateRect != null ? Mathf.Max(1f, templateRect.rect.width) : 285f;
+    }
+
+    private float ResolveDeckCardSourceHeight()
+    {
+        RectTransform templateRect = _cardTemplateImage != null ? _cardTemplateImage.rectTransform : null;
+        return templateRect != null ? Mathf.Max(1f, templateRect.rect.height) : 487f;
     }
 
     private void BindDeckDragSurface(GameObject surfaceObject)
@@ -648,7 +793,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
             return;
         }
 
-        _deckOffsetX = _dragStartOffsetX + deltaX * Mathf.Max(0.01f, uiComponent.dragSensitivity);
+        _deckOffsetX = NormalizeDeckOffset(_dragStartOffsetX + deltaX * Mathf.Max(0.01f, uiComponent.dragSensitivity));
 
         float now = Time.unscaledTime;
         float deltaTime = Mathf.Max(0.001f, now - _lastScrollSampleTime);
@@ -728,11 +873,12 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     private bool TryGetDeckLocalPoint(BaseEventData eventData, out Vector2 localPoint)
     {
         localPoint = Vector2.zero;
-        if (_cardContainer == null || eventData is not PointerEventData pointerData)
+        RectTransform viewportRoot = GetDeckViewportRoot();
+        if (viewportRoot == null || eventData is not PointerEventData pointerData)
             return false;
 
         return RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            _cardContainer,
+            viewportRoot,
             pointerData.position,
             pointerData.pressEventCamera,
             out localPoint);
@@ -781,6 +927,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         RectTransform flyRect = flyImage.rectTransform;
         CopyRectWorldPose(sourceRect, flyRect, flyParent);
         flyRect.SetAsLastSibling();
+        SetDeckCardSortingOrder(flyImage, _deckImages.Count + 40);
 
         Color sourceColor = sourceImage.color;
         sourceColor.a = 0f;
@@ -798,6 +945,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         _drawSequence.Append(flyRect.DOAnchorPos(targetPosition, selectDuration).SetEase(Ease.InOutCubic));
         _drawSequence.Join(flyRect.DORotate(new Vector3(0f, 0f, targetRotationZ), selectDuration).SetEase(Ease.InOutCubic));
         _drawSequence.Join(flyRect.DOScale(Vector3.one * targetScale, selectDuration).SetEase(Ease.OutBack, 0.82f));
+        _drawSequence.AppendCallback(() => slot.SetCardSlotVisible(false));
         _drawSequence.Append(flyRect.DORotate(new Vector3(0f, 88f, targetRotationZ), flipHalfDuration).SetEase(Ease.InCubic));
         _drawSequence.AppendCallback(() =>
         {
@@ -812,7 +960,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         _drawSequence.OnComplete(() =>
         {
             if (flyImage != null)
-                UnityEngine.Object.Destroy(flyImage.gameObject);
+                DestroyDeckObject(flyImage.gameObject);
 
             Color restoredColor = sourceImage.color;
             restoredColor.a = 1f;
@@ -904,6 +1052,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         _activeDragCardIndex = -1;
         _isPullingCard = false;
         _activePullY = 0f;
+        RefreshDetailEntryState();
 
         ApplyDeckLayout(true);
 
@@ -970,6 +1119,8 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     {
         if (_deckImages.Count == 0) return;
 
+        _lastDeckViewportSize = GetDeckViewportSize();
+
         for (int i = 0; i < _deckImages.Count; i++)
         {
             Image image = _deckImages[i];
@@ -979,10 +1130,16 @@ public class TarorSingleSpreadShuffleUI : WindowBase
             Vector2 targetPosition = GetDeckFanPosition(i);
             float targetRotation = GetDeckFanRotation(i);
             Vector3 targetScale = Vector3.one * (_deckCardScale * GetSettledDeckScaleMultiplier());
+            bool visibleInViewport = IsDeckCardInsideViewport(targetPosition, targetScale.x);
+            DOTween.Kill(rect);
+            SetDeckCardViewportVisible(image, visibleInViewport);
 
             if (animated)
             {
-                rect.DOAnchorPos(targetPosition, 0.18f).SetEase(Ease.OutCubic);
+                rect.DOAnchorPos(targetPosition, 0.18f)
+                    .SetEase(Ease.OutCubic)
+                    .OnUpdate(RefreshDeckSiblingOrder)
+                    .OnComplete(RefreshDeckSiblingOrder);
                 rect.DORotate(new Vector3(0f, 0f, targetRotation), 0.18f).SetEase(Ease.OutCubic);
                 rect.DOScale(targetScale, 0.18f).SetEase(Ease.OutCubic);
             }
@@ -995,6 +1152,25 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         }
 
         RefreshDeckSiblingOrder();
+    }
+
+    private void RefreshDeckLayoutIfViewportChanged()
+    {
+        Vector2 viewportSize = GetDeckViewportSize();
+        if (viewportSize.x <= 1f || viewportSize.y <= 1f)
+            return;
+
+        if (Mathf.Abs(viewportSize.x - _lastDeckViewportSize.x) <= 0.5f
+            && Mathf.Abs(viewportSize.y - _lastDeckViewportSize.y) <= 0.5f)
+            return;
+
+        ApplyDeckLayout(false);
+    }
+
+    private Vector2 GetDeckViewportSize()
+    {
+        RectTransform viewportRoot = GetDeckViewportRoot();
+        return viewportRoot != null ? viewportRoot.rect.size : Vector2.zero;
     }
 
     private void RefreshDeckSiblingOrder()
@@ -1013,83 +1189,177 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         {
             Image image = _deckImages[_deckSiblingOrder[i]];
             if (image != null)
-                image.rectTransform.SetAsLastSibling();
+            {
+                image.rectTransform.SetSiblingIndex(i);
+                SetDeckCardSortingOrder(image, i);
+            }
+        }
+
+        if (_isPullingCard && _activeDragCardIndex >= 0 && _activeDragCardIndex < _deckImages.Count)
+        {
+            Image activeImage = _deckImages[_activeDragCardIndex];
+            if (activeImage != null)
+            {
+                activeImage.rectTransform.SetAsLastSibling();
+                SetDeckCardSortingOrder(activeImage, _deckImages.Count + 20);
+            }
+        }
+    }
+
+    private bool IsDeckCardInsideViewport(Vector2 anchoredPosition, float scale)
+    {
+        RectTransform viewportRoot = GetDeckViewportRoot();
+        if (viewportRoot == null) return true;
+
+        float viewportHalfWidth = Mathf.Max(1f, viewportRoot.rect.width * 0.5f);
+        float viewportHalfHeight = Mathf.Max(1f, viewportRoot.rect.height * 0.5f);
+        float cardHalfWidth = ResolveDeckCardSourceWidth() * scale * 0.5f;
+        float cardHalfHeight = ResolveDeckCardSourceHeight() * scale * 0.5f;
+
+        return Mathf.Abs(anchoredPosition.x) + cardHalfWidth <= viewportHalfWidth + 0.5f
+            && Mathf.Abs(anchoredPosition.y) + cardHalfHeight <= viewportHalfHeight + 0.5f;
+    }
+
+    private void SetDeckCardViewportVisible(Image image, bool visible)
+    {
+        if (image == null) return;
+
+        image.enabled = visible;
+        image.raycastTarget = visible && _isChoosingCard && !_isAnimatingCard;
+    }
+
+    private void EnsureDeckCardCanvas(GameObject cardObject)
+    {
+        if (cardObject == null) return;
+
+        Canvas sortingCanvas = cardObject.GetComponent<Canvas>();
+        if (sortingCanvas != null)
+        {
+            sortingCanvas.overrideSorting = false;
+            sortingCanvas.sortingOrder = 0;
+            sortingCanvas.enabled = false;
+        }
+
+        GraphicRaycaster raycaster = cardObject.GetComponent<GraphicRaycaster>();
+        if (raycaster != null)
+            raycaster.enabled = false;
+
+        MaskableGraphic[] graphics = cardObject.GetComponentsInChildren<MaskableGraphic>(true);
+        for (int i = 0; i < graphics.Length; i++)
+        {
+            if (graphics[i] != null)
+                graphics[i].maskable = true;
+        }
+    }
+
+    private void SetDeckCardSortingOrder(Image image, int visualOrder)
+    {
+        if (image == null) return;
+
+        Canvas sortingCanvas = image.GetComponent<Canvas>();
+        if (sortingCanvas != null)
+        {
+            sortingCanvas.overrideSorting = false;
+            sortingCanvas.sortingOrder = 0;
+            sortingCanvas.enabled = false;
         }
     }
 
     private int CompareDeckSiblingOrder(int leftIndex, int rightIndex)
     {
-        float leftDepth = GetDeckSiblingDepth(leftIndex);
-        float rightDepth = GetDeckSiblingDepth(rightIndex);
-        int depthCompare = leftDepth.CompareTo(rightDepth);
-        if (depthCompare != 0)
-            return depthCompare;
+        Vector2 leftPosition = GetDeckSiblingPosition(leftIndex);
+        Vector2 rightPosition = GetDeckSiblingPosition(rightIndex);
 
-        float leftX = GetDeckFanPosition(leftIndex).x;
-        float rightX = GetDeckFanPosition(rightIndex).x;
-        return leftX.CompareTo(rightX);
+        int leftDistanceKey = Mathf.RoundToInt(Mathf.Abs(leftPosition.x) * 100f);
+        int rightDistanceKey = Mathf.RoundToInt(Mathf.Abs(rightPosition.x) * 100f);
+
+        int distanceCompare = rightDistanceKey.CompareTo(leftDistanceKey);
+        if (distanceCompare != 0)
+            return distanceCompare;
+
+        int yCompare = Mathf.RoundToInt(leftPosition.y * 100f)
+            .CompareTo(Mathf.RoundToInt(rightPosition.y * 100f));
+        if (yCompare != 0)
+            return yCompare;
+
+        int xCompare = Mathf.RoundToInt(leftPosition.x * 100f)
+            .CompareTo(Mathf.RoundToInt(rightPosition.x * 100f));
+        if (xCompare != 0)
+            return xCompare;
+
+        return leftIndex.CompareTo(rightIndex);
     }
 
-    private float GetDeckSiblingDepth(int index)
+    private Vector2 GetDeckSiblingPosition(int index)
     {
-        Vector2 position = GetDeckFanPosition(index);
-        float halfFanWidth = Mathf.Max(1f, _fanWidth * 0.5f);
-        float centerWeight = 1f - Mathf.Clamp01(Mathf.Abs(position.x) / halfFanWidth);
-        float verticalWeight = Mathf.InverseLerp(
-            uiComponent.fanHeightOffset + GetSettledDeckYOffset(),
-            uiComponent.fanHeightOffset + GetSettledDeckYOffset() + Mathf.Max(1f, uiComponent.fanRiseOffset),
-            position.y);
-        return centerWeight + verticalWeight * 0.25f;
+        if (index >= 0 && index < _deckImages.Count)
+        {
+            Image image = _deckImages[index];
+            if (image != null)
+                return image.rectTransform.anchoredPosition;
+        }
+
+        return GetDeckFanPosition(index);
     }
 
     private Vector2 GetDeckFanPosition(int index)
     {
         ResolveDeckLayoutMetrics();
-        float spacing = _deckImages.Count > 1 ? _fanWidth / (_deckImages.Count - 1) : _fanWidth;
-        float cycleWidth = _fanWidth + spacing;
+        float spacing = GetDeckSpacing();
         float x = -_fanWidth * 0.5f + spacing * index + _deckOffsetX;
-        x = Mathf.Repeat(x + cycleWidth * 0.5f, cycleWidth) - cycleWidth * 0.5f;
 
-        float normalized = Mathf.Clamp(x / Mathf.Max(1f, _fanWidth * 0.5f), -1f, 1f);
-        float y = uiComponent.fanHeightOffset + GetSettledDeckYOffset() + uiComponent.fanRiseOffset * (1f - normalized * normalized);
+        float y = uiComponent.fanHeightOffset + GetSettledDeckYOffset();
         return new Vector2(x, y);
+    }
+
+    private float GetDeckSpacing()
+    {
+        return ResolveDeckCardSourceWidth() * _deckCardScale + DeckCardSpacing;
+    }
+
+    private float NormalizeDeckOffset(float offset)
+    {
+        ResolveDeckScrollBounds();
+        return Mathf.Clamp(offset, _minDeckOffsetX, _maxDeckOffsetX);
     }
 
     private float GetSettledDeckYOffset()
     {
-        if (_nextDrawIndex <= 0) return 0f;
-        if (uiComponent.drawnFanLowerOffset > 0f)
-            return -uiComponent.drawnFanLowerOffset;
-
-        return -Mathf.Max(120f, _viewportHeight * 0.22f);
+        return 0f;
     }
 
     private float GetSettledDeckScaleMultiplier()
     {
-        return _nextDrawIndex > 0
-            ? Mathf.Clamp(uiComponent.drawnFanScaleMultiplier, 0.68f, 1f)
-            : 1f;
+        return 1f;
     }
 
     private float GetDeckFanRotation(int index)
     {
-        Vector2 position = GetDeckFanPosition(index);
-        float normalized = Mathf.Clamp(position.x / Mathf.Max(1f, _fanWidth * 0.5f), -1f, 1f);
-        return -normalized * uiComponent.fanRotation;
+        return 0f;
     }
 
     private void ResolveDeckLayoutMetrics()
     {
-        if (_cardContainer == null) return;
+        RectTransform viewportRoot = GetDeckViewportRoot();
+        if (viewportRoot == null) return;
 
-        Rect rect = _cardContainer.rect;
+        Rect rect = viewportRoot.rect;
         _viewportWidth = Mathf.Max(1f, rect.width);
         _viewportHeight = Mathf.Max(1f, rect.height);
-        _fanWidth = uiComponent.fanWidth > 0f
-            ? uiComponent.fanWidth
-            : Mathf.Max(uiComponent.minFanWidth, _viewportWidth * Mathf.Max(1f, uiComponent.fanViewportWidthMultiplier));
+        _fanWidth = uiComponent.fanWidth > 0f ? uiComponent.fanWidth : _viewportWidth;
         if (_cardTemplateImage != null)
+        {
             _deckCardScale = ResolveDeckCardScale();
+            _fanWidth = ResolveDeckFanWidth(Mathf.Max(1, _deckImages.Count));
+            ResolveDeckScrollBounds();
+        }
+    }
+
+    private void ResolveDeckScrollBounds()
+    {
+        _minDeckOffsetX = 0f;
+        _maxDeckOffsetX = 0f;
+        _deckOffsetX = 0f;
     }
 
     private void StartDeckInertia()
@@ -1105,20 +1375,25 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         float deceleration = Mathf.Max(1f, uiComponent.scrollDeceleration);
         float duration = Mathf.Min(Mathf.Abs(velocity) / deceleration, Mathf.Max(0.05f, uiComponent.maxInertiaDuration));
         float distance = velocity * duration * 0.5f;
-        float targetOffset = _deckOffsetX + distance;
+        float targetOffset = NormalizeDeckOffset(_deckOffsetX + distance);
 
         _deckInertiaTween?.Kill(false);
         _deckInertiaTween = DOTween.To(
                 () => _deckOffsetX,
                 value =>
                 {
-                    _deckOffsetX = value;
+                    _deckOffsetX = NormalizeDeckOffset(value);
                     ApplyDeckLayout(false);
                 },
                 targetOffset,
                 duration)
             .SetEase(Ease.OutCubic)
-            .OnComplete(() => _deckInertiaTween = null);
+            .OnComplete(() =>
+            {
+                _deckOffsetX = NormalizeDeckOffset(targetOffset);
+                ApplyDeckLayout(false);
+                _deckInertiaTween = null;
+            });
     }
 
     private void StopDeckInertia()
@@ -1132,7 +1407,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         for (int i = 0; i < _deckImages.Count; i++)
         {
             if (_deckImages[i] != null)
-                _deckImages[i].raycastTarget = interactable;
+                _deckImages[i].raycastTarget = interactable && _deckImages[i].enabled;
         }
     }
 
@@ -1148,19 +1423,174 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         StopLongPressSelection();
         _drawSequence?.Kill(false);
         _drawSequence = null;
+        ClearRuntimeFlyingCards();
 
         for (int i = 0; i < _deckImages.Count; i++)
         {
             if (_deckImages[i] != null)
-                UnityEngine.Object.Destroy(_deckImages[i].gameObject);
+            {
+                DestroyDeckObject(_deckImages[i].gameObject);
+            }
         }
         _deckImages.Clear();
+        ClearGeneratedDeckChildren();
+        ClearRuntimeFlyingCards();
 
         if (_cardContainer != null)
             _cardContainer.gameObject.SetActive(true);
 
         if (_cardTemplateImage != null)
             _cardTemplateImage.gameObject.SetActive(false);
+    }
+
+    private void ClearGeneratedDeckChildren()
+    {
+        ClearGeneratedDeckChildrenUnder(_deckClipRoot);
+        ClearGeneratedDeckChildrenUnder(_cardContainer);
+    }
+
+    private void SanitizeDeckVisuals()
+    {
+        bool deckChanged = TrimTrackedDeckImages();
+        ClearGeneratedDeckChildren();
+        if (deckChanged && !_isPullingCard && _deckImages.Count > 0)
+            ApplyDeckLayout(false);
+    }
+
+    private bool TrimTrackedDeckImages()
+    {
+        bool changed = false;
+        Transform deckParent = GetDeckViewportRoot();
+        for (int i = _deckImages.Count - 1; i >= 0; i--)
+        {
+            Image image = _deckImages[i];
+            if (image == null)
+            {
+                _deckImages.RemoveAt(i);
+                changed = true;
+                continue;
+            }
+
+            if (i >= VisualDeckCardCount)
+            {
+                DestroyDeckObject(image.gameObject);
+                _deckImages.RemoveAt(i);
+                changed = true;
+                continue;
+            }
+
+            EnsureDeckCardCanvas(image.gameObject);
+            if (!_isPullingCard && deckParent != null && image.transform.parent != deckParent)
+            {
+                image.transform.SetParent(deckParent, false);
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
+
+    private void ClearRuntimeFlyingCards()
+    {
+        ClearRuntimeFlyingCardsUnder(transform);
+    }
+
+    private void ClearRuntimeFlyingCardsUnder(Transform root)
+    {
+        if (root == null) return;
+
+        for (int i = root.childCount - 1; i >= 0; i--)
+        {
+            Transform child = root.GetChild(i);
+            if (child == null) continue;
+
+            if (IsRuntimeFlyingCardName(child.name))
+            {
+                DestroyDeckObject(child.gameObject);
+                continue;
+            }
+
+            ClearRuntimeFlyingCardsUnder(child);
+        }
+    }
+
+    private void ClearGeneratedDeckChildrenUnder(Transform root)
+    {
+        if (root == null) return;
+
+        for (int i = root.childCount - 1; i >= 0; i--)
+        {
+            Transform child = root.GetChild(i);
+            if (child == null) continue;
+            if (_deckClipRoot != null && child == _deckClipRoot) continue;
+            if (_cardTemplateImage != null && child == _cardTemplateImage.transform) continue;
+
+            if (ShouldClearDeckChild(child))
+            {
+                DestroyDeckObject(child.gameObject);
+                continue;
+            }
+
+            ClearGeneratedDeckChildrenUnder(child);
+        }
+    }
+
+    private bool ShouldClearDeckChild(Transform child)
+    {
+        if (child == null) return false;
+        if (_deckClipRoot != null && child == _deckClipRoot) return false;
+        if (_cardTemplateImage != null && child == _cardTemplateImage.transform) return false;
+        if (IsTrackedDeckChild(child)) return false;
+
+        if (IsGeneratedDeckCardName(child.name))
+            return true;
+
+        if (child.name.StartsWith("DeckClipRoot", StringComparison.Ordinal))
+            return true;
+
+        if (child.GetComponent<Image>() == null)
+            return false;
+
+        return child.name.StartsWith("Card", StringComparison.Ordinal)
+            || child.GetComponent<Button>() != null
+            || child.GetComponent<EventTrigger>() != null;
+    }
+
+    private bool IsTrackedDeckChild(Transform child)
+    {
+        for (int i = 0; i < _deckImages.Count; i++)
+        {
+            Image image = _deckImages[i];
+            if (image != null && image.transform == child)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsGeneratedDeckCardName(string objectName)
+    {
+        return !string.IsNullOrEmpty(objectName)
+            && (objectName.StartsWith("SpreadDeckCard_", StringComparison.Ordinal)
+                || objectName.StartsWith("DrawCard_", StringComparison.Ordinal)
+                || objectName.StartsWith("Card(Clone)", StringComparison.Ordinal));
+    }
+
+    private static bool IsRuntimeFlyingCardName(string objectName)
+    {
+        return !string.IsNullOrEmpty(objectName)
+            && objectName.StartsWith("SpreadFlyingCard_", StringComparison.Ordinal);
+    }
+
+    private static void DestroyDeckObject(GameObject target)
+    {
+        if (target == null) return;
+
+        target.SetActive(false);
+        if (Application.isPlaying)
+            UnityEngine.Object.Destroy(target);
+        else
+            UnityEngine.Object.DestroyImmediate(target);
     }
 
     private int CountAvailableSlots()
@@ -1202,6 +1632,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     private void CompleteShuffle()
     {
         _shuffleDone = true;
+        SetDetailEntryVisible(false);
         SyncToDivinationEngine();
         SaveDrawnCardsToPendingMessage();
         DivinationInfoUI.SelectedRecord = DivinationRecordBuilder.FromChatMessage(SpreadShuffleBridge.PendingMessageData, _spread)
@@ -1262,6 +1693,32 @@ public class TarorSingleSpreadShuffleUI : WindowBase
             && _nextDrawIndex >= _cardCount;
     }
 
+    private bool CanEnterDetail()
+    {
+        return !_shuffleDone
+            && _cardCount == 3
+            && AreAllCardsRevealed()
+            && !_isCardInfoLoading;
+    }
+
+    private void RefreshDetailEntryState()
+    {
+        bool canEnterDetail = CanEnterDetail();
+        SetDetailEntryVisible(canEnterDetail);
+
+        if (canEnterDetail)
+            SetOperationStepText(DetailEntryPrompt);
+    }
+
+    private void SetDetailEntryVisible(bool visible)
+    {
+        if (uiComponent == null || uiComponent.hideBtn == null)
+            return;
+
+        uiComponent.hideBtn.gameObject.SetActive(visible);
+        uiComponent.hideBtn.interactable = visible;
+    }
+
     private void ClearCardInfoTexts()
     {
         TMP_Text standaloneCardTitle = GetStandaloneCardTitleText();
@@ -1287,6 +1744,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         _latestRevealedIndex = index;
         int requestVersion = ++_cardInfoRequestVersion;
         _isCardInfoLoading = true;
+        SetDetailEntryVisible(false);
 
         TMP_Text standaloneCardTitle = GetStandaloneCardTitleText();
         if (standaloneCardTitle != null)
@@ -1341,11 +1799,13 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         _isCardInfoLoading = false;
 
         var descriptionText = GetStandaloneDescriptionText();
-        if (descriptionText == null) return;
+        if (descriptionText != null)
+        {
+            descriptionText.gameObject.SetActive(true);
+            descriptionText.text = text;
+        }
 
-        descriptionText.gameObject.SetActive(true);
-        descriptionText.text = text;
-
+        RefreshDetailEntryState();
     }
 
     private TMP_Text GetStandaloneCardTitleText()
@@ -1368,7 +1828,6 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     {
         string position = GetPositionLabel(index);
         string spreadName = FirstNonEmpty(_spread?.label, GetDefaultTitle(_cardCount));
-        string orientation = upright ? "正位" : "逆位";
         string keywords = card.keywords != null && card.keywords.Count > 0
             ? string.Join("、", card.keywords.GetRange(0, Mathf.Min(3, card.keywords.Count)))
             : card.nameZh;
@@ -1379,7 +1838,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
             locale = "zh-CN",
             message = $"牌阵：{spreadName}\n"
                 + $"位置：{position}\n"
-                + $"卡牌：{card.nameZh}（{orientation}）\n"
+                + $"卡牌：{FormatCardName(card, upright)}\n"
                 + $"关键词：{keywords}",
             user = new UserPayloadProfile
             {
@@ -1627,9 +2086,10 @@ public class TarorSingleSpreadShuffleUI : WindowBase
             if (image == null) continue;
             DOTween.Kill(image);
             DOTween.Kill(image.rectTransform);
-            UnityEngine.Object.Destroy(image.gameObject);
+            DestroyDeckObject(image.gameObject);
         }
         _deckImages.Clear();
+        ClearGeneratedDeckChildren();
 
         if (_cardTemplateImage != null)
             _cardTemplateImage.gameObject.SetActive(false);
@@ -1656,13 +2116,15 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
     private Sprite ResolveCardBackSprite()
     {
-        if (uiComponent.cardBackSprite != null) return uiComponent.cardBackSprite;
+        if (uiComponent.cardBackSprite != null)
+            return CardBackSpriteUtility.ResolveOpaqueBack(uiComponent.cardBackSprite);
 
         uiComponent.cardBackSprite = Resources.Load<Sprite>("TarotCards/CardBack");
-        if (uiComponent.cardBackSprite != null) return uiComponent.cardBackSprite;
+        if (uiComponent.cardBackSprite != null)
+            return CardBackSpriteUtility.ResolveOpaqueBack(uiComponent.cardBackSprite);
 
         uiComponent.cardBackSprite = Resources.Load<Sprite>("CardBack");
-        return uiComponent.cardBackSprite;
+        return CardBackSpriteUtility.ResolveOpaqueBack(uiComponent.cardBackSprite);
     }
 
     private void ResetVisibleSlotsToBack()

@@ -32,21 +32,21 @@ public class DrawCardUIComponent:MonoBehaviour
 	[Header("抽卡动画配置")]
 	[Header("牌组布局")]
 	[Tooltip("本次抽卡界面生成的可选牌数量。")]
-	public int selectableCardCount = 12;
+	public int selectableCardCount = 7;
 	[Tooltip("牌扇总宽度。填 0 时使用响应式宽度和最小宽度自动计算。")]
 	public float fanWidth = 0f;
 	[Tooltip("是否根据当前容器宽度自动扩展牌扇宽度。")]
 	public bool useResponsiveFanWidth = true;
 	[Tooltip("响应式牌扇宽度倍率，值越大，牌组左右越容易超出屏幕。")]
-	public float fanViewportWidthMultiplier = 1.42f;
+	public float fanViewportWidthMultiplier = 1f;
 	[Tooltip("牌扇最小宽度，防止窄屏或容器较小时牌挤在一起。")]
-	public float minFanWidth = 1120f;
+	public float minFanWidth = 0f;
 	[Tooltip("整组牌在容器内的基础纵向偏移，值越大越靠上。")]
 	public float fanHeightOffset = 4f;
 	[Tooltip("牌扇中间牌的抬高高度，值越大弧度越明显。")]
-	public float fanRiseOffset = 108f;
+	public float fanRiseOffset = 0f;
 	[Tooltip("牌扇两侧最大旋转角度，中心附近会逐渐接近 0。")]
-	public float fanRotation = 18f;
+	public float fanRotation = 0f;
 
 	[Header("动画节奏")]
 	[Tooltip("发牌入场时每张牌移动到目标位置的时长。")]
@@ -64,13 +64,13 @@ public class DrawCardUIComponent:MonoBehaviour
 
 	[Header("卡牌尺寸")]
 	[Tooltip("开启后横向拖动牌组会循环滚动，牌会从另一侧补回来。")]
-	public bool infiniteScroll = true;
+	public bool infiniteScroll = false;
 	[Tooltip("牌组中卡牌的固定缩放。填 0 时根据容器和限制比例自动计算。")]
 	public float deckCardScale = 0f;
 	[Tooltip("自动计算卡牌缩放时允许的最小缩放。")]
-	public float minDeckCardScale = 0.5f;
+	public float minDeckCardScale = 0.1f;
 	[Tooltip("自动计算卡牌缩放时允许的最大缩放。")]
-	public float maxDeckCardScale = 0.64f;
+	public float maxDeckCardScale = 0.5f;
 	[Tooltip("自动计算卡牌缩放时，卡牌最大高度占容器高度的比例。")]
 	public float maxDeckCardHeightRatio = 0.52f;
 	[Tooltip("自动计算卡牌缩放时，卡牌最大宽度占容器宽度的比例。")]

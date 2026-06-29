@@ -218,8 +218,7 @@ public class SpreadInteractionCard1 : MonoBehaviour
         // 更新槽位标签
         if (cardSlotItem != null)
         {
-            string orient = _drawnCards[0].upright ? "正" : "逆";
-            cardSlotItem.cardTag.text = $"{_drawnCards[0].card.nameZh}（{orient}）";
+            cardSlotItem.cardTag.text = _drawnCards[0].card.DisplayName(_drawnCards[0].upright);
         }
 
         // 完成
@@ -230,7 +229,7 @@ public class SpreadInteractionCard1 : MonoBehaviour
         SetActionButtonsVisible(true);
 
         Debug.Log($"[SpreadInteractionCard1] 抽牌完成: "
-            + $"{_drawnCards[0].card.nameZh}({(_drawnCards[0].upright ? "正" : "逆")})");
+            + _drawnCards[0].card.DisplayName(_drawnCards[0].upright));
     }
 
     /// <summary>
@@ -351,7 +350,7 @@ public class SpreadInteractionCard1 : MonoBehaviour
         }
 
         if (slot.cardTag != null)
-            slot.cardTag.text = $"{draw.card.nameZh}（{(draw.upright ? "正" : "逆")}）";
+            slot.cardTag.text = draw.card.DisplayName(draw.upright);
     }
 
     private void SetButtonText(Button button, string text)
@@ -463,7 +462,12 @@ public class SpreadInteractionCard1 : MonoBehaviour
     private Sprite LoadCardSprite(string cardId)
     {
         if (string.IsNullOrEmpty(cardId)) return cardBackSprite;
-        return TarotSpriteLoader.Load(cardId) ?? cardBackSprite;
+
+        Sprite sprite = TarotSpriteLoader.Load(cardId);
+        if (sprite != null) return sprite;
+
+        sprite = Resources.Load<Sprite>($"TarotCards/{cardId}");
+        return sprite != null ? sprite : cardBackSprite;
     }
 
     /// <summary>

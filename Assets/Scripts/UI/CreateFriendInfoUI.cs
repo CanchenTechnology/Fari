@@ -244,12 +244,13 @@ public class CreateFriendInfoUI : WindowBase
 		foreach (DailyOracleCloudRecord record in records)
 		{
 			if (record == null || !record.HasPayload) continue;
-			string orientation = record.IsUpright ? "正位" : "逆位";
-			string cardName = string.IsNullOrWhiteSpace(record.cardName) ? "每日牌" : record.cardName;
+			string cardName = TarotDeck.FormatDisplayName(
+				string.IsNullOrWhiteSpace(record.cardName) ? "每日牌" : record.cardName,
+				record.IsUpright);
 			entries.Add(new FriendProfileHistoryEntry
 			{
-				title = string.IsNullOrWhiteSpace(record.title) ? $"{cardName} · {orientation}" : record.title,
-				content = string.IsNullOrWhiteSpace(record.oracle) ? $"{cardName} · {orientation}" : record.oracle,
+				title = string.IsNullOrWhiteSpace(record.title) ? cardName : record.title,
+				content = string.IsNullOrWhiteSpace(record.oracle) ? cardName : record.oracle,
 				date = string.IsNullOrWhiteSpace(record.date) ? DateTime.Now.ToString("yyyy-MM-dd") : record.date,
 				cardSprite = !string.IsNullOrWhiteSpace(record.cardId) ? TarotSpriteLoader.Load(record.cardId) : null,
 				summary = null

@@ -390,7 +390,7 @@ public class TodayOracleUI : WindowBase
 		var (card, upright) = _divinationEngine.DrawDailyCard();
 		_currentCard = card;
 		_currentUpright = upright;
-		Debug.Log($"[TodayOracleUI] 翻牌准备: {card.nameZh} ({(upright ? "正位" : "逆位")})");
+		Debug.Log($"[TodayOracleUI] 翻牌准备: {card.DisplayName(upright)}");
 		DailyOracleFirestore.SaveTodayLocalPending(card, upright, BuildLocalFallback(card, upright), DailyOracleService.CurrentLocale);
 
 		yield return PrepareAndRevealTodayCardRoutine(card, upright, flipRevealDelaySeconds);
@@ -485,7 +485,7 @@ public class TodayOracleUI : WindowBase
 		{
 			DailyOracleFirestore.SaveTodayLocalPending(result.card, result.upright,
 				BuildLocalFallback(result.card, result.upright), DailyOracleService.CurrentLocale);
-			Debug.Log($"[TodayOracleUI] 抽卡动画锁定今日牌: {result.card.nameZh} ({(result.upright ? "正位" : "逆位")})");
+			Debug.Log($"[TodayOracleUI] 抽卡动画锁定今日牌: {result.card.DisplayName(result.upright)}");
 		}
 
 		return result;
@@ -684,16 +684,17 @@ public class TodayOracleUI : WindowBase
 			? string.Join("、", card.keywords)
 			: "内在觉知";
 
+		string displayName = card.DisplayName(upright);
 		string detail;
 		if (upright)
 		{
-			detail = $"今天抽到了{card.nameZh}（正位），这张牌属于{arcanaLabel}，由{elementLabel}能量引导。"
+			detail = $"今天抽到了{displayName}，这张牌属于{arcanaLabel}，由{elementLabel}能量引导。"
 				+ $"它的关键词是{keywords}。正位的{card.nameZh}提醒你，有时候答案并不在外面，"
 				+ $"而在你安静下来的那一刻，心底浮现的第一个声音里。";
 		}
 		else
 		{
-			detail = $"逆位的{card.nameZh}来到了你今天的牌面。这张{arcanaLabel}的牌由{elementLabel}能量守护，"
+			detail = $"{displayName}来到了你今天的牌面。这张{arcanaLabel}的牌由{elementLabel}能量守护，"
 				+ $"关键词是{keywords}。逆位并不代表坏消息，而是一个温柔但坚定的提醒："
 				+ $"有些被忽略的东西正在月光下浮现，请正视它。";
 		}
@@ -888,7 +889,7 @@ public class TodayOracleUI : WindowBase
 
 		DailyOracleFirestore.SaveTodayLocalPending(card, upright, BuildLocalFallback(card, upright), DailyOracleService.CurrentLocale);
 		RevealPreparedReading(BuildLocalPreparedReading(card, upright), openReadingWindow);
-		Debug.LogWarning($"[TodayOracleUI] 今日牌已用过但缓存缺失，已用本地模板重建: {card.nameZh} ({(upright ? "正位" : "逆位")})");
+		Debug.LogWarning($"[TodayOracleUI] 今日牌已用过但缓存缺失，已用本地模板重建: {card.DisplayName(upright)}");
 		return true;
 	}
 

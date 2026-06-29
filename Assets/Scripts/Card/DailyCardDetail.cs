@@ -12,7 +12,7 @@ public class DailyCardDetail : MonoBehaviour
 
     [Header("牌面基础")]
     public Image cardImage;
-    public TMP_Text cardNameText;       // 格式："今日牌:圣杯六(正位)"
+    public TMP_Text cardNameText;       // 格式："今日牌:圣杯六·正位"
     public TMP_Text descriptionText;    // 牌面描述文本
 
     [Header("牌义解读")]

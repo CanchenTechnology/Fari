@@ -601,7 +601,7 @@ MonoBehaviour:
   m_fontSize: 100
   m_fontSizeBase: 100
   m_fontWeight: 400
-  m_enableAutoSizing: 0
+  m_enableAutoSizing: 1
   m_fontSizeMin: 18
   m_fontSizeMax: 72
   m_fontStyle: 0
@@ -784,24 +784,24 @@ MonoBehaviour:
   backgroundVideoPlayer: {fileID: 3167005549123300223}
   cardFrontParent: {fileID: 7239482235807280393}
   exitBtn: {fileID: 4973032079493641211}
-  selectableCardCount: 12
+  selectableCardCount: 7
   fanWidth: 0
   useResponsiveFanWidth: 1
-  fanViewportWidthMultiplier: 1.42
-  minFanWidth: 1120
+  fanViewportWidthMultiplier: 1
+  minFanWidth: 0
   fanHeightOffset: 4
-  fanRiseOffset: 108
-  fanRotation: 18
+  fanRiseOffset: 0
+  fanRotation: 0
   dealDuration: 0.42
   cardDealGap: 0.045
   selectDuration: 0.48
   flipDuration: 1
   reverseRotateDuration: 1.5
   resultHoldDuration: 3
-  infiniteScroll: 1
-  deckCardScale: 0.42
-  minDeckCardScale: 0.6
-  maxDeckCardScale: 0.8
+  infiniteScroll: 0
+  deckCardScale: 0
+  minDeckCardScale: 0.1
+  maxDeckCardScale: 0.5
   maxDeckCardHeightRatio: 0.52
   maxDeckCardWidthRatio: 0.36
   selectedCardScale: 0.9
@@ -2054,7 +2054,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &5489780272069695229
 RectTransform:
   m_ObjectHideFlags: 0
@@ -2102,7 +2102,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 08e5c712a92c046418de076b1c9855f3, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 2843c8ef5f9cb4bbe93e2e7f4b91b925, type: 3}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1

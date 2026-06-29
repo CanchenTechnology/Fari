@@ -2168,8 +2168,10 @@ public class DialogUI : WindowBase
         sb.AppendLine($"我选择了牌阵「{spreadDef.label}」，请帮我解读：");
         foreach (var lc in lockedCards)
         {
-            var orientLabel = lc.orientation == "upright" ? "正位" : "逆位";
-            sb.AppendLine($"- {lc.position}：{lc.cardName}（{orientLabel}）");
+            string cardName = TarotDeck.FormatDisplayName(
+                string.IsNullOrWhiteSpace(lc.cardName) ? lc.cardId : lc.cardName,
+                lc.orientation);
+            sb.AppendLine($"- {lc.position}：{cardName}");
         }
 
         SendUserMessage(sb.ToString().TrimEnd());
@@ -3215,7 +3217,9 @@ public class DialogUI : WindowBase
             for (int i = 0; i < cards.Count && i < 5; i++)
             {
                 if (i > 0) names.Append("、");
-                names.Append(cards[i].cardName);
+                names.Append(TarotDeck.FormatDisplayName(
+                    string.IsNullOrWhiteSpace(cards[i].cardName) ? cards[i].cardId : cards[i].cardName,
+                    cards[i].orientation));
             }
             triggerText = $"回顾牌阵：{names}";
         }

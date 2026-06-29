@@ -9,7 +9,7 @@ using TMPro;
 
 public class DailyCardBox : MonoBehaviour
 {
-    private const string CardNameColor = "#D58A3F";
+    private const string CardNameColor = "#FE8E54";
 
     public TMP_Text cardTitleText;
     public Image cardImage;
@@ -87,9 +87,7 @@ public class DailyCardBox : MonoBehaviour
 
     private static string BuildDescriptionText(TarotCard card, bool upright, TodayOraclePayload oraclePayload)
     {
-        string cardName = EscapeRichText(string.IsNullOrWhiteSpace(card?.nameZh)
-            ? card?.DisplayName(upright) ?? "这张牌"
-            : card.nameZh);
+        string cardName = EscapeRichText(card?.DisplayName(upright) ?? "这张牌");
         return $"你今天抽到的塔罗牌是 <color={CardNameColor}>{cardName}</color>。你对这张牌有什么疑问吗？";
     }
 

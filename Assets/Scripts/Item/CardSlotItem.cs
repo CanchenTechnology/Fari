@@ -6,9 +6,7 @@ using TMPro;
 
 public class CardSlotItem : MonoBehaviour
 {
-    [Header("卡牌背面")]
-    public Transform cardBack;
-
+    public GameObject cardSlot;
     [Header("卡牌正面")]
     public Transform cardFront;
     public Image cardImage;
@@ -28,8 +26,7 @@ public class CardSlotItem : MonoBehaviour
 
         if (cardFront is RectTransform frontRect)
             return frontRect;
-        if (cardBack is RectTransform backRect)
-            return backRect;
+
         if (cardImage != null)
             return cardImage.rectTransform;
         return transform as RectTransform;
@@ -39,21 +36,11 @@ public class CardSlotItem : MonoBehaviour
     {
         ResolveReferences();
 
-        SetActive(cardBack, true);
+        SetCardSlotVisible(true);
         SetActive(cardFront, false);
 
-        Image backImage = ResolveBackImage();
-        if (backImage != null)
-        {
-            backImage.sprite = backSprite;
-            backImage.enabled = true;
-            backImage.color = backSprite != null ? Color.white : new Color(1f, 1f, 1f, 0.45f);
-            backImage.preserveAspect = true;
-            backImage.rectTransform.localScale = Vector3.one;
-            backImage.rectTransform.localRotation = Quaternion.identity;
-        }
 
-        if (cardBack == null && cardFront == null && cardImage != null)
+        if (cardFront == null && cardImage != null)
         {
             cardImage.sprite = backSprite;
             cardImage.enabled = true;
@@ -70,7 +57,7 @@ public class CardSlotItem : MonoBehaviour
     {
         ResolveReferences();
 
-        SetActive(cardBack, false);
+        SetCardSlotVisible(false);
         SetActive(cardFront, true);
 
         if (cardFront != null)
@@ -96,11 +83,19 @@ public class CardSlotItem : MonoBehaviour
         SetText(title);
     }
 
+    public void SetCardSlotVisible(bool visible)
+    {
+        if (cardSlot == null || cardSlot == gameObject)
+            return;
+
+        if (cardFront != null && cardSlot == cardFront.gameObject)
+            return;
+
+        cardSlot.SetActive(visible);
+    }
+
     public void ResolveReferences()
     {
-        if (cardBack == null)
-            cardBack = FindChildRecursive(transform, "CardBack", "cardBack", "Back", "back");
-
         if (cardFront == null)
             cardFront = FindChildRecursive(transform, "CardFront", "cardFront", "Front", "front", "CardRoot");
 
@@ -118,23 +113,12 @@ public class CardSlotItem : MonoBehaviour
             cardTag = GetComponentInChildren<TMP_Text>(true);
     }
 
-    private Image ResolveBackImage()
-    {
-        if (cardBack == null) return null;
-
-        Image image = cardBack.GetComponent<Image>();
-        if (image != null) return image;
-
-        return cardBack.GetComponentInChildren<Image>(true);
-    }
-
     private Image ResolveFrontImage()
     {
         if (cardFront != null)
         {
             if (cardImage != null
                 && IsChildOf(cardImage.transform, cardFront)
-                && !IsChildOf(cardImage.transform, cardBack)
                 && IsUsableFaceImage(cardImage))
             {
                 return cardImage;
@@ -155,7 +139,7 @@ public class CardSlotItem : MonoBehaviour
             }
         }
 
-        if (cardImage != null && !IsChildOf(cardImage.transform, cardBack))
+        if (cardImage != null)
             return cardImage;
 
         return null;
@@ -175,7 +159,7 @@ public class CardSlotItem : MonoBehaviour
         for (int i = 0; i < images.Length; i++)
         {
             Image image = images[i];
-            if (image == null || IsChildOf(image.transform, cardBack) || !IsUsableFaceImage(image)) continue;
+            if (image == null  || !IsUsableFaceImage(image)) continue;
             return image;
         }
 
