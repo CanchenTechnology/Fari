@@ -2492,8 +2492,6 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     private RectTransform ResolveSlotPoseRect(CardSlotItem slot)
     {
         if (slot == null) return null;
-
-        slot.ResolveReferences();
         return slot.GetPoseRect();
     }
 

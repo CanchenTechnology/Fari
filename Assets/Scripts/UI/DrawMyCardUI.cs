@@ -757,6 +757,8 @@ public class DrawMyCardUI : WindowBase
 			_cardSlotRect.localRotation = Quaternion.Euler(0f, 88f, 0f);
 		});
 		_flowSequence.Append(_cardSlotRect.DORotate(Vector3.zero, halfFlipDuration).SetEase(Ease.OutCubic));
+		if (uiComponent.frontRevealHoldDuration > 0f)
+			_flowSequence.AppendInterval(uiComponent.frontRevealHoldDuration);
 		_flowSequence.OnComplete(() =>
 		{
 			_cardSlotRect.anchoredPosition = originalPosition;

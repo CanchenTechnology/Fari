@@ -535,11 +535,69 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
                         continue;
                     }
 
-                    if (record == null || record.IsCancelled || record.IsCompleted || IsInviteExpired(record)) continue;
+                    if (record == null || record.IsCancelled || record.IsCompleted || record.receiverRevealed || IsInviteExpired(record)) continue;
                     records.Add(record);
                 }
 
                 records.Sort((a, b) => ParseTime(b.createdAt).CompareTo(ParseTime(a.createdAt)));
+                if (records.Count > IncomingLimit)
+                    records.RemoveRange(IncomingLimit, records.Count - IncomingLimit);
+                onComplete?.Invoke(records, true);
+            });
+    }
+
+    public void LoadOutgoingInvitationList(Action<List<RelationshipDivinationRecord>, bool> onComplete)
+    {
+        LoadInvitationList("initiatorUid", onComplete);
+    }
+
+    public void LoadReceivedInvitationList(Action<List<RelationshipDivinationRecord>, bool> onComplete)
+    {
+        LoadInvitationList("receiverUid", onComplete);
+    }
+
+    private void LoadInvitationList(string userField, Action<List<RelationshipDivinationRecord>, bool> onComplete)
+    {
+        if (!IsReady)
+        {
+            onComplete?.Invoke(new List<RelationshipDivinationRecord>(), false);
+            return;
+        }
+
+        string currentUid = GetCurrentUid();
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(new List<RelationshipDivinationRecord>(), false);
+            return;
+        }
+
+        db.Collection(CollectionName)
+            .WhereEqualTo(userField, currentUid)
+            .GetSnapshotAsync()
+            .ContinueWithOnMainThread(task =>
+            {
+                List<RelationshipDivinationRecord> records = new List<RelationshipDivinationRecord>();
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogWarning("[RelationshipDivinationFirestore] 读取关系占卜邀请列表失败: " + task.Exception?.InnerException?.Message);
+                    onComplete?.Invoke(records, false);
+                    return;
+                }
+
+                foreach (DocumentSnapshot doc in task.Result.Documents)
+                {
+                    RelationshipDivinationRecord record = DeserializeRecord(doc);
+                    if (record == null) continue;
+
+                    if (ShouldAutoComplete(record))
+                        PromoteCompletedIfNeeded(record);
+
+                    if (record.IsCancelled) continue;
+                    if (!record.IsCompleted && IsInviteExpired(record)) continue;
+                    records.Add(record);
+                }
+
+                records.Sort((a, b) => GetRecordRelevantTime(b).CompareTo(GetRecordRelevantTime(a)));
                 if (records.Count > IncomingLimit)
                     records.RemoveRange(IncomingLimit, records.Count - IncomingLimit);
                 onComplete?.Invoke(records, true);

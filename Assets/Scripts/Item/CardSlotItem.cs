@@ -22,7 +22,6 @@ public class CardSlotItem : MonoBehaviour
 
     public RectTransform GetPoseRect()
     {
-        ResolveReferences();
 
         if (cardFront is RectTransform frontRect)
             return frontRect;
@@ -34,8 +33,6 @@ public class CardSlotItem : MonoBehaviour
 
     public void ShowBack(Sprite backSprite, string label)
     {
-        ResolveReferences();
-
         SetCardSlotVisible(true);
         SetActive(cardFront, false);
 
@@ -55,8 +52,6 @@ public class CardSlotItem : MonoBehaviour
 
     public void ShowFace(Sprite frontSprite, string title, bool upright)
     {
-        ResolveReferences();
-
         SetCardSlotVisible(false);
         SetActive(cardFront, true);
 
@@ -94,24 +89,7 @@ public class CardSlotItem : MonoBehaviour
         cardSlot.SetActive(visible);
     }
 
-    public void ResolveReferences()
-    {
-        if (cardFront == null)
-            cardFront = FindChildRecursive(transform, "CardFront", "cardFront", "Front", "front", "CardRoot");
 
-        cardImage = ResolveFrontImage();
-        if (cardImage == null)
-        {
-            Transform imageTransform = FindChildRecursive(transform, "CardImage", "cardImage", "CardArt", "cardArt", "Image");
-            cardImage = imageTransform != null ? imageTransform.GetComponent<Image>() : GetComponentInChildren<Image>(true);
-        }
-
-        if (cardTitleText == null && cardFront != null)
-            cardTitleText = cardFront.GetComponentInChildren<TMP_Text>(true);
-
-        if (cardTag == null)
-            cardTag = GetComponentInChildren<TMP_Text>(true);
-    }
 
     private Image ResolveFrontImage()
     {

@@ -72,7 +72,8 @@ public class FriendItem : MonoBehaviour
         UnbindButtons();
         if (isRequestMode)
         {
-            if (moreBtn != null) moreBtn.onClick.AddListener(OnFriendRequestActionButtonClick);
+            if (moreBtn != null) moreBtn.onClick.AddListener(OpenFriendRequestPreview);
+            if (itemButton != null && itemButton != moreBtn) itemButton.onClick.AddListener(OpenFriendRequestPreview);
             return;
         }
 
@@ -83,7 +84,9 @@ public class FriendItem : MonoBehaviour
     private void UnbindButtons()
     {
         if (moreBtn != null) moreBtn.onClick.RemoveListener(OnFriendRequestActionButtonClick);
+        if (moreBtn != null) moreBtn.onClick.RemoveListener(OpenFriendRequestPreview);
         if (moreBtn != null) moreBtn.onClick.RemoveListener(OpenDialogWithAtFriend);
+        if (itemButton != null && itemButton != moreBtn) itemButton.onClick.RemoveListener(OpenFriendRequestPreview);
         if (itemButton != null && itemButton != moreBtn) itemButton.onClick.RemoveListener(OpenFriendProfile);
     }
 
@@ -257,9 +260,9 @@ public class FriendItem : MonoBehaviour
         if (moreBtn != null)
         {
             moreBtn.gameObject.SetActive(true);
-            moreBtn.interactable = !alreadyAdded && !processing;
-            SetButtonImageVisible(moreBtn, !alreadyAdded);
-            SetButtonText(moreBtn, alreadyAdded ? "已添加" : "同意");
+            moreBtn.interactable = true;
+            SetButtonImageVisible(moreBtn, true);
+            SetButtonText(moreBtn, alreadyAdded ? "已添加" : "查看");
         }
 
         if (swipeRevealItem != null)
@@ -338,6 +341,44 @@ public class FriendItem : MonoBehaviour
         }
 
         requestAcceptAction?.Invoke(requestData);
+    }
+
+    private void OpenFriendRequestPreview()
+    {
+        if (!isRequestMode)
+            return;
+
+        if (ShouldIgnoreClickAfterSwipe())
+            return;
+
+        if (requestData == null || string.IsNullOrWhiteSpace(requestData.firebaseUid))
+        {
+            ToastManager.ShowToast("好友请求数据不完整");
+            return;
+        }
+
+        FriendDataManager.FriendData friend = FriendDataManager.Instance != null
+            ? FriendDataManager.Instance.FindRealFriendByFirebaseUid(requestData.firebaseUid)
+            : null;
+        if (friend != null)
+        {
+            FriendPreviewUI.Show(friend);
+            return;
+        }
+
+        FriendPreviewUI.Show(BuildUserSearchResult(requestData));
+    }
+
+    private FirestoreManager.UserSearchResult BuildUserSearchResult(FriendDataManager.InviteData invite)
+    {
+        return new FirestoreManager.UserSearchResult
+        {
+            uid = invite.firebaseUid,
+            displayName = invite.name,
+            email = invite.email,
+            photoUrl = invite.photoUrl,
+            isSelf = false
+        };
     }
 
     private void BeginRebind()

@@ -97,19 +97,21 @@ public class DrawMyCardUIComponent:MonoBehaviour
 
 	[Header("选牌与翻牌")]
 	[Tooltip("选中牌飞到 cardSlot 并放大的时长。")]
-	public float selectDuration = 0.72f;
+	public float selectDuration = 0.9f;
 	[Tooltip("选中后其他牌淡出的时长。")]
-	public float otherCardFadeDuration = 0.24f;
+	public float otherCardFadeDuration = 0.32f;
 	[Tooltip("OpenCardPanel 淡入淡出的时长。")]
-	public float openPanelFadeDuration = 0.16f;
+	public float openPanelFadeDuration = 0.22f;
 	[Tooltip("点击打开后，翻牌前牌背抖动的时长。")]
-	public float shakeDuration = 0.48f;
+	public float shakeDuration = 0.68f;
 	[Tooltip("翻牌前牌背左右抖动的位移强度。")]
 	public float shakePosition = 12f;
 	[Tooltip("翻牌前牌背旋转抖动的角度。")]
 	public float shakeRotation = 6f;
 	[Tooltip("牌背翻到正面的总时长。")]
-	public float flipDuration = 0.66f;
+	public float flipDuration = 0.92f;
+	[Tooltip("牌正面完整显示后，结束动画前额外停留的时长。")]
+	public float frontRevealHoldDuration = 0.65f;
 
 
 

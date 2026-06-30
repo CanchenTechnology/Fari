@@ -768,8 +768,7 @@ public class FriendUI : WindowBase, IPointerClickHandler
 	public void OnAlreadyReceiveInviteButtonClick()
 	{
 		CloseOpenFriendSwipe();
-		if (uiComponent != null)
-			uiComponent.StartCoroutine(OpenLatestIncomingRelationshipInviteRoutine());
+		UIModule.Instance.PopUpWindow<MyInviationUI>();
 	}
 
 	public void OnNotionButtonClick()
