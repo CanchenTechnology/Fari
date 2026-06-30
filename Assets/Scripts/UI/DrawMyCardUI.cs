@@ -262,7 +262,7 @@ public class DrawMyCardUI : WindowBase
 
 		uiComponent.idleVideoPlayer = transform.Find("video")?.GetComponent<VideoPlayer>();
 		if (uiComponent.idleVideoPlayer == null)
-			uiComponent.idleVideoPlayer = GetComponentInChildren<VideoPlayer>(true);
+			uiComponent.idleVideoPlayer = gameObject.GetComponentInChildren<VideoPlayer>(true);
 	}
 
 	private void ConfigureIdleVideoPlayer()
