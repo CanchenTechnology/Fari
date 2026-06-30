@@ -21,7 +21,7 @@ public class BackendMembershipClient : MonoSingleton<BackendMembershipClient>
 
     public void GetMembershipStatus(Action<MembershipStatusResponse> onSuccess, Action<string> onError = null, bool forceRefresh = false)
     {
-        string currentUid = FirebaseAuth.DefaultInstance?.CurrentUser?.UserId ?? string.Empty;
+        string currentUid = GetCurrentAuthUid();
         if (string.IsNullOrEmpty(currentUid))
         {
             _cachedStatus = CreateFreeStatus(string.Empty);
@@ -46,7 +46,7 @@ public class BackendMembershipClient : MonoSingleton<BackendMembershipClient>
 
     public MembershipStatusResponse GetCachedOrFreeStatus()
     {
-        string currentUid = FirebaseAuth.DefaultInstance?.CurrentUser?.UserId ?? string.Empty;
+        string currentUid = GetCurrentAuthUid();
         if (_cachedStatus == null)
             LoadPersistedCache(currentUid);
 
@@ -71,7 +71,7 @@ public class BackendMembershipClient : MonoSingleton<BackendMembershipClient>
     private IEnumerator GetMembershipStatusRoutine(Action<MembershipStatusResponse> onSuccess, Action<string> onError)
     {
         string idToken = null;
-        string requestUid = FirebaseAuth.DefaultInstance?.CurrentUser?.UserId ?? string.Empty;
+        string requestUid = GetCurrentAuthUid();
         yield return GetFirebaseIdToken(
             token => idToken = token,
             error => HandleError(requestUid, error, onSuccess, onError));
@@ -196,6 +196,15 @@ public class BackendMembershipClient : MonoSingleton<BackendMembershipClient>
 
     private IEnumerator GetFirebaseIdToken(Action<string> onToken, Action<string> onError)
     {
+#if UNITY_EDITOR
+        if (FirebaseAuthManager.Instance != null
+            && FirebaseAuthManager.Instance.TryGetEditorRestIdToken(out string editorRestToken))
+        {
+            onToken?.Invoke(editorRestToken);
+            yield break;
+        }
+#endif
+
         var user = FirebaseAuth.DefaultInstance?.CurrentUser;
         if (user == null)
         {
@@ -213,6 +222,13 @@ public class BackendMembershipClient : MonoSingleton<BackendMembershipClient>
         }
 
         onToken?.Invoke(task.Result);
+    }
+
+    private static string GetCurrentAuthUid()
+    {
+        if (FirebaseAuthManager.Instance != null)
+            return FirebaseAuthManager.Instance.CurrentUserId;
+        return FirebaseAuth.DefaultInstance?.CurrentUser?.UserId ?? string.Empty;
     }
 }
 

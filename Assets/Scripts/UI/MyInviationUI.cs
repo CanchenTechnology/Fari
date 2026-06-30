@@ -29,6 +29,8 @@ public class MyInviationUI : WindowBase
 	private const string InvitationItemPrefabName = "UserInvitationItem";
 	private static readonly Color ActiveTabTextColor = new Color32(224, 133, 54, 255);
 	private static readonly Color InactiveTabTextColor = new Color32(226, 226, 230, 255);
+	private static readonly Color ActiveTabBackgroundColor = new Color32(58, 41, 32, 255);
+	private static readonly Color InactiveTabBackgroundColor = new Color32(35, 36, 41, 255);
 	private static readonly Color OnlineTextColor = new Color32(63, 213, 138, 255);
 	private static readonly Color OfflineTextColor = new Color32(150, 145, 154, 255);
 	private static readonly Color AcceptedTextColor = new Color32(63, 213, 138, 255);
@@ -54,6 +56,7 @@ public class MyInviationUI : WindowBase
 		}
 		uiComponent.InitComponent(this);
 		this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
+		PrepareTabButtons();
 		ResolveInvitationListView();
 		InitInvitationListView();
 		base.OnAwake();
@@ -62,6 +65,7 @@ public class MyInviationUI : WindowBase
 	public override void OnShow()
 	{
 		base.OnShow();
+		PrepareTabButtons();
 		SelectTab(InvitationTab.Received, true);
 	}
 	// 物体隐藏时执行
@@ -81,7 +85,10 @@ public class MyInviationUI : WindowBase
 	private void SelectTab(InvitationTab tab, bool forceReload = false)
 	{
 		if (!forceReload && currentTab == tab)
+		{
+			ApplyTabVisuals();
 			return;
+		}
 
 		currentTab = tab;
 		ApplyTabVisuals();
@@ -90,15 +97,27 @@ public class MyInviationUI : WindowBase
 
 	private void ApplyTabVisuals()
 	{
-		ApplyTabText(uiComponent?.initiateButton, currentTab == InvitationTab.Initiate);
-		ApplyTabText(uiComponent?.receivedButton, currentTab == InvitationTab.Received);
+		ApplyTabButton(uiComponent?.initiateButton, currentTab == InvitationTab.Initiate);
+		ApplyTabButton(uiComponent?.receivedButton, currentTab == InvitationTab.Received);
+		BringTabButtonsToFront();
 	}
 
-	private void ApplyTabText(Button button, bool active)
+	private void ApplyTabButton(Button button, bool active)
 	{
+		if (button == null) return;
+
 		TMP_Text text = button != null ? button.GetComponentInChildren<TMP_Text>(true) : null;
 		if (text != null)
+		{
 			text.color = active ? ActiveTabTextColor : InactiveTabTextColor;
+			text.fontStyle = active ? FontStyles.Bold : FontStyles.Normal;
+		}
+
+		Image background = button.targetGraphic as Image;
+		if (background == null)
+			background = button.GetComponent<Image>();
+		if (background != null)
+			background.color = active ? ActiveTabBackgroundColor : InactiveTabBackgroundColor;
 	}
 
 	private void LoadCurrentTab()
@@ -107,9 +126,37 @@ public class MyInviationUI : WindowBase
 		int version = loadVersion;
 		currentRecords.Clear();
 		RefreshInvitationList(true);
-		SetEmptyText("加载中...");
+		SetEmptyText(currentTab == InvitationTab.Initiate ? "正在加载发起的邀请..." : "正在加载收到的邀请...");
 		if (uiComponent != null)
 			uiComponent.StartCoroutine(LoadCurrentTabRoutine(version));
+	}
+
+	private void PrepareTabButtons()
+	{
+		if (uiComponent?.emptyText != null)
+			uiComponent.emptyText.raycastTarget = false;
+
+		BringTabButtonsToFront();
+		ApplyTabVisuals();
+	}
+
+	private void BringTabButtonsToFront()
+	{
+		Transform tabRoot = GetTabRoot();
+		if (tabRoot != null)
+			tabRoot.SetAsLastSibling();
+	}
+
+	private Transform GetTabRoot()
+	{
+		if (uiComponent == null) return null;
+
+		Transform initiateParent = uiComponent.initiateButton != null ? uiComponent.initiateButton.transform.parent : null;
+		Transform receivedParent = uiComponent.receivedButton != null ? uiComponent.receivedButton.transform.parent : null;
+		if (initiateParent != null && initiateParent == receivedParent)
+			return initiateParent;
+
+		return initiateParent != null ? initiateParent : receivedParent;
 	}
 
 	private IEnumerator LoadCurrentTabRoutine(int version)
@@ -444,8 +491,10 @@ public class MyInviationUI : WindowBase
 	private void SetEmptyText(string value)
 	{
 		if (uiComponent?.emptyText == null) return;
+		uiComponent.emptyText.raycastTarget = false;
 		uiComponent.emptyText.gameObject.SetActive(!string.IsNullOrWhiteSpace(value));
 		uiComponent.emptyText.text = value ?? "";
+		BringTabButtonsToFront();
 	}
 	#endregion
 
@@ -457,12 +506,12 @@ public class MyInviationUI : WindowBase
 
 	public void OnInitiateButtonClick()
 	{
-		SelectTab(InvitationTab.Initiate);
+		SelectTab(InvitationTab.Initiate, true);
 	}
 
 	public void OnReceivedButtonClick()
 	{
-		SelectTab(InvitationTab.Received);
+		SelectTab(InvitationTab.Received, true);
 	}
 	#endregion
 }

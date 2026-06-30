@@ -7,6 +7,7 @@ using UnityEngine.Networking;
 using Firebase;
 using Firebase.Auth;
 using Firebase.Extensions;
+using Newtonsoft.Json.Linq;
 using XFGameFrameWork;
 /// <summary>
 /// 第三方登录提供商类型
@@ -67,11 +68,28 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
     /// <summary>当前登录的 Firebase 用户</summary>
     public FirebaseUser CurrentUser => FirebaseAuth.DefaultInstance.CurrentUser;
 
+    public string CurrentUserId
+    {
+        get
+        {
+            FirebaseUser user = CurrentUser;
+            if (user != null) return user.UserId;
+#if UNITY_EDITOR
+            if (!string.IsNullOrEmpty(_editorRestUid)) return _editorRestUid;
+#endif
+            return string.Empty;
+        }
+    }
+
     /// <summary>当前登录的提供商类型</summary>
     public AuthProvider CurrentAuthProvider { get; private set; } = AuthProvider.Anonymous;
 
     /// <summary>是否已登录</summary>
-    public bool IsLoggedIn => CurrentUser != null;
+    public bool IsLoggedIn => CurrentUser != null
+#if UNITY_EDITOR
+        || !string.IsNullOrEmpty(_editorRestIdToken)
+#endif
+        ;
 
     #endregion
 
@@ -82,6 +100,13 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
     private FirebaseAuth _auth;
     private DependencyStatus _dependencyStatus = DependencyStatus.UnavailableDisabled;
     private bool _isDeletingAccount;
+#if UNITY_EDITOR
+    private const string FirebaseWebApiKeyFallback = "AIzaSyD8wysQincWAGA0Ee7-BffRrf_PA-hlUEs";
+    private string _editorRestIdToken = string.Empty;
+    private string _editorRestRefreshToken = string.Empty;
+    private string _editorRestUid = string.Empty;
+    private string _editorRestEmail = string.Empty;
+#endif
 
     #endregion
 
@@ -345,8 +370,14 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
             if (task.IsFaulted || task.IsCanceled)
             {
                 string error = BuildFriendlyAuthError(task.Exception, "邮箱登录失败");
+#if UNITY_EDITOR
+                Debug.LogWarning($"[FirebaseAuthManager] Firebase SDK email login failed in Editor: {error}");
+                Debug.LogWarning($"[FirebaseAuthManager] Firebase SDK email login failed in Editor, falling back to REST: {error}");
+                StartCoroutine(SignInWithEmailRestFallback(email, password, error));
+#else
                 Debug.LogError($"[FirebaseAuthManager] 邮箱登录失败: {error}");
                 OnLoginFailed?.Invoke(AuthProvider.Email, error);
+#endif
                 return;
             }
 
@@ -619,6 +650,308 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
         AuthProvider.Anonymous => "firebase",
         _ => "unknown"
     };
+
+    public bool TryGetEditorRestIdToken(out string idToken)
+    {
+        idToken = _editorRestIdToken;
+        return !string.IsNullOrEmpty(idToken);
+    }
+
+    public bool TryGetEditorRestAuth(out string uid, out string idToken)
+    {
+        uid = _editorRestUid;
+        idToken = _editorRestIdToken;
+        return !string.IsNullOrEmpty(uid) && !string.IsNullOrEmpty(idToken);
+    }
+
+    private IEnumerator SignInWithEmailRestFallback(string email, string password, string sdkError)
+    {
+        IsLoggingIn = true;
+
+        string apiKey = GetFirebaseWebApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            IsLoggingIn = false;
+            string error = string.IsNullOrWhiteSpace(sdkError)
+                ? "Firebase Web API Key is missing for Editor REST login."
+                : sdkError;
+            OnLoginFailed?.Invoke(AuthProvider.Email, error);
+            yield break;
+        }
+
+        string url = $"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={apiKey}";
+        string body = "{\"email\":\"" + EscapeJsonString(email)
+            + "\",\"password\":\"" + EscapeJsonString(password)
+            + "\",\"returnSecureToken\":true}";
+
+        using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
+        {
+            request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+
+            yield return request.SendWebRequest();
+
+#if UNITY_2020_1_OR_NEWER
+            bool failed = request.result == UnityWebRequest.Result.ConnectionError
+                || request.result == UnityWebRequest.Result.ProtocolError;
+#else
+            bool failed = request.isNetworkError || request.isHttpError;
+#endif
+            if (failed)
+            {
+                IsLoggingIn = false;
+                string error = ParseRestAuthError(request.downloadHandler.text);
+                if (string.IsNullOrWhiteSpace(error)) error = request.error;
+                OnLoginFailed?.Invoke(AuthProvider.Email, error);
+                yield break;
+            }
+
+            EditorRestEmailSignInResponse response = null;
+            try
+            {
+                response = JsonUtility.FromJson<EditorRestEmailSignInResponse>(request.downloadHandler.text);
+            }
+            catch (Exception e)
+            {
+                IsLoggingIn = false;
+                OnLoginFailed?.Invoke(AuthProvider.Email, "Editor REST login parse failed: " + e.Message);
+                yield break;
+            }
+
+            if (response == null
+                || string.IsNullOrWhiteSpace(response.idToken)
+                || string.IsNullOrWhiteSpace(response.localId))
+            {
+                IsLoggingIn = false;
+                OnLoginFailed?.Invoke(AuthProvider.Email, "Editor REST login returned no Firebase token.");
+                yield break;
+            }
+
+            _editorRestIdToken = response.idToken;
+            _editorRestRefreshToken = response.refreshToken ?? string.Empty;
+            _editorRestUid = response.localId;
+            _editorRestEmail = string.IsNullOrWhiteSpace(response.email) ? email : response.email;
+            CurrentAuthProvider = AuthProvider.Email;
+            IsLoggingIn = false;
+
+            UserDataManager.Instance.SyncFromFirebaseUser(new UserInfo
+            {
+                uid = _editorRestUid,
+                displayName = string.IsNullOrWhiteSpace(response.displayName) ? _editorRestEmail : response.displayName,
+                email = _editorRestEmail,
+                photoUrl = string.Empty,
+                providerId = "password",
+                isAnonymous = false,
+            }, AuthProvider.Email);
+            UserDataManager.Instance.SetEmailVerified(true);
+            UserDataManager.Instance.SaveData();
+            yield return SyncEditorRestUserProfileFromFirestore(_editorRestUid, _editorRestIdToken);
+
+            Debug.Log($"[FirebaseAuthManager] Editor REST email login success, UserId: {_editorRestUid}");
+            OnLoginSuccess?.Invoke(AuthProvider.Email, null);
+            FriendOnlinePresenceManager.Instance.StartPresence();
+            AppReadinessDiagnostics.LogCurrentState("Editor REST email login success");
+        }
+    }
+
+    private void ClearEditorRestAuth()
+    {
+        _editorRestIdToken = string.Empty;
+        _editorRestRefreshToken = string.Empty;
+        _editorRestUid = string.Empty;
+        _editorRestEmail = string.Empty;
+    }
+
+    private IEnumerator SyncEditorRestUserProfileFromFirestore(string uid, string idToken)
+    {
+        if (string.IsNullOrEmpty(uid) || string.IsNullOrEmpty(idToken))
+            yield break;
+
+        string url = $"https://firestore.googleapis.com/v1/projects/fari-app-b2fd2/databases/(default)/documents/users/{Uri.EscapeDataString(uid)}";
+        using (UnityWebRequest request = UnityWebRequest.Get(url))
+        {
+            request.SetRequestHeader("Authorization", "Bearer " + idToken);
+            yield return request.SendWebRequest();
+
+#if UNITY_2020_1_OR_NEWER
+            bool failed = request.result == UnityWebRequest.Result.ConnectionError
+                || request.result == UnityWebRequest.Result.ProtocolError;
+#else
+            bool failed = request.isNetworkError || request.isHttpError;
+#endif
+            if (failed)
+            {
+                if (request.responseCode != 404)
+                {
+                    string response = request.downloadHandler != null ? request.downloadHandler.text : string.Empty;
+                    Debug.LogWarning($"[FirebaseAuthManager] Editor REST Firestore profile sync failed: {request.error} {response}");
+                }
+                yield break;
+            }
+
+            try
+            {
+                JObject document = JObject.Parse(request.downloadHandler.text);
+                ApplyEditorRestUserProfile(document["fields"] as JObject);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[FirebaseAuthManager] Editor REST Firestore profile parse failed: " + e.Message);
+            }
+        }
+    }
+
+    private static void ApplyEditorRestUserProfile(JObject fields)
+    {
+        if (fields == null || UserDataManager.Instance == null) return;
+
+        UserDataManager userData = UserDataManager.Instance;
+        string displayName = GetFirestoreRestString(fields, "displayName", string.Empty);
+        if (!string.IsNullOrWhiteSpace(displayName))
+            userData.SetUserName(displayName);
+
+        string email = GetFirestoreRestString(fields, "email", string.Empty);
+        if (!string.IsNullOrWhiteSpace(email))
+            userData.SetEmail(email);
+
+        if (HasFirestoreRestField(fields, "birthday"))
+            userData.SetBirthday(GetFirestoreRestString(fields, "birthday", string.Empty));
+        if (HasFirestoreRestField(fields, "birthTime"))
+            userData.SetBirthTime(GetFirestoreRestString(fields, "birthTime", string.Empty));
+        if (HasFirestoreRestField(fields, "city"))
+            userData.SetCity(GetFirestoreRestString(fields, "city", string.Empty));
+        if (HasFirestoreRestField(fields, "bio"))
+            userData.SetProfileBio(GetFirestoreRestString(fields, "bio", string.Empty));
+        if (HasFirestoreRestField(fields, "photoUrl"))
+            userData.SetPhotoUrl(GetFirestoreRestString(fields, "photoUrl", string.Empty));
+        if (HasFirestoreRestField(fields, "avatarStoragePath"))
+            userData.SetAvatarStoragePath(GetFirestoreRestString(fields, "avatarStoragePath", string.Empty));
+        if (TryGetFirestoreRestInt(fields, "avatarType", out int avatarType)
+            && Enum.IsDefined(typeof(AvatarType), avatarType))
+            userData.SetAvatarType((AvatarType)avatarType);
+        if (TryGetFirestoreRestBool(fields, "isEmailVerified", out bool isEmailVerified))
+            userData.SetEmailVerified(isEmailVerified);
+
+        userData.SaveData();
+        if (GameManager.Instance != null)
+            GameManager.Instance.isRegister = userData.IsProfileComplete();
+
+        Debug.Log($"[FirebaseAuthManager] Editor REST Firestore profile synced: uid={userData.FirebaseUid}, name={userData.UserName}, complete={userData.IsProfileComplete()}");
+    }
+
+    private static bool HasFirestoreRestField(JObject fields, string key)
+    {
+        return fields != null && fields[key] != null;
+    }
+
+    private static string GetFirestoreRestString(JObject fields, string key, string fallback)
+    {
+        JToken field = fields?[key];
+        if (field == null) return fallback;
+        return field["stringValue"]?.ToString()
+            ?? field["integerValue"]?.ToString()
+            ?? field["doubleValue"]?.ToString()
+            ?? field["booleanValue"]?.ToString()
+            ?? fallback;
+    }
+
+    private static bool TryGetFirestoreRestInt(JObject fields, string key, out int value)
+    {
+        value = 0;
+        string raw = GetFirestoreRestString(fields, key, string.Empty);
+        return int.TryParse(raw, out value);
+    }
+
+    private static bool TryGetFirestoreRestBool(JObject fields, string key, out bool value)
+    {
+        value = false;
+        JToken field = fields?[key];
+        if (field == null) return false;
+        JToken boolToken = field["booleanValue"];
+        if (boolToken != null)
+        {
+            value = boolToken.Value<bool>();
+            return true;
+        }
+
+        string raw = GetFirestoreRestString(fields, key, string.Empty);
+        return bool.TryParse(raw, out value);
+    }
+
+    private static string GetFirebaseWebApiKey()
+    {
+        try
+        {
+            object options = FirebaseApp.DefaultInstance?.Options;
+            object apiKey = options?.GetType().GetProperty("ApiKey")?.GetValue(options, null);
+            string value = apiKey?.ToString() ?? string.Empty;
+            return string.IsNullOrWhiteSpace(value) ? FirebaseWebApiKeyFallback : value;
+        }
+        catch
+        {
+            return FirebaseWebApiKeyFallback;
+        }
+    }
+
+    private static string ParseRestAuthError(string responseText)
+    {
+        if (string.IsNullOrWhiteSpace(responseText)) return string.Empty;
+        try
+        {
+            EditorRestAuthErrorResponse response = JsonUtility.FromJson<EditorRestAuthErrorResponse>(responseText);
+            string message = response?.error?.message ?? string.Empty;
+            if (message.Contains("INVALID_LOGIN_CREDENTIALS")
+                || message.Contains("INVALID_PASSWORD")
+                || message.Contains("EMAIL_NOT_FOUND"))
+                return "邮箱或密码不正确。";
+            if (message.Contains("TOO_MANY_ATTEMPTS_TRY_LATER"))
+                return "请求太频繁，请稍后再试。";
+            if (message.Contains("USER_DISABLED"))
+                return "这个 Firebase 用户已被禁用。";
+            return string.IsNullOrWhiteSpace(message) ? responseText : message;
+        }
+        catch
+        {
+            return responseText;
+        }
+    }
+
+    private static string EscapeJsonString(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+        return value
+            .Replace("\\", "\\\\")
+            .Replace("\"", "\\\"")
+            .Replace("\n", "\\n")
+            .Replace("\r", "\\r")
+            .Replace("\t", "\\t");
+    }
+
+    [Serializable]
+    private class EditorRestEmailSignInResponse
+    {
+        public string idToken = string.Empty;
+        public string email = string.Empty;
+        public string refreshToken = string.Empty;
+        public string expiresIn = string.Empty;
+        public string localId = string.Empty;
+        public string displayName = string.Empty;
+        public bool registered = false;
+    }
+
+    [Serializable]
+    private class EditorRestAuthErrorResponse
+    {
+        public EditorRestAuthError error = null;
+    }
+
+    [Serializable]
+    private class EditorRestAuthError
+    {
+        public int code = 0;
+        public string message = string.Empty;
+    }
 #endif
 
     #endregion
@@ -630,9 +963,11 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
     /// </summary>
     public void SignOut()
     {
-        if (_auth == null) return;
-
         FriendOnlinePresenceManager.Instance.StopPresence(true);
+#if UNITY_EDITOR
+        ClearEditorRestAuth();
+#endif
+        if (_auth == null) return;
 
         // 登出对应的第三方 SDK
         switch (CurrentAuthProvider)

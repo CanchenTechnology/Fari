@@ -125,6 +125,7 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
 
     // 自增ID
     private int nextId = 1;
+    private string loadedStorageKey = string.Empty;
 
     protected override void Awake()
     {
@@ -456,6 +457,27 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         bool removed = realFriendList.RemoveAll(IsLocalDebugRealFriend) > 0;
         if (removed) SaveAndNotify();
         return removed;
+    }
+
+    public void BeginCloudRealFriendRefresh()
+    {
+        if (realFriendList.Count == 0) return;
+        realFriendList.Clear();
+        SaveAndNotify();
+    }
+
+    public void BeginCloudInviteRefresh()
+    {
+        if (inviteList.Count == 0) return;
+        inviteList.Clear();
+        SaveAndNotify();
+    }
+
+    public void BeginCloudVirtualFriendRefresh()
+    {
+        if (virtualFriendList.Count == 0) return;
+        virtualFriendList.Clear();
+        SaveAndNotify();
     }
 
     private bool IsLocalDebugRealFriend(FriendData friend)
@@ -808,6 +830,9 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
     /// </summary>
     public void SaveLocalData()
     {
+        string storageKey = GetCurrentStorageKey();
+        loadedStorageKey = storageKey;
+
         FriendSaveData saveData = new FriendSaveData
         {
             nextId = nextId,
@@ -817,7 +842,7 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
             blockedUserIds = new List<string>(blockedUserIdList)
         };
 
-        PlayerPrefs.SetString(FRIENDS_STORAGE_KEY, JsonUtility.ToJson(saveData));
+        PlayerPrefs.SetString(storageKey, JsonUtility.ToJson(saveData));
         PlayerPrefs.Save();
     }
 
@@ -826,9 +851,26 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
     /// </summary>
     public void LoadLocalData()
     {
-        string json = PlayerPrefs.GetString(FRIENDS_STORAGE_KEY, string.Empty);
+        LoadLocalDataForKey(GetCurrentStorageKey(), false);
+    }
+
+    public void ReloadLocalDataForCurrentUser()
+    {
+        string storageKey = GetCurrentStorageKey();
+        if (storageKey == loadedStorageKey) return;
+
+        LoadLocalDataForKey(storageKey, true);
+        DataChanged?.Invoke();
+    }
+
+    private void LoadLocalDataForKey(string storageKey, bool clearWhenMissing)
+    {
+        loadedStorageKey = storageKey;
+        string json = PlayerPrefs.GetString(storageKey, string.Empty);
         if (string.IsNullOrWhiteSpace(json))
         {
+            if (clearWhenMissing)
+                ClearInMemoryData();
             return;
         }
 
@@ -846,12 +888,23 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         catch (Exception ex)
         {
             Debug.LogWarning($"[FriendDataManager] 本地好友数据加载失败，将继续使用空数据。{ex.Message}");
-            realFriendList.Clear();
-            virtualFriendList.Clear();
-            inviteList.Clear();
-            blockedUserIdList.Clear();
-            nextId = 1;
+            ClearInMemoryData();
         }
+    }
+
+    private void ClearInMemoryData()
+    {
+        realFriendList.Clear();
+        virtualFriendList.Clear();
+        inviteList.Clear();
+        blockedUserIdList.Clear();
+        nextId = 1;
+    }
+
+    private string GetCurrentStorageKey()
+    {
+        string uid = UserDataManager.Instance != null ? UserDataManager.Instance.FirebaseUid : string.Empty;
+        return string.IsNullOrWhiteSpace(uid) ? FRIENDS_STORAGE_KEY : $"{FRIENDS_STORAGE_KEY}_{uid}";
     }
 
     public FriendData FindRealFriendByHandleOrName(string handle, string name)

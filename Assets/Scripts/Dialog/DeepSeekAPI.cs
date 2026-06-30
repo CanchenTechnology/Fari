@@ -820,6 +820,15 @@ public class DeepSeekAPI : MonoBehaviour
 
     private IEnumerator GetFirebaseIdToken(Action<string> onToken, Action<string> onError)
     {
+#if UNITY_EDITOR
+        if (FirebaseAuthManager.Instance != null
+            && FirebaseAuthManager.Instance.TryGetEditorRestIdToken(out string editorRestToken))
+        {
+            onToken?.Invoke(editorRestToken);
+            yield break;
+        }
+#endif
+
         FirebaseUser user = null;
         string editorSignInError = null;
 

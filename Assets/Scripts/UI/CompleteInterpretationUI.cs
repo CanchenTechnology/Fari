@@ -167,7 +167,6 @@ public class CompleteInterpretationUI : WindowBase
             if (sprite != null)
             {
                 uiComponent.CardImageImage.sprite = sprite;
-                uiComponent.CardImageImage.preserveAspect = true;
                 // 逆位旋转 180°
                 uiComponent.CardImageImage.rectTransform.localRotation = _currentUpright
                     ? Quaternion.identity

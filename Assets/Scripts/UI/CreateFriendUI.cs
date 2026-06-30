@@ -532,7 +532,6 @@ public class CreateFriendUI : WindowBase
 			return;
 
 		image.sprite = sprite;
-		image.preserveAspect = true;
 	}
 
 	private void ShowChooseHeadPanel()

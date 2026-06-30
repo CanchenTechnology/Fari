@@ -59,7 +59,7 @@ public class MyUI : WindowBase
 	private void SetBaseInfo(int requestId)
 	{
 		var userData = UserDataManager.Instance;
-		string userName = string.IsNullOrWhiteSpace(userData.UserName)
+		string userName = userData == null || string.IsNullOrWhiteSpace(userData.UserName)
 			? "小夜"
 			: userData.UserName;
 
@@ -72,14 +72,16 @@ public class MyUI : WindowBase
 			ApplyMembershipSubtitle();
 		}
 
-		if (!string.IsNullOrEmpty(userData.PhotoUrl) && GameManager.Instance != null)
+		FriendAvatarImageUtility.ApplyAvatar(uiComponent?.AvatarImage, null, FriendAvatarImageUtility.DefaultAvatarSprite);
+
+		if (userData != null && !string.IsNullOrEmpty(userData.PhotoUrl) && GameManager.Instance != null)
 		{
 			GameManager.Instance.StartCoroutine(FriendAvatarImageUtility.LoadCurrentUserAvatarCoroutine(
 					(sprite, _) =>
 					{
 						if (requestId != _dashboardRequestId) return;
-						if (sprite != null && uiComponent.AvatarImage != null)
-							uiComponent.AvatarImage.sprite = sprite;
+						if (sprite != null)
+							FriendAvatarImageUtility.ApplyAvatar(uiComponent?.AvatarImage, sprite, FriendAvatarImageUtility.DefaultAvatarSprite);
 					}
 			));
 		}

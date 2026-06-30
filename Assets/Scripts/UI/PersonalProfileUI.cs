@@ -117,7 +117,6 @@ public class PersonalProfileUI : WindowBase
 	{
 		if (target == null || sprite == null) return;
 		target.sprite = sprite;
-		target.preserveAspect = true;
 		target.color = Color.white;
 	}
 
@@ -132,7 +131,6 @@ public class PersonalProfileUI : WindowBase
 		if (image == null) return;
 		if (image.sprite != null)
 		{
-			image.preserveAspect = true;
 			return;
 		}
 

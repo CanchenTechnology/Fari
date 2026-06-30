@@ -214,7 +214,6 @@ public class TwoPersonDivinationResultUI : WindowBase
 		if (sprite != null)
 		{
 			target.sprite = sprite;
-			target.preserveAspect = true;
 		}
 		target.rectTransform.localRotation = card != null && !card.IsUpright
 			? Quaternion.Euler(0f, 0f, 180f)
@@ -238,7 +237,6 @@ public class TwoPersonDivinationResultUI : WindowBase
 		if (item.iconImage != null)
 		{
 			item.iconImage.enabled = sprite != null;
-			item.iconImage.preserveAspect = true;
 			item.iconImage.rectTransform.localRotation = card.IsUpright
 				? Quaternion.identity
 				: Quaternion.Euler(0f, 0f, 180f);

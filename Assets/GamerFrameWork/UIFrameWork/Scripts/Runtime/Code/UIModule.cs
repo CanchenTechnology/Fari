@@ -183,6 +183,7 @@ namespace GamerFrameWork.UIFrameWork
                 RegisterWindow(windowBase);
                 windowBase.SetVisible(true);
                 windowBase.OnShow();
+                UISoftAlphaMaskUV.EnsureUnder(windowBase.transform);
                 RectTransform rectTrans = nWnd.GetComponent<RectTransform>();
                 rectTrans.anchorMax = Vector2.one;
                 rectTrans.offsetMax = Vector2.zero;
@@ -216,6 +217,7 @@ namespace GamerFrameWork.UIFrameWork
 
                     RegisterWindow(window);
                     window.OnShow();
+                    UISoftAlphaMaskUV.EnsureUnder(window.transform);
                 }
             }
             else

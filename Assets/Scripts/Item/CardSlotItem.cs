@@ -42,7 +42,6 @@ public class CardSlotItem : MonoBehaviour
             cardImage.sprite = backSprite;
             cardImage.enabled = true;
             cardImage.color = backSprite != null ? Color.white : new Color(1f, 1f, 1f, 0.45f);
-            cardImage.preserveAspect = true;
             cardImage.rectTransform.localScale = Vector3.one;
             cardImage.rectTransform.localRotation = Quaternion.identity;
         }
@@ -68,7 +67,6 @@ public class CardSlotItem : MonoBehaviour
             frontImage.enabled = true;
             frontImage.gameObject.SetActive(true);
             frontImage.color = Color.white;
-            frontImage.preserveAspect = true;
             frontImage.rectTransform.localScale = Vector3.one;
             frontImage.rectTransform.localRotation = upright
                 ? Quaternion.identity

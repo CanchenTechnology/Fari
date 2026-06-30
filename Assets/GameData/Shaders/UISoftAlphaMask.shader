@@ -63,6 +63,7 @@ Shader "GamerFrameWork/UI/SoftAlphaMask"
                 float4 vertex : POSITION;
                 fixed4 color : COLOR;
                 float2 texcoord : TEXCOORD0;
+                float2 maskTexcoord : TEXCOORD1;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
@@ -92,7 +93,7 @@ Shader "GamerFrameWork/UI/SoftAlphaMask"
                 o.worldPosition = v.vertex;
                 o.vertex = UnityObjectToClipPos(o.worldPosition);
                 o.texcoord = v.texcoord;
-                o.maskTexcoord = TRANSFORM_TEX(v.texcoord, _MaskTex);
+                o.maskTexcoord = TRANSFORM_TEX(v.maskTexcoord, _MaskTex);
                 o.color = v.color * _Color;
                 return o;
             }

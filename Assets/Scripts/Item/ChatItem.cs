@@ -213,6 +213,8 @@ public class ChatItem : MonoBehaviour
 
     private void SetUserAvatarFromCurrentConfig(int requestVersion)
     {
+        FriendAvatarImageUtility.ApplyAvatar(headImage, null, FriendAvatarImageUtility.DefaultAvatarSprite);
+
         var iconName = DialogSystem.Instance != null ? DialogSystem.Instance.UserHeadIcon : "";
         if (!string.IsNullOrEmpty(iconName))
             SetAvatarByResourceName(iconName, false);
@@ -223,9 +225,7 @@ public class ChatItem : MonoBehaviour
                 if (requestVersion != avatarRequestVersion || sprite == null || headImage == null)
                     return;
 
-                headImage.sprite = sprite;
-                headImage.preserveAspect = true;
-                headImage.enabled = true;
+                FriendAvatarImageUtility.ApplyAvatar(headImage, sprite, FriendAvatarImageUtility.DefaultAvatarSprite);
             }));
     }
 
@@ -233,7 +233,6 @@ public class ChatItem : MonoBehaviour
     {
         if (avatarSprite == null || headImage == null) return;
         headImage.sprite = avatarSprite;
-        headImage.preserveAspect = true;
         headImage.enabled = true;
     }
 
@@ -246,7 +245,6 @@ public class ChatItem : MonoBehaviour
     {
         if (avatarSprite == null || headImage == null) return;
         headImage.sprite = avatarSprite;
-        headImage.preserveAspect = true;
         headImage.enabled = true;
     }
 
@@ -803,9 +801,7 @@ public class ChatItem : MonoBehaviour
         var sprite = Resources.Load<Sprite>(iconName);
         if (sprite != null)
         {
-            headImage.sprite = sprite;
-            headImage.preserveAspect = true;
-            headImage.enabled = true;
+            FriendAvatarImageUtility.ApplyAvatar(headImage, sprite, FriendAvatarImageUtility.DefaultAvatarSprite);
         }
         else if (logMissing)
         {

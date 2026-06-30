@@ -22,6 +22,19 @@ public class DrawCardUI : WindowBase
 	private const float DeckVisibleSlotCount = 7f;
 	private const float DeckCardSpacing = 12f;
 	private const int VisualDeckCardCount = 12;
+	private const int ShuffleDeckCardCount = 52;
+	private const float PostShuffleFanCardSpacingRatio = 0.62f;
+	private const int PostShuffleFanVisualCardCount = 34;
+	private const float PostShuffleFanMinViewportMultiplier = 1.08f;
+	private const float PostShuffleFanMaxViewportMultiplier = 1.55f;
+	private const float PostShuffleFanBaseHeightRatio = -0.16f;
+	private const float PostShuffleFanRiseRatio = 0.085f;
+	private const float PostShuffleFanMaxRotation = 10.5f;
+	private const float DeckIntroDuration = 0.38f;
+	private const float DeckChaosDuration = 1.6f;
+	private const float DeckWeaveDuration = 2.15f;
+	private const float DeckTripleCutDuration = 3f;
+	private const float DeckGatherDuration = 0.83f;
 
 	public DrawCardUIComponent uiComponent;
 
@@ -30,6 +43,8 @@ public class DrawCardUI : WindowBase
 	public static Action PendingDrawCanceled;
 
 	private readonly List<Image> _cardImages = new List<Image>();
+	private readonly List<Image> _shuffleVisualCards = new List<Image>();
+	private readonly List<Image> _shuffleExtraImages = new List<Image>();
 	private readonly List<Vector2> _fanPositions = new List<Vector2>();
 	private readonly List<Image> _sparkImages = new List<Image>();
 
@@ -43,6 +58,7 @@ public class DrawCardUI : WindowBase
 	private Tween _clickSuppressTween;
 	private Tween _pullBackTween;
 	private Tween _inertiaTween;
+	private Tween _tapHintTween;
 	private Coroutine _singleClickCoroutine;
 	private Sprite _cachedCardBackSprite;
 	private Coroutine _backgroundVideoCoroutine;
@@ -61,6 +77,7 @@ public class DrawCardUI : WindowBase
 	private bool _isInertiaScrolling;
 	private bool _backgroundVideoHasStarted;
 	private bool _isWaitingForExit;
+	private bool _isWaitingForShuffleStart;
 
 	private int _activeDragCardIndex = -1;
 	private int _backgroundVideoPlayRequestId;
@@ -148,7 +165,10 @@ public class DrawCardUI : WindowBase
 
 		RefreshDeckLayoutIfViewportChanged();
 		SanitizeDeckVisuals();
-		RestoreCardSiblingOrder();
+		if (_shuffleExtraImages.Count > 0)
+			RestorePostShuffleFanSiblingOrder();
+		else
+			RestoreCardSiblingOrder();
 	}
 	#endregion
 
@@ -162,6 +182,12 @@ public class DrawCardUI : WindowBase
 	#region UI组件事件
 	private void OnMaskClick()
 	{
+		if (_isWaitingForShuffleStart && !_isAnimating)
+		{
+			StartShuffleFromIntro();
+			return;
+		}
+
 		if (_isWaitingForExit) return;
 		if (_isAnimating || _suppressPointerClick) return;
 		CancelDraw(true);
@@ -185,6 +211,12 @@ public class DrawCardUI : WindowBase
 
 	private void OnCardPointerClick(int index, BaseEventData eventData)
 	{
+		if (_isWaitingForShuffleStart && !_isAnimating)
+		{
+			StartShuffleFromIntro();
+			return;
+		}
+
 		if (!_isChoosing || _isAnimating) return;
 		if (_suppressPointerClick || _dragMoved || _isInertiaScrolling) return;
 
@@ -239,12 +271,251 @@ public class DrawCardUI : WindowBase
 		ResetRuntimeState();
 		ResolveRuntimeReferences();
 		BuildCardFan();
+		BuildShuffleVisualDeck();
 		ResetTexts();
 		ResetTargetCard();
 
+		PlayDeckIntro();
+	}
+
+	private void PlayDeckIntro()
+	{
+		_isAnimating = true;
+		_flowSequence = DOTween.Sequence();
+		IList<Image> shuffleCards = GetShuffleCards();
+
+		for (int i = 0; i < shuffleCards.Count; i++)
+		{
+			Image image = shuffleCards[i];
+			if (image == null) continue;
+
+			RectTransform rect = image.rectTransform;
+			Vector2 targetPosition = GetStackPose(i, shuffleCards.Count);
+			float targetRotation = GetStackRotation(i);
+			image.enabled = true;
+			image.raycastTarget = false;
+			Color startColor = image.color;
+			startColor.a = 0f;
+			image.color = startColor;
+
+			rect.anchoredPosition = targetPosition + new Vector2(0f, -24f);
+			rect.localRotation = Quaternion.identity;
+			rect.localScale = Vector3.one * (_deckCardScale * 0.94f);
+
+			float startTime = i * 0.004f;
+			_flowSequence.Insert(startTime, image.DOFade(1f, DeckIntroDuration * 0.75f));
+			_flowSequence.Insert(startTime, rect.DOAnchorPos(targetPosition, DeckIntroDuration).SetEase(Ease.OutCubic));
+			_flowSequence.Insert(startTime, rect.DORotate(new Vector3(0f, 0f, targetRotation), DeckIntroDuration).SetEase(Ease.OutCubic));
+			_flowSequence.Insert(startTime, rect.DOScale(Vector3.one * _deckCardScale, DeckIntroDuration).SetEase(Ease.OutCubic));
+		}
+
+		RestoreShuffleCardSiblingOrder();
+
+		if (_desText != null)
+		{
+			_desText.gameObject.SetActive(true);
+			_desText.text = "轻触牌堆以洗牌";
+			_desText.alpha = 0f;
+			_flowSequence.Insert(0.12f, _desText.DOFade(1f, 0.25f));
+		}
+
+		_flowSequence.OnComplete(() =>
+		{
+			_isAnimating = false;
+			_isWaitingForShuffleStart = true;
+			SetIntroCardsInteractable(true);
+			StartTapHintPulse();
+			_flowSequence = null;
+		});
+	}
+
+	private void StartShuffleFromIntro()
+	{
+		if (!_isWaitingForShuffleStart || _isAnimating) return;
+
+		_isWaitingForShuffleStart = false;
+		_isAnimating = true;
+		StopTapHintPulse();
+		SetIntroCardsInteractable(false);
+		SetPromptText("让牌在你的问题里重新排序", 1f);
+		PlayChaosAnimation(() => PlayWeaveAnimation(() => PlayTripleCutAnimation(() =>
+			PlayGatherAnimation(PlayFanOutFromCurrentPose))));
+	}
+
+	private void PlayChaosAnimation(Action onComplete)
+	{
+		_flowSequence?.Kill(false);
+		_flowSequence = DOTween.Sequence();
+		IList<Image> shuffleCards = GetShuffleCards();
+
+		for (int i = 0; i < shuffleCards.Count; i++)
+		{
+			Image image = shuffleCards[i];
+			if (image == null) continue;
+
+			RectTransform rect = image.rectTransform;
+			float delay = Mathf.Lerp(0f, 0.18f, Hash01(i * 23 + 5));
+			float duration = Mathf.Max(0.58f, DeckChaosDuration - delay - Mathf.Lerp(0.04f, 0.16f, Hash01(i * 19 + 7)));
+			Vector2 targetPosition = GetChaosPose(i, shuffleCards.Count);
+			float targetRotation = GetChaosRotation(i);
+
+			_flowSequence.Insert(delay, rect.DOAnchorPos(targetPosition, duration)
+				.SetEase(Ease.InOutCubic));
+			_flowSequence.Insert(delay, rect.DORotate(new Vector3(0f, 0f, targetRotation), duration)
+				.SetEase(Ease.InOutCubic));
+			_flowSequence.Insert(delay, rect.DOScale(Vector3.one * _deckCardScale, duration)
+				.SetEase(Ease.InOutCubic));
+		}
+
+		_flowSequence.AppendInterval(Mathf.Max(0f, DeckChaosDuration - _flowSequence.Duration()));
+		_flowSequence.OnComplete(() =>
+		{
+			RestoreShuffleCardSiblingOrder();
+			_flowSequence = null;
+			onComplete?.Invoke();
+		});
+	}
+
+	private void PlayWeaveAnimation(Action onComplete)
+	{
+		_flowSequence?.Kill(false);
+		_flowSequence = DOTween.Sequence();
+		IList<Image> shuffleCards = GetShuffleCards();
+		RestoreWeaveCardSiblingOrder(shuffleCards);
+		int half = Mathf.Max(1, (shuffleCards.Count + 1) / 2);
+		float firstLiftTime = DeckWeaveDuration * 0.2f;
+		float centerTime = DeckWeaveDuration * 0.5f;
+		float secondLiftTime = DeckWeaveDuration * 0.75f;
+
+		for (int i = 0; i < shuffleCards.Count; i++)
+		{
+			Image image = shuffleCards[i];
+			if (image == null) continue;
+
+			RectTransform rect = image.rectTransform;
+			bool topPile = i < half;
+			float phaseDelay = (i % 3) * 0.045f + i * 0.0008f;
+			Vector2 centerPose = GetWeavePose(i, shuffleCards.Count, 0f);
+			Vector2 firstLiftPose = GetWeavePose(i, shuffleCards.Count, topPile ? 1f : -1f);
+			Vector2 secondLiftPose = GetWeavePose(i, shuffleCards.Count, topPile ? -1f : 1f);
+			float splitRotation = topPile ? -7f : 7f;
+
+			_flowSequence.Insert(phaseDelay, rect.DOAnchorPos(firstLiftPose, firstLiftTime)
+				.SetEase(Ease.InOutSine));
+			_flowSequence.Insert(phaseDelay, rect.DORotate(new Vector3(0f, 0f, splitRotation), firstLiftTime)
+				.SetEase(Ease.InOutSine));
+
+			_flowSequence.Insert(phaseDelay + firstLiftTime, rect.DOAnchorPos(centerPose, centerTime - firstLiftTime)
+				.SetEase(Ease.InOutSine));
+			_flowSequence.Insert(phaseDelay + firstLiftTime, rect.DORotate(Vector3.zero, centerTime - firstLiftTime)
+				.SetEase(Ease.InOutSine));
+			_flowSequence.Insert(phaseDelay + centerTime, rect.DOAnchorPos(secondLiftPose, secondLiftTime - centerTime)
+				.SetEase(Ease.InOutSine));
+			_flowSequence.Insert(phaseDelay + centerTime, rect.DORotate(new Vector3(0f, 0f, -splitRotation), secondLiftTime - centerTime)
+				.SetEase(Ease.InOutSine));
+			_flowSequence.Insert(phaseDelay + secondLiftTime, rect.DOAnchorPos(centerPose, DeckWeaveDuration - secondLiftTime)
+				.SetEase(Ease.InOutSine));
+			_flowSequence.Insert(phaseDelay + secondLiftTime, rect.DORotate(Vector3.zero, DeckWeaveDuration - secondLiftTime)
+				.SetEase(Ease.InOutSine));
+		}
+
+		_flowSequence.AppendInterval(Mathf.Max(0f, DeckWeaveDuration - _flowSequence.Duration()));
+		_flowSequence.OnComplete(() =>
+		{
+			RestoreShuffleCardSiblingOrder();
+			_flowSequence = null;
+			onComplete?.Invoke();
+		});
+	}
+
+	private void PlayTripleCutAnimation(Action onComplete)
+	{
+		_flowSequence?.Kill(false);
+		_flowSequence = DOTween.Sequence();
+		IList<Image> shuffleCards = GetShuffleCards();
+		int firstCut = Mathf.Clamp(Mathf.RoundToInt(shuffleCards.Count * 0.32f), 1, shuffleCards.Count - 2);
+		int secondCut = Mathf.Clamp(Mathf.RoundToInt(shuffleCards.Count * 0.68f), firstCut + 1, shuffleCards.Count - 1);
+		float firstStageTime = DeckTripleCutDuration * 0.35f;
+		float secondStageTime = DeckTripleCutDuration * 0.65f;
+
+		for (int i = 0; i < shuffleCards.Count; i++)
+		{
+			Image image = shuffleCards[i];
+			if (image == null) continue;
+
+			RectTransform rect = image.rectTransform;
+			int pile = GetTriplePile(i, firstCut, secondCut);
+			float delay = i * 0.01f;
+
+			_flowSequence.Insert(delay,
+				rect.DOAnchorPos(GetTripleCutPose(i, shuffleCards.Count, pile, 0), firstStageTime)
+					.SetEase(Ease.InOutCubic));
+			_flowSequence.Insert(delay,
+				rect.DORotate(new Vector3(0f, 0f, pile == 0 ? -8f : pile == 1 ? -2f : 8f), firstStageTime)
+					.SetEase(Ease.InOutCubic));
+
+			_flowSequence.Insert(delay + firstStageTime,
+				rect.DOAnchorPos(GetTripleCutPose(i, shuffleCards.Count, pile, 1), secondStageTime - firstStageTime)
+					.SetEase(Ease.InOutCubic));
+			_flowSequence.Insert(delay + firstStageTime,
+				rect.DORotate(new Vector3(0f, 0f, pile == 0 ? -5f : pile == 1 ? -7f : 5f), secondStageTime - firstStageTime)
+					.SetEase(Ease.InOutCubic));
+
+			_flowSequence.Insert(delay + secondStageTime,
+				rect.DOAnchorPos(GetTripleCutPose(i, shuffleCards.Count, pile, 2), DeckTripleCutDuration - secondStageTime)
+					.SetEase(Ease.InOutCubic));
+			_flowSequence.Insert(delay + secondStageTime,
+				rect.DORotate(new Vector3(0f, 0f, pile < 2 ? -3f : 2f), DeckTripleCutDuration - secondStageTime)
+					.SetEase(Ease.InOutCubic));
+		}
+
+		_flowSequence.AppendInterval(Mathf.Max(0f, DeckTripleCutDuration - _flowSequence.Duration()));
+		_flowSequence.OnComplete(() =>
+		{
+			RestoreShuffleCardSiblingOrder();
+			_flowSequence = null;
+			onComplete?.Invoke();
+		});
+	}
+
+	private void PlayGatherAnimation(Action onComplete)
+	{
+		_flowSequence?.Kill(false);
+		_flowSequence = DOTween.Sequence();
+		IList<Image> shuffleCards = GetShuffleCards();
+
+		for (int i = 0; i < shuffleCards.Count; i++)
+		{
+			Image image = shuffleCards[i];
+			if (image == null) continue;
+
+			RectTransform rect = image.rectTransform;
+			_flowSequence.Insert(0f, rect.DOAnchorPos(GetStackPose(i, shuffleCards.Count), DeckGatherDuration)
+				.SetEase(Ease.OutBack, 0.95f));
+			_flowSequence.Insert(0f, rect.DORotate(new Vector3(0f, 0f, GetStackRotation(i)), DeckGatherDuration)
+				.SetEase(Ease.OutBack, 0.95f));
+			_flowSequence.Insert(0f, rect.DOScale(Vector3.one * _deckCardScale, DeckGatherDuration)
+				.SetEase(Ease.OutBack, 0.95f));
+		}
+
+		_flowSequence.OnComplete(() =>
+		{
+			RestoreShuffleCardSiblingOrder();
+			_flowSequence = null;
+			onComplete?.Invoke();
+		});
+	}
+
+	private void PlayFanOutFromCurrentPose()
+	{
+		SetPromptText("凭直觉选择一个", 1f);
+		_flowSequence?.Kill(false);
 		_flowSequence = DOTween.Sequence();
 		float dealDuration = Mathf.Max(0.1f, uiComponent.dealDuration);
 		float dealGap = Mathf.Max(0f, uiComponent.cardDealGap);
+		int visualCardCount = GetPostShuffleFanVisualCount();
+
+		AnimatePostShuffleFanBackground(visualCardCount, dealDuration);
 
 		for (int i = 0; i < _cardImages.Count; i++)
 		{
@@ -256,13 +527,6 @@ public class DrawCardUI : WindowBase
 			float targetRotation = GetCurrentFanRotation(i);
 			bool visibleInViewport = IsDeckCardInsideViewport(targetPosition, _deckCardScale);
 			SetDeckCardViewportVisible(image, visibleInViewport);
-			Color startColor = image.color;
-			startColor.a = 0f;
-			image.color = startColor;
-
-			rect.anchoredPosition = targetPosition + new Vector2(0f, -240f);
-			rect.localRotation = Quaternion.identity;
-			rect.localScale = Vector3.one * (_deckCardScale * 0.82f);
 
 			float startTime = i * dealGap;
 			_flowSequence.Insert(startTime, image.DOFade(1f, dealDuration * 0.55f));
@@ -271,22 +535,67 @@ public class DrawCardUI : WindowBase
 			_flowSequence.Insert(startTime, rect.DOScale(Vector3.one * _deckCardScale, dealDuration).SetEase(Ease.OutBack, 1.05f));
 		}
 
-		RestoreCardSiblingOrder();
-
-		if (_desText != null)
-		{
-			_desText.gameObject.SetActive(true);
-			_desText.text = "凭直觉选择一个";
-			_desText.alpha = 0f;
-			_flowSequence.Insert(0.12f, _desText.DOFade(1f, 0.25f));
-		}
+		RestorePostShuffleFanSiblingOrder();
 
 		_flowSequence.OnComplete(() =>
 		{
+			RestorePostShuffleFanSiblingOrder();
 			_isChoosing = true;
+			_isAnimating = false;
 			SetCardsInteractable(true);
 			_flowSequence = null;
 		});
+	}
+
+	private void AnimatePostShuffleFanBackground(int visualCardCount, float dealDuration)
+	{
+		if (_flowSequence == null || _shuffleExtraImages.Count == 0 || visualCardCount <= _cardImages.Count)
+			return;
+
+		bool[] selectableSlots = BuildSelectableFanSlots(visualCardCount);
+		int extraIndex = 0;
+
+		for (int slot = 0; slot < visualCardCount && extraIndex < _shuffleExtraImages.Count; slot++)
+		{
+			if (selectableSlots[slot])
+				continue;
+
+			Image image = _shuffleExtraImages[extraIndex++];
+			if (image == null) continue;
+
+			RectTransform rect = image.rectTransform;
+			Vector2 targetPosition = GetFanPositionByVisualSlot(slot, visualCardCount);
+			float targetRotation = GetFanRotationByVisualSlot(slot, visualCardCount);
+			image.enabled = true;
+			image.raycastTarget = false;
+
+			float startTime = slot * 0.008f;
+			_flowSequence.Insert(startTime, image.DOFade(0.92f, dealDuration * 0.45f));
+			_flowSequence.Insert(startTime, rect.DOAnchorPos(targetPosition, dealDuration).SetEase(Ease.OutBack, 1.04f));
+			_flowSequence.Insert(startTime, rect.DORotate(new Vector3(0f, 0f, targetRotation), dealDuration).SetEase(Ease.OutCubic));
+			_flowSequence.Insert(startTime, rect.DOScale(Vector3.one * _deckCardScale, dealDuration).SetEase(Ease.OutBack, 1.02f));
+		}
+
+		for (int i = extraIndex; i < _shuffleExtraImages.Count; i++)
+		{
+			Image image = _shuffleExtraImages[i];
+			if (image == null) continue;
+			image.enabled = false;
+			image.raycastTarget = false;
+		}
+	}
+
+	private bool[] BuildSelectableFanSlots(int visualCardCount)
+	{
+		bool[] slots = new bool[Mathf.Max(0, visualCardCount)];
+		for (int i = 0; i < _cardImages.Count; i++)
+		{
+			int slot = GetSelectableFanVisualSlot(i, visualCardCount);
+			if (slot >= 0 && slot < slots.Length)
+				slots[slot] = true;
+		}
+
+		return slots;
 	}
 
 	private void ResetRuntimeState()
@@ -317,6 +626,204 @@ public class DrawCardUI : WindowBase
 		_cachedCardBackSprite = null;
 		_completedCard = null;
 		_completedUpright = true;
+		_isWaitingForShuffleStart = false;
+	}
+
+	private Vector2 GetStackPose(int index, int count)
+	{
+		Vector2 anchor = GetShuffleAnchor();
+		float centeredIndex = index - (count - 1) * 0.5f;
+		float x = anchor.x + centeredIndex * 0.34f + Mathf.Sin(index * 0.61f) * 2.2f;
+		float y = anchor.y - centeredIndex * 0.5f + (index % 7) * 0.55f;
+		return new Vector2(x, y);
+	}
+
+	private float GetStackRotation(int index)
+	{
+		return Mathf.Sin(index * 0.7f) * 1.05f;
+	}
+
+	private Vector2 GetChaosPose(int index, int count)
+	{
+		Vector2 anchor = GetShuffleAnchor();
+		float maxRadius = Mathf.Clamp(_viewportWidth * 0.23f, 132f, 220f);
+		float radius = Mathf.Lerp(44f, maxRadius, Hash01(index * 17 + 3));
+		float angle = (index * 137.507f + Hash01(index * 31 + 9) * 48f) * Mathf.Deg2Rad;
+		float x = Mathf.Cos(angle) * radius;
+		float y = Mathf.Sin(angle) * radius * 0.68f + Mathf.Sin(index * 0.33f) * 18f;
+		return anchor + new Vector2(x, y);
+	}
+
+	private float GetChaosRotation(int index)
+	{
+		return Mathf.Lerp(-34f, 34f, Hash01(index * 29 + 11));
+	}
+
+	private Vector2 GetWeavePose(int index, int count, float direction)
+	{
+		Vector2 anchor = GetShuffleAnchor();
+		int half = Mathf.Max(1, (count + 1) / 2);
+		bool topPile = index < half;
+		int pileIndex = topPile ? index : index - half;
+		int pileCount = topPile ? half : Mathf.Max(1, count - half);
+		float centeredPileIndex = pileIndex - (pileCount - 1) * 0.5f;
+
+		if (Mathf.Approximately(direction, 0f))
+		{
+			int orderIndex = topPile ? pileIndex * 2 : pileIndex * 2 + 1;
+			float centeredOrder = orderIndex - (count - 1) * 0.5f;
+			float seamX = Mathf.Clamp(ResolveCardWidth() * _deckCardScale * 0.035f, 7f, 13f);
+			float seamY = Mathf.Clamp(ResolveCardHeight() * _deckCardScale * 0.006f, 2.4f, 4.8f);
+			float x = (topPile ? -seamX : seamX) + Mathf.Sin(orderIndex * 0.72f) * 2.2f;
+			float y = -centeredOrder * seamY;
+			return anchor + new Vector2(x, y);
+		}
+
+		float amplitude = Mathf.Clamp(ResolveCardHeight() * _deckCardScale * 0.2f, 78f, 128f);
+		float pileOffsetX = topPile ? -34f : 34f;
+		float xOffset = pileOffsetX + centeredPileIndex * 1.35f + Mathf.Sin(index * 0.42f) * 10f;
+		float yOffset = direction * amplitude - centeredPileIndex * 1.8f;
+		return anchor + new Vector2(xOffset, yOffset);
+	}
+
+	private int GetTriplePile(int index, int firstCut, int secondCut)
+	{
+		if (index < firstCut) return 0;
+		return index < secondCut ? 1 : 2;
+	}
+
+	private Vector2 GetTripleCutPose(int index, int count, int pile, int stage)
+	{
+		Vector2 stackPose = GetStackPose(index, count);
+		float offsetX = Mathf.Clamp(ResolveCardWidth() * _deckCardScale * 0.88f, 160f, 260f);
+		float liftY = Mathf.Clamp(ResolveCardHeight() * _deckCardScale * 0.08f, 34f, 54f);
+		float jitter = (index % 7) * 1.8f;
+		float x = 0f;
+		float y = -jitter;
+
+		if (stage == 0)
+		{
+			x = pile == 0 ? -offsetX : pile == 1 ? 0f : offsetX;
+			y += pile == 0 ? liftY : pile == 1 ? liftY * 0.5f : 0f;
+		}
+		else if (stage == 1)
+		{
+			x = pile == 0 ? -offsetX * 0.55f : pile == 1 ? -offsetX * 0.12f : offsetX * 0.78f;
+			y += pile == 1 ? liftY : pile == 0 ? liftY * 0.55f : 0f;
+		}
+		else
+		{
+			x = (pile - 1) * 24f;
+			y += pile < 2 ? liftY * 0.45f : 0f;
+		}
+
+		return stackPose + new Vector2(x, y);
+	}
+
+	private static float Hash01(int seed)
+	{
+		return Mathf.Repeat(Mathf.Sin(seed * 12.9898f) * 43758.5453f, 1f);
+	}
+
+	private Vector2 GetSplitPose(int index, int count, int cycleOffset = 0)
+	{
+		Vector2 anchor = GetShuffleAnchor();
+		int half = Mathf.Max(1, (count + 1) / 2);
+		bool leftPile = index < half;
+		int pileIndex = leftPile ? index : index - half;
+		int pileCount = leftPile ? half : Mathf.Max(1, count - half);
+		float centeredPileIndex = pileIndex - (pileCount - 1) * 0.5f;
+		float handOffset = Mathf.Clamp(_viewportWidth * 0.26f, 176f, 292f);
+		float cycleShift = cycleOffset % 2 == 0 ? 0f : 18f;
+		float pileCenterOffset = handOffset * 0.5f;
+		float edgeSpacingX = leftPile ? 2.05f : 1.45f;
+		float edgeSpacingY = Mathf.Clamp(ResolveCardHeight() * _deckCardScale * 0.014f, 5.2f, 8.2f);
+		float x = anchor.x + (leftPile ? -pileCenterOffset + cycleShift : pileCenterOffset - cycleShift)
+			+ centeredPileIndex * edgeSpacingX;
+		float y = anchor.y - centeredPileIndex * edgeSpacingY + (leftPile ? 22f : -22f);
+		return new Vector2(x, y);
+	}
+
+	private float GetSplitRotation(int index, int count, int cycleOffset = 0)
+	{
+		int half = Mathf.Max(1, (count + 1) / 2);
+		bool leftPile = index < half;
+		float baseRotation = leftPile ? -14f : 7f;
+		float cycleTilt = cycleOffset % 2 == 0 ? 0f : (leftPile ? 2.5f : -2f);
+		return baseRotation + cycleTilt + Mathf.Sin(index * 0.7f) * 1.2f;
+	}
+
+	private Vector2 GetRifflePose(int index, int count, int cycleIndex)
+	{
+		Vector2 anchor = GetShuffleAnchor();
+		int half = Mathf.Max(1, (count + 1) / 2);
+		bool leftPile = index < half;
+		int pileIndex = leftPile ? index : index - half;
+		int orderIndex = leftPile ? pileIndex * 2 : pileIndex * 2 + 1;
+		float centeredOrder = orderIndex - (count - 1) * 0.5f;
+		float x = anchor.x + Mathf.Sin((orderIndex + cycleIndex) * 0.85f) * 18f + (leftPile ? -28f : 28f);
+		float y = anchor.y - centeredOrder * 4.25f + Mathf.Sin((pileIndex + cycleIndex) * 1.4f) * 9f;
+		return new Vector2(x, y);
+	}
+
+	private float GetRiffleRotation(int index, int count, int cycleIndex)
+	{
+		int half = Mathf.Max(1, (count + 1) / 2);
+		bool leftPile = index < half;
+		return (leftPile ? -7.5f : 5f) + Mathf.Sin((index + cycleIndex) * 0.9f) * 2.4f;
+	}
+
+	private Vector2 GetShuffleAnchor()
+	{
+		return new Vector2(0f, GetStackCenterY());
+	}
+
+	private float GetStackCenterY()
+	{
+		return Mathf.Clamp(_viewportHeight * 0.1f, 58f, 128f);
+	}
+
+	private void SetPromptText(string text, float alpha)
+	{
+		if (_desText == null) return;
+
+		DOTween.Kill(_desText);
+		_desText.gameObject.SetActive(true);
+		_desText.text = text;
+		_desText.alpha = alpha;
+	}
+
+	private void StartTapHintPulse()
+	{
+		if (_desText == null) return;
+
+		StopTapHintPulse();
+		_desText.alpha = 1f;
+		_tapHintTween = _desText.DOFade(0.65f, 0.72f)
+			.SetEase(Ease.InOutSine)
+			.SetLoops(-1, LoopType.Yoyo);
+	}
+
+	private void StopTapHintPulse()
+	{
+		_tapHintTween?.Kill(false);
+		_tapHintTween = null;
+		if (_desText != null)
+			_desText.alpha = 1f;
+	}
+
+	private void SetIntroCardsInteractable(bool interactable)
+	{
+		for (int i = 0; i < _cardImages.Count; i++)
+		{
+			Image image = _cardImages[i];
+			if (image == null) continue;
+
+			image.raycastTarget = interactable;
+			Button button = image.GetComponent<Button>();
+			if (button != null)
+				button.interactable = interactable;
+		}
 	}
 
 	private void SelectCardByIndex(int index)
@@ -356,6 +863,7 @@ public class DrawCardUI : WindowBase
 		ResolveSelectedCardTargetPose(selectedRect, out Vector2 targetPosition, out float targetRotationZ, out float targetScale);
 
 		_flowSequence = DOTween.Sequence();
+		FadeOutShuffleExtraCards(_flowSequence, 0.28f);
 		float selectDuration = Mathf.Max(0.12f, uiComponent.selectDuration);
 		float flipHalfDuration = Mathf.Max(0.08f, uiComponent.flipDuration * 0.5f);
 		float reverseRotateDuration = Mathf.Max(0.08f, uiComponent.reverseRotateDuration);
@@ -1345,6 +1853,88 @@ public class DrawCardUI : WindowBase
 		SetCardsInteractable(false);
 	}
 
+	private void BuildShuffleVisualDeck()
+	{
+		ClearShuffleExtraCards();
+		_shuffleVisualCards.Clear();
+
+		for (int i = 0; i < _cardImages.Count; i++)
+		{
+			if (_cardImages[i] != null)
+				_shuffleVisualCards.Add(_cardImages[i]);
+		}
+
+		if (_cardTemplateImage == null || _shuffleVisualCards.Count <= 0)
+			return;
+
+		int totalCardCount = Mathf.Max(_shuffleVisualCards.Count, ShuffleDeckCardCount);
+		Sprite backSprite = ResolveCardBackSprite();
+		Transform deckParent = _cardContainer != null ? _cardContainer : _cardTemplateImage.transform.parent;
+
+		for (int i = _shuffleVisualCards.Count; i < totalCardCount; i++)
+		{
+			Image image = CreateLightweightShuffleCard(deckParent, backSprite, i);
+
+			RectTransform rect = image.rectTransform;
+			rect.anchorMin = new Vector2(0.5f, 0.5f);
+			rect.anchorMax = new Vector2(0.5f, 0.5f);
+			rect.pivot = new Vector2(0.5f, 0.5f);
+			rect.localScale = Vector3.one * _deckCardScale;
+
+			_shuffleExtraImages.Add(image);
+			_shuffleVisualCards.Add(image);
+		}
+	}
+
+	private Image CreateLightweightShuffleCard(Transform parent, Sprite backSprite, int index)
+	{
+		GameObject cardObject = new GameObject(
+			$"ShuffleDeckCard_{index + 1}",
+			typeof(RectTransform),
+			typeof(CanvasRenderer),
+			typeof(Image));
+		cardObject.transform.SetParent(parent, false);
+
+		Image image = cardObject.GetComponent<Image>();
+		image.sprite = backSprite;
+		image.color = backSprite != null ? WithAlpha(Color.white, 0f) : new Color(1f, 1f, 1f, 0f);
+		image.preserveAspect = true;
+		image.raycastTarget = false;
+		image.type = _cardTemplateImage.type;
+		image.fillCenter = _cardTemplateImage.fillCenter;
+		image.pixelsPerUnitMultiplier = _cardTemplateImage.pixelsPerUnitMultiplier;
+		image.material = _cardTemplateImage.material;
+		image.maskable = true;
+
+		RectTransform rect = image.rectTransform;
+		RectTransform templateRect = _cardTemplateImage.rectTransform;
+		rect.sizeDelta = templateRect.sizeDelta;
+		rect.anchorMin = new Vector2(0.5f, 0.5f);
+		rect.anchorMax = new Vector2(0.5f, 0.5f);
+		rect.pivot = new Vector2(0.5f, 0.5f);
+		rect.localScale = Vector3.one * _deckCardScale;
+
+		return image;
+	}
+
+	private void ClearShuffleExtraCards()
+	{
+		for (int i = 0; i < _shuffleExtraImages.Count; i++)
+		{
+			Image image = _shuffleExtraImages[i];
+			if (image == null) continue;
+			DestroyDeckObject(image.gameObject);
+		}
+
+		_shuffleExtraImages.Clear();
+		_shuffleVisualCards.Clear();
+	}
+
+	private IList<Image> GetShuffleCards()
+	{
+		return _shuffleVisualCards.Count > 0 ? _shuffleVisualCards : _cardImages;
+	}
+
 	private void CalculateFanLayout(int cardCount)
 	{
 		_fanPositions.Clear();
@@ -1352,23 +1942,13 @@ public class DrawCardUI : WindowBase
 		_viewportHeight = ResolveViewportHeight();
 		ResolveCardScales();
 
-		if (uiComponent.fanWidth > 0f)
-		{
-			_fanWidth = uiComponent.fanWidth;
-		}
-		else
-		{
-			float responsiveWidth = uiComponent.useResponsiveFanWidth
-				? _viewportWidth * Mathf.Max(1f, uiComponent.fanViewportWidthMultiplier)
-				: 0f;
-			_fanWidth = Mathf.Max(uiComponent.minFanWidth, responsiveWidth);
-		}
+		int visualCardCount = Mathf.Max(cardCount, GetPostShuffleFanVisualCount());
+		_fanWidth = ResolvePostShuffleFanWidth(visualCardCount);
 
 		for (int i = 0; i < cardCount; i++)
 		{
-			float t = ResolveFanLayoutT(i, cardCount);
-			float x = Mathf.Lerp(-_fanWidth * 0.5f, _fanWidth * 0.5f, t);
-			_fanPositions.Add(new Vector2(x, GetFanY(x)));
+			int visualSlot = GetSelectableFanVisualSlot(i, visualCardCount);
+			_fanPositions.Add(GetFanPositionByVisualSlot(visualSlot, visualCardCount));
 		}
 
 		CalculateDeckScrollBounds();
@@ -1377,6 +1957,34 @@ public class DrawCardUI : WindowBase
 	private int GetVisualDeckCardCount()
 	{
 		return Mathf.Max(3, uiComponent.selectableCardCount);
+	}
+
+	private int GetPostShuffleFanVisualCount()
+	{
+		return Mathf.Max(_cardImages.Count, PostShuffleFanVisualCardCount);
+	}
+
+	private int GetSelectableFanVisualSlot(int selectableIndex, int visualCardCount)
+	{
+		if (_cardImages.Count <= 1 || visualCardCount <= 1)
+			return Mathf.Clamp(selectableIndex, 0, Mathf.Max(0, visualCardCount - 1));
+
+		float normalized = selectableIndex / (float)(_cardImages.Count - 1);
+		return Mathf.Clamp(Mathf.RoundToInt(normalized * (visualCardCount - 1)), 0, visualCardCount - 1);
+	}
+
+	private Vector2 GetFanPositionByVisualSlot(int visualSlot, int visualCardCount)
+	{
+		float t = ResolveFanLayoutT(visualSlot, visualCardCount);
+		float x = Mathf.Lerp(-_fanWidth * 0.5f, _fanWidth * 0.5f, t);
+		return new Vector2(x, GetFanY(x));
+	}
+
+	private float GetFanRotationByVisualSlot(int visualSlot, int visualCardCount)
+	{
+		float t = ResolveFanLayoutT(visualSlot, visualCardCount);
+		float x = Mathf.Lerp(-_fanWidth * 0.5f, _fanWidth * 0.5f, t);
+		return GetFanRotation(x);
 	}
 
 	private float ResolveFanLayoutT(int index, int cardCount)
@@ -1419,6 +2027,21 @@ public class DrawCardUI : WindowBase
 		float widthScale = (availableWidth / DeckVisibleSlotCount) / Mathf.Max(1f, cardWidth);
 		float heightScale = (_viewportHeight * 0.56f) / Mathf.Max(1f, cardHeight);
 		return Mathf.Max(0.1f, Mathf.Min(widthScale, heightScale));
+	}
+
+	private float ResolvePostShuffleFanWidth(int cardCount)
+	{
+		float cardVisualWidth = ResolveCardWidth() * _deckCardScale;
+		float desiredSpacing = cardVisualWidth * PostShuffleFanCardSpacingRatio;
+		float visibleSpan = desiredSpacing * Mathf.Max(1, cardCount - 1);
+		float layoutSpan = uiComponent.infiniteScroll && cardCount > 1
+			? Mathf.Max(0.1f, (cardCount - 1) / (float)cardCount)
+			: 1f;
+		float cardBasedWidth = visibleSpan / layoutSpan;
+		float minWidth = _viewportWidth * PostShuffleFanMinViewportMultiplier;
+		float maxWidth = _viewportWidth * PostShuffleFanMaxViewportMultiplier;
+
+		return Mathf.Clamp(cardBasedWidth, minWidth, Mathf.Max(minWidth, maxWidth));
 	}
 
 	private void CalculateDeckScrollBounds()
@@ -1532,14 +2155,16 @@ public class DrawCardUI : WindowBase
 	{
 		float halfWidth = Mathf.Max(1f, _fanWidth * 0.5f);
 		float normalized = Mathf.Clamp(x / halfWidth, -1f, 1f);
-		return uiComponent.fanHeightOffset + uiComponent.fanRiseOffset * (1f - normalized * normalized);
+		float baseY = Mathf.Clamp(_viewportHeight * PostShuffleFanBaseHeightRatio, -155f, -70f);
+		float rise = Mathf.Clamp(_viewportHeight * PostShuffleFanRiseRatio, 68f, 112f);
+		return baseY + rise * (1f - normalized * normalized);
 	}
 
 	private float GetFanRotation(float x)
 	{
 		float halfWidth = Mathf.Max(1f, _fanWidth * 0.5f);
 		float normalized = Mathf.Clamp(x / halfWidth, -1f, 1f);
-		return -normalized * uiComponent.fanRotation;
+		return -normalized * PostShuffleFanMaxRotation;
 	}
 
 	private float GetDeckSpacing()
@@ -1642,6 +2267,92 @@ public class DrawCardUI : WindowBase
 		}
 	}
 
+	private void RestorePostShuffleFanSiblingOrder()
+	{
+		int siblingIndex = 0;
+		for (int i = 0; i < _shuffleExtraImages.Count; i++)
+		{
+			Image image = _shuffleExtraImages[i];
+			if (image == null || !image.enabled) continue;
+			image.rectTransform.SetSiblingIndex(siblingIndex++);
+			SetDeckCardSortingOrder(image, siblingIndex);
+		}
+
+		for (int i = 0; i < _cardImages.Count; i++)
+		{
+			Image image = _cardImages[i];
+			if (image == null) continue;
+			image.rectTransform.SetSiblingIndex(siblingIndex++);
+			SetDeckCardSortingOrder(image, siblingIndex + 20);
+		}
+	}
+
+	private void FadeOutShuffleExtraCards(Sequence sequence, float duration)
+	{
+		if (sequence == null || _shuffleExtraImages.Count == 0) return;
+
+		for (int i = 0; i < _shuffleExtraImages.Count; i++)
+		{
+			Image image = _shuffleExtraImages[i];
+			if (image == null || !image.enabled) continue;
+
+			RectTransform rect = image.rectTransform;
+			image.raycastTarget = false;
+			DOTween.Kill(image);
+			DOTween.Kill(rect);
+
+			sequence.Insert(0f, image.DOFade(0f, duration * 0.75f));
+			sequence.Insert(0f, rect.DOScale(Vector3.one * (_deckCardScale * 0.86f), duration).SetEase(Ease.InCubic));
+		}
+
+		sequence.InsertCallback(duration, ClearShuffleExtraCards);
+	}
+
+	private void RestoreShuffleCardSiblingOrder()
+	{
+		IList<Image> shuffleCards = GetShuffleCards();
+		List<Image> orderedCards = new List<Image>(shuffleCards.Count);
+		for (int i = 0; i < shuffleCards.Count; i++)
+		{
+			Image image = shuffleCards[i];
+			if (image == null) continue;
+			orderedCards.Add(image);
+		}
+
+		orderedCards.Sort(CompareCardSiblingOrder);
+
+		for (int i = 0; i < orderedCards.Count; i++)
+		{
+			orderedCards[i].rectTransform.SetSiblingIndex(i);
+			SetDeckCardSortingOrder(orderedCards[i], i);
+		}
+	}
+
+	private void RestoreWeaveCardSiblingOrder(IList<Image> shuffleCards)
+	{
+		if (shuffleCards == null || shuffleCards.Count == 0) return;
+
+		List<Image> orderedCards = new List<Image>(shuffleCards.Count);
+		int half = Mathf.Max(1, (shuffleCards.Count + 1) / 2);
+		int maxPileCount = Mathf.Max(half, shuffleCards.Count - half);
+
+		for (int i = 0; i < maxPileCount; i++)
+		{
+			if (i < half && shuffleCards[i] != null)
+				orderedCards.Add(shuffleCards[i]);
+
+			int bottomIndex = half + i;
+			if (bottomIndex < shuffleCards.Count && shuffleCards[bottomIndex] != null)
+				orderedCards.Add(shuffleCards[bottomIndex]);
+		}
+
+		for (int i = 0; i < orderedCards.Count; i++)
+		{
+			orderedCards[i].rectTransform.SetSiblingIndex(i);
+			SetDeckCardSortingOrder(orderedCards[i], i);
+		}
+	}
+
 	private int CompareCardSiblingOrder(Image left, Image right)
 	{
 		if (left == right)
@@ -1688,6 +2399,18 @@ public class DrawCardUI : WindowBase
 		{
 			if (graphics[i] != null)
 				graphics[i].maskable = true;
+		}
+	}
+
+	private static void SetChildGraphicsRaycastTarget(GameObject root, bool raycastTarget)
+	{
+		if (root == null) return;
+
+		Graphic[] graphics = root.GetComponentsInChildren<Graphic>(true);
+		for (int i = 0; i < graphics.Length; i++)
+		{
+			if (graphics[i] != null)
+				graphics[i].raycastTarget = raycastTarget;
 		}
 	}
 
@@ -1861,6 +2584,7 @@ public class DrawCardUI : WindowBase
 	private void ClearRuntimeCards()
 	{
 		StopPendingSingleClick();
+		ClearShuffleExtraCards();
 		for (int i = 0; i < _cardImages.Count; i++)
 		{
 			Image image = _cardImages[i];
@@ -1979,6 +2703,13 @@ public class DrawCardUI : WindowBase
 				return true;
 		}
 
+		for (int i = 0; i < _shuffleExtraImages.Count; i++)
+		{
+			Image image = _shuffleExtraImages[i];
+			if (image != null && image.transform == child)
+				return true;
+		}
+
 		return false;
 	}
 
@@ -1987,6 +2718,7 @@ public class DrawCardUI : WindowBase
 		return !string.IsNullOrEmpty(objectName)
 			&& (objectName.StartsWith("SpreadDeckCard_", StringComparison.Ordinal)
 				|| objectName.StartsWith("DrawCard_", StringComparison.Ordinal)
+				|| objectName.StartsWith("ShuffleDeckCard_", StringComparison.Ordinal)
 				|| objectName.StartsWith("Card(Clone)", StringComparison.Ordinal));
 	}
 
@@ -2136,11 +2868,13 @@ public class DrawCardUI : WindowBase
 		_clickSuppressTween = null;
 		_pullBackTween?.Kill(false);
 		_pullBackTween = null;
+		StopTapHintPulse();
 		StopDeckInertia();
 
-		for (int i = 0; i < _cardImages.Count; i++)
+		IList<Image> cardsToKill = GetShuffleCards();
+		for (int i = 0; i < cardsToKill.Count; i++)
 		{
-			Image image = _cardImages[i];
+			Image image = cardsToKill[i];
 			if (image == null) continue;
 			DOTween.Kill(image);
 			DOTween.Kill(image.rectTransform);

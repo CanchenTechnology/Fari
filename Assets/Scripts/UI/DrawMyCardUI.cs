@@ -432,7 +432,6 @@ public class DrawMyCardUI : WindowBase
 
 			image.sprite = backSprite;
 			image.color = Color.white;
-			image.preserveAspect = true;
 			image.raycastTarget = true;
 			DisableCardLocalSorting(cardObject);
 
@@ -689,7 +688,6 @@ public class DrawMyCardUI : WindowBase
 		_flyingCard.raycastTarget = false;
 		_flyingCard.sprite = ResolveCardBackSprite();
 		_flyingCard.color = Color.white;
-		_flyingCard.preserveAspect = true;
 
 		RectTransform flyRect = _flyingCard.rectTransform;
 		CopyRectWorldPose(sourceRect, flyRect, _rootRect);
@@ -840,7 +838,6 @@ public class DrawMyCardUI : WindowBase
 		if (uiComponent.cardImage != null)
 		{
 			uiComponent.cardImage.sprite = LoadCardSprite(_drawResult.card);
-			uiComponent.cardImage.preserveAspect = true;
 			uiComponent.cardImage.color = Color.white;
 			uiComponent.cardImage.rectTransform.localRotation = _drawResult.upright
 				? Quaternion.identity

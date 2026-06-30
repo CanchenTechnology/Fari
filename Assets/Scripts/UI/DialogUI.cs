@@ -1333,6 +1333,7 @@ public class DialogUI : WindowBase
 
         // 设置数据（刷新UI内容）
         itemScript.SetItemData(msgData, index);
+        UISoftAlphaMaskUV.EnsureUnder(item.transform);
 
         // 绑定 TTS 播放回调
         if (enableTTS && msgData.roleType == DialogRoleType.AI)

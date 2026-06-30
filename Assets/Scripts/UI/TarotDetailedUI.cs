@@ -190,7 +190,6 @@ public class TarotDetailedUI : WindowBase
 		Sprite sprite = LoadCardSprite(card.cardId);
 		image.sprite = sprite;
 		image.enabled = sprite != null;
-		image.preserveAspect = true;
 		image.rectTransform.localRotation = IsUpright(card)
 			? Quaternion.identity
 			: Quaternion.Euler(0f, 0f, 180f);
@@ -215,7 +214,6 @@ public class TarotDetailedUI : WindowBase
 		if (item.iconImage != null)
 		{
 			item.iconImage.enabled = sprite != null;
-			item.iconImage.preserveAspect = true;
 			item.iconImage.rectTransform.localRotation = IsUpright(card)
 				? Quaternion.identity
 				: Quaternion.Euler(0f, 0f, 180f);

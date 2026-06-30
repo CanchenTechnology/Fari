@@ -158,7 +158,6 @@ public class DivinationInfoUI : WindowBase
 			image.gameObject.SetActive(true);
 			image.sprite = LoadCardSprite(card.cardId);
 			image.enabled = image.sprite != null;
-			image.preserveAspect = true;
 			image.rectTransform.localRotation = IsUpright(card)
 				? Quaternion.identity
 				: Quaternion.Euler(0f, 0f, 180f);
@@ -215,7 +214,6 @@ public class DivinationInfoUI : WindowBase
 			if (item.iconImage != null)
 			{
 				item.iconImage.enabled = iconSprite != null;
-				item.iconImage.preserveAspect = true;
 				item.iconImage.rectTransform.localRotation = isUpright
 					? Quaternion.identity
 					: Quaternion.Euler(0f, 0f, 180f);

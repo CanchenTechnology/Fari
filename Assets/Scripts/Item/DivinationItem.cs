@@ -22,6 +22,8 @@ public class DivinationItem : MonoBehaviour
     public TMP_Text divinationTimeText;
     public Button viewBtn;
 
+    [SerializeField] private bool showDivinationSource;
+
     private readonly List<Image> runtimeCardImages = new List<Image>();
 
     public void SetData(
@@ -36,7 +38,7 @@ public class DivinationItem : MonoBehaviour
 
         if (cardName != null) cardName.text = cardsName ?? string.Empty;
         if (divinationDesText != null) divinationDesText.text = description ?? string.Empty;
-        if (divinationSourceText != null) divinationSourceText.text = source ?? string.Empty;
+        SetDivinationSource(source);
         if (divinationTimeText != null) divinationTimeText.text = time ?? string.Empty;
 
         RebuildLayout();
@@ -81,7 +83,6 @@ public class DivinationItem : MonoBehaviour
         if (hasFirstSprite)
         {
             cardImage.sprite = cardSprites[firstSpriteIndex];
-            cardImage.preserveAspect = true;
             EnsureCardImageLayout(cardImage);
         }
         else
@@ -102,7 +103,6 @@ public class DivinationItem : MonoBehaviour
             clone.name = $"CardImage_{renderedCount + 1}";
             clone.gameObject.SetActive(true);
             clone.sprite = sprite;
-            clone.preserveAspect = true;
             EnsureCardImageLayout(clone);
             runtimeCardImages.Add(clone);
             renderedCount++;
@@ -145,6 +145,14 @@ public class DivinationItem : MonoBehaviour
             LayoutRebuilder.ForceRebuildLayoutImmediate(cardContainerRect);
         if (transform is RectTransform selfRect)
             LayoutRebuilder.ForceRebuildLayoutImmediate(selfRect);
+    }
+
+    private void SetDivinationSource(string source)
+    {
+        if (divinationSourceText == null) return;
+
+        divinationSourceText.text = showDivinationSource ? source ?? string.Empty : string.Empty;
+        divinationSourceText.gameObject.SetActive(showDivinationSource);
     }
 
     private void ResolveReferences()

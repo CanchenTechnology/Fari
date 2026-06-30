@@ -58,7 +58,11 @@ public class FriendUI : WindowBase, IPointerClickHandler
 		RefreshFriendRequestCountText();
 		SetCountText(uiComponent.friendInvitationNum, 0);
 
-		FriendDataManager.Instance.EnsureDebugRealFriends();
+		FriendDataManager.Instance.ReloadLocalDataForCurrentUser();
+		if (HasAuthenticatedFirebaseUser())
+			FriendDataManager.Instance.RemoveLocalDebugRealFriends();
+		else
+			FriendDataManager.Instance.EnsureDebugRealFriends();
 		FriendDataManager.Instance.DataChanged -= HandleFriendDataChanged;
 		FriendDataManager.Instance.DataChanged += HandleFriendDataChanged;
 
@@ -144,6 +148,18 @@ public class FriendUI : WindowBase, IPointerClickHandler
 	private bool IsValidCloudRequest(int requestId)
 	{
 		return requestId == cloudFriendSyncRequestId && gameObject != null && gameObject.activeInHierarchy;
+	}
+
+	private bool HasAuthenticatedFirebaseUser()
+	{
+		FirebaseAuthManager authManager = FirebaseAuthManager.Instance;
+		if (authManager != null && authManager.IsLoggedIn && !string.IsNullOrWhiteSpace(authManager.CurrentUserId))
+			return true;
+
+		UserDataManager userData = UserDataManager.Instance;
+		return userData != null
+			&& userData.IsFirebaseAuthenticated
+			&& !string.IsNullOrWhiteSpace(userData.FirebaseUid);
 	}
 
 	private void ScheduleCloudFriendSyncRetry(int requestId)

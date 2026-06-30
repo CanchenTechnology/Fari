@@ -1,11 +1,13 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text;
 using Firebase.Auth;
 using Firebase.Database;
 using Firebase.Extensions;
 using Firebase.Firestore;
 using UnityEngine;
+using UnityEngine.Networking;
 using XFGameFrameWork;
 
 /// <summary>
@@ -30,6 +32,9 @@ public class FriendOnlinePresenceManager : MonoSingleton<FriendOnlinePresenceMan
     private Coroutine startRetryCoroutine;
     private Coroutine watchRetryCoroutine;
     private string currentUid = string.Empty;
+#if UNITY_EDITOR
+    private bool currentUsesEditorRestPresence;
+#endif
     private bool isQuitting;
 
     private readonly Dictionary<string, RealtimePresenceWatcher> friendPresenceWatchers = new Dictionary<string, RealtimePresenceWatcher>();
@@ -81,6 +86,9 @@ public class FriendOnlinePresenceManager : MonoSingleton<FriendOnlinePresenceMan
 
         StopStartRetry();
 
+#if UNITY_EDITOR
+        bool usesEditorRestPresence = ShouldUseEditorRestPresence(uid);
+#endif
         if (!string.IsNullOrEmpty(currentUid) && currentUid != uid)
         {
             WritePresence(currentUid, false, true);
@@ -88,8 +96,22 @@ public class FriendOnlinePresenceManager : MonoSingleton<FriendOnlinePresenceMan
         }
 
         currentUid = uid;
+#if UNITY_EDITOR
+        currentUsesEditorRestPresence = usesEditorRestPresence;
+        if (currentUsesEditorRestPresence)
+        {
+            DetachConnectionListener();
+            WritePresence(uid, true, true);
+        }
+        else
+        {
+            AttachConnectionListener();
+            RegisterOnlinePresence();
+        }
+#else
         AttachConnectionListener();
         RegisterOnlinePresence();
+#endif
 
         if (heartbeatCoroutine == null)
             heartbeatCoroutine = StartCoroutine(HeartbeatRoutine());
@@ -112,6 +134,9 @@ public class FriendOnlinePresenceManager : MonoSingleton<FriendOnlinePresenceMan
 
         currentPresenceReference = null;
         currentUid = string.Empty;
+#if UNITY_EDITOR
+        currentUsesEditorRestPresence = false;
+#endif
     }
 
     public void WatchFriends(IEnumerable<FriendDataManager.FriendData> friends)
@@ -164,7 +189,12 @@ public class FriendOnlinePresenceManager : MonoSingleton<FriendOnlinePresenceMan
                 yield break;
             }
 
-            WriteRealtimePresence(currentUid, true);
+#if UNITY_EDITOR
+            if (currentUsesEditorRestPresence)
+                WritePresence(currentUid, true, true);
+            else
+#endif
+                WriteRealtimePresence(currentUid, true);
         }
     }
 
@@ -184,8 +214,22 @@ public class FriendOnlinePresenceManager : MonoSingleton<FriendOnlinePresenceMan
             {
                 startRetryCoroutine = null;
                 currentUid = uid;
+#if UNITY_EDITOR
+                currentUsesEditorRestPresence = ShouldUseEditorRestPresence(uid);
+                if (currentUsesEditorRestPresence)
+                {
+                    DetachConnectionListener();
+                    WritePresence(uid, true, true);
+                }
+                else
+                {
+                    AttachConnectionListener();
+                    RegisterOnlinePresence();
+                }
+#else
                 AttachConnectionListener();
                 RegisterOnlinePresence();
+#endif
 
                 if (heartbeatCoroutine == null)
                     heartbeatCoroutine = StartCoroutine(HeartbeatRoutine());
@@ -353,6 +397,16 @@ public class FriendOnlinePresenceManager : MonoSingleton<FriendOnlinePresenceMan
         FirebaseUser user = authManager.CurrentUser;
         if (user == null || string.IsNullOrEmpty(user.UserId))
         {
+#if UNITY_EDITOR
+            if (authManager.TryGetEditorRestAuth(out string editorRestUid, out string editorRestToken)
+                && !string.IsNullOrEmpty(editorRestUid)
+                && !string.IsNullOrEmpty(editorRestToken))
+            {
+                uid = editorRestUid;
+                shouldRetry = false;
+                return true;
+            }
+#endif
             shouldRetry = false;
             return false;
         }
@@ -405,13 +459,114 @@ public class FriendOnlinePresenceManager : MonoSingleton<FriendOnlinePresenceMan
         }
     }
 
+#if UNITY_EDITOR
+    private static bool ShouldUseEditorRestPresence(string uid)
+    {
+        FirebaseAuthManager authManager = FirebaseAuthManager.Instance;
+        if (authManager == null || authManager.CurrentUser != null)
+            return false;
+
+        return authManager.TryGetEditorRestAuth(out string editorRestUid, out string editorRestToken)
+            && !string.IsNullOrEmpty(editorRestToken)
+            && NormalizeUid(editorRestUid) == NormalizeUid(uid);
+    }
+#endif
+
     private void WritePresence(string uid, bool online, bool mirrorToFirestore)
     {
+#if UNITY_EDITOR
+        if (currentUsesEditorRestPresence)
+        {
+            StartCoroutine(WriteEditorRestPresence(uid, online, mirrorToFirestore));
+            return;
+        }
+#endif
         WriteRealtimePresence(uid, online);
 
         if (mirrorToFirestore)
             WriteFirestorePresence(uid, online);
     }
+
+#if UNITY_EDITOR
+    private IEnumerator WriteEditorRestPresence(string uid, bool online, bool mirrorToFirestore)
+    {
+        if (string.IsNullOrEmpty(uid)) yield break;
+
+        FirebaseAuthManager authManager = FirebaseAuthManager.Instance;
+        if (authManager == null
+            || !authManager.TryGetEditorRestAuth(out string editorRestUid, out string idToken)
+            || NormalizeUid(editorRestUid) != NormalizeUid(uid)
+            || string.IsNullOrEmpty(idToken))
+        {
+            yield break;
+        }
+
+        long nowUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        string realtimeUrl = $"{DatabaseUrl}/{PresenceRootPath}/{Uri.EscapeDataString(uid)}.json?auth={Uri.EscapeDataString(idToken)}";
+        string realtimeBody = "{\"isOnline\":"
+            + (online ? "true" : "false")
+            + ",\"lastActiveUnixMs\":"
+            + nowUnixMs
+            + ",\"updatedAt\":"
+            + nowUnixMs
+            + "}";
+
+        yield return SendEditorRestRequest(
+            realtimeUrl,
+            "PUT",
+            realtimeBody,
+            null,
+            "Editor REST Realtime Database presence");
+
+        if (!mirrorToFirestore) yield break;
+
+        string timestamp = DateTimeOffset.UtcNow.ToString("o");
+        string firestoreUrl = $"https://firestore.googleapis.com/v1/projects/fari-app-b2fd2/databases/(default)/documents/public_profiles/{Uri.EscapeDataString(uid)}"
+            + "?updateMask.fieldPaths=isOnline"
+            + "&updateMask.fieldPaths=lastActiveUnixMs"
+            + "&updateMask.fieldPaths=lastActiveAt"
+            + "&updateMask.fieldPaths=presenceUpdatedAt";
+        string firestoreBody = "{\"fields\":{"
+            + "\"isOnline\":{\"booleanValue\":" + (online ? "true" : "false") + "},"
+            + "\"lastActiveUnixMs\":{\"integerValue\":\"" + nowUnixMs + "\"},"
+            + "\"lastActiveAt\":{\"timestampValue\":\"" + timestamp + "\"},"
+            + "\"presenceUpdatedAt\":{\"timestampValue\":\"" + timestamp + "\"}"
+            + "}}";
+
+        yield return SendEditorRestRequest(
+            firestoreUrl,
+            "PATCH",
+            firestoreBody,
+            idToken,
+            "Editor REST Firestore presence");
+    }
+
+    private static IEnumerator SendEditorRestRequest(string url, string method, string body, string bearerToken, string label)
+    {
+        using (UnityWebRequest request = new UnityWebRequest(url, method))
+        {
+            request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body ?? string.Empty));
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            if (!string.IsNullOrEmpty(bearerToken))
+                request.SetRequestHeader("Authorization", "Bearer " + bearerToken);
+
+            yield return request.SendWebRequest();
+
+#if UNITY_2020_1_OR_NEWER
+            bool failed = request.result == UnityWebRequest.Result.ConnectionError
+                || request.result == UnityWebRequest.Result.ProtocolError;
+#else
+            bool failed = request.isNetworkError || request.isHttpError;
+#endif
+            if (failed)
+            {
+                string response = request.downloadHandler != null ? request.downloadHandler.text : string.Empty;
+                Debug.LogWarning($"[FriendOnlinePresenceManager] {label} failed: {request.error} {response}");
+            }
+        }
+    }
+#endif
 
     private void WriteRealtimePresence(string uid, bool online)
     {

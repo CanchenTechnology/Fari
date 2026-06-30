@@ -757,7 +757,6 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
             image.sprite = backSprite;
             image.color = Color.white;
-            image.preserveAspect = true;
             image.raycastTarget = true;
             EnsureDeckCardCanvas(cardObject);
 
@@ -1113,7 +1112,6 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         flyImage.raycastTarget = false;
         flyImage.sprite = ResolveCardBackSprite();
         flyImage.color = Color.white;
-        flyImage.preserveAspect = true;
 
         RectTransform sourceRect = sourceImage.rectTransform;
         RectTransform flyRect = flyImage.rectTransform;

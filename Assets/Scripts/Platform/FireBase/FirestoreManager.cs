@@ -577,9 +577,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             return uid;
 
         FirebaseAuthManager authManager = FirebaseAuthManager.Instance;
-        return authManager != null && authManager.CurrentUser != null
-            ? authManager.CurrentUser.UserId
-            : string.Empty;
+        return authManager != null ? authManager.CurrentUserId : string.Empty;
     }
 
     private void SearchUsersByKeywordArray(
@@ -1793,6 +1791,14 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             return;
         }
 
+#if UNITY_EDITOR
+        if (TryGetEditorRestFirestoreAuth(currentUid, out string editorRestToken))
+        {
+            LoadFriendsViaRestInEditor(currentUid, editorRestToken, onComplete);
+            return;
+        }
+#endif
+
         _db.Collection("users")
             .Document(currentUid)
             .Collection("friends")
@@ -1810,6 +1816,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 foreach (DocumentSnapshot _ in task.Result.Documents)
                     friendDocCount++;
 
+                FriendDataManager.Instance.BeginCloudRealFriendRefresh();
                 FriendDataManager.Instance.RemoveLocalDebugRealFriends();
                 Debug.Log($"[FirestoreManager] 拉取好友成功: localUid={currentUid}, authUid={GetFirebaseAuthUid()}, count={friendDocCount}");
 
@@ -1909,6 +1916,14 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             return;
         }
 
+#if UNITY_EDITOR
+        if (TryGetEditorRestFirestoreAuth(currentUid, out string editorRestToken))
+        {
+            LoadFriendRequestsViaRestInEditor(currentUid, editorRestToken, onComplete);
+            return;
+        }
+#endif
+
         _db.Collection("users")
             .Document(currentUid)
             .Collection("friend_requests")
@@ -1922,6 +1937,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                     return;
                 }
 
+                FriendDataManager.Instance.BeginCloudInviteRefresh();
                 foreach (DocumentSnapshot doc in task.Result.Documents)
                 {
                     if (!doc.Exists) continue;
@@ -2291,6 +2307,14 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             return;
         }
 
+#if UNITY_EDITOR
+        if (TryGetEditorRestFirestoreAuth(currentUid, out string editorRestToken))
+        {
+            LoadVirtualFriendsViaRestInEditor(currentUid, editorRestToken, onComplete);
+            return;
+        }
+#endif
+
         _db.Collection("users")
             .Document(currentUid)
             .Collection("virtual_friends")
@@ -2304,6 +2328,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                     return;
                 }
 
+                FriendDataManager.Instance.BeginCloudVirtualFriendRefresh();
                 foreach (DocumentSnapshot doc in task.Result.Documents)
                 {
                     if (!doc.Exists) continue;
@@ -3577,11 +3602,207 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
     }
 
 #if UNITY_EDITOR
+    private class EditorRestFriendRecord
+    {
+        public string uid = string.Empty;
+        public string displayName = string.Empty;
+        public string email = string.Empty;
+        public string photoUrl = string.Empty;
+        public string status = string.Empty;
+        public bool isOnline;
+        public long lastActiveUnixMs;
+    }
+
+    private class EditorRestInviteRecord
+    {
+        public string uid = string.Empty;
+        public string displayName = string.Empty;
+        public string email = string.Empty;
+        public string photoUrl = string.Empty;
+        public string status = string.Empty;
+    }
+
+    private class EditorRestVirtualFriendRecord
+    {
+        public string id = string.Empty;
+        public string name = string.Empty;
+        public string relationship = string.Empty;
+        public string birthday = string.Empty;
+        public string birthTime = string.Empty;
+        public string city = string.Empty;
+        public string notes = string.Empty;
+        public string avatarUrl = string.Empty;
+        public string avatarStoragePath = string.Empty;
+        public long lastOperatedUnixMs;
+        public bool isDeleted;
+    }
+
+    private class EditorRestCollectionResult<T>
+    {
+        public List<T> records = new List<T>();
+        public string proxyLabel = string.Empty;
+        public string error = string.Empty;
+    }
+
     private class EditorRestSearchResult
     {
         public List<UserSearchResult> users = new List<UserSearchResult>();
         public string proxyLabel = string.Empty;
         public string error = string.Empty;
+    }
+
+    private static bool TryGetEditorRestFirestoreAuth(string expectedUid, out string idToken)
+    {
+        idToken = string.Empty;
+        FirebaseAuthManager authManager = FirebaseAuthManager.Instance;
+        if (authManager == null || authManager.CurrentUser != null)
+            return false;
+
+        if (!authManager.TryGetEditorRestAuth(out string uid, out string token))
+            return false;
+
+        if (!string.Equals(uid, expectedUid, StringComparison.Ordinal))
+            return false;
+
+        idToken = token;
+        return !string.IsNullOrEmpty(idToken);
+    }
+
+    private void LoadFriendsViaRestInEditor(string currentUid, string idToken, Action<bool> onComplete)
+    {
+        string projectId = GetFirebaseProjectIdForRest();
+        Task.Run(() => LoadFriendsViaRest(projectId, currentUid, idToken))
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogWarning($"[FirestoreManager] Editor REST 好友读取失败: {GetTaskError(task.Exception)}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                EditorRestCollectionResult<EditorRestFriendRecord> result = task.Result;
+                if (!string.IsNullOrEmpty(result.error))
+                {
+                    Debug.LogWarning($"[FirestoreManager] {result.error}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                FriendDataManager.Instance.RemoveLocalDebugRealFriends();
+                FriendDataManager.Instance.BeginCloudRealFriendRefresh();
+                foreach (EditorRestFriendRecord record in result.records)
+                {
+                    if (record == null || string.IsNullOrEmpty(record.uid)) continue;
+                    if (record.status != "friend")
+                    {
+                        FriendDataManager.Instance.RemoveRealFriendByFirebaseUid(record.uid);
+                        continue;
+                    }
+
+                    string handle = string.IsNullOrEmpty(record.email) ? $"@{record.uid}" : $"@{record.email.Split('@')[0]}";
+                    FriendDataManager.Instance.UpsertRealFriendFromFirebase(
+                        record.uid,
+                        string.IsNullOrEmpty(record.displayName) ? "未命名用户" : record.displayName,
+                        handle,
+                        record.isOnline ? "online" : "offline",
+                        null,
+                        "Firebase",
+                        record.photoUrl,
+                        record.isOnline,
+                        record.lastActiveUnixMs);
+                }
+
+                Debug.Log($"[FirestoreManager] Editor REST 好友读取成功，来源={result.proxyLabel}，数量={result.records.Count}");
+                onComplete?.Invoke(true);
+            });
+    }
+
+    private void LoadFriendRequestsViaRestInEditor(string currentUid, string idToken, Action<bool> onComplete)
+    {
+        string projectId = GetFirebaseProjectIdForRest();
+        Task.Run(() => LoadFriendRequestsViaRest(projectId, currentUid, idToken))
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogWarning($"[FirestoreManager] Editor REST 好友请求读取失败: {GetTaskError(task.Exception)}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                EditorRestCollectionResult<EditorRestInviteRecord> result = task.Result;
+                if (!string.IsNullOrEmpty(result.error))
+                {
+                    Debug.LogWarning($"[FirestoreManager] {result.error}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                FriendDataManager.Instance.BeginCloudInviteRefresh();
+                foreach (EditorRestInviteRecord record in result.records)
+                {
+                    if (record == null || string.IsNullOrEmpty(record.uid)) continue;
+                    if (record.status != "pendingReceived") continue;
+
+                    FriendDataManager.Instance.UpsertInvite(
+                        record.uid,
+                        string.IsNullOrEmpty(record.displayName) ? "未命名用户" : record.displayName,
+                        record.email,
+                        record.photoUrl,
+                        record.status,
+                        "请求添加你为好友");
+                }
+
+                Debug.Log($"[FirestoreManager] Editor REST 好友请求读取成功，来源={result.proxyLabel}，数量={result.records.Count}");
+                onComplete?.Invoke(true);
+            });
+    }
+
+    private void LoadVirtualFriendsViaRestInEditor(string currentUid, string idToken, Action<bool> onComplete)
+    {
+        string projectId = GetFirebaseProjectIdForRest();
+        Task.Run(() => LoadVirtualFriendsViaRest(projectId, currentUid, idToken))
+            .ContinueWithOnMainThread(task =>
+            {
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    Debug.LogWarning($"[FirestoreManager] Editor REST 虚拟好友读取失败: {GetTaskError(task.Exception)}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                EditorRestCollectionResult<EditorRestVirtualFriendRecord> result = task.Result;
+                if (!string.IsNullOrEmpty(result.error))
+                {
+                    Debug.LogWarning($"[FirestoreManager] {result.error}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                FriendDataManager.Instance.BeginCloudVirtualFriendRefresh();
+                foreach (EditorRestVirtualFriendRecord record in result.records)
+                {
+                    if (record == null || string.IsNullOrEmpty(record.id) || record.isDeleted) continue;
+                    if (IsVirtualFriendPendingSave(record.id) || IsVirtualFriendPendingDelete(record.id)) continue;
+
+                    FriendDataManager.Instance.UpsertVirtualFriendFromFirebase(
+                        record.id,
+                        string.IsNullOrEmpty(record.name) ? "未命名好友" : record.name,
+                        string.IsNullOrEmpty(record.relationship) ? "好友" : record.relationship,
+                        record.birthday,
+                        record.birthTime,
+                        record.city,
+                        record.notes,
+                        null,
+                        record.avatarUrl,
+                        record.avatarStoragePath,
+                        record.lastOperatedUnixMs);
+                }
+
+                Debug.Log($"[FirestoreManager] Editor REST 虚拟好友读取成功，来源={result.proxyLabel}，数量={result.records.Count}");
+                onComplete?.Invoke(true);
+            });
     }
 
     private void SearchUsersByNameViaRestInEditor(
@@ -3765,6 +3986,87 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         return finalResult;
     }
 
+    private static EditorRestCollectionResult<EditorRestFriendRecord> LoadFriendsViaRest(string projectId, string currentUid, string idToken)
+    {
+        EditorRestCollectionResult<EditorRestFriendRecord> result = new EditorRestCollectionResult<EditorRestFriendRecord>();
+        string endpoint = BuildFirestoreCollectionEndpoint(projectId, currentUid, "friends");
+        string lastError = string.Empty;
+
+        foreach (string proxyUrl in GetEditorFirestoreProxyCandidates())
+        {
+            try
+            {
+                string json = GetFirestoreRestJson(endpoint, idToken, proxyUrl);
+                AddFriendRecordsFromRestJson(result.records, json);
+                EnrichFriendRecordsWithPublicProfiles(projectId, idToken, result.records, proxyUrl);
+                result.proxyLabel = DescribeProxy(proxyUrl);
+                return result;
+            }
+            catch (Exception e)
+            {
+                lastError = $"{DescribeProxy(proxyUrl)}: {e.Message}";
+            }
+        }
+
+        result.error = $"Editor REST 好友读取失败，最后错误：{lastError}";
+        return result;
+    }
+
+    private static EditorRestCollectionResult<EditorRestInviteRecord> LoadFriendRequestsViaRest(string projectId, string currentUid, string idToken)
+    {
+        EditorRestCollectionResult<EditorRestInviteRecord> result = new EditorRestCollectionResult<EditorRestInviteRecord>();
+        string endpoint = BuildFirestoreCollectionEndpoint(projectId, currentUid, "friend_requests");
+        string lastError = string.Empty;
+
+        foreach (string proxyUrl in GetEditorFirestoreProxyCandidates())
+        {
+            try
+            {
+                string json = GetFirestoreRestJson(endpoint, idToken, proxyUrl);
+                AddInviteRecordsFromRestJson(result.records, json);
+                result.proxyLabel = DescribeProxy(proxyUrl);
+                return result;
+            }
+            catch (Exception e)
+            {
+                lastError = $"{DescribeProxy(proxyUrl)}: {e.Message}";
+            }
+        }
+
+        result.error = $"Editor REST 好友请求读取失败，最后错误：{lastError}";
+        return result;
+    }
+
+    private static EditorRestCollectionResult<EditorRestVirtualFriendRecord> LoadVirtualFriendsViaRest(string projectId, string currentUid, string idToken)
+    {
+        EditorRestCollectionResult<EditorRestVirtualFriendRecord> result = new EditorRestCollectionResult<EditorRestVirtualFriendRecord>();
+        string endpoint = BuildFirestoreCollectionEndpoint(projectId, currentUid, "virtual_friends");
+        string lastError = string.Empty;
+
+        foreach (string proxyUrl in GetEditorFirestoreProxyCandidates())
+        {
+            try
+            {
+                string json = GetFirestoreRestJson(endpoint, idToken, proxyUrl);
+                AddVirtualFriendRecordsFromRestJson(result.records, json);
+                result.proxyLabel = DescribeProxy(proxyUrl);
+                return result;
+            }
+            catch (Exception e)
+            {
+                lastError = $"{DescribeProxy(proxyUrl)}: {e.Message}";
+            }
+        }
+
+        result.error = $"Editor REST 虚拟好友读取失败，最后错误：{lastError}";
+        return result;
+    }
+
+    private static string BuildFirestoreCollectionEndpoint(string projectId, string uid, string collectionId)
+    {
+        return $"https://firestore.googleapis.com/v1/projects/{projectId}/databases/(default)/documents/users/{Uri.EscapeDataString(uid)}/{collectionId}";
+    }
+
     private static string GetFirebaseProjectIdForRest()
     {
         try
@@ -3946,6 +4248,158 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         }
     }
 
+    private static string GetFirestoreRestJson(string endpoint, string idToken, string proxyUrl)
+    {
+        HttpWebRequest request = (HttpWebRequest)WebRequest.Create(endpoint);
+        request.Method = "GET";
+        request.Accept = "application/json";
+        request.Timeout = 5000;
+        request.ReadWriteTimeout = 5000;
+        request.Proxy = string.IsNullOrEmpty(proxyUrl) ? null : new WebProxy(proxyUrl);
+        if (!string.IsNullOrEmpty(idToken))
+            request.Headers[HttpRequestHeader.Authorization] = "Bearer " + idToken;
+
+        try
+        {
+            using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+            using (Stream responseStream = response.GetResponseStream())
+            using (StreamReader reader = new StreamReader(responseStream ?? Stream.Null))
+            {
+                return reader.ReadToEnd();
+            }
+        }
+        catch (WebException e)
+        {
+            if (e.Response is HttpWebResponse httpResponse && httpResponse.StatusCode == HttpStatusCode.NotFound)
+                return "{}";
+
+            string responseText = string.Empty;
+            if (e.Response != null)
+            {
+                using (Stream responseStream = e.Response.GetResponseStream())
+                using (StreamReader reader = new StreamReader(responseStream ?? Stream.Null))
+                {
+                    responseText = reader.ReadToEnd();
+                }
+            }
+
+            throw new Exception(string.IsNullOrEmpty(responseText) ? e.Message : responseText);
+        }
+    }
+
+    private static void AddFriendRecordsFromRestJson(List<EditorRestFriendRecord> records, string json)
+    {
+        foreach (JObject document in EnumerateRestDocuments(json))
+        {
+            JObject fields = document["fields"] as JObject;
+            string uid = GetRestString(fields, "uid", ExtractDocumentId(document.Value<string>("name")));
+            if (string.IsNullOrEmpty(uid)) continue;
+
+            long lastActiveUnixMs = GetRestPresenceUnixMs(fields);
+            records.Add(new EditorRestFriendRecord
+            {
+                uid = uid,
+                displayName = GetRestString(fields, "displayName", "未命名用户"),
+                email = GetRestString(fields, "email", string.Empty),
+                photoUrl = GetRestString(fields, "photoUrl", string.Empty),
+                status = GetRestString(fields, "status", "friend"),
+                lastActiveUnixMs = lastActiveUnixMs,
+                isOnline = ResolveRestPresenceOnline(fields, lastActiveUnixMs),
+            });
+        }
+    }
+
+    private static void AddInviteRecordsFromRestJson(List<EditorRestInviteRecord> records, string json)
+    {
+        foreach (JObject document in EnumerateRestDocuments(json))
+        {
+            JObject fields = document["fields"] as JObject;
+            string uid = GetRestString(fields, "uid", ExtractDocumentId(document.Value<string>("name")));
+            if (string.IsNullOrEmpty(uid)) continue;
+
+            records.Add(new EditorRestInviteRecord
+            {
+                uid = uid,
+                displayName = GetRestString(fields, "displayName", "未命名用户"),
+                email = GetRestString(fields, "email", string.Empty),
+                photoUrl = GetRestString(fields, "photoUrl", string.Empty),
+                status = GetRestString(fields, "status", "pendingReceived"),
+            });
+        }
+    }
+
+    private static void AddVirtualFriendRecordsFromRestJson(List<EditorRestVirtualFriendRecord> records, string json)
+    {
+        foreach (JObject document in EnumerateRestDocuments(json))
+        {
+            JObject fields = document["fields"] as JObject;
+            string id = ExtractDocumentId(document.Value<string>("name"));
+            if (string.IsNullOrEmpty(id)) continue;
+
+            records.Add(new EditorRestVirtualFriendRecord
+            {
+                id = id,
+                name = GetRestString(fields, "name", "未命名好友"),
+                relationship = GetRestString(fields, "relationship", "好友"),
+                birthday = GetRestString(fields, "birthday", string.Empty),
+                birthTime = GetRestString(fields, "birthTime", string.Empty),
+                city = GetRestString(fields, "city", string.Empty),
+                notes = GetRestString(fields, "notes", string.Empty),
+                avatarUrl = GetRestString(fields, "avatarUrl", string.Empty),
+                avatarStoragePath = GetRestString(fields, "avatarStoragePath", string.Empty),
+                lastOperatedUnixMs = GetRestLong(fields, "lastOperatedUnixMs", GetRestTimestampUnixMs(fields, "updatedAt")),
+                isDeleted = GetRestBool(fields, "isDeleted", false),
+            });
+        }
+    }
+
+    private static void EnrichFriendRecordsWithPublicProfiles(
+        string projectId,
+        string idToken,
+        List<EditorRestFriendRecord> records,
+        string proxyUrl)
+    {
+        if (records == null) return;
+
+        foreach (EditorRestFriendRecord record in records)
+        {
+            if (record == null || string.IsNullOrEmpty(record.uid) || record.status != "friend") continue;
+
+            try
+            {
+                string endpoint = $"https://firestore.googleapis.com/v1/projects/{projectId}/databases/(default)/documents/public_profiles/{Uri.EscapeDataString(record.uid)}";
+                JObject profile = JObject.Parse(GetFirestoreRestJson(endpoint, idToken, proxyUrl));
+                JObject fields = profile["fields"] as JObject;
+                if (fields == null) continue;
+
+                record.displayName = GetRestString(fields, "displayName", record.displayName);
+                record.email = GetRestString(fields, "email", record.email);
+                record.photoUrl = GetRestString(fields, "photoUrl", record.photoUrl);
+                record.lastActiveUnixMs = GetRestPresenceUnixMs(fields, record.lastActiveUnixMs);
+                record.isOnline = ResolveRestPresenceOnline(fields, record.lastActiveUnixMs);
+            }
+            catch
+            {
+                // Public profile enrichment is best-effort; the friend document already has fallback data.
+            }
+        }
+    }
+
+    private static IEnumerable<JObject> EnumerateRestDocuments(string json)
+    {
+        if (string.IsNullOrEmpty(json)) yield break;
+
+        JObject root = JObject.Parse(json);
+        JArray documents = root["documents"] as JArray;
+        if (documents == null) yield break;
+
+        foreach (JToken token in documents)
+        {
+            if (token is JObject document)
+                yield return document;
+        }
+    }
+
     private static void AddUserSearchResultsFromRestJson(
         List<UserSearchResult> results,
         string json,
@@ -4008,6 +4462,53 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             ?? field["doubleValue"]?.ToString()
             ?? field["booleanValue"]?.ToString()
             ?? fallback;
+    }
+
+    private static bool GetRestBool(JObject fields, string key, bool fallback)
+    {
+        JToken field = fields?[key];
+        if (field == null) return fallback;
+        JToken value = field["booleanValue"];
+        if (value != null) return value.Value<bool>();
+        return bool.TryParse(GetRestString(fields, key, string.Empty), out bool parsed) ? parsed : fallback;
+    }
+
+    private static long GetRestLong(JObject fields, string key, long fallback)
+    {
+        string value = GetRestString(fields, key, string.Empty);
+        if (long.TryParse(value, out long parsed)) return parsed;
+        return fallback;
+    }
+
+    private static long GetRestTimestampUnixMs(JObject fields, string key)
+    {
+        string value = fields?[key]?["timestampValue"]?.ToString();
+        if (string.IsNullOrEmpty(value)) return 0;
+        return DateTimeOffset.TryParse(value, out DateTimeOffset parsed)
+            ? parsed.ToUnixTimeMilliseconds()
+            : 0;
+    }
+
+    private static long GetRestPresenceUnixMs(JObject fields, long fallback = 0)
+    {
+        long value = GetRestTimestampUnixMs(fields, "lastActiveAt");
+        if (value <= 0) value = GetRestLong(fields, "lastActiveUnixMs", 0);
+        if (value <= 0) value = GetRestTimestampUnixMs(fields, "presenceUpdatedAt");
+        if (value <= 0) value = GetRestTimestampUnixMs(fields, "lastSignInAt");
+        if (value <= 0) value = GetRestLong(fields, "lastSignInUnixMs", 0);
+        if (value <= 0) value = GetRestTimestampUnixMs(fields, "updatedAt");
+        return value > 0 ? value : fallback;
+    }
+
+    private static bool ResolveRestPresenceOnline(JObject fields, long lastActiveUnixMs)
+    {
+        if (fields != null && fields["isOnline"] != null)
+        {
+            bool explicitOnline = GetRestBool(fields, "isOnline", false);
+            return explicitOnline && (lastActiveUnixMs <= 0 || IsRecentlyOnline(lastActiveUnixMs));
+        }
+
+        return IsRecentlyOnline(lastActiveUnixMs);
     }
 #endif
 

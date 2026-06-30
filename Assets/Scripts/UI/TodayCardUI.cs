@@ -96,7 +96,6 @@ public class TodayCardUI : WindowBase
 			if (sprite != null)
 			{
 				_cardDetail.cardImage.sprite = sprite;
-				_cardDetail.cardImage.preserveAspect = true;
 				_cardDetail.cardImage.rectTransform.localRotation = upright
 					? Quaternion.identity
 					: Quaternion.Euler(0, 0, 180);

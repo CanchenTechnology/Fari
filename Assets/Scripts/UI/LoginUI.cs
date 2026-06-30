@@ -93,9 +93,11 @@ public class LoginUI : WindowBase
 		string providerName = FirebaseAuthManager.Instance.GetProviderDisplayName(provider);
 		ToastManager.ShowToast($"{providerName} 登录成功");
 
-		if (GameManager.Instance.isRegister)
+		bool shouldOpenMain = ShouldOpenMainAfterLogin(provider);
+		UIModule.Instance.HideWindow<LoginUI>();
+
+		if (shouldOpenMain)
 		{
-			UIModule.Instance.HideWindow<LoginUI>();
 			UIModule.Instance.PopUpWindow<NavigationUI>();
 		}
         else
@@ -104,6 +106,24 @@ public class LoginUI : WindowBase
         }
 
     }
+
+	private bool ShouldOpenMainAfterLogin(AuthProvider provider)
+	{
+#if UNITY_EDITOR
+		string editorRestToken;
+		if (provider == AuthProvider.Email
+			&& FirebaseAuthManager.Instance != null
+			&& FirebaseAuthManager.Instance.TryGetEditorRestIdToken(out editorRestToken))
+		{
+			return true;
+		}
+#endif
+
+		if (GameManager.Instance != null && GameManager.Instance.isRegister)
+			return true;
+
+		return UserDataManager.Instance != null && UserDataManager.Instance.IsProfileComplete();
+	}
 
 	/// <summary>
 	/// Firebase 登录失败回调

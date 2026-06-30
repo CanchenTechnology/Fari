@@ -542,7 +542,6 @@ public class TodayOracleUI : WindowBase
 				_readingCardContainer.cardImage.rectTransform.localRotation = upright
 					? Quaternion.identity
 					: Quaternion.Euler(0, 0, 180);
-				_readingCardContainer.cardImage.preserveAspect = true;
 			}
 		}
 
@@ -588,7 +587,6 @@ public class TodayOracleUI : WindowBase
 				_readingCardContainer.cardImage.rectTransform.localRotation = preparedReading.upright
 					? Quaternion.identity
 					: Quaternion.Euler(0, 0, 180);
-				_readingCardContainer.cardImage.preserveAspect = true;
 			}
 		}
 

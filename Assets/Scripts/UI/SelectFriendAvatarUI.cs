@@ -169,7 +169,6 @@ public class SelectFriendAvatarUI : WindowBase
 		if (uiComponent.PreviewAvatarImage != null && selectedAvatarSprite != null)
 		{
 			uiComponent.PreviewAvatarImage.sprite = selectedAvatarSprite;
-			uiComponent.PreviewAvatarImage.preserveAspect = true;
 		}
 	}
 
