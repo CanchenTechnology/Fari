@@ -839,7 +839,7 @@ public class FriendPreviewUI : WindowBase
 			return;
 
 		FriendDataManager.FriendData targetFriend = GetRelationshipTargetFriend();
-		bool canShow = targetFriend != null && !currentFromAddFlow || (targetFriend != null && currentFromAddFlow);
+		bool canShow = targetFriend != null;
 		bool canUse = canShow && RelationshipDivinationFlow.CanUseTwoPersonDivination(targetFriend, false);
 
 		uiComponent.inviteBtn.gameObject.SetActive(canShow);
@@ -1105,6 +1105,25 @@ public class FriendPreviewUI : WindowBase
 	{
 		OpenFullHistoryWindow();
 	}
+	public void OnInviteButtonClick()
+	{
+		FriendDataManager.FriendData targetFriend = GetRelationshipTargetFriend();
+		if (targetFriend == null)
+		{
+			ToastManager.ShowToast("好友资料不完整");
+			RefreshInviteButton();
+			return;
+		}
+
+		if (!RelationshipDivinationFlow.CanUseTwoPersonDivination(targetFriend, true))
+		{
+			RefreshInviteButton();
+			return;
+		}
+
+		HideSettingPanel(true);
+		RelationshipDivinationFlow.ShowInviteConfirm(targetFriend);
+	}
 	public void OnExitSettingButtonClick()
 	{
 		HideSettingPanel(false);
@@ -1124,6 +1143,7 @@ public class FriendPreviewUI : WindowBase
 			currentFriend = updatedFriend;
 			RefreshSettingControls();
 			RefreshProfile(true);
+			RefreshInviteButton();
 			LoadPreviewHistory();
 		});
 	}
@@ -1147,6 +1167,7 @@ public class FriendPreviewUI : WindowBase
 
 		isDeletingFriend = true;
 		RefreshSettingControls();
+		RefreshInviteButton();
 		if (friend.isVirtual)
 		{
 			DeleteVirtualFriend(friend);
@@ -1224,6 +1245,7 @@ public class FriendPreviewUI : WindowBase
 	{
 		isDeletingFriend = false;
 		RefreshSettingControls();
+		RefreshInviteButton();
 		if (!string.IsNullOrWhiteSpace(message))
 			ToastManager.ShowToast(message);
 
