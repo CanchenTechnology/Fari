@@ -157,6 +157,11 @@ namespace GamerFrameWork.UIFrameWork
             }
             Visible = mCanvasGroup.interactable = mCanvasGroup.blocksRaycasts = isVisible;
             mCanvasGroup.alpha = isVisible ? 1 : 0;
+
+            if (!isVisible && transform != null)
+            {
+                transform.SetAsFirstSibling();
+            }
             if (isVisible && PopStack)//特殊情况,需要重绘,以免未刷新
             {
                 gameObject.SetActive(false);
