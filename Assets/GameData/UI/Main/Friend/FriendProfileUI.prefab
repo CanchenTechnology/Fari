@@ -5661,7 +5661,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 8.787689, y: -246}
-  m_SizeDelta: {x: -122.0135, y: 258}
+  m_SizeDelta: {x: -122.0135, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &4212623046242449652
 CanvasRenderer:
@@ -6212,8 +6212,84 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 9223372036854775807, guid: eb475d3b9979a49afa1c92ef46bc92be, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 7274171836973605477}
+    - targetCorrespondingSourceObject: {fileID: 9223372036854775807, guid: eb475d3b9979a49afa1c92ef46bc92be, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 4356848575301623396}
   m_SourcePrefab: {fileID: 100100000, guid: eb475d3b9979a49afa1c92ef46bc92be, type: 3}
+--- !u!1 &3292702176451811551 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 9223372036854775807, guid: eb475d3b9979a49afa1c92ef46bc92be, type: 3}
+  m_PrefabInstance: {fileID: 3292702176451811550}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &7274171836973605477
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3292702176451811551}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4e29b1a8efbd4b44bb3f3716e73f07ff, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_Navigation:
+    m_Mode: 3
+    m_WrapAround: 0
+    m_SelectOnUp: {fileID: 0}
+    m_SelectOnDown: {fileID: 0}
+    m_SelectOnLeft: {fileID: 0}
+    m_SelectOnRight: {fileID: 0}
+  m_Transition: 1
+  m_Colors:
+    m_NormalColor: {r: 1, g: 1, b: 1, a: 1}
+    m_HighlightedColor: {r: 0.9607843, g: 0.9607843, b: 0.9607843, a: 1}
+    m_PressedColor: {r: 0.78431374, g: 0.78431374, b: 0.78431374, a: 1}
+    m_SelectedColor: {r: 0.9607843, g: 0.9607843, b: 0.9607843, a: 1}
+    m_DisabledColor: {r: 0.78431374, g: 0.78431374, b: 0.78431374, a: 0.5019608}
+    m_ColorMultiplier: 1
+    m_FadeDuration: 0.1
+  m_SpriteState:
+    m_HighlightedSprite: {fileID: 0}
+    m_PressedSprite: {fileID: 0}
+    m_SelectedSprite: {fileID: 0}
+    m_DisabledSprite: {fileID: 0}
+  m_AnimationTriggers:
+    m_NormalTrigger: Normal
+    m_HighlightedTrigger: Highlighted
+    m_PressedTrigger: Pressed
+    m_SelectedTrigger: Selected
+    m_DisabledTrigger: Disabled
+  m_Interactable: 1
+  m_TargetGraphic: {fileID: 0}
+  m_OnClick:
+    m_PersistentCalls:
+      m_Calls: []
+--- !u!95 &4356848575301623396
+Animator:
+  serializedVersion: 5
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3292702176451811551}
+  m_Enabled: 1
+  m_Avatar: {fileID: 0}
+  m_Controller: {fileID: 0}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 0
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
 --- !u!224 &5126683602054109474 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 7680788825367478780, guid: eb475d3b9979a49afa1c92ef46bc92be, type: 3}
@@ -6224,7 +6300,7 @@ MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 7192590379417137630, guid: eb475d3b9979a49afa1c92ef46bc92be, type: 3}
   m_PrefabInstance: {fileID: 3292702176451811550}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
+  m_GameObject: {fileID: 3292702176451811551}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e53d02dc326674cd291d6aaa3e257900, type: 3}

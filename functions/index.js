@@ -9184,6 +9184,88 @@ const ADMIN_TEST_FRIEND_VARIANTS = Object.freeze({
     spreadKind: "relationship_tension",
   },
 });
+const ADMIN_TEST_REAL_FRIEND_PACK = Object.freeze([
+  {
+    key: "lin_qinghe_001",
+    label: "林清禾",
+    displayName: "林清禾",
+    email: "lin.qinghe.test@example.com",
+    birthday: "1997-04-12",
+    birthTime: "08:24",
+    city: "中国 · 上海 · 徐汇",
+    relationship: "真实好友",
+    bio: "公开测试资料：自由插画师，喜欢夜跑、植物和手账，适合测试公开主页、好友动态和关系占卜。",
+    cardId: "the_star",
+    cardName: "星星",
+    orientation: "upright",
+    oracle: "今天适合把灵感落到一个具体动作里，温柔但不拖延。",
+    microAction: "整理一张灵感图，发给一个值得信任的人。",
+  },
+  {
+    key: "xu_xinglan_002",
+    label: "许星澜",
+    displayName: "许星澜",
+    email: "xu.xinglan.test@example.com",
+    birthday: "2001-09-30",
+    birthTime: "21:10",
+    city: "美国 · 华盛顿州 · 西雅图",
+    relationship: "真实好友",
+    bio: "公开测试资料：研究生，常在中英双语环境里聊天，适合测试海外地址、公开资料和好友聊天上下文。",
+    cardId: "temperance",
+    cardName: "节制",
+    orientation: "upright",
+    oracle: "节制提醒你把节奏调回身体能承受的位置，慢一点反而更准。",
+    microAction: "把今天最重要的沟通压缩成一句清楚的话。",
+  },
+  {
+    key: "zhou_qiyu_003",
+    label: "周绮雨",
+    displayName: "周绮雨",
+    email: "zhou.qiyu.test@example.com",
+    birthday: "1995-12-05",
+    birthTime: "14:36",
+    city: "中国 · 四川 · 成都",
+    relationship: "真实好友",
+    bio: "公开测试资料：咖啡店主理人，表达直接但很照顾人，适合测试关系动态和日常占卜历史。",
+    cardId: "the_empress",
+    cardName: "女皇",
+    orientation: "upright",
+    oracle: "女皇带来稳定的照料感，今天适合把关系落回真实生活。",
+    microAction: "为自己和朋友安排一个具体的休息时间。",
+  },
+  {
+    key: "shen_yichen_004",
+    label: "沈亦辰",
+    displayName: "沈亦辰",
+    email: "shen.yichen.test@example.com",
+    birthday: "1993-06-18",
+    birthTime: "06:55",
+    city: "新加坡 · 中区",
+    relationship: "真实好友",
+    bio: "公开测试资料：产品经理，习惯结构化思考，适合测试三牌问题、长资料和好友详情页展示。",
+    cardId: "the_magician",
+    cardName: "魔术师",
+    orientation: "upright",
+    oracle: "魔术师提醒你今天资源已经足够，关键是先开始。",
+    microAction: "把一个模糊计划拆成三步，并完成第一步。",
+  },
+  {
+    key: "gu_nanzhi_005",
+    label: "顾南枝",
+    displayName: "顾南枝",
+    email: "gu.nanzhi.test@example.com",
+    birthday: "1999-02-22",
+    birthTime: "19:42",
+    city: "中国 · 浙江 · 杭州",
+    relationship: "真实好友",
+    bio: "公开测试资料：音乐剧爱好者，情绪敏感但行动力强，适合测试好友每日牌和历史记录列表。",
+    cardId: "the_moon",
+    cardName: "月亮",
+    orientation: "reversed",
+    oracle: "月亮逆位提示你把不确定说出来，误会会因此变小。",
+    microAction: "把一个担心写成问题，而不是结论。",
+  },
+]);
 
 function parseAdminBoolean(value, fallback = false) {
   if (value === undefined || value === null || value === "") return fallback;
@@ -9238,6 +9320,42 @@ function buildAdminSeedTestFriendProfile(ownerUid, seedId, variantKey) {
     seedId,
     variantKey,
     variant,
+  };
+}
+
+function buildAdminSeedPackFriendProfile(ownerUid, item) {
+  const uid = `${ADMIN_TEST_REAL_FRIEND_PREFIX}${item.key}`;
+  const variant = {
+    label: item.label,
+    displayName: item.displayName,
+    birthday: item.birthday,
+    birthTime: item.birthTime,
+    city: item.city,
+    relationship: item.relationship || "真实好友",
+    bio: item.bio,
+    cardId: item.cardId,
+    cardName: item.cardName,
+    orientation: item.orientation,
+    scene: "three_card_reading",
+    spreadKind: "three_card",
+  };
+  return {
+    uid,
+    email: item.email,
+    emailLower: normalizeSearchText(item.email),
+    displayName: item.displayName,
+    displayNameLower: normalizeSearchText(item.displayName),
+    photoUrl: `https://api.dicebear.com/9.x/notionists-neutral/png?seed=${encodeURIComponent(uid)}`,
+    birthday: item.birthday,
+    birthTime: item.birthTime,
+    city: item.city,
+    relationship: item.relationship || "真实好友",
+    bio: item.bio,
+    ownerUid,
+    seedId: item.key,
+    variantKey: item.key,
+    variant,
+    packItem: item,
   };
 }
 
@@ -9444,6 +9562,61 @@ function buildAdminSeedDivinationRecord(profile, ownerProfile, readingId, relati
   };
 }
 
+function buildAdminSeedPackThreeCardRecord(profile, ownerProfile, readingId, relationshipId, index = 0) {
+  const ownerName = ownerProfile.displayName || ownerProfile.email || "当前用户";
+  const spreads = [
+    {
+      question: `我和 ${profile.displayName} 最近的相处该注意什么？`,
+      shortVerdict: `${ownerName} 与 ${profile.displayName} 的三牌测试记录：先理解现状，再看见阻力，最后用一个清楚行动推进。`,
+      cards: [
+        { positionKey: "past", position: "过去 / 背景", cardId: profile.variant.cardId, cardName: profile.variant.cardName, orientation: profile.variant.orientation },
+        { positionKey: "present", position: "现在 / 课题", cardId: "two_of_cups", cardName: "圣杯二", orientation: "upright" },
+        { positionKey: "future", position: "下一步 / 可能", cardId: "temperance", cardName: "节制", orientation: "upright" },
+      ],
+      advice: "用一个具体的小约定替代含糊期待；先确认时间，再确认边界。",
+    },
+    {
+      question: `${profile.displayName} 最近需要我怎样支持？`,
+      shortVerdict: `${profile.displayName} 的支持型三牌记录：对方需要的是稳定回应，而不是过度解释。`,
+      cards: [
+        { positionKey: "mind", position: "想法", cardId: "page_of_swords", cardName: "宝剑侍从", orientation: "upright" },
+        { positionKey: "heart", position: "感受", cardId: "the_moon", cardName: "月亮", orientation: "reversed" },
+        { positionKey: "action", position: "行动", cardId: "the_sun", cardName: "太阳", orientation: "upright" },
+      ],
+      advice: "少一点追问，多一点明确回应；把支持落在可执行的细节上。",
+    },
+  ];
+  const spread = spreads[index % spreads.length];
+  return {
+    readingId,
+    question: spread.question,
+    scene: "three_card_reading",
+    spreadKind: "three_card",
+    lockedCards: spread.cards,
+    shortVerdict: spread.shortVerdict,
+    judgeContent: [
+      "这是一条后台生成的完整三牌占卜历史，用于验证客户端历史列表、详情页和好友关联。",
+      `关联好友：${profile.displayName}（${profile.uid}）。`,
+      `三张牌分别呈现：${spread.cards.map((card) => `${card.position}：${card.cardName}${card.orientation === "reversed" ? "逆位" : "正位"}`).join("；")}。`,
+    ].join("\n"),
+    adviceContent: spread.advice,
+    topics: [
+      "这段关系现在最需要澄清什么？",
+      "下一步最小行动是什么？",
+      "我该如何表达边界才自然？",
+    ],
+    oracleId: "tarot",
+    friendUid: profile.uid,
+    friendName: profile.displayName,
+    activeRelationshipId: relationshipId,
+    isTestData: true,
+    source: ADMIN_TEST_DATA_SOURCE,
+    testSeedId: profile.seedId,
+    createdAt: buildAdminSeedTimestamp(-120 - index * 90),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
 function buildAdminSeedDailyOracle(profile, date, variant) {
   return {
     date,
@@ -9488,6 +9661,87 @@ function buildAdminSeedDailySummary(profile, date, variant) {
     source: ADMIN_TEST_DATA_SOURCE,
     testSeedId: profile.seedId,
     createdAtLocal: buildAdminSeedIso(-18),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+function getAdminSeedPackDailyCard(profile, index) {
+  const base = [
+    {
+      cardId: profile.variant.cardId,
+      cardName: profile.variant.cardName,
+      orientation: profile.variant.orientation,
+      oracle: profile.packItem?.oracle || `${profile.variant.cardName}提醒今天适合少猜测，多确认。`,
+      microAction: profile.packItem?.microAction || "发送一句清晰而温和的问候。",
+    },
+    {
+      cardId: "strength",
+      cardName: "力量",
+      orientation: "upright",
+      oracle: "力量提醒今天不需要急着证明自己，稳定会比用力更有说服力。",
+      microAction: "先完成一件能恢复掌控感的小事。",
+    },
+    {
+      cardId: "six_of_cups",
+      cardName: "圣杯六",
+      orientation: "upright",
+      oracle: "圣杯六让过去的温柔浮上来，适合修复一段被忽略的连接。",
+      microAction: "给老朋友发一句没有压力的近况。",
+    },
+  ];
+  return base[index % base.length];
+}
+
+function buildAdminSeedPackDailyOracle(profile, date, dayIndex) {
+  const card = getAdminSeedPackDailyCard(profile, dayIndex);
+  return {
+    date,
+    cardId: card.cardId,
+    cardName: card.cardName,
+    orientation: card.orientation,
+    title: `${profile.displayName} 的公开每日牌`,
+    oracle: card.oracle,
+    detail: [
+      `这是一条后台生成的公开测试每日占卜记录。`,
+      `好友资料完整公开：${profile.displayName}，${profile.birthday} ${profile.birthTime}，${profile.city}。`,
+      "用于在客户端验证好友动态、好友主页、近期每日牌历史和公开摘要读取。",
+    ].join("\n"),
+    dos: ["把真实感受说清楚", "给关系留出弹性", "用一个小行动确认方向"],
+    donts: ["不要用沉默试探", "不要把猜测当结论"],
+    microAction: card.microAction,
+    locale: "zh-CN",
+    oracleId: "tarot",
+    syncEnabled: true,
+    visibility: "real_friends",
+    summaryOnly: false,
+    isTestData: true,
+    source: ADMIN_TEST_DATA_SOURCE,
+    testSeedId: profile.seedId,
+    createdAtLocal: buildAdminSeedIso(-18 - dayIndex * 1440),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+function buildAdminSeedPackDailySummary(profile, date, dayIndex) {
+  const card = getAdminSeedPackDailyCard(profile, dayIndex);
+  return {
+    ownerUid: profile.uid,
+    date,
+    cardId: card.cardId,
+    cardName: card.cardName,
+    orientation: card.orientation,
+    title: `${profile.displayName} 的公开每日牌`,
+    oracle: card.oracle,
+    microAction: card.microAction,
+    locale: "zh-CN",
+    oracleId: "tarot",
+    syncEnabled: true,
+    visibility: "real_friends",
+    summaryOnly: true,
+    isTestData: true,
+    source: ADMIN_TEST_DATA_SOURCE,
+    testSeedId: profile.seedId,
+    createdAtLocal: buildAdminSeedIso(-18 - dayIndex * 1440),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
 }
@@ -9967,6 +10221,199 @@ exports.adminSeedTestRealFriend = onRequest(runtime, async (req, res) => {
   } catch (error) {
     console.error("[adminSeedTestRealFriend]", error);
     json(res, error.status || 500, { error: error.message || "Seed test real friend failed" });
+  }
+});
+
+exports.adminSeedTestRealFriendPack = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const ownerUid = await resolveAdminUserUid({
+      uid: req.body?.uid || req.body?.ownerUid,
+      email: req.body?.email || req.body?.ownerEmail,
+      search: req.body?.ownerSearch,
+    });
+    if (!ownerUid) {
+      throw createHttpError(400, "Owner user is required");
+    }
+
+    const requestedCount = Number(req.body?.count || ADMIN_TEST_REAL_FRIEND_PACK.length);
+    const count = Number.isFinite(requestedCount)
+      ? Math.max(1, Math.min(Math.floor(requestedCount), ADMIN_TEST_REAL_FRIEND_PACK.length))
+      : ADMIN_TEST_REAL_FRIEND_PACK.length;
+    const attachDefaultDialog = parseAdminBoolean(req.body?.attachDefaultDialog, true);
+    const dailyHistoryDays = Math.max(1, Math.min(Number(req.body?.dailyHistoryDays || 3), 14));
+    const threeCardRecordsPerFriend = Math.max(1, Math.min(Number(req.body?.threeCardRecordsPerFriend || 2), 5));
+    const selectedItems = ADMIN_TEST_REAL_FRIEND_PACK.slice(0, count);
+    const ownerProfile = await getAdminUserFriendProfile(ownerUid);
+    const ownerContextProfile = {
+      uid: ownerProfile.uid,
+      displayName: ownerProfile.displayName || ownerProfile.email || ownerUid,
+      email: ownerProfile.email || "",
+      photoUrl: ownerProfile.photoUrl || "",
+      birthday: "",
+      birthTime: "",
+      city: "",
+      relationship: "真实好友",
+      seedId: "owner",
+      variantKey: "owner",
+      variant: {
+        label: "当前用户",
+        cardId: "the_sun",
+        cardName: "太阳",
+        orientation: "upright",
+        scene: "three_card_reading",
+        spreadKind: "three_card",
+      },
+    };
+    const ownerRef = db.collection("users").doc(ownerUid);
+    const batch = db.batch();
+    const friends = [];
+    const writtenPaths = [];
+
+    for (const item of selectedItems) {
+      const friendProfile = buildAdminSeedPackFriendProfile(ownerUid, item);
+      const friendRef = db.collection("users").doc(friendProfile.uid);
+      const publicProfileRef = db.collection("public_profiles").doc(friendProfile.uid);
+      const note = "后台生成完整测试真实好友包：公开资料、每日占卜历史、三牌占卜历史。";
+      const relationshipId = `rel_debug_pack_${item.key}`;
+      const sessionId = `test_friend_pack_${item.key}`;
+
+      batch.set(friendRef, buildAdminSeedUserData(friendProfile, decoded), { merge: true });
+      batch.set(publicProfileRef, buildAdminSeedPublicProfileData(friendProfile, decoded), { merge: true });
+      batch.set(
+        ownerRef.collection("friends").doc(friendProfile.uid),
+        buildAdminSeedFriendDoc(friendProfile, decoded, note),
+        { merge: true },
+      );
+      batch.set(
+        friendRef.collection("friends").doc(ownerUid),
+        buildAdminSeedFriendDoc(ownerContextProfile, decoded, "后台测试好友包反向真实好友关系"),
+        { merge: true },
+      );
+
+      for (let dayIndex = 0; dayIndex < dailyHistoryDays; dayIndex += 1) {
+        const date = getAdminSeedDate(-dayIndex);
+        batch.set(
+          friendRef.collection("daily_oracles").doc(date),
+          buildAdminSeedPackDailyOracle(friendProfile, date, dayIndex),
+          { merge: true },
+        );
+        batch.set(
+          db.collection("daily_oracle_summaries").doc(`${friendProfile.uid}_${date}`),
+          buildAdminSeedPackDailySummary(friendProfile, date, dayIndex),
+          { merge: true },
+        );
+      }
+
+      for (let recordIndex = 0; recordIndex < threeCardRecordsPerFriend; recordIndex += 1) {
+        const readingId = `admin_pack_${item.key}_three_${recordIndex + 1}`;
+        const friendReadingId = `admin_pack_${item.key}_friend_three_${recordIndex + 1}`;
+        batch.set(
+          ownerRef.collection("divination_records").doc(readingId),
+          buildAdminSeedPackThreeCardRecord(friendProfile, ownerProfile, readingId, relationshipId, recordIndex),
+          { merge: true },
+        );
+        batch.set(
+          friendRef.collection("divination_records").doc(friendReadingId),
+          buildAdminSeedPackThreeCardRecord(ownerContextProfile, friendProfile, friendReadingId, relationshipId, recordIndex),
+          { merge: true },
+        );
+      }
+
+      batch.set(
+        db.collection("relationship_divinations").doc(relationshipId),
+        buildAdminSeedRelationshipDivination(ownerContextProfile, friendProfile, relationshipId, friendProfile.variant),
+        { merge: true },
+      );
+      batch.set(
+        ownerRef.collection(DIALOG_SESSION_COLLECTION).doc(sessionId),
+        buildAdminSeedDialogSession(
+          friendProfile,
+          `admin_pack_${item.key}_three_1`,
+          relationshipId,
+          friendProfile.variant,
+        ),
+        { merge: true },
+      );
+      batch.set(
+        friendRef.collection(DIALOG_SESSION_COLLECTION).doc(DEFAULT_DIALOG_SESSION_ID),
+        buildAdminSeedDialogSession(
+          ownerContextProfile,
+          `admin_pack_${item.key}_friend_three_1`,
+          relationshipId,
+          friendProfile.variant,
+        ),
+        { merge: true },
+      );
+
+      friends.push({
+        uid: friendProfile.uid,
+        displayName: friendProfile.displayName,
+        email: friendProfile.email,
+        photoUrl: friendProfile.photoUrl,
+        birthday: friendProfile.birthday,
+        birthTime: friendProfile.birthTime,
+        city: friendProfile.city,
+        dailyHistoryDays,
+        threeCardRecords: threeCardRecordsPerFriend,
+      });
+      writtenPaths.push(
+        `users/${friendProfile.uid}`,
+        `public_profiles/${friendProfile.uid}`,
+        `users/${ownerUid}/friends/${friendProfile.uid}`,
+        `users/${friendProfile.uid}/friends/${ownerUid}`,
+        `relationship_divinations/${relationshipId}`,
+      );
+    }
+
+    await batch.commit();
+
+    if (attachDefaultDialog) {
+      for (const item of selectedItems) {
+        const friendProfile = buildAdminSeedPackFriendProfile(ownerUid, item);
+        await appendAdminSeedDefaultDialog(
+          ownerUid,
+          friendProfile,
+          `admin_pack_${item.key}_three_1`,
+          `rel_debug_pack_${item.key}`,
+          friendProfile.variant,
+        );
+      }
+      writtenPaths.push(`users/${ownerUid}/${DIALOG_SESSION_COLLECTION}/${DEFAULT_DIALOG_SESSION_ID}`);
+    }
+
+    await writeAdminAuditLog(decoded, "friend.test_seed_pack", {
+      type: "test_real_friend_pack",
+      id: ownerUid,
+      uid: ownerUid,
+      path: `users/${ownerUid}/friends`,
+    }, {
+      ownerUid,
+      count: friends.length,
+      friendUids: friends.map((friend) => friend.uid),
+      dailyHistoryDays,
+      threeCardRecordsPerFriend,
+      attachDefaultDialog,
+    }, req);
+
+    const bundle = await buildAdminUserBundle(ownerUid, { limit: 20 });
+    json(res, 200, {
+      ok: true,
+      uid: ownerUid,
+      count: friends.length,
+      dailyHistoryDays,
+      threeCardRecordsPerFriend,
+      attachDefaultDialog,
+      friends,
+      writtenPaths,
+      bundle,
+    });
+  } catch (error) {
+    console.error("[adminSeedTestRealFriendPack]", error);
+    json(res, error.status || 500, { error: error.message || "Seed test real friend pack failed" });
   }
 });
 

@@ -25,8 +25,13 @@ public class FriendPreviewUIComponent:MonoBehaviour
 	public TextMeshProUGUI birthdayTimeTextTextMeshProUGUI;
 	public TextMeshProUGUI birthdayPlaceTextTextMeshProUGUI;
 
+	[Header("占卜历史")]
 	public List<DivinationItem> divinationItems;
+	public Button viewHistoryBtn;
 	
+	public Button inviteBtn; //邀请好友一起双人占卜
+
+
 	[Header("朋友设置界面")]
 	public Transform friendSettingPanel;
 
@@ -43,6 +48,8 @@ public class FriendPreviewUIComponent:MonoBehaviour
 	    target.AddButtonClickListener(backButton,mWindow.OnbackButtonClick);
 	    target.AddButtonClickListener(settingButton,mWindow.OnsettingButtonClick);
 	    target.AddButtonClickListener(AddButton,mWindow.OnAddButtonClick);
+	    target.AddButtonClickListener(viewHistoryBtn,mWindow.OnViewHistoryBtnClick);
+	    target.AddButtonClickListener(inviteBtn,mWindow.OnInviteButtonClick);
 	    target.AddButtonClickListener(editFriendBtn,mWindow.OnEditFriendButtonClick);
 	    target.AddButtonClickListener(deleteBtn,mWindow.OnDeleteFriendButtonClick);
 	    target.AddButtonClickListener(exitSettingBtn,mWindow.OnExitSettingButtonClick);

@@ -36,27 +36,27 @@ public class TarorSingleSpreadShuffleUIComponent:MonoBehaviour
 
 	[Header("牌扇抽卡")]
 	[Tooltip("牌扇里显示的可选牌数量。")]
-	public int selectableCardCount = 7;
+	public int selectableCardCount = 12;
 	[Tooltip("牌扇宽度。填 0 时按容器宽度自动计算。")]
 	public float fanWidth = 0f;
 	[Tooltip("牌扇宽度相对容器宽度的倍率，值越大越容易延伸到屏幕外。")]
-	public float fanViewportWidthMultiplier = 1f;
+	public float fanViewportWidthMultiplier = 1.42f;
 	[Tooltip("牌扇最小宽度。")]
-	public float minFanWidth = 0f;
+	public float minFanWidth = 1120f;
 	[Tooltip("牌扇在容器内的纵向偏移。")]
 	public float fanHeightOffset = 0f;
 	[Tooltip("中间牌的上拱高度。")]
-	public float fanRiseOffset = 0f;
+	public float fanRiseOffset = 108f;
 	[Tooltip("两侧牌的最大倾斜角度。")]
-	public float fanRotation = 0f;
+	public float fanRotation = 18f;
 	[Tooltip("牌扇中卡牌的固定缩放。填 0 时自动计算。")]
 	public float deckCardScale = 0f;
-	public float minDeckCardScale = 0.1f;
-	public float maxDeckCardScale = 0.5f;
-	[Tooltip("抽出第一张牌后，牌扇向下收拢的距离。填 0 时按容器高度自动计算。")]
+	public float minDeckCardScale = 0.5f;
+	public float maxDeckCardScale = 0.64f;
+	[Tooltip("抽出第一张牌后，牌扇向下收拢的距离。填 0 时保持原位。")]
 	public float drawnFanLowerOffset = 0f;
 	[Tooltip("抽出第一张牌后，剩余牌扇的缩放倍率。")]
-	public float drawnFanScaleMultiplier = 1f;
+	public float drawnFanScaleMultiplier = 0.88f;
 	[Tooltip("横向拖动牌扇的灵敏度。")]
 	public float dragSensitivity = 1f;
 	[Tooltip("拖动距离超过该值后，不再视为点击。")]
@@ -67,6 +67,8 @@ public class TarorSingleSpreadShuffleUIComponent:MonoBehaviour
 	public float dragPullDirectionBias = 1.15f;
 	[Tooltip("长按卡牌达到该时长后直接抽牌。")]
 	public float longPressSelectDuration = 0.45f;
+	[Tooltip("双击卡牌抽牌的最大间隔；单击会等待该时长后触发，避免和双击冲突。")]
+	public float doubleClickSelectInterval = 0.24f;
 	[Tooltip("选中牌飞到目标卡槽的时长。")]
 	public float selectDuration = 0.48f;
 	[Tooltip("是否启用横向拖动后的惯性滚动。")]

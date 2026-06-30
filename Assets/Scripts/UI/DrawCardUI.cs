@@ -21,7 +21,7 @@ public class DrawCardUI : WindowBase
 	private const float DeckClipHorizontalPadding = 24f;
 	private const float DeckVisibleSlotCount = 7f;
 	private const float DeckCardSpacing = 12f;
-	private const int VisualDeckCardCount = 7;
+	private const int VisualDeckCardCount = 12;
 
 	public DrawCardUIComponent uiComponent;
 
@@ -43,6 +43,7 @@ public class DrawCardUI : WindowBase
 	private Tween _clickSuppressTween;
 	private Tween _pullBackTween;
 	private Tween _inertiaTween;
+	private Coroutine _singleClickCoroutine;
 	private Sprite _cachedCardBackSprite;
 	private Coroutine _backgroundVideoCoroutine;
 	private RenderTexture _backgroundVideoTextureInstance;
@@ -79,6 +80,8 @@ public class DrawCardUI : WindowBase
 	private float _minDeckOffsetX;
 	private float _maxDeckOffsetX;
 	private Vector2 _lastDeckViewportSize;
+	private int _pendingClickCardIndex = -1;
+	private float _lastCardClickTime = -100f;
 	private TarotCard _completedCard;
 	private bool _completedUpright = true;
 
@@ -179,6 +182,55 @@ public class DrawCardUI : WindowBase
 
 		SelectCardByIndex(index);
 	}
+
+	private void OnCardPointerClick(int index, BaseEventData eventData)
+	{
+		if (!_isChoosing || _isAnimating) return;
+		if (_suppressPointerClick || _dragMoved || _isInertiaScrolling) return;
+
+		float now = Time.unscaledTime;
+		float doubleClickInterval = Mathf.Clamp(uiComponent.doubleClickSelectInterval, 0.05f, 0.6f);
+		bool doubleClick = eventData is PointerEventData pointerData && pointerData.clickCount >= 2;
+		doubleClick = doubleClick || (_pendingClickCardIndex == index && now - _lastCardClickTime <= doubleClickInterval);
+
+		if (doubleClick)
+		{
+			StopPendingSingleClick();
+			SelectCardByIndex(index);
+			return;
+		}
+
+		StopPendingSingleClick();
+		_pendingClickCardIndex = index;
+		_lastCardClickTime = now;
+		_singleClickCoroutine = uiComponent.StartCoroutine(SingleClickSelectRoutine(index, doubleClickInterval));
+	}
+
+	private IEnumerator SingleClickSelectRoutine(int index, float delay)
+	{
+		yield return new WaitForSecondsRealtime(delay);
+		_singleClickCoroutine = null;
+		_pendingClickCardIndex = -1;
+
+		if (!_isChoosing || _isAnimating) yield break;
+		if (_suppressPointerClick || _dragMoved || _isInertiaScrolling) yield break;
+		SelectCardByIndex(index);
+	}
+
+	private void StopPendingSingleClick()
+	{
+		if (_singleClickCoroutine != null && uiComponent != null)
+		{
+			uiComponent.StopCoroutine(_singleClickCoroutine);
+			_singleClickCoroutine = null;
+		}
+		else
+		{
+			_singleClickCoroutine = null;
+		}
+
+		_pendingClickCardIndex = -1;
+	}
 	#endregion
 
 	private void PlayDrawEntrance()
@@ -245,6 +297,7 @@ public class DrawCardUI : WindowBase
 		_isDraggingDeck = false;
 		_dragMoved = false;
 		_suppressPointerClick = false;
+		_pendingClickCardIndex = -1;
 		_dragStartedFromCard = false;
 		_isScrollingDeck = false;
 		_isPullingCard = false;
@@ -511,7 +564,7 @@ public class DrawCardUI : WindowBase
 			? uiComponent.cardGO.GetComponent<Image>()
 			: null;
 
-		ConfigureDeckClipRoot();
+		_deckClipRoot = null;
 		ClearGeneratedDeckChildren();
 
 		_titleText = transform.Find("UIContent/Top/title")?.GetComponent<TMP_Text>();
@@ -527,9 +580,7 @@ public class DrawCardUI : WindowBase
 			BindDeckDragSurface(mask);
 		}
 
-		if (_deckClipRoot != null)
-			BindDeckDragSurface(_deckClipRoot.gameObject);
-		else if (_cardContainer != null)
+		if (_cardContainer != null)
 			BindDeckDragSurface(_cardContainer.gameObject);
 
 		if (_titleText != null)
@@ -586,23 +637,24 @@ public class DrawCardUI : WindowBase
 
 	private RectTransform GetDeckViewportRoot()
 	{
-		return _deckClipRoot != null ? _deckClipRoot : _cardContainer;
+		return _cardContainer;
 	}
 
 	private void ConfigureDeckSettings()
 	{
 		if (uiComponent == null) return;
 
-		uiComponent.selectableCardCount = VisualDeckCardCount;
+		uiComponent.selectableCardCount = Mathf.Max(uiComponent.selectableCardCount, VisualDeckCardCount);
 		uiComponent.fanWidth = 0f;
-		uiComponent.fanViewportWidthMultiplier = 1f;
-		uiComponent.minFanWidth = 0f;
-		uiComponent.fanRiseOffset = 0f;
-		uiComponent.fanRotation = 0f;
-		uiComponent.infiniteScroll = false;
+		uiComponent.useResponsiveFanWidth = true;
+		uiComponent.fanViewportWidthMultiplier = Mathf.Max(uiComponent.fanViewportWidthMultiplier, 1.42f);
+		uiComponent.minFanWidth = Mathf.Max(uiComponent.minFanWidth, 1120f);
+		uiComponent.fanRiseOffset = uiComponent.fanRiseOffset <= 0f ? 108f : uiComponent.fanRiseOffset;
+		uiComponent.fanRotation = uiComponent.fanRotation <= 0f ? 18f : uiComponent.fanRotation;
+		uiComponent.infiniteScroll = true;
 		uiComponent.deckCardScale = 0f;
-		uiComponent.minDeckCardScale = 0.1f;
-		uiComponent.maxDeckCardScale = 0.5f;
+		uiComponent.minDeckCardScale = Mathf.Max(uiComponent.minDeckCardScale, 0.5f);
+		uiComponent.maxDeckCardScale = Mathf.Max(uiComponent.maxDeckCardScale, 0.64f);
 	}
 
 	private void ResolveTargetCardFaceReferences()
@@ -894,11 +946,13 @@ public class DrawCardUI : WindowBase
 			trigger.triggers = new List<EventTrigger.Entry>();
 
 		RemoveEventTriggerEntry(trigger, EventTriggerType.PointerDown);
+		RemoveEventTriggerEntry(trigger, EventTriggerType.PointerClick);
 		RemoveEventTriggerEntry(trigger, EventTriggerType.BeginDrag);
 		RemoveEventTriggerEntry(trigger, EventTriggerType.Drag);
 		RemoveEventTriggerEntry(trigger, EventTriggerType.EndDrag);
 
 		AddEventTriggerEntry(trigger, EventTriggerType.PointerDown, eventData => OnCardPointerDown(index, eventData));
+		AddEventTriggerEntry(trigger, EventTriggerType.PointerClick, eventData => OnCardPointerClick(index, eventData));
 		AddEventTriggerEntry(trigger, EventTriggerType.BeginDrag, eventData => OnCardBeginDrag(index, eventData));
 		AddEventTriggerEntry(trigger, EventTriggerType.Drag, eventData => OnCardDrag(index, eventData));
 		AddEventTriggerEntry(trigger, EventTriggerType.EndDrag, OnCardEndDrag);
@@ -922,6 +976,7 @@ public class DrawCardUI : WindowBase
 		if (!_isChoosing || _isAnimating) return;
 
 		StopDeckInertia();
+		StopPendingSingleClick();
 		_dragMoved = false;
 		_suppressPointerClick = false;
 		_activeDragCardIndex = -1;
@@ -936,6 +991,7 @@ public class DrawCardUI : WindowBase
 	{
 		if (!_isChoosing || _isAnimating) return;
 
+		StopPendingSingleClick();
 		PointerEventData pointerData = eventData as PointerEventData;
 		if (pointerData == null) return;
 		if (!TryGetContainerLocalPoint(pointerData, out Vector2 localPoint)) return;
@@ -991,6 +1047,7 @@ public class DrawCardUI : WindowBase
 		if (!_isChoosing || _isAnimating) return;
 
 		StopDeckInertia();
+		StopPendingSingleClick();
 		_pullBackTween?.Kill(false);
 		_pullBackTween = null;
 		_activeDragCardIndex = index;
@@ -1008,6 +1065,7 @@ public class DrawCardUI : WindowBase
 	{
 		if (!_isChoosing || _isAnimating) return;
 
+		StopPendingSingleClick();
 		PointerEventData pointerData = eventData as PointerEventData;
 		if (pointerData == null) return;
 		if (!TryGetContainerLocalPoint(pointerData, out Vector2 localPoint)) return;
@@ -1247,8 +1305,7 @@ public class DrawCardUI : WindowBase
 		int cardCount = GetVisualDeckCardCount();
 		Sprite backSprite = ResolveCardBackSprite();
 		CalculateFanLayout(cardCount);
-		RectTransform viewportRoot = GetDeckViewportRoot();
-		Transform deckParent = viewportRoot != null ? viewportRoot : _cardTemplateImage.transform.parent;
+		Transform deckParent = _cardContainer != null ? _cardContainer : _cardTemplateImage.transform.parent;
 
 		for (int i = 0; i < cardCount; i++)
 		{
@@ -1278,7 +1335,6 @@ public class DrawCardUI : WindowBase
 			button.transition = Selectable.Transition.None;
 			button.onClick.RemoveAllListeners();
 			int capturedIndex = i;
-			button.onClick.AddListener(() => OnCardClicked(capturedIndex));
 			BindCardDrag(image.gameObject, capturedIndex);
 
 			_cardImages.Add(image);
@@ -1298,12 +1354,14 @@ public class DrawCardUI : WindowBase
 
 		if (uiComponent.fanWidth > 0f)
 		{
-			float cardDrivenWidth = cardCount <= 1 ? 0f : (cardCount - 1) * GetDeckSpacing();
-			_fanWidth = Mathf.Min(uiComponent.fanWidth, cardDrivenWidth);
+			_fanWidth = uiComponent.fanWidth;
 		}
 		else
 		{
-			_fanWidth = cardCount <= 1 ? 0f : (cardCount - 1) * GetDeckSpacing();
+			float responsiveWidth = uiComponent.useResponsiveFanWidth
+				? _viewportWidth * Mathf.Max(1f, uiComponent.fanViewportWidthMultiplier)
+				: 0f;
+			_fanWidth = Mathf.Max(uiComponent.minFanWidth, responsiveWidth);
 		}
 
 		for (int i = 0; i < cardCount; i++)
@@ -1318,7 +1376,7 @@ public class DrawCardUI : WindowBase
 
 	private int GetVisualDeckCardCount()
 	{
-		return Mathf.Clamp(uiComponent.selectableCardCount, 3, VisualDeckCardCount);
+		return Mathf.Max(3, uiComponent.selectableCardCount);
 	}
 
 	private float ResolveFanLayoutT(int index, int cardCount)
@@ -1337,20 +1395,19 @@ public class DrawCardUI : WindowBase
 		float cardWidth = Mathf.Max(1f, ResolveCardWidth());
 		float cardHeight = Mathf.Max(1f, ResolveCardHeight());
 		float explicitScale = uiComponent.deckCardScale;
-		float fittedScale = ResolveFittedDeckCardScale(cardWidth, cardHeight);
 
 		if (explicitScale > 0f)
 		{
-			_deckCardScale = Mathf.Min(explicitScale, fittedScale);
+			_deckCardScale = explicitScale;
 		}
 		else
 		{
 			float heightScale = (_viewportHeight * Mathf.Clamp(uiComponent.maxDeckCardHeightRatio, 0.2f, 1f)) / cardHeight;
 			float widthScale = (_viewportWidth * Mathf.Clamp(uiComponent.maxDeckCardWidthRatio, 0.15f, 1f)) / cardWidth;
-			_deckCardScale = Mathf.Min(heightScale, widthScale, fittedScale);
+			_deckCardScale = Mathf.Min(heightScale, widthScale);
 		}
 
-		float minScale = Mathf.Min(Mathf.Max(0.1f, uiComponent.minDeckCardScale), _deckCardScale);
+		float minScale = Mathf.Max(0.1f, uiComponent.minDeckCardScale);
 		float maxScale = Mathf.Max(minScale, uiComponent.maxDeckCardScale);
 		_deckCardScale = Mathf.Clamp(_deckCardScale, minScale, maxScale);
 		_selectedCardScale = Mathf.Clamp(uiComponent.selectedCardScale, _deckCardScale, 1.1f);
@@ -1366,9 +1423,20 @@ public class DrawCardUI : WindowBase
 
 	private void CalculateDeckScrollBounds()
 	{
-		_minDeckOffsetX = 0f;
-		_maxDeckOffsetX = 0f;
-		_deckOffsetX = 0f;
+		if (uiComponent.infiniteScroll)
+		{
+			_minDeckOffsetX = float.NegativeInfinity;
+			_maxDeckOffsetX = float.PositiveInfinity;
+			_deckOffsetX = NormalizeDeckOffset(_deckOffsetX);
+			return;
+		}
+
+		float contentWidth = _fanWidth + ResolveCardWidth() * _deckCardScale;
+		float overflow = Mathf.Max(0f, (contentWidth - _viewportWidth) * 0.5f + uiComponent.scrollEdgePadding);
+		float range = Mathf.Max(uiComponent.minScrollRange, overflow * Mathf.Max(0f, uiComponent.scrollRangeMultiplier));
+		_minDeckOffsetX = -range;
+		_maxDeckOffsetX = range;
+		_deckOffsetX = Mathf.Clamp(_deckOffsetX, _minDeckOffsetX, _maxDeckOffsetX);
 	}
 
 	private float ResolveViewportWidth()
@@ -1462,12 +1530,16 @@ public class DrawCardUI : WindowBase
 
 	private float GetFanY(float x)
 	{
-		return uiComponent.fanHeightOffset;
+		float halfWidth = Mathf.Max(1f, _fanWidth * 0.5f);
+		float normalized = Mathf.Clamp(x / halfWidth, -1f, 1f);
+		return uiComponent.fanHeightOffset + uiComponent.fanRiseOffset * (1f - normalized * normalized);
 	}
 
 	private float GetFanRotation(float x)
 	{
-		return 0f;
+		float halfWidth = Mathf.Max(1f, _fanWidth * 0.5f);
+		float normalized = Mathf.Clamp(x / halfWidth, -1f, 1f);
+		return -normalized * uiComponent.fanRotation;
 	}
 
 	private float GetDeckSpacing()
@@ -1530,16 +1602,7 @@ public class DrawCardUI : WindowBase
 
 	private bool IsDeckCardInsideViewport(Vector2 anchoredPosition, float scale)
 	{
-		RectTransform viewportRoot = GetDeckViewportRoot();
-		if (viewportRoot == null) return true;
-
-		float viewportHalfWidth = Mathf.Max(1f, viewportRoot.rect.width * 0.5f);
-		float viewportHalfHeight = Mathf.Max(1f, viewportRoot.rect.height * 0.5f);
-		float cardHalfWidth = ResolveCardWidth() * scale * 0.5f;
-		float cardHalfHeight = ResolveCardHeight() * scale * 0.5f;
-
-		return Mathf.Abs(anchoredPosition.x) + cardHalfWidth <= viewportHalfWidth + 0.5f
-			&& Mathf.Abs(anchoredPosition.y) + cardHalfHeight <= viewportHalfHeight + 0.5f;
+		return true;
 	}
 
 	private void SetDeckCardViewportVisible(Image image, bool visible)
@@ -1591,20 +1654,17 @@ public class DrawCardUI : WindowBase
 		Vector2 leftPosition = left.rectTransform.anchoredPosition;
 		Vector2 rightPosition = right.rectTransform.anchoredPosition;
 
-		int leftDistanceKey = Mathf.RoundToInt(Mathf.Abs(leftPosition.x) * 100f);
-		int rightDistanceKey = Mathf.RoundToInt(Mathf.Abs(rightPosition.x) * 100f);
-
-		int distanceCompare = rightDistanceKey.CompareTo(leftDistanceKey);
-		if (distanceCompare != 0)
-			return distanceCompare;
+		int xCompare = Mathf.RoundToInt(leftPosition.x * 100f)
+			.CompareTo(Mathf.RoundToInt(rightPosition.x * 100f));
+		if (xCompare != 0)
+			return xCompare;
 
 		int yCompare = Mathf.RoundToInt(leftPosition.y * 100f)
 			.CompareTo(Mathf.RoundToInt(rightPosition.y * 100f));
 		if (yCompare != 0)
 			return yCompare;
 
-		return Mathf.RoundToInt(leftPosition.x * 100f)
-			.CompareTo(Mathf.RoundToInt(rightPosition.x * 100f));
+		return string.CompareOrdinal(left.name, right.name);
 	}
 
 	private void EnsureDeckCardCanvas(GameObject cardObject)
@@ -1800,6 +1860,7 @@ public class DrawCardUI : WindowBase
 
 	private void ClearRuntimeCards()
 	{
+		StopPendingSingleClick();
 		for (int i = 0; i < _cardImages.Count; i++)
 		{
 			Image image = _cardImages[i];
@@ -1837,6 +1898,7 @@ public class DrawCardUI : WindowBase
 	{
 		bool changed = false;
 		Transform deckParent = GetDeckViewportRoot();
+		int maxRuntimeCards = GetVisualDeckCardCount();
 		for (int i = _cardImages.Count - 1; i >= 0; i--)
 		{
 			Image image = _cardImages[i];
@@ -1847,7 +1909,7 @@ public class DrawCardUI : WindowBase
 				continue;
 			}
 
-			if (i >= VisualDeckCardCount)
+			if (i >= maxRuntimeCards)
 			{
 				DestroyDeckObject(image.gameObject);
 				_cardImages.RemoveAt(i);
@@ -2069,6 +2131,7 @@ public class DrawCardUI : WindowBase
 	{
 		_flowSequence?.Kill(false);
 		_flowSequence = null;
+		StopPendingSingleClick();
 		_clickSuppressTween?.Kill(false);
 		_clickSuppressTween = null;
 		_pullBackTween?.Kill(false);

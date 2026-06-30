@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -16,6 +17,7 @@ public class DivinationItem : MonoBehaviour
     public TMP_Text divinationSourceText;
 
     public TMP_Text divinationTimeText;
+    public Button viewBtn;
 
     private readonly List<Image> runtimeCardImages = new List<Image>();
 
@@ -38,6 +40,19 @@ public class DivinationItem : MonoBehaviour
     public void Clear()
     {
         SetData(null, string.Empty, string.Empty, string.Empty, string.Empty);
+        SetClickAction(null);
+    }
+
+    public void SetClickAction(Action onClick)
+    {
+        ResolveReferences();
+        if (viewBtn == null)
+            return;
+
+        viewBtn.onClick.RemoveAllListeners();
+        viewBtn.interactable = onClick != null;
+        if (onClick != null)
+            viewBtn.onClick.AddListener(() => onClick());
     }
 
     private void SetCardSprites(IReadOnlyList<Sprite> cardSprites)
@@ -92,6 +107,10 @@ public class DivinationItem : MonoBehaviour
             divinationSourceText = FindTextByName(transform, "divinationSource", "DivinationSource");
         if (divinationTimeText == null)
             divinationTimeText = FindTextByName(transform, "divinationTime", "DivinationTime");
+        if (viewBtn == null)
+            viewBtn = GetComponent<Button>();
+        if (viewBtn == null)
+            viewBtn = GetComponentInChildren<Button>(true);
     }
 
     private TMP_Text FindTextByName(Transform root, params string[] names)

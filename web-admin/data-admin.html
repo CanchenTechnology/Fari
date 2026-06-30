@@ -1979,11 +1979,18 @@
       <input name="uid" type="hidden">
       <div id="seedTestFriendTarget" class="status"></div>
       <div class="form-grid">
+        <label class="full">生成方式<select name="seedMode" id="seedTestFriendMode">
+          <option value="pack" selected>完整测试好友包（5 个真实好友）</option>
+          <option value="single">单个测试真实好友</option>
+        </select></label>
         <label class="full">测试好友类型<select name="variant">
           <option value="tarot" selected>塔罗测试好友</option>
           <option value="relationship">关系占卜测试好友</option>
           <option value="astrology">星盘测试好友</option>
         </select></label>
+        <label>好友数量<input name="count" type="number" min="1" max="5" value="5"></label>
+        <label>每日占卜天数<input name="dailyHistoryDays" type="number" min="1" max="14" value="3"></label>
+        <label>每人三牌记录<input name="threeCardRecordsPerFriend" type="number" min="1" max="5" value="2"></label>
         <label class="inline-check full">
           <input name="attachDefaultDialog" type="checkbox" checked>
           同时追加到当前用户默认对话历史
@@ -2587,19 +2594,44 @@
       const form = new FormData(formElement);
       const payload = Object.fromEntries(form.entries());
       payload.attachDefaultDialog = form.get("attachDefaultDialog") === "on";
+      const seedMode = payload.seedMode === "single" ? "single" : "pack";
+      payload.count = Number(payload.count || 5);
+      payload.dailyHistoryDays = Number(payload.dailyHistoryDays || 3);
+      payload.threeCardRecordsPerFriend = Number(payload.threeCardRecordsPerFriend || 2);
+      const confirmLines = seedMode === "pack"
+        ? [
+          `当前用户：${payload.uid}`,
+          `方式：完整测试好友包`,
+          `好友数量：${payload.count}`,
+          `每日占卜天数：${payload.dailyHistoryDays}`,
+          `每人三牌记录：${payload.threeCardRecordsPerFriend}`,
+          `追加默认对话：${payload.attachDefaultDialog ? "是" : "否"}`,
+        ]
+        : [
+          `当前用户：${payload.uid}`,
+          `方式：单个测试好友`,
+          `类型：${payload.variant}`,
+          `追加默认对话：${payload.attachDefaultDialog ? "是" : "否"}`,
+        ];
       if (!confirmSensitiveAction(
         "生成测试真实好友数据",
-        `当前用户：${payload.uid}\n类型：${payload.variant}\n追加默认对话：${payload.attachDefaultDialog ? "是" : "否"}`,
+        confirmLines.join("\n"),
       )) return;
       try {
-        const result = await callFunction("/adminSeedTestRealFriend", {
+        const endpoint = seedMode === "pack"
+          ? "/adminSeedTestRealFriendPack"
+          : "/adminSeedTestRealFriend";
+        const result = await callFunction(endpoint, {
           method: "POST",
           body: JSON.stringify(payload),
         });
         $("seedTestFriendDialog").close();
         formElement.reset();
         await refreshCurrentDetail(payload.uid);
-        showMessage(`已生成测试好友：${result.friend?.displayName || result.friendUid}`, "ok");
+        const message = seedMode === "pack"
+          ? `已为玩家生成 ${result.count || result.friends?.length || payload.count} 个测试真实好友`
+          : `已生成测试好友：${result.friend?.displayName || result.friendUid}`;
+        showMessage(message, "ok");
       } catch (error) {
         showMessage(error.message, "warn");
       }
@@ -4976,7 +5008,8 @@
       });
       $("addRealFriendButton")?.addEventListener("click", () => openAddRealFriendDialog(detail));
       $("addVirtualFriendButton")?.addEventListener("click", () => openAddVirtualFriendDialog(detail));
-      $("seedTestFriendButton")?.addEventListener("click", () => openSeedTestFriendDialog(detail));
+      $("seedTestFriendButton")?.addEventListener("click", () => openSeedTestFriendDialog(detail, "single"));
+      $("seedTestFriendPackButton")?.addEventListener("click", () => openSeedTestFriendDialog(detail, "pack"));
       const friends = getSocialFriends(detail.social);
       $("userDetail").querySelectorAll("[data-friend-index]").forEach((button) => {
         button.addEventListener("click", () => {
@@ -5027,7 +5060,8 @@
         <div class="row">
           <button type="button" id="addRealFriendButton" class="ghost">添加真实好友</button>
           <button type="button" id="addVirtualFriendButton" class="ghost">添加虚拟好友</button>
-          <button type="button" id="seedTestFriendButton">生成测试好友数据</button>
+          <button type="button" id="seedTestFriendPackButton">生成完整测试好友包</button>
+          <button type="button" id="seedTestFriendButton" class="secondary">生成单个测试好友</button>
         </div>
       `;
       if (!friends.length && !pendingRequests.length) {
@@ -5072,13 +5106,17 @@
       $("addRealFriendDialog").showModal();
     }
 
-    function openSeedTestFriendDialog(detail) {
+    function openSeedTestFriendDialog(detail, mode = "pack") {
       const data = detail.user?.data || {};
       const name = pick(data, ["displayName", "email"]) || detail.uid;
       const form = $("seedTestFriendForm");
       form.reset();
       form.elements.uid.value = detail.uid;
+      form.elements.seedMode.value = mode === "single" ? "single" : "pack";
       form.elements.variant.value = "tarot";
+      form.elements.count.value = "5";
+      form.elements.dailyHistoryDays.value = "3";
+      form.elements.threeCardRecordsPerFriend.value = "2";
       form.elements.attachDefaultDialog.checked = true;
       form.elements.note.value = "后台生成测试真实好友：包含公开资料、聊天、每日神谕和占卜记录。";
       $("seedTestFriendTarget").textContent = `${name} · ${detail.uid}`;
@@ -6616,6 +6654,7 @@
         "friend.real_add": "添加真实好友",
         "friend.virtual_add": "添加虚拟好友",
         "friend.test_seed": "生成测试好友数据",
+        "friend.test_seed_pack": "生成完整测试好友包",
         "data.upsert": "保存 Firestore 数据",
         "data.delete": "删除 Firestore 数据",
         "membership.grant_pro": "赋予 Pro",

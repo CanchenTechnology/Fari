@@ -38,6 +38,7 @@ public class FriendPreviewUI : WindowBase
 	private bool currentFromAddFlow;
 	private bool isSendingRequest;
 	private int requestVersion;
+	private int fullHistoryRequestVersion;
 	private Sprite defaultAvatarSprite;
 	private Transform basicInfoPanelRoot;
 	private Transform historyPanelRoot;
@@ -87,6 +88,7 @@ public class FriendPreviewUI : WindowBase
 		HideSettingPanel(true);
 		RefreshProfile(true);
 		RefreshAddButton();
+		RefreshInviteButton();
 		LoadPendingSentRequestsForButton();
 		LoadPublicProfileThenRefresh();
 		LoadPreviewHistory();
@@ -95,6 +97,7 @@ public class FriendPreviewUI : WindowBase
 	public override void OnHide()
 	{
 		requestVersion++;
+		fullHistoryRequestVersion++;
 		isSendingRequest = false;
 		isDeletingFriend = false;
 		HideSettingPanel(true);
@@ -206,6 +209,7 @@ public class FriendPreviewUI : WindowBase
 
 			ApplyPublicProfile(profile);
 			RefreshProfile(true);
+			RefreshInviteButton();
 		});
 	}
 
@@ -342,6 +346,94 @@ public class FriendPreviewUI : WindowBase
 			"还没有和这个好友完成占卜记录。",
 			"占卜历史",
 			string.Empty);
+	}
+
+	private void OpenFullHistoryWindow()
+	{
+		int historyRequestId = ++fullHistoryRequestVersion;
+		string loadingDescription = IsVirtualFriendPreview()
+			? "正在整理这个好友的本地占卜记录..."
+			: "正在同步对方公开的占卜摘要...";
+
+		AllDivinationHistoryUI historyWindow = AllDivinationHistoryUI.ShowLoading(loadingDescription, GetDisplayName());
+		if (historyWindow == null)
+			return;
+
+		if (IsVirtualFriendPreview())
+		{
+			LoadVirtualFriendFullHistory(historyWindow, historyRequestId);
+			return;
+		}
+
+		if (!CanLoadFriendHistory())
+		{
+			historyWindow.SetEntries(
+				new List<AllDivinationHistoryEntry>
+				{
+					AllDivinationHistoryEntry.Placeholder(
+						PrivateValueText,
+						"对方暂未向你公开占卜历史。",
+						"占卜历史",
+						string.Empty)
+				},
+				PrivateValueText,
+				"对方暂未向你公开占卜历史。");
+			return;
+		}
+
+		LoadHistoryEntries(FullHistoryLimit, FullHistoryLimit, entries =>
+		{
+			if (historyRequestId != fullHistoryRequestVersion)
+				return;
+
+			if (entries != null && entries.Count > 0)
+			{
+				historyWindow.SetEntries(
+					ToAllDivinationHistoryEntries(entries),
+					"暂无可见占卜记录",
+					"对方最近还没有公开的占卜摘要。");
+				return;
+			}
+
+			historyWindow.SetEntries(
+				null,
+				"暂无可见占卜记录",
+				"对方最近还没有公开的占卜摘要。");
+		});
+	}
+
+	private void LoadVirtualFriendFullHistory(AllDivinationHistoryUI historyWindow, int historyRequestId)
+	{
+		DivinationRecordFirestore historyStore = RelationshipDivinationFlow.GetOrCreateHistoryService();
+		if (historyStore == null)
+		{
+			historyWindow.SetEntries(
+				null,
+				"暂无占卜记录",
+				"还没有和这个好友完成占卜记录。");
+			return;
+		}
+
+		historyStore.LoadAllRecords(records =>
+		{
+			if (historyRequestId != fullHistoryRequestVersion)
+				return;
+
+			List<FriendPreviewHistoryEntry> entries = BuildVirtualFriendHistoryEntries(records, FullHistoryLimit);
+			if (entries.Count > 0)
+			{
+				historyWindow.SetEntries(
+					ToAllDivinationHistoryEntries(entries),
+					"暂无占卜记录",
+					"还没有和这个好友完成占卜记录。");
+				return;
+			}
+
+			historyWindow.SetEntries(
+				null,
+				"暂无占卜记录",
+				"还没有和这个好友完成占卜记录。");
+		});
 	}
 
 	private void LoadHistoryEntries(int dailyLimit, int finalLimit, Action<List<FriendPreviewHistoryEntry>> onComplete)
@@ -741,6 +833,29 @@ public class FriendPreviewUI : WindowBase
 		}
 	}
 
+	private void RefreshInviteButton()
+	{
+		if (uiComponent?.inviteBtn == null)
+			return;
+
+		FriendDataManager.FriendData targetFriend = GetRelationshipTargetFriend();
+		bool canShow = targetFriend != null && !currentFromAddFlow || (targetFriend != null && currentFromAddFlow);
+		bool canUse = canShow && RelationshipDivinationFlow.CanUseTwoPersonDivination(targetFriend, false);
+
+		uiComponent.inviteBtn.gameObject.SetActive(canShow);
+		uiComponent.inviteBtn.interactable = canUse && !isDeletingFriend;
+
+		TMP_Text label = uiComponent.inviteBtn.GetComponentInChildren<TMP_Text>(true);
+		if (label != null)
+		{
+			label.text = !canUse
+				? "暂不可占卜"
+				: targetFriend.isVirtual
+					? "发起关系占卜"
+					: "邀请一起占卜";
+		}
+	}
+
 	private bool CanSubmitAddRequest()
 	{
 		string uid = CurrentUid();
@@ -750,6 +865,18 @@ public class FriendPreviewUI : WindowBase
 			&& !pendingSentUserIds.Contains(uid)
 			&& !IsBlockedUser(uid)
 			&& !isSendingRequest;
+	}
+
+	private FriendDataManager.FriendData GetRelationshipTargetFriend()
+	{
+		if (currentFriend != null)
+			return currentFriend;
+
+		string uid = CurrentUid();
+		if (string.IsNullOrWhiteSpace(uid) || FriendDataManager.Instance == null)
+			return null;
+
+		return FriendDataManager.Instance.FindRealFriendByFirebaseUid(uid);
 	}
 
 	private bool CanLoadFriendHistory()
@@ -974,6 +1101,10 @@ public class FriendPreviewUI : WindowBase
 			ToastManager.ShowToast(success ? $"已发送给 {GetDisplayName()}" : "发送失败，请稍后再试");
 		});
 	}
+	public void OnViewHistoryBtnClick()
+	{
+		OpenFullHistoryWindow();
+	}
 	public void OnExitSettingButtonClick()
 	{
 		HideSettingPanel(false);
@@ -1122,6 +1253,29 @@ public class FriendPreviewUI : WindowBase
 		return overlayEntries;
 	}
 
+	private List<AllDivinationHistoryEntry> ToAllDivinationHistoryEntries(List<FriendPreviewHistoryEntry> entries)
+	{
+		List<AllDivinationHistoryEntry> allEntries = new List<AllDivinationHistoryEntry>();
+		if (entries == null) return allEntries;
+
+		foreach (FriendPreviewHistoryEntry entry in entries)
+		{
+			if (entry == null) continue;
+			allEntries.Add(new AllDivinationHistoryEntry
+			{
+				cardSprites = entry.cardSprites != null ? new List<Sprite>(entry.cardSprites) : new List<Sprite>(),
+				cardNames = entry.cardNames ?? string.Empty,
+				description = entry.description ?? string.Empty,
+				source = entry.source ?? string.Empty,
+				time = entry.time ?? string.Empty,
+				ownerName = GetDisplayName(),
+				detailRecord = entry.detailRecord
+			});
+		}
+
+		return allEntries;
+	}
+
 	private class FriendPreviewHistoryEntry
 	{
 		public List<Sprite> cardSprites = new List<Sprite>();
@@ -1130,6 +1284,7 @@ public class FriendPreviewUI : WindowBase
 		public string source;
 		public string time;
 		public DailyOracleSummaryRecord summary;
+		public DivinationRecordData detailRecord;
 		private DateTime sortTime;
 
 		public DateTime SortTime => sortTime;
@@ -1167,6 +1322,7 @@ public class FriendPreviewUI : WindowBase
 				source = "今日占卜",
 				time = FormatHistoryDate(summary?.date),
 				summary = summary,
+				detailRecord = BuildDailyDetailRecord(summary, cardNames, description),
 				sortTime = ParseSortTime(summary?.date)
 			};
 		}
@@ -1193,6 +1349,7 @@ public class FriendPreviewUI : WindowBase
 				description = BuildRelationshipDescription(record, cardNames),
 				source = "双人关系占卜",
 				time = FormatHistoryDate(timeValue),
+				detailRecord = record != null ? RelationshipDivinationFlow.BuildDivinationRecord(record) : null,
 				sortTime = ParseSortTime(timeValue)
 			};
 		}
@@ -1224,7 +1381,44 @@ public class FriendPreviewUI : WindowBase
 				description = FirstNonEmpty(record?.shortVerdict, record?.judgeContent, record?.question, "已完成一次关系占卜。"),
 				source = "双人关系占卜",
 				time = FormatHistoryDate(record?.createdAt),
+				detailRecord = record,
 				sortTime = ParseSortTime(record?.createdAt)
+			};
+		}
+
+		private static DivinationRecordData BuildDailyDetailRecord(DailyOracleSummaryRecord summary, string cardNames, string description)
+		{
+			if (summary == null)
+				return null;
+
+			return new DivinationRecordData
+			{
+				readingId = FirstNonEmpty(summary.oracleId, $"daily_{summary.ownerUid}_{summary.date}"),
+				question = FirstNonEmpty(summary.title, "每日占卜"),
+				scene = "daily_oracle",
+				spreadKind = "daily_oracle",
+				lockedCards = new List<LockedCard>
+				{
+					new LockedCard
+					{
+						position = "今日牌",
+						positionKey = "daily_card",
+						cardId = summary.cardId,
+						cardName = FirstNonEmpty(summary.cardName, cardNames, "每日牌"),
+						orientation = summary.IsUpright ? "upright" : "reversed"
+					}
+				},
+				shortVerdict = description,
+				judgeContent = description,
+				adviceContent = FirstNonEmpty(summary.microAction, "把这张牌当成今天的小提醒，选择一个能立刻完成的行动。"),
+				topics = new List<string>
+				{
+					"这张牌今天最想提醒什么？",
+					"我可以从哪个小行动开始？",
+					"这份提醒和当前关系有什么关联？"
+				},
+				oracleId = FirstNonEmpty(summary.oracleId, "daily_oracle"),
+				createdAt = summary.date
 			};
 		}
 

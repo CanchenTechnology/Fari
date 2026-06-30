@@ -26,7 +26,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     private const float DeckClipHorizontalPadding = 24f;
     private const float DeckVisibleSlotCount = 7f;
     private const float DeckCardSpacing = 12f;
-    private const int VisualDeckCardCount = 7;
+    private const int VisualDeckCardCount = 12;
 
     public TarorSingleSpreadShuffleUIComponent uiComponent;
 
@@ -54,6 +54,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     private Tween _deckInertiaTween;
     private Sequence _drawSequence;
     private readonly List<int> _deckSiblingOrder = new List<int>();
+    private Coroutine _singleClickCoroutine;
     private Coroutine _longPressCoroutine;
     private bool _isChoosingCard;
     private bool _isAnimatingCard;
@@ -77,6 +78,8 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     private float _maxDeckOffsetX;
     private float _deckCardScale = 1f;
     private Vector2 _lastDeckViewportSize;
+    private int _pendingClickDeckIndex = -1;
+    private float _lastDeckClickTime = -100f;
 
     #region 生命周期函数
 
@@ -169,13 +172,63 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     private void BuildSlotArray()
     {
         var comp = uiComponent;
-        _slots = new[]
+        var slots = new List<CardSlotItem>
         {
             comp.CardSlotItem1CardSlotItem,
             comp.CardSlotItem2CardSlotItem,
             comp.CardSlotItem3CardSlotItem,
-
         };
+
+        CardSlotItem[] sceneSlots = gameObject.GetComponentsInChildren<CardSlotItem>(true);
+        for (int i = 0; i < sceneSlots.Length; i++)
+        {
+            CardSlotItem slot = sceneSlots[i];
+            if (slot != null && !slots.Contains(slot))
+                slots.Add(slot);
+        }
+
+        slots.RemoveAll(slot => slot == null);
+        slots.Sort(CompareSlotOrder);
+        _slots = slots.ToArray();
+    }
+
+    private static int CompareSlotOrder(CardSlotItem left, CardSlotItem right)
+    {
+        if (left == right) return 0;
+        if (left == null) return 1;
+        if (right == null) return -1;
+
+        int leftNumber = ExtractLastNumber(left.gameObject.name);
+        int rightNumber = ExtractLastNumber(right.gameObject.name);
+        if (leftNumber != rightNumber)
+            return leftNumber.CompareTo(rightNumber);
+
+        return left.transform.GetSiblingIndex().CompareTo(right.transform.GetSiblingIndex());
+    }
+
+    private static int ExtractLastNumber(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return int.MaxValue;
+
+        int value = 0;
+        int multiplier = 1;
+        bool found = false;
+        for (int i = text.Length - 1; i >= 0; i--)
+        {
+            char c = text[i];
+            if (c >= '0' && c <= '9')
+            {
+                found = true;
+                value += (c - '0') * multiplier;
+                multiplier *= 10;
+                continue;
+            }
+
+            if (found)
+                break;
+        }
+
+        return found ? value : int.MaxValue;
     }
 
     /// <summary>
@@ -473,12 +526,10 @@ public class TarorSingleSpreadShuffleUI : WindowBase
             _cardTemplateImage.gameObject.SetActive(false);
         }
 
-        ConfigureDeckClipRoot();
+        _deckClipRoot = null;
         ClearGeneratedDeckChildren();
 
-        if (_deckClipRoot != null)
-            BindDeckDragSurface(_deckClipRoot.gameObject);
-        else if (_cardContainer != null)
+        if (_cardContainer != null)
             BindDeckDragSurface(_cardContainer.gameObject);
     }
 
@@ -524,24 +575,24 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
     private RectTransform GetDeckViewportRoot()
     {
-        return _deckClipRoot != null ? _deckClipRoot : _cardContainer;
+        return _cardContainer;
     }
 
     private void ConfigureDeckSettings()
     {
         if (uiComponent == null) return;
 
-        uiComponent.selectableCardCount = VisualDeckCardCount;
+        uiComponent.selectableCardCount = Mathf.Max(uiComponent.selectableCardCount, VisualDeckCardCount);
         uiComponent.fanWidth = 0f;
-        uiComponent.fanViewportWidthMultiplier = 1f;
-        uiComponent.minFanWidth = 0f;
-        uiComponent.fanRiseOffset = 0f;
-        uiComponent.fanRotation = 0f;
+        uiComponent.fanViewportWidthMultiplier = Mathf.Max(uiComponent.fanViewportWidthMultiplier, 1.42f);
+        uiComponent.minFanWidth = Mathf.Max(uiComponent.minFanWidth, 1120f);
+        uiComponent.fanRiseOffset = uiComponent.fanRiseOffset <= 0f ? 108f : uiComponent.fanRiseOffset;
+        uiComponent.fanRotation = uiComponent.fanRotation <= 0f ? 18f : uiComponent.fanRotation;
         uiComponent.deckCardScale = 0f;
-        uiComponent.minDeckCardScale = 0.1f;
-        uiComponent.maxDeckCardScale = 0.5f;
+        uiComponent.minDeckCardScale = Mathf.Max(uiComponent.minDeckCardScale, 0.5f);
+        uiComponent.maxDeckCardScale = Mathf.Max(uiComponent.maxDeckCardScale, 0.64f);
         uiComponent.drawnFanLowerOffset = 0f;
-        uiComponent.drawnFanScaleMultiplier = 1f;
+        uiComponent.drawnFanScaleMultiplier = Mathf.Clamp(uiComponent.drawnFanScaleMultiplier <= 0f ? 0.88f : uiComponent.drawnFanScaleMultiplier, 0.68f, 1f);
     }
 
     private void PrepareInteractiveDeck()
@@ -589,14 +640,16 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         Rect rect = viewportRoot != null ? viewportRoot.rect : _cardContainer.rect;
         _viewportWidth = Mathf.Max(1f, rect.width);
         _viewportHeight = Mathf.Max(1f, rect.height);
-        _fanWidth = uiComponent.fanWidth > 0f ? uiComponent.fanWidth : _viewportWidth;
+        _fanWidth = uiComponent.fanWidth > 0f
+            ? uiComponent.fanWidth
+            : Mathf.Max(uiComponent.minFanWidth, _viewportWidth * Mathf.Max(1f, uiComponent.fanViewportWidthMultiplier));
         _deckCardScale = ResolveDeckCardScale();
 
         int count = GetVisualDeckCardCount();
         _fanWidth = ResolveDeckFanWidth(count);
         ResolveDeckScrollBounds();
         Sprite backSprite = ResolveCardBackSprite();
-        Transform deckParent = viewportRoot != null ? viewportRoot : _cardContainer;
+        Transform deckParent = _cardContainer;
         for (int i = 0; i < count; i++)
         {
             GameObject cardObject = UnityEngine.Object.Instantiate(_cardTemplateImage.gameObject, deckParent);
@@ -629,20 +682,19 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
     private float ResolveDeckCardScale()
     {
+        if (uiComponent.deckCardScale > 0f)
+            return uiComponent.deckCardScale;
+
         float sourceWidth = ResolveDeckCardSourceWidth();
         float sourceHeight = ResolveDeckCardSourceHeight();
-        float fittedScale = ResolveFittedDeckCardScale(sourceWidth, sourceHeight);
-        float targetScale = uiComponent.deckCardScale > 0f
-            ? Mathf.Min(uiComponent.deckCardScale, fittedScale)
-            : fittedScale;
-        float minScale = Mathf.Min(Mathf.Max(0.1f, uiComponent.minDeckCardScale), targetScale);
-        float maxScale = Mathf.Max(minScale, uiComponent.maxDeckCardScale);
-        return Mathf.Clamp(targetScale, minScale, maxScale);
+        float widthScale = (_viewportWidth * 0.34f) / Mathf.Max(1f, sourceWidth);
+        float heightScale = (_viewportHeight * 0.56f) / Mathf.Max(1f, sourceHeight);
+        return Mathf.Clamp(Mathf.Min(widthScale, heightScale), uiComponent.minDeckCardScale, uiComponent.maxDeckCardScale);
     }
 
     private int GetVisualDeckCardCount()
     {
-        return Mathf.Clamp(uiComponent.selectableCardCount, 3, VisualDeckCardCount);
+        return Mathf.Max(3, uiComponent.selectableCardCount);
     }
 
     private float ResolveFittedDeckCardScale(float sourceWidth, float sourceHeight)
@@ -655,8 +707,10 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
     private float ResolveDeckFanWidth(int cardCount)
     {
-        float cardDrivenWidth = Mathf.Max(1, cardCount - 1) * GetDeckSpacing();
-        return uiComponent.fanWidth > 0f ? Mathf.Min(uiComponent.fanWidth, cardDrivenWidth) : cardDrivenWidth;
+        if (uiComponent.fanWidth > 0f)
+            return uiComponent.fanWidth;
+
+        return Mathf.Max(uiComponent.minFanWidth, _viewportWidth * Mathf.Max(1f, uiComponent.fanViewportWidthMultiplier));
     }
 
     private float ResolveDeckCardSourceWidth()
@@ -818,12 +872,55 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     {
         if (!_isChoosingCard || _isAnimatingCard) return;
         if (_suppressPointerClick || _dragMoved) return;
+
+        float now = Time.unscaledTime;
+        float interval = Mathf.Clamp(uiComponent.doubleClickSelectInterval, 0.05f, 0.6f);
+        bool doubleClick = eventData is PointerEventData pointerData && pointerData.clickCount >= 2;
+        doubleClick = doubleClick || (_pendingClickDeckIndex == index && now - _lastDeckClickTime <= interval);
+
+        if (doubleClick)
+        {
+            StopPendingSingleClick();
+            SelectDeckCard(index);
+            return;
+        }
+
+        StopPendingSingleClick();
+        _pendingClickDeckIndex = index;
+        _lastDeckClickTime = now;
+        _singleClickCoroutine = uiComponent.StartCoroutine(SingleClickSelectRoutine(index, interval));
+    }
+
+    private IEnumerator SingleClickSelectRoutine(int index, float delay)
+    {
+        yield return new WaitForSecondsRealtime(delay);
+        _singleClickCoroutine = null;
+        _pendingClickDeckIndex = -1;
+
+        if (!_isChoosingCard || _isAnimatingCard) yield break;
+        if (_suppressPointerClick || _dragMoved) yield break;
         SelectDeckCard(index);
+    }
+
+    private void StopPendingSingleClick()
+    {
+        if (_singleClickCoroutine != null && uiComponent != null)
+        {
+            uiComponent.StopCoroutine(_singleClickCoroutine);
+            _singleClickCoroutine = null;
+        }
+        else
+        {
+            _singleClickCoroutine = null;
+        }
+
+        _pendingClickDeckIndex = -1;
     }
 
     private void ReleaseDeckPointer()
     {
         StopLongPressSelection();
+        StopPendingSingleClick();
 
         if (_isPullingCard)
         {
@@ -1208,16 +1305,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
     private bool IsDeckCardInsideViewport(Vector2 anchoredPosition, float scale)
     {
-        RectTransform viewportRoot = GetDeckViewportRoot();
-        if (viewportRoot == null) return true;
-
-        float viewportHalfWidth = Mathf.Max(1f, viewportRoot.rect.width * 0.5f);
-        float viewportHalfHeight = Mathf.Max(1f, viewportRoot.rect.height * 0.5f);
-        float cardHalfWidth = ResolveDeckCardSourceWidth() * scale * 0.5f;
-        float cardHalfHeight = ResolveDeckCardSourceHeight() * scale * 0.5f;
-
-        return Mathf.Abs(anchoredPosition.x) + cardHalfWidth <= viewportHalfWidth + 0.5f
-            && Mathf.Abs(anchoredPosition.y) + cardHalfHeight <= viewportHalfHeight + 0.5f;
+        return true;
     }
 
     private void SetDeckCardViewportVisible(Image image, bool visible)
@@ -1270,22 +1358,15 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         Vector2 leftPosition = GetDeckSiblingPosition(leftIndex);
         Vector2 rightPosition = GetDeckSiblingPosition(rightIndex);
 
-        int leftDistanceKey = Mathf.RoundToInt(Mathf.Abs(leftPosition.x) * 100f);
-        int rightDistanceKey = Mathf.RoundToInt(Mathf.Abs(rightPosition.x) * 100f);
-
-        int distanceCompare = rightDistanceKey.CompareTo(leftDistanceKey);
-        if (distanceCompare != 0)
-            return distanceCompare;
+        int xCompare = Mathf.RoundToInt(leftPosition.x * 100f)
+            .CompareTo(Mathf.RoundToInt(rightPosition.x * 100f));
+        if (xCompare != 0)
+            return xCompare;
 
         int yCompare = Mathf.RoundToInt(leftPosition.y * 100f)
             .CompareTo(Mathf.RoundToInt(rightPosition.y * 100f));
         if (yCompare != 0)
             return yCompare;
-
-        int xCompare = Mathf.RoundToInt(leftPosition.x * 100f)
-            .CompareTo(Mathf.RoundToInt(rightPosition.x * 100f));
-        if (xCompare != 0)
-            return xCompare;
 
         return leftIndex.CompareTo(rightIndex);
     }
@@ -1305,10 +1386,15 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     private Vector2 GetDeckFanPosition(int index)
     {
         ResolveDeckLayoutMetrics();
-        float spacing = GetDeckSpacing();
+        float spacing = _deckImages.Count > 1 ? _fanWidth / (_deckImages.Count - 1) : _fanWidth;
+        float cycleWidth = Mathf.Max(1f, _fanWidth + spacing);
         float x = -_fanWidth * 0.5f + spacing * index + _deckOffsetX;
+        x = Mathf.Repeat(x + cycleWidth * 0.5f, cycleWidth) - cycleWidth * 0.5f;
 
-        float y = uiComponent.fanHeightOffset + GetSettledDeckYOffset();
+        float normalized = Mathf.Clamp(x / Mathf.Max(1f, _fanWidth * 0.5f), -1f, 1f);
+        float y = uiComponent.fanHeightOffset
+            + GetSettledDeckYOffset()
+            + uiComponent.fanRiseOffset * (1f - normalized * normalized);
         return new Vector2(x, y);
     }
 
@@ -1319,23 +1405,33 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
     private float NormalizeDeckOffset(float offset)
     {
-        ResolveDeckScrollBounds();
-        return Mathf.Clamp(offset, _minDeckOffsetX, _maxDeckOffsetX);
+        ResolveDeckLayoutMetrics();
+        float spacing = _deckImages.Count > 1 ? _fanWidth / (_deckImages.Count - 1) : _fanWidth;
+        float cycleWidth = Mathf.Max(1f, _fanWidth + spacing);
+        return Mathf.Repeat(offset + cycleWidth * 0.5f, cycleWidth) - cycleWidth * 0.5f;
     }
 
     private float GetSettledDeckYOffset()
     {
+        if (_nextDrawIndex <= 0) return 0f;
+        if (uiComponent.drawnFanLowerOffset > 0f)
+            return -uiComponent.drawnFanLowerOffset;
+
         return 0f;
     }
 
     private float GetSettledDeckScaleMultiplier()
     {
-        return 1f;
+        return _nextDrawIndex > 0
+            ? Mathf.Clamp(uiComponent.drawnFanScaleMultiplier, 0.68f, 1f)
+            : 1f;
     }
 
     private float GetDeckFanRotation(int index)
     {
-        return 0f;
+        Vector2 position = GetDeckFanPosition(index);
+        float normalized = Mathf.Clamp(position.x / Mathf.Max(1f, _fanWidth * 0.5f), -1f, 1f);
+        return -normalized * uiComponent.fanRotation;
     }
 
     private void ResolveDeckLayoutMetrics()
@@ -1346,7 +1442,9 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         Rect rect = viewportRoot.rect;
         _viewportWidth = Mathf.Max(1f, rect.width);
         _viewportHeight = Mathf.Max(1f, rect.height);
-        _fanWidth = uiComponent.fanWidth > 0f ? uiComponent.fanWidth : _viewportWidth;
+        _fanWidth = uiComponent.fanWidth > 0f
+            ? uiComponent.fanWidth
+            : Mathf.Max(uiComponent.minFanWidth, _viewportWidth * Mathf.Max(1f, uiComponent.fanViewportWidthMultiplier));
         if (_cardTemplateImage != null)
         {
             _deckCardScale = ResolveDeckCardScale();
@@ -1357,9 +1455,8 @@ public class TarorSingleSpreadShuffleUI : WindowBase
 
     private void ResolveDeckScrollBounds()
     {
-        _minDeckOffsetX = 0f;
-        _maxDeckOffsetX = 0f;
-        _deckOffsetX = 0f;
+        _minDeckOffsetX = float.NegativeInfinity;
+        _maxDeckOffsetX = float.PositiveInfinity;
     }
 
     private void StartDeckInertia()
@@ -1421,6 +1518,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     {
         StopDeckInertia();
         StopLongPressSelection();
+        StopPendingSingleClick();
         _drawSequence?.Kill(false);
         _drawSequence = null;
         ClearRuntimeFlyingCards();
@@ -1461,6 +1559,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     {
         bool changed = false;
         Transform deckParent = GetDeckViewportRoot();
+        int maxRuntimeCards = GetVisualDeckCardCount();
         for (int i = _deckImages.Count - 1; i >= 0; i--)
         {
             Image image = _deckImages[i];
@@ -1471,7 +1570,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
                 continue;
             }
 
-            if (i >= VisualDeckCardCount)
+            if (i >= maxRuntimeCards)
             {
                 DestroyDeckObject(image.gameObject);
                 _deckImages.RemoveAt(i);
@@ -2076,6 +2175,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     {
         StopDeckInertia();
         StopLongPressSelection();
+        StopPendingSingleClick();
 
         _drawSequence?.Kill(false);
         _drawSequence = null;
