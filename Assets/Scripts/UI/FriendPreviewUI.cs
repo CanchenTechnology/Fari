@@ -10,6 +10,7 @@ using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 using GamerFrameWork.OracleRuntime;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using TMPro;
@@ -54,6 +55,7 @@ public class FriendPreviewUI : WindowBase
 	private bool isDeletingFriend;
 	private bool hasSettingEditButtonOriginalTextColor;
 	private Color settingEditButtonOriginalTextColor;
+	private Coroutine rebuildHistoryLayoutCoroutine;
 	private readonly HashSet<string> pendingSentUserIds = new HashSet<string>();
 	private readonly List<FriendPreviewHistoryEntry> historyEntries = new List<FriendPreviewHistoryEntry>();
 
@@ -100,12 +102,14 @@ public class FriendPreviewUI : WindowBase
 		fullHistoryRequestVersion++;
 		isSendingRequest = false;
 		isDeletingFriend = false;
+		StopRebuildHistoryLayoutCoroutine();
 		HideSettingPanel(true);
 		base.OnHide();
 	}
 	// 物体销毁时执行
 	public override void OnDestroy()
 	{
+		StopRebuildHistoryLayoutCoroutine();
 		KillSettingTween();
 		base.OnDestroy();
 	}
@@ -614,6 +618,7 @@ public class FriendPreviewUI : WindowBase
 		}
 
 		SetHistoryPanelVisible(true);
+		RequestRebuildHistoryLayout();
 	}
 
 	private void SetHistoryPanelVisible(bool visible)
@@ -622,6 +627,64 @@ public class FriendPreviewUI : WindowBase
 			historyPanelRoot = FindTransformByName(transform, "DivinationHistoryPanel");
 		if (historyPanelRoot != null)
 			historyPanelRoot.gameObject.SetActive(visible);
+	}
+
+	private void RequestRebuildHistoryLayout()
+	{
+		ForceRebuildHistoryLayout();
+		if (uiComponent == null || !gameObject.activeInHierarchy)
+			return;
+
+		StopRebuildHistoryLayoutCoroutine();
+		rebuildHistoryLayoutCoroutine = uiComponent.StartCoroutine(RebuildHistoryLayoutNextFrame());
+	}
+
+	private void StopRebuildHistoryLayoutCoroutine()
+	{
+		if (rebuildHistoryLayoutCoroutine == null || uiComponent == null)
+			return;
+
+		uiComponent.StopCoroutine(rebuildHistoryLayoutCoroutine);
+		rebuildHistoryLayoutCoroutine = null;
+	}
+
+	private IEnumerator RebuildHistoryLayoutNextFrame()
+	{
+		yield return null;
+		ForceRebuildHistoryLayout();
+		rebuildHistoryLayoutCoroutine = null;
+	}
+
+	private void ForceRebuildHistoryLayout()
+	{
+		Canvas.ForceUpdateCanvases();
+
+		if (uiComponent?.divinationItems != null)
+		{
+			foreach (DivinationItem item in uiComponent.divinationItems)
+			{
+				if (item == null || !item.gameObject.activeSelf)
+					continue;
+				ForceRebuildRect(item.transform as RectTransform);
+			}
+		}
+
+		if (historyPanelRoot == null)
+			historyPanelRoot = FindTransformByName(transform, "DivinationHistoryPanel");
+		ForceRebuildRect(historyPanelRoot as RectTransform);
+
+		Transform cursor = historyPanelRoot != null ? historyPanelRoot.parent : null;
+		while (cursor != null)
+		{
+			ForceRebuildRect(cursor as RectTransform);
+			cursor = cursor.parent;
+		}
+	}
+
+	private void ForceRebuildRect(RectTransform rect)
+	{
+		if (rect != null)
+			LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
 	}
 
 	private void InitializeSettingPanel()
@@ -1122,7 +1185,10 @@ public class FriendPreviewUI : WindowBase
 		}
 
 		HideSettingPanel(true);
-		RelationshipDivinationFlow.ShowInviteConfirm(targetFriend);
+		RelationshipDivinationFlow.TryOpenActiveOrCreate(targetFriend, () =>
+		{
+			DivinationDirectionUI.Show(targetFriend);
+		});
 	}
 	public void OnExitSettingButtonClick()
 	{
@@ -1329,12 +1395,9 @@ public class FriendPreviewUI : WindowBase
 			string cardNames = TarotDeck.FormatDisplayName(FirstNonEmpty(summary?.cardName, "每日牌"), summary != null && summary.IsUpright);
 			string description = FirstNonEmpty(summary?.oracle, summary?.title, summary?.microAction, cardNames);
 			List<Sprite> sprites = new List<Sprite>();
-			if (!string.IsNullOrWhiteSpace(summary?.cardId))
-			{
-				Sprite sprite = TarotSpriteLoader.Load(summary.cardId);
-				if (sprite != null)
-					sprites.Add(sprite);
-			}
+			Sprite sprite = LoadTarotSprite(summary?.cardId, summary?.cardName, cardNames);
+			if (sprite != null)
+				sprites.Add(sprite);
 
 			return new FriendPreviewHistoryEntry
 			{
@@ -1357,7 +1420,8 @@ public class FriendPreviewUI : WindowBase
 			foreach (RelationshipDivinationCard card in visibleCards)
 			{
 				names.Add(card != null ? card.DisplayName : "关系牌");
-				Sprite sprite = RelationshipDivinationFlow.LoadCardSprite(card);
+				Sprite sprite = LoadTarotSprite(card?.cardId, card?.cardName, card?.DisplayName)
+					?? RelationshipDivinationFlow.LoadCardSprite(card);
 				if (sprite != null)
 					sprites.Add(sprite);
 			}
@@ -1386,12 +1450,9 @@ public class FriendPreviewUI : WindowBase
 				{
 					if (card == null) continue;
 					names.Add(TarotDeck.FormatDisplayName(FirstNonEmpty(card.cardName, card.cardId, "关系牌"), card.orientation));
-					if (!string.IsNullOrWhiteSpace(card.cardId))
-					{
-						Sprite sprite = TarotSpriteLoader.Load(card.cardId);
-						if (sprite != null)
-							sprites.Add(sprite);
-					}
+					Sprite sprite = LoadTarotSprite(card.cardId, card.cardName);
+					if (sprite != null)
+						sprites.Add(sprite);
 				}
 			}
 
@@ -1413,6 +1474,7 @@ public class FriendPreviewUI : WindowBase
 			if (summary == null)
 				return null;
 
+			string resolvedCardId = ResolveTarotCardId(summary.cardId, summary.cardName, cardNames);
 			return new DivinationRecordData
 			{
 				readingId = FirstNonEmpty(summary.oracleId, $"daily_{summary.ownerUid}_{summary.date}"),
@@ -1425,7 +1487,7 @@ public class FriendPreviewUI : WindowBase
 					{
 						position = "今日牌",
 						positionKey = "daily_card",
-						cardId = summary.cardId,
+						cardId = FirstNonEmpty(resolvedCardId, summary.cardId),
 						cardName = FirstNonEmpty(summary.cardName, cardNames, "每日牌"),
 						orientation = summary.IsUpright ? "upright" : "reversed"
 					}
@@ -1442,6 +1504,132 @@ public class FriendPreviewUI : WindowBase
 				oracleId = FirstNonEmpty(summary.oracleId, "daily_oracle"),
 				createdAt = summary.date
 			};
+		}
+
+		private static Sprite LoadTarotSprite(params string[] cardTokens)
+		{
+			string cardId = ResolveTarotCardId(cardTokens);
+			return string.IsNullOrWhiteSpace(cardId) ? null : TarotSpriteLoader.Load(cardId);
+		}
+
+		private static string ResolveTarotCardId(params string[] cardTokens)
+		{
+			if (cardTokens == null)
+				return string.Empty;
+
+			foreach (string token in cardTokens)
+			{
+				string candidate = CleanTarotCardToken(token);
+				if (string.IsNullOrWhiteSpace(candidate))
+					continue;
+
+				TarotCard card = TarotDeck.GetById(candidate);
+				if (card != null)
+					return card.cardId;
+
+				string normalizedId = NormalizeTarotCardId(candidate);
+				card = TarotDeck.GetById(normalizedId);
+				if (card != null)
+					return card.cardId;
+
+				card = FindTarotCardByName(candidate);
+				if (card != null)
+					return card.cardId;
+			}
+
+			return string.Empty;
+		}
+
+		private static string CleanTarotCardToken(string token)
+		{
+			if (string.IsNullOrWhiteSpace(token))
+				return string.Empty;
+
+			string result = token.Trim();
+			int colonIndex = Mathf.Max(result.LastIndexOf(':'), result.LastIndexOf('：'));
+			if (colonIndex >= 0 && colonIndex < result.Length - 1)
+				result = result.Substring(colonIndex + 1).Trim();
+
+			result = TarotDeck.StripOrientationSuffix(result);
+			string[] orientationSuffixes = { "正位", "逆位", "upright", "reversed", "reverse" };
+			foreach (string suffix in orientationSuffixes)
+			{
+				if (result.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+				{
+					result = result.Substring(0, result.Length - suffix.Length).Trim();
+					break;
+				}
+			}
+
+			return result.Trim(' ', '·', '-', '_', '(', ')', '（', '）');
+		}
+
+		private static string NormalizeTarotCardId(string token)
+		{
+			if (string.IsNullOrWhiteSpace(token))
+				return string.Empty;
+
+			string value = token.Trim().ToLowerInvariant()
+				.Replace('-', '_')
+				.Replace(' ', '_');
+
+			string[] suits = { "major", "cups", "wands", "swords", "pentacles" };
+			foreach (string suit in suits)
+			{
+				string numberText = string.Empty;
+				if (value.StartsWith($"{suit}_", StringComparison.OrdinalIgnoreCase))
+					numberText = value.Substring(suit.Length + 1);
+				else if (value.StartsWith(suit, StringComparison.OrdinalIgnoreCase))
+					numberText = value.Substring(suit.Length);
+
+				if (int.TryParse(numberText, out int number))
+					return $"{suit}_{number:D2}";
+			}
+
+			return value;
+		}
+
+		private static TarotCard FindTarotCardByName(string token)
+		{
+			string normalizedToken = NormalizeTarotName(token);
+			if (string.IsNullOrWhiteSpace(normalizedToken))
+				return null;
+
+			foreach (TarotCard card in TarotDeck.FullDeck)
+			{
+				if (card == null)
+					continue;
+
+				string zh = NormalizeTarotName(card.nameZh);
+				string en = NormalizeTarotName(card.nameEn);
+				string id = NormalizeTarotName(card.cardId);
+				if (normalizedToken == zh || normalizedToken == en || normalizedToken == id)
+					return card;
+				if (normalizedToken.Length >= 3
+					&& ((!string.IsNullOrWhiteSpace(en) && en.Contains(normalizedToken))
+						|| (!string.IsNullOrWhiteSpace(zh) && zh.Contains(normalizedToken))))
+					return card;
+			}
+
+			return null;
+		}
+
+		private static string NormalizeTarotName(string value)
+		{
+			if (string.IsNullOrWhiteSpace(value))
+				return string.Empty;
+
+			value = CleanTarotCardToken(value).ToLowerInvariant();
+			if (value.StartsWith("the ", StringComparison.OrdinalIgnoreCase))
+				value = value.Substring(4);
+
+			return value
+				.Replace("the", "")
+				.Replace(" ", "")
+				.Replace("_", "")
+				.Replace("-", "")
+				.Replace("·", "")
+				.Replace("of", "");
 		}
 
 		public FriendProfileHistoryEntry ToOverlayEntry()

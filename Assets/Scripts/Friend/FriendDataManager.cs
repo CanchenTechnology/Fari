@@ -451,6 +451,26 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         return removed;
     }
 
+    public bool RemoveLocalDebugRealFriends()
+    {
+        bool removed = realFriendList.RemoveAll(IsLocalDebugRealFriend) > 0;
+        if (removed) SaveAndNotify();
+        return removed;
+    }
+
+    private bool IsLocalDebugRealFriend(FriendData friend)
+    {
+        if (friend == null) return false;
+
+        string source = (friend.source ?? string.Empty).Trim();
+        if (source == "本地测试数据") return true;
+
+        string uid = NormalizeKey(friend.firebaseUid);
+        return uid == "test_real_friend_luna_001"
+            || uid == "test_real_friend_orion_002"
+            || uid == "test_real_friend_mira_003";
+    }
+
     /// <summary>
     /// 删除虚拟好友
     /// </summary>

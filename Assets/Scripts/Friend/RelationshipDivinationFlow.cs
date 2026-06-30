@@ -54,13 +54,6 @@ public static class RelationshipDivinationFlow
             return;
         }
 
-        if (record.IsCompleted || record.isLocalOnly)
-        {
-            ShowRevealReady(record, CurrentFriend);
-            return;
-        }
-
-        string uid = GetCurrentUid();
         if (IsInviteExpired(record))
         {
             ToastManager.ShowToast("这次双人占卜邀请已过期");
@@ -68,14 +61,7 @@ public static class RelationshipDivinationFlow
             return;
         }
 
-        if (record.CanCurrentUserReveal(uid))
-        {
-            ShowInviteSent(record, CurrentFriend);
-        }
-        else
-        {
-            ShowWaitingFriend(record, CurrentFriend);
-        }
+        ShowReadingState(record, CurrentFriend);
     }
 
     public static void ShowInviteSent(RelationshipDivinationRecord record, FriendDataManager.FriendData friend = null)
@@ -107,16 +93,40 @@ public static class RelationshipDivinationFlow
         MarkDailyCompleted(record);
         SaveResultToHistory(record);
         HideFlowWindows();
-        UIModule.Instance.PopUpWindow<TwoPersonDivinationRevealReadyFlowUI>();
+        TwoPersonDivinationUI.Show(record, CurrentFriend);
+    }
+
+    public static void ShowReadingState(RelationshipDivinationRecord record, FriendDataManager.FriendData friend = null)
+    {
+        if (record == null)
+        {
+            ToastManager.ShowToast("双人占卜记录不存在");
+            return;
+        }
+
+        CurrentRecord = record;
+        CurrentFriend = friend ?? CurrentFriend ?? FindFriendForRecord(record) ?? BuildFallbackFriend(record);
+        if (record.IsCompleted || record.isLocalOnly)
+        {
+            MarkDailyCompleted(record);
+            SaveResultToHistory(record);
+        }
+
+        HideFlowWindows();
+        TwoPersonDivinationUI.Show(record, CurrentFriend);
     }
 
     public static void HideFlowWindows()
     {
+        UIModule.Instance.HideWindow<DivinationDirectionUI>();
         UIModule.Instance.HideWindow<TwoPersonDivinationInviteConfirmFlowUI>();
         UIModule.Instance.HideWindow<TwoPersonDivinationInviteSentFlowUI>();
         UIModule.Instance.HideWindow<TwoPersonDivinationWaitingFriendFlowUI>();
         UIModule.Instance.HideWindow<TwoPersonDivinationRevealReadyFlowUI>();
         UIModule.Instance.HideWindow<TwoPersonDivinationResultFlowUI>();
+        UIModule.Instance.HideWindow<TwoPersonDivinationUI>();
+        UIModule.Instance.HideWindow<DrawMyCardUI>();
+        UIModule.Instance.HideWindow<TwoPersonDivinationResultUI>();
     }
 
     private static bool TryHandleTerminalRecord(RelationshipDivinationRecord record, FriendDataManager.FriendData friend)
@@ -136,7 +146,7 @@ public static class RelationshipDivinationFlow
 
         if (record.IsCompleted || record.isLocalOnly)
         {
-            ShowRevealReady(record, resolvedFriend);
+            ShowReadingState(record, resolvedFriend);
             return true;
         }
 
@@ -266,7 +276,7 @@ public static class RelationshipDivinationFlow
                 if (completed != null)
                 {
                     MarkDailyCompleted(completed);
-                    ToastManager.ShowToast("你们今天已经完成过一次双人占卜，明天再开启新的指引");
+                    ShowReadingState(completed, friend);
                     return;
                 }
 
@@ -339,7 +349,7 @@ public static class RelationshipDivinationFlow
         CurrentRecord = record;
         CurrentFriend = CurrentFriend ?? FindFriendForRecord(record) ?? BuildFallbackFriend(record);
         HideFlowWindows();
-        UIModule.Instance.PopUpWindow<TwoPersonDivinationResultFlowUI>();
+        TwoPersonDivinationResultUI.Show(record, CurrentFriend);
     }
 
     public static string BuildShareText(RelationshipDivinationRecord record)

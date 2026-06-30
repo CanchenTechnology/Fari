@@ -24,13 +24,29 @@ public class TarorSingleSpreadShuffleUIComponent:MonoBehaviour
 	public TMP_Text InstructionTextText;
 
 	public Button hideBtn;
+
+	public Image maskUI;
 	[Header("卡牌动画")]
 	public Transform cardContainer;
 	public GameObject cardImageGo;
 	public float shuffleCycleDuration = 0.08f;
 	public int shuffleCycles = 3;
-	public float flipDuration = 0.4f;
-	public float cardRevealGap = 0.25f;
+	public float flipDuration = 0.62f;
+	[Tooltip("选中牌飞到屏幕中心并放大的时长。")]
+	public float centerRevealDuration = 0.68f;
+	[Tooltip("屏幕中心展示牌的最大缩放。")]
+	public float centerRevealMaxScale = 1.15f;
+	[Tooltip("中心展示遮罩淡入或淡出的时长。")]
+	public float centerRevealMaskFadeDuration = 0.18f;
+	[Tooltip("牌背翻开前，中心展示牌轻微抖动的时长。")]
+	public float centerRevealShakeDuration = 0.42f;
+	[Tooltip("牌背翻开前，中心展示牌轻微左右位移抖动的强度。")]
+	public float centerRevealShakePosition = 10f;
+	[Tooltip("牌背翻开前，中心展示牌轻微旋转抖动的角度。")]
+	public float centerRevealShakeRotation = 5f;
+	[Tooltip("逆位牌翻到正面后额外反转的时长。")]
+	public float reverseRotateDuration = 0.36f;
+	public float cardRevealGap = 0.45f;
 	public Sprite cardBackSprite;
 
 
@@ -70,7 +86,7 @@ public class TarorSingleSpreadShuffleUIComponent:MonoBehaviour
 	[Tooltip("双击卡牌抽牌的最大间隔；单击会等待该时长后触发，避免和双击冲突。")]
 	public float doubleClickSelectInterval = 0.24f;
 	[Tooltip("选中牌飞到目标卡槽的时长。")]
-	public float selectDuration = 0.48f;
+	public float selectDuration = 0.66f;
 	[Tooltip("是否启用横向拖动后的惯性滚动。")]
 	public bool useScrollInertia = true;
 	public float scrollInertiaMultiplier = 1.35f;

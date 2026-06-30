@@ -13,6 +13,7 @@ public class UsageStatsManager : MonoSingleton<UsageStatsManager>
     private const string KEY_DAILY_ORACLE_READING_CREDITED = "UsageStats_DailyOracleReadingCredited";
     private const string KEY_DIALOG_MESSAGES = "UsageStats_DialogMessages";
     private const string KEY_SPREAD_READINGS = "UsageStats_SpreadReadings";
+    private const string KEY_DAILY_ORACLE_RESET_VERSION_APPLIED = "UsageStats_DailyOracleResetVersionApplied";
 
     public const int FreeDailyOracleLimit = 1;
     public const int FreeDialogLimit = 100;
@@ -82,6 +83,40 @@ public class UsageStatsManager : MonoSingleton<UsageStatsManager>
         UnityEngine.PlayerPrefs.DeleteKey(KEY_DIALOG_MESSAGES);
         UnityEngine.PlayerPrefs.DeleteKey(KEY_SPREAD_READINGS);
         UnityEngine.PlayerPrefs.Save();
+    }
+
+    public bool ApplyDailyOracleResetSignal(string uid, string resetVersion, string resetAt)
+    {
+        if (string.IsNullOrWhiteSpace(resetVersion))
+            return false;
+
+        string resetKey = BuildDailyOracleResetAppliedKey(uid);
+        if (UnityEngine.PlayerPrefs.GetString(resetKey, "") == resetVersion)
+            return false;
+
+        LoadToday();
+        bool hadDailyOracle = DailyOracleCount > 0;
+        bool hadCreditedDailyOracleReading = UnityEngine.PlayerPrefs.GetInt(KEY_DAILY_ORACLE_READING_CREDITED, 0) > 0;
+
+        DailyOracleCount = 0;
+        if (hadDailyOracle && hadCreditedDailyOracleReading && SpreadReadingCount > 0)
+            SpreadReadingCount = Math.Max(SpreadReadingCount - 1, 0);
+
+        UnityEngine.PlayerPrefs.SetInt(KEY_DAILY_ORACLE_READING_CREDITED, 0);
+        Save();
+        UnityEngine.PlayerPrefs.SetString(resetKey, resetVersion);
+        UnityEngine.PlayerPrefs.Save();
+
+        DailyOracleFirestore.ClearTodayLocalCacheForCurrentUser();
+        DailyOracleService.Instance?.ClearCache();
+        Debug.Log($"[UsageStatsManager] 已应用后台今日神谕重置 uid={uid} version={resetVersion} at={resetAt}");
+        return true;
+    }
+
+    private static string BuildDailyOracleResetAppliedKey(string uid)
+    {
+        string safeUid = string.IsNullOrWhiteSpace(uid) ? "local" : uid.Trim();
+        return $"{KEY_DAILY_ORACLE_RESET_VERSION_APPLIED}_{safeUid}";
     }
 
     private void LoadToday()

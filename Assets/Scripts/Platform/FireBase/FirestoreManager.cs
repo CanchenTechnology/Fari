@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
 using Firebase;
+using Firebase.Auth;
 using Firebase.Firestore;
 using Firebase.Extensions;
 using Newtonsoft.Json;
@@ -898,7 +899,6 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
 
     private void CommitRemoveRealFriend(string currentUid, string friendUid, Action<bool> onComplete)
     {
-        WriteBatch batch = _db.StartBatch();
         DocumentReference myFriendRef = _db.Collection("users")
             .Document(currentUid)
             .Collection("friends")
@@ -907,20 +907,72 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             .Document(friendUid)
             .Collection("friends")
             .Document(currentUid);
+        DocumentReference archiveRef = _db.Collection("deleted_friend_relationships")
+            .Document(BuildFriendRelationshipPairId(currentUid, friendUid));
 
-        batch.Delete(myFriendRef);
-        batch.Delete(theirFriendRef);
-        batch.CommitAsync().ContinueWithOnMainThread(task =>
+        Task<DocumentSnapshot> myFriendTask = myFriendRef.GetSnapshotAsync();
+        Task<DocumentSnapshot> theirFriendTask = theirFriendRef.GetSnapshotAsync();
+        Task.WhenAll(myFriendTask, theirFriendTask).ContinueWithOnMainThread(snapshotTask =>
         {
-            if (task.IsFaulted || task.IsCanceled)
+            if (snapshotTask.IsFaulted || snapshotTask.IsCanceled)
             {
-                Debug.LogError($"[FirestoreManager] 删除真实好友失败: {task.Exception?.InnerException?.Message}");
+                Debug.LogError($"[FirestoreManager] 删除真实好友前读取归档失败: {snapshotTask.Exception?.InnerException?.Message}");
                 onComplete?.Invoke(false);
                 return;
             }
 
-            onComplete?.Invoke(true);
+            Dictionary<string, object> mySnapshot = myFriendTask.Result.Exists
+                ? myFriendTask.Result.ToDictionary()
+                : new Dictionary<string, object>();
+            Dictionary<string, object> theirSnapshot = theirFriendTask.Result.Exists
+                ? theirFriendTask.Result.ToDictionary()
+                : new Dictionary<string, object>();
+
+            Dictionary<string, object> snapshots = new Dictionary<string, object>
+            {
+                { currentUid, mySnapshot },
+                { friendUid, theirSnapshot }
+            };
+            Dictionary<string, object> archiveData = new Dictionary<string, object>
+            {
+                { "pairId", BuildFriendRelationshipPairId(currentUid, friendUid) },
+                { "uidA", string.CompareOrdinal(currentUid, friendUid) <= 0 ? currentUid : friendUid },
+                { "uidB", string.CompareOrdinal(currentUid, friendUid) <= 0 ? friendUid : currentUid },
+                { "memberUids", new List<string> { currentUid, friendUid } },
+                { "deletedByUid", currentUid },
+                { "deletedBySide", "client" },
+                { "status", "deleted" },
+                { "snapshots", snapshots },
+                { "snapshotA", string.CompareOrdinal(currentUid, friendUid) <= 0 ? mySnapshot : theirSnapshot },
+                { "snapshotB", string.CompareOrdinal(currentUid, friendUid) <= 0 ? theirSnapshot : mySnapshot },
+                { "deletedAt", FieldValue.ServerTimestamp },
+                { "updatedAt", FieldValue.ServerTimestamp },
+                { "expiresAt", Timestamp.FromDateTime(DateTime.UtcNow.AddDays(90)) }
+            };
+
+            WriteBatch batch = _db.StartBatch();
+            batch.Set(archiveRef, archiveData, SetOptions.MergeAll);
+            batch.Delete(myFriendRef);
+            batch.Delete(theirFriendRef);
+            batch.CommitAsync().ContinueWithOnMainThread(commitTask =>
+            {
+                if (commitTask.IsFaulted || commitTask.IsCanceled)
+                {
+                    Debug.LogError($"[FirestoreManager] 删除真实好友失败: {commitTask.Exception?.InnerException?.Message}");
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                onComplete?.Invoke(true);
+            });
         });
+    }
+
+    private static string BuildFriendRelationshipPairId(string uidA, string uidB)
+    {
+        string a = string.IsNullOrWhiteSpace(uidA) ? "unknown_a" : uidA.Trim();
+        string b = string.IsNullOrWhiteSpace(uidB) ? "unknown_b" : uidB.Trim();
+        return string.CompareOrdinal(a, b) <= 0 ? $"{a}__{b}" : $"{b}__{a}";
     }
 
     public static void QueueRealFriendDeleteLocal(string friendUid)
@@ -1754,6 +1806,13 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                     return;
                 }
 
+                int friendDocCount = 0;
+                foreach (DocumentSnapshot _ in task.Result.Documents)
+                    friendDocCount++;
+
+                FriendDataManager.Instance.RemoveLocalDebugRealFriends();
+                Debug.Log($"[FirestoreManager] 拉取好友成功: localUid={currentUid}, authUid={GetFirebaseAuthUid()}, count={friendDocCount}");
+
                 foreach (DocumentSnapshot doc in task.Result.Documents)
                 {
                     if (!doc.Exists) continue;
@@ -1788,6 +1847,18 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
 
                 onComplete?.Invoke(true);
             });
+    }
+
+    private static string GetFirebaseAuthUid()
+    {
+        try
+        {
+            return FirebaseAuth.DefaultInstance?.CurrentUser?.UserId ?? string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
     }
 
     private void LoadFriendPublicProfile(string friendUid, string fallbackName, string fallbackHandle, string fallbackPhotoUrl, long fallbackLastLoginUnixMs)

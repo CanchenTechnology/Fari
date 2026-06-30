@@ -36,6 +36,7 @@ public static class AppReadinessDiagnostics
         {
             $"Platform: {Application.platform}, Unity {Application.unityVersion}, App {Application.version}",
             $"Firebase: {BuildFirebaseLine()}",
+            $"Local user: {BuildLocalUserLine()}",
             $"Auth providers: gameCenter={FormatBool(IsGameCenterAuthProviderResolved())}",
             $"Functions: membershipStatus={BackendMembershipClient.MembershipStatusFunctionUrl}, deleteMyAccountData={FirebaseAuthManager.DeleteAccountDataFunctionUrl}, submitIapReceipt={IapPurchaseManager.SubmitReceiptFunctionUrl}",
             $"Functions readiness endpoint: {BackendMembershipClient.ReadinessStatusFunctionUrl}",
@@ -122,6 +123,24 @@ public static class AppReadinessDiagnostics
         catch (Exception ex)
         {
             return "not ready (" + ex.GetType().Name + ": " + ex.Message + ")";
+        }
+    }
+
+    private static string BuildLocalUserLine()
+    {
+        try
+        {
+            UserDataManager user = UserDataManager.Instance;
+            if (user == null) return "manager missing";
+
+            string uid = string.IsNullOrWhiteSpace(user.FirebaseUid) ? "none" : user.FirebaseUid;
+            string email = string.IsNullOrWhiteSpace(user.Email) ? "none" : user.Email;
+            string name = string.IsNullOrWhiteSpace(user.UserName) ? "none" : user.UserName;
+            return $"uid={uid}, email={email}, name={name}, authenticated={FormatBool(user.IsFirebaseAuthenticated)}";
+        }
+        catch (Exception ex)
+        {
+            return "unavailable (" + ex.GetType().Name + ": " + ex.Message + ")";
         }
     }
 

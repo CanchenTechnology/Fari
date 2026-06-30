@@ -8,19 +8,18 @@ public class TarotItem : MonoBehaviour
 {
     public Image tarotImage;
     public TMP_Text tarotNameText;
-    public TMP_Text tarotTagText;
+    public TMP_Text tarotdesText;
 
-    public void SetItemData(Sprite tarotSprite,string name,string tag)
+    public void SetItemData(Sprite tarotSprite,string name,string des)
     {
         if (tarotImage != null)
         {
             tarotImage.sprite = tarotSprite;
-            tarotImage.preserveAspect = true;
         }
         if (tarotNameText != null)
             tarotNameText.text = name;
-        if (tarotTagText != null)
-            tarotTagText.text = tag;
+        if (tarotdesText != null)
+            tarotdesText.text = des;
     }
 
 }

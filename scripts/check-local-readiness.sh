@@ -415,7 +415,7 @@ if env \
   ANDROID_KEYSTORE_PASS=readiness_keystore \
   ANDROID_KEYALIAS_PASS=readiness_alias \
   APPLE_SHARED_SECRET=readiness_apple_shared_secret \
-  GOOGLE_PACKAGE_NAME=com.canchentechnology.fari \
+  GOOGLE_PACKAGE_NAME=com.canchentechnology.fariapp \
   GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account","client_email":"readiness@fari-app-b2fd2.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\nREADINESS\n-----END PRIVATE KEY-----\n"}' \
   IAP_RECEIPT=readiness_real_receipt_payload_for_format_check \
   IAP_STORE=AppleAppStore \

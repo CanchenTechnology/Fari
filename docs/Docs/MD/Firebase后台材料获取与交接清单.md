@@ -49,7 +49,7 @@ APPLE_SHARED_SECRET=<复制到的 shared secret>
 同时确认：Firebase Secret `GOOGLE_PACKAGE_NAME` 已是你的 Android 包名：
 
 ```text
-com.canchentechnology.fari
+com.canchentechnology.fariapp
 ```
 
 操作路径：
@@ -185,7 +185,7 @@ Yearly=...
 ```bash
 APPLE_SHARED_SECRET=...
 GOOGLE_SERVICE_ACCOUNT_JSON_FILE=/absolute/path/google-play-service-account.json
-GOOGLE_PACKAGE_NAME=com.canchentechnology.fari
+GOOGLE_PACKAGE_NAME=com.canchentechnology.fariapp
 ```
 
 3. 告诉我“我填好了”，我来跑脚本。

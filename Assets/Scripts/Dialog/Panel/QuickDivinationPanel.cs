@@ -10,6 +10,9 @@ using TMPro;
 
 public class QuickDivinationPanel : MonoBehaviour
 {
+    private const string ThreeCardTopicKey = "three_card";
+    private const string ThreeCardTopicLabel = "三牌占卜";
+    private const string ThreeCardTopicIcon = "✦";
     private const string ThreeCardQuickQuestion = "给我做个三张牌的占卜";
     private const string SelectedTopicDropdownTextColor = "#FE8E54";
 
@@ -863,9 +866,46 @@ public class QuickDivinationPanel : MonoBehaviour
     private List<QuickTopic> GetSourceTopics()
     {
         if (UseInspectorTopics())
-            return inspectorTopics;
+        {
+            var topics = inspectorTopics != null
+                ? new List<QuickTopic>(inspectorTopics)
+                : new List<QuickTopic>();
+            EnsureThreeCardTopic(topics);
+            return topics;
+        }
 
-        return QuickDivinationData.Instance.Config?.topics ?? new List<QuickTopic>();
+        var config = QuickDivinationData.Instance.Config;
+        if (config == null)
+            return new List<QuickTopic>();
+
+        if (config.topics == null)
+            config.topics = new List<QuickTopic>();
+
+        EnsureThreeCardTopic(config.topics);
+        return config.topics;
+    }
+
+    private void EnsureThreeCardTopic(List<QuickTopic> topics)
+    {
+        if (topics == null || !ShouldShowThreeCardTopic())
+            return;
+
+        if (topics.Exists(IsThreeCardTopic))
+            return;
+
+        topics.Add(new QuickTopic
+        {
+            key = ThreeCardTopicKey,
+            label = ThreeCardTopicLabel,
+            icon = ThreeCardTopicIcon,
+            questions = new List<string> { ThreeCardQuickQuestion }
+        });
+    }
+
+    private bool ShouldShowThreeCardTopic()
+    {
+        return RoleManager.Instance == null
+            || RoleManager.Instance.characterType == CharacterType.TarotReader;
     }
 
     private bool UseInspectorTopics()

@@ -157,8 +157,9 @@ public class TarotDetailedUI : WindowBase
 		List<LockedCard> cards = record?.lockedCards ?? new List<LockedCard>();
 		int visibleCount = GetVisibleCardCount(record, cards.Count);
 		bool hasCards = visibleCount > 0;
+		bool showCardContainer = ShouldShowCardContainer(record, visibleCount);
 
-		SetActive(uiComponent.threeCardContainer, hasCards);
+		SetActive(uiComponent.threeCardContainer, showCardContainer);
 		SetActive(uiComponent.tarotCardDesList, hasCards);
 
 		RenderCardImage(uiComponent.tarot1Image, cards, 0, visibleCount);
@@ -314,6 +315,14 @@ public class TarotDetailedUI : WindowBase
 		if (IsDailyRecord(record))
 			return 1;
 		return Mathf.Min(3, cardCount);
+	}
+
+	private bool ShouldShowCardContainer(DivinationRecordData record, int visibleCount)
+	{
+		if (visibleCount <= 0 || IsDailyRecord(record))
+			return false;
+
+		return IsRelationshipRecord(record) || visibleCount >= 3;
 	}
 
 	private string BuildTypeLabel(DivinationRecordData record)

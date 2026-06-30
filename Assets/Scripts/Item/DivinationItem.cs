@@ -6,6 +6,9 @@ using UnityEngine.UI;
 
 public class DivinationItem : MonoBehaviour
 {
+    private const float DefaultCardPreferredWidth = 76f;
+    private const float DefaultCardPreferredHeight = 132f;
+
     public Transform cardContainer;
 
     public Image cardImage;
@@ -35,6 +38,8 @@ public class DivinationItem : MonoBehaviour
         if (divinationDesText != null) divinationDesText.text = description ?? string.Empty;
         if (divinationSourceText != null) divinationSourceText.text = source ?? string.Empty;
         if (divinationTimeText != null) divinationTimeText.text = time ?? string.Empty;
+
+        RebuildLayout();
     }
 
     public void Clear()
@@ -61,24 +66,46 @@ public class DivinationItem : MonoBehaviour
         if (cardImage == null) return;
 
         int count = cardSprites == null ? 0 : cardSprites.Count;
-        bool hasFirstSprite = count > 0 && cardSprites[0] != null;
+        int firstSpriteIndex = -1;
+        for (int i = 0; i < count; i++)
+        {
+            if (cardSprites[i] != null)
+            {
+                firstSpriteIndex = i;
+                break;
+            }
+        }
+
+        bool hasFirstSprite = firstSpriteIndex >= 0;
         cardImage.gameObject.SetActive(hasFirstSprite);
         if (hasFirstSprite)
-            cardImage.sprite = cardSprites[0];
+        {
+            cardImage.sprite = cardSprites[firstSpriteIndex];
+            cardImage.preserveAspect = true;
+            EnsureCardImageLayout(cardImage);
+        }
+        else
+        {
+            cardImage.sprite = null;
+        }
 
         Transform parent = cardContainer != null ? cardContainer : cardImage.transform.parent;
-        if (parent == null || count <= 1) return;
+        if (parent == null || !hasFirstSprite) return;
 
-        for (int i = 1; i < count; i++)
+        int renderedCount = 1;
+        for (int i = firstSpriteIndex + 1; i < count; i++)
         {
             Sprite sprite = cardSprites[i];
             if (sprite == null) continue;
 
             Image clone = Instantiate(cardImage, parent);
-            clone.name = $"CardImage_{i + 1}";
+            clone.name = $"CardImage_{renderedCount + 1}";
             clone.gameObject.SetActive(true);
             clone.sprite = sprite;
+            clone.preserveAspect = true;
+            EnsureCardImageLayout(clone);
             runtimeCardImages.Add(clone);
+            renderedCount++;
         }
     }
 
@@ -86,11 +113,38 @@ public class DivinationItem : MonoBehaviour
     {
         for (int i = 0; i < runtimeCardImages.Count; i++)
         {
-            if (runtimeCardImages[i] != null)
-                Destroy(runtimeCardImages[i].gameObject);
+            Image image = runtimeCardImages[i];
+            if (image != null)
+            {
+                image.gameObject.SetActive(false);
+                Destroy(image.gameObject);
+            }
         }
 
         runtimeCardImages.Clear();
+    }
+
+    private void EnsureCardImageLayout(Image image)
+    {
+        if (image == null) return;
+
+        LayoutElement layoutElement = image.GetComponent<LayoutElement>();
+        if (layoutElement == null)
+            layoutElement = image.gameObject.AddComponent<LayoutElement>();
+
+        if (layoutElement.preferredWidth <= 0f)
+            layoutElement.preferredWidth = DefaultCardPreferredWidth;
+        if (layoutElement.preferredHeight <= 0f)
+            layoutElement.preferredHeight = DefaultCardPreferredHeight;
+    }
+
+    private void RebuildLayout()
+    {
+        Canvas.ForceUpdateCanvases();
+        if (cardContainer is RectTransform cardContainerRect)
+            LayoutRebuilder.ForceRebuildLayoutImmediate(cardContainerRect);
+        if (transform is RectTransform selfRect)
+            LayoutRebuilder.ForceRebuildLayoutImmediate(selfRect);
     }
 
     private void ResolveReferences()

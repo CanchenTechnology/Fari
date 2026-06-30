@@ -66,7 +66,7 @@ public class FriendRequestUI : WindowBase
 	{
 		UnsubscribeDataChanged();
 		isLoadingRequests = false;
-		RefreshFriendLoopListView(false);
+		RefreshFriendLoopListView();
 		base.OnHide();
 	}
 	// 物体销毁时执行
@@ -223,7 +223,7 @@ public class FriendRequestUI : WindowBase
 		SetRootActive(uiComponent.noFriendContentRoot, showEmptyState);
 		SetRootActive(GetFriendScrollRoot(), hasRequests);
 		RefreshEmptyStateText();
-		RefreshFriendLoopListView(true);
+		RefreshFriendLoopListView();
 	}
 
 	private void ResolveFriendLoopListView()
@@ -253,11 +253,11 @@ public class FriendRequestUI : WindowBase
 		return true;
 	}
 
-	private void RefreshFriendLoopListView(bool resetPos)
+	private void RefreshFriendLoopListView()
 	{
 		if (!InitFriendLoopListView()) return;
 
-		friendLoopListView.SetListItemCount(requestInvites.Count, resetPos);
+		friendLoopListView.SetListItemCount(requestInvites.Count, false);
 		friendLoopListView.RefreshAllShownItem();
 	}
 
@@ -439,7 +439,7 @@ public class FriendRequestUI : WindowBase
 			return;
 
 		processingRequestKeys.Add(requestKey);
-		RefreshFriendLoopListView(false);
+		RefreshFriendLoopListView();
 		ToastManager.ShowToast($"正在接受 {invite.name} 的好友请求");
 		firestore.AcceptFriendRequest(invite, success => HandleAcceptRequestComplete(requestKey, success));
 	}

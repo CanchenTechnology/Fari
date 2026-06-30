@@ -212,8 +212,8 @@ public class FriendItem : MonoBehaviour
 
         if (moreBtn != null)
         {
-            moreBtn.gameObject.SetActive(friendData != null);
-            moreBtn.interactable = true;
+            moreBtn.gameObject.SetActive(false);
+            moreBtn.interactable = false;
             SetButtonImageVisible(moreBtn, true);
             SetButtonText(moreBtn, "@");
         }

@@ -66,7 +66,7 @@
 1. 应用 Dashboard → **Settings** → **Basic**
 2. 复制 **App ID** 和 **App Secret**（App Secret 需要点击 Show 后输入密码确认）
 3. 往下滚动，点击 **+ Add Platform** → 选择 **iOS** 和 **Android**
-4. Android: 填入 Package Name（`com.canchentechnology.fari`）
+4. Android: 填入 Package Name（`com.canchentechnology.fariapp`）
 5. iOS: 填入 Bundle ID（`com.canchentechnology.fari`）
 
 链接FireBase:

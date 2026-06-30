@@ -374,9 +374,6 @@ public class DivinationInfoUI : WindowBase
 		Sprite sprite = TarotSpriteLoader.Load(cardId);
 		if (sprite != null) return sprite;
 
-		sprite = Resources.Load<Sprite>($"TarotCards/{cardId}");
-		if (sprite != null) return sprite;
-
 		Debug.LogWarning($"[DivinationInfoUI] 未找到塔罗牌资源: {cardId}");
 		return null;
 	}

@@ -18,6 +18,8 @@ public static class TarotSpriteLoader
 
     private static SpriteAtlas _atlas;
     private static AssetHandle _atlasHandle;
+    private static readonly Dictionary<string, AssetHandle> SpriteHandles = new Dictionary<string, AssetHandle>();
+    private static readonly Dictionary<string, Sprite> SpriteCache = new Dictionary<string, Sprite>();
 
     /// <summary>图集是否已成功加载</summary>
     public static bool IsReady => _atlas != null;
@@ -98,22 +100,64 @@ public static class TarotSpriteLoader
             return null;
         }
 
-        // 懒加载：首次使用自动初始化图集
-        if (_atlas == null)
-            Initialize();
-
-        if (_atlas == null) return null;
-
         if (!SpriteNameMap.TryGetValue(cardId, out var spriteName))
         {
             Debug.LogWarning($"[TarotSpriteLoader] cardId 不在映射表中: {cardId}");
             return null;
         }
 
-        var sprite = _atlas.GetSprite(spriteName);
-        if (sprite == null)
-            Debug.LogWarning($"[TarotSpriteLoader] 图集中未找到 Sprite: {spriteName} (cardId={cardId})");
+        Sprite sprite = LoadFromAtlas(spriteName);
+        if (sprite != null)
+            return sprite;
 
+        sprite = LoadSpriteAsset(spriteName);
+        if (sprite == null)
+        {
+            int atlasSpriteCount = _atlas != null ? _atlas.spriteCount : 0;
+            Debug.LogWarning($"[TarotSpriteLoader] YooAsset 中未找到 Sprite: {spriteName} (cardId={cardId})，atlasSpriteCount={atlasSpriteCount}");
+        }
+
+        return sprite;
+    }
+
+    private static Sprite LoadFromAtlas(string spriteName)
+    {
+        if (string.IsNullOrEmpty(spriteName))
+            return null;
+
+        // 懒加载：首次使用自动初始化图集
+        if (_atlas == null)
+            Initialize();
+
+        return _atlas != null ? _atlas.GetSprite(spriteName) : null;
+    }
+
+    private static Sprite LoadSpriteAsset(string spriteName)
+    {
+        if (string.IsNullOrEmpty(spriteName))
+            return null;
+
+        if (SpriteCache.TryGetValue(spriteName, out Sprite cachedSprite))
+            return cachedSprite;
+
+        AssetHandle handle = YooAssets.LoadAssetSync<Sprite>(spriteName);
+        if (handle == null || handle.Status != EOperationStatus.Succeed)
+        {
+            Debug.LogWarning($"[TarotSpriteLoader] 加载 YooAsset Sprite 失败: {spriteName}，Status={handle?.Status}, Error={handle?.LastError}");
+            handle?.Release();
+            return null;
+        }
+
+        Sprite sprite = handle.AssetObject as Sprite;
+        if (sprite == null)
+        {
+            Debug.LogWarning($"[TarotSpriteLoader] YooAsset Sprite 类型转换失败: {spriteName}");
+            handle.Release();
+            return null;
+        }
+
+        SpriteHandles[spriteName] = handle;
+        SpriteCache[spriteName] = sprite;
         return sprite;
     }
 
@@ -128,6 +172,12 @@ public static class TarotSpriteLoader
             _atlasHandle = null;
         }
         _atlas = null;
+        foreach (AssetHandle handle in SpriteHandles.Values)
+        {
+            handle?.Release();
+        }
+        SpriteHandles.Clear();
+        SpriteCache.Clear();
         Debug.Log("[TarotSpriteLoader] 图集已释放");
     }
 }

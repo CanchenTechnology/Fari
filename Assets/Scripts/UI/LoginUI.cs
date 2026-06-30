@@ -16,11 +16,17 @@ public class LoginUI : WindowBase
 {
 	public LoginUIComponent uiComponent;
 	private TMP_InputField emailInputField;
+	private TMP_InputField passwordInputField;
 	private Button emailLoginButton;
 	private Button createAccountButton;
 	private Button gameCenterSignInButton;
 	private Button anonymousSignInButton;
 	private Button dontSignInButton;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+	private const string TestEmailLoginEmail = "1255755615qq@gmail.com";
+	private const string TestEmailLoginPassword = "12345678";
+#endif
 
 	#region 生命周期函数
 	// 调用机制与 Mono Awake 一致
@@ -165,6 +171,11 @@ public class LoginUI : WindowBase
 		emailInputField = emailInputField != null
 			? emailInputField
 			: FindInputFieldByName(transform, "[InputField]Email", "EmailInput", "Email");
+		passwordInputField = passwordInputField != null
+			? passwordInputField
+			: FindInputFieldByName(transform, "[InputField]Password", "PasswordInput", "Password");
+		if (passwordInputField != null)
+			passwordInputField.contentType = TMP_InputField.ContentType.Password;
 
 		emailLoginButton = BindButton(emailLoginButton, OnEmailSignInButtonClick, "[Button]EmailLogin", "EmailLogin", "EmailSignInButton");
 		createAccountButton = BindButton(createAccountButton, OnCreateAccountButtonClick, "[Button]CreateAccount", "CreateAccountButton", "CreateAccount");
@@ -241,6 +252,48 @@ public class LoginUI : WindowBase
 	{
 		string email = emailInputField != null ? emailInputField.text : string.Empty;
 		return (email ?? string.Empty).Trim();
+	}
+
+	private string GetPrefilledPassword()
+	{
+		return passwordInputField != null ? passwordInputField.text : string.Empty;
+	}
+
+	private bool HasInlineEmailPasswordFields()
+	{
+		return emailInputField != null && passwordInputField != null;
+	}
+
+	private bool ValidateInlineEmailPassword(string email, string password)
+	{
+		if (string.IsNullOrWhiteSpace(email) || !email.Contains("@") || !email.Contains("."))
+		{
+			ToastManager.ShowToast("请输入有效邮箱");
+			return false;
+		}
+
+		if (string.IsNullOrEmpty(password) || password.Length < 6)
+		{
+			ToastManager.ShowToast("密码至少需要 6 位");
+			return false;
+		}
+
+		return true;
+	}
+
+	private bool TrySubmitTestEmailLogin()
+	{
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+		if (emailInputField != null)
+			emailInputField.text = TestEmailLoginEmail;
+		if (passwordInputField != null)
+			passwordInputField.text = TestEmailLoginPassword;
+
+		SubmitEmailSignIn(TestEmailLoginEmail, TestEmailLoginPassword);
+		return true;
+#else
+		return false;
+#endif
 	}
 
 	private void ShowEmailAuthDialog()
@@ -349,7 +402,20 @@ public class LoginUI : WindowBase
 	}
 	public void OnEmailSignInButtonClick()
 	{
-		ShowEmailAuthDialog();
+		BindOptionalRuntimeButtons();
+		if (TrySubmitTestEmailLogin()) return;
+
+		if (!HasInlineEmailPasswordFields())
+		{
+			ShowEmailAuthDialog();
+			return;
+		}
+
+		string email = GetPrefilledEmail();
+		string password = GetPrefilledPassword();
+		if (!ValidateInlineEmailPassword(email, password)) return;
+
+		SubmitEmailSignIn(email, password);
 	}
 	public void OnCreateAccountButtonClick()
 	{

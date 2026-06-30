@@ -457,16 +457,13 @@ public class SpreadInteractionCard1 : MonoBehaviour
     }
 
     /// <summary>
-    /// 加载卡牌图片 —— 尝试多种 Resources 路径
+    /// 加载卡牌图片 —— 只使用 YooAsset 图集
     /// </summary>
     private Sprite LoadCardSprite(string cardId)
     {
         if (string.IsNullOrEmpty(cardId)) return cardBackSprite;
 
         Sprite sprite = TarotSpriteLoader.Load(cardId);
-        if (sprite != null) return sprite;
-
-        sprite = Resources.Load<Sprite>($"TarotCards/{cardId}");
         return sprite != null ? sprite : cardBackSprite;
     }
 

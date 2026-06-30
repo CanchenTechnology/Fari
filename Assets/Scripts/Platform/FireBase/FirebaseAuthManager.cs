@@ -344,7 +344,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
 
             if (task.IsFaulted || task.IsCanceled)
             {
-                string error = task.Exception?.InnerException?.Message ?? "邮箱登录失败";
+                string error = BuildFriendlyAuthError(task.Exception, "邮箱登录失败");
                 Debug.LogError($"[FirebaseAuthManager] 邮箱登录失败: {error}");
                 OnLoginFailed?.Invoke(AuthProvider.Email, error);
                 return;
@@ -379,7 +379,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
             if (task.IsFaulted || task.IsCanceled)
             {
                 IsLoggingIn = false;
-                string error = task.Exception?.InnerException?.Message ?? "创建账号失败";
+                string error = BuildFriendlyAuthError(task.Exception, "创建账号失败");
                 Debug.LogError($"[FirebaseAuthManager] 创建邮箱账号失败: {error}");
                 OnLoginFailed?.Invoke(AuthProvider.Email, error);
                 return;
@@ -435,7 +435,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
         {
             if (task.IsFaulted || task.IsCanceled)
             {
-                string error = task.Exception?.InnerException?.Message ?? "发送重置邮件失败";
+                string error = BuildFriendlyAuthError(task.Exception, "发送重置邮件失败");
                 Debug.LogWarning($"[FirebaseAuthManager] 发送密码重置邮件失败: {error}");
                 onComplete?.Invoke(false, error);
                 return;
@@ -585,6 +585,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
         UserDataManager.Instance.SyncFromFirebaseUser(mockUserInfo, provider);
 
         // Editor 下没有真实 FirebaseUser 对象，传 null
+        Debug.LogWarning("[FirebaseAuthManager] Editor 模拟登录只生成本地测试 UID，不会成为真实 Firebase Auth 用户。需要读取后台私有数据时，请用邮箱登录真实账号或在真机执行第三方登录。");
         OnLoginSuccess?.Invoke(provider, null);
         FriendOnlinePresenceManager.Instance.StartPresence();
         AppReadinessDiagnostics.LogCurrentState("Editor simulated " + provider + " login");
@@ -1138,6 +1139,54 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
             return true;
         }
         return false;
+    }
+
+    private static string BuildFriendlyAuthError(Exception exception, string fallback)
+    {
+        Exception inner = exception;
+        while (inner is AggregateException aggregate && aggregate.InnerExceptions.Count > 0)
+            inner = aggregate.InnerExceptions[0];
+        inner ??= exception?.InnerException;
+
+        FirebaseException firebaseException = inner as FirebaseException;
+        if (firebaseException != null)
+        {
+            AuthError authError = (AuthError)firebaseException.ErrorCode;
+            switch (authError)
+            {
+                case AuthError.WrongPassword:
+                case AuthError.InvalidCredential:
+                    return "邮箱或密码不正确；如果这个邮箱原本是 Google 登录账号，需要先在 Firebase Authentication 里给该用户设置邮箱密码，或在真机使用 Google 登录。";
+                case AuthError.UserNotFound:
+                    return "没有找到这个邮箱对应的 Firebase 账号。";
+                case AuthError.EmailAlreadyInUse:
+                    return "这个邮箱已经注册过，请直接登录。";
+                case AuthError.WeakPassword:
+                    return "密码强度太弱，请至少使用 6 位以上密码。";
+                case AuthError.OperationNotAllowed:
+                    return "Firebase 没有启用邮箱密码登录方式，请先在 Authentication 登录方式里启用 Email/Password。";
+                case AuthError.TooManyRequests:
+                    return "请求太频繁，请稍后再试。";
+            }
+        }
+
+        string raw = inner?.Message ?? exception?.Message ?? fallback;
+        string lower = raw.ToLowerInvariant();
+        if (lower.Contains("invalid_login_credentials")
+            || lower.Contains("password is invalid")
+            || lower.Contains("no password")
+            || lower.Contains("invalid credential"))
+        {
+            return "邮箱或密码不正确；如果这个邮箱原本是 Google 登录账号，需要先在 Firebase Authentication 里给该用户设置邮箱密码，或在真机使用 Google 登录。";
+        }
+
+        if (lower.Contains("email_already_in_use"))
+            return "这个邮箱已经注册过，请直接登录。";
+
+        if (lower.Contains("operation_not_allowed"))
+            return "Firebase 没有启用邮箱密码登录方式，请先在 Authentication 登录方式里启用 Email/Password。";
+
+        return string.IsNullOrWhiteSpace(raw) ? fallback : raw;
     }
 
     /// <summary>

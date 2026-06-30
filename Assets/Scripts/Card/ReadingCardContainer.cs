@@ -32,23 +32,30 @@ public class ReadingCardContainer : MonoBehaviour
 
     private void Awake()
     {
+        ResolveReferences();
         RefreshButtonBindings();
     }
 
     private void OnEnable()
     {
+        ResolveReferences();
         RefreshButtonBindings();
         if (!_hasCard && ResolveCurrentCard(out TarotCard card, out bool upright))
             SetCard(card, upright);
         else
+        {
+            RenderCardImage();
             SetActionButtonsInteractable(_hasCard);
+        }
     }
 
     public void SetCard(TarotCard card, bool upright)
     {
+        ResolveReferences();
         _card = card;
         _upright = upright;
         _hasCard = card != null;
+        RenderCardImage();
         SetActionButtonsInteractable(_hasCard);
     }
 
@@ -76,6 +83,44 @@ public class ReadingCardContainer : MonoBehaviour
             deepChatBtn.interactable = interactable;
         if (viewFullBtn != null)
             viewFullBtn.interactable = interactable;
+    }
+
+    private void RenderCardImage()
+    {
+        if (!_hasCard || _card == null || cardImage == null)
+            return;
+
+        Sprite sprite = TarotSpriteLoader.Load(_card.cardId);
+        if (sprite == null)
+        {
+            Debug.LogWarning($"[ReadingCardContainer] 找不到今日牌图片: cardId={_card.cardId}, name={_card.nameZh}");
+            return;
+        }
+
+        cardImage.gameObject.SetActive(true);
+        cardImage.enabled = true;
+        cardImage.sprite = sprite;
+        cardImage.color = Color.white;
+        cardImage.preserveAspect = true;
+        cardImage.rectTransform.localRotation = _upright
+            ? Quaternion.identity
+            : Quaternion.Euler(0f, 0f, 180f);
+    }
+
+    private void ResolveReferences()
+    {
+        if (cardImage == null)
+            cardImage = FindImageByName(transform, "CardImage", "cardImage", "CardArt", "cardArt");
+        if (cardNameText == null)
+            cardNameText = FindTextByName(transform, "CardName", "cardName", "CardTitle", "cardTitle");
+        if (titleText == null)
+            titleText = FindTextByName(transform, "Title", "title");
+        if (descriptText == null)
+            descriptText = FindTextByName(transform, "Description", "description", "Descript", "descript");
+        if (deepChatBtn == null)
+            deepChatBtn = FindButtonByName(transform, "DeepChatButton", "deepChatBtn", "ChatButton");
+        if (viewFullBtn == null)
+            viewFullBtn = FindButtonByName(transform, "ViewFullButton", "viewFullBtn", "FullButton");
     }
 
     private void OnDeepChatButtonClick()
@@ -141,6 +186,42 @@ public class ReadingCardContainer : MonoBehaviour
         }
 
         return false;
+    }
+
+    private static Image FindImageByName(Transform root, params string[] names)
+    {
+        Transform target = FindChildByName(root, names);
+        return target != null ? target.GetComponent<Image>() : null;
+    }
+
+    private static TMP_Text FindTextByName(Transform root, params string[] names)
+    {
+        Transform target = FindChildByName(root, names);
+        return target != null ? target.GetComponent<TMP_Text>() : null;
+    }
+
+    private static Button FindButtonByName(Transform root, params string[] names)
+    {
+        Transform target = FindChildByName(root, names);
+        return target != null ? target.GetComponent<Button>() : null;
+    }
+
+    private static Transform FindChildByName(Transform root, params string[] names)
+    {
+        if (root == null || names == null) return null;
+        for (int i = 0; i < names.Length; i++)
+        {
+            if (root.name == names[i])
+                return root;
+        }
+
+        for (int i = 0; i < root.childCount; i++)
+        {
+            Transform result = FindChildByName(root.GetChild(i), names);
+            if (result != null) return result;
+        }
+
+        return null;
     }
 
 }

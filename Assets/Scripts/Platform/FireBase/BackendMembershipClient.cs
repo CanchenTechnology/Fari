@@ -36,6 +36,7 @@ public class BackendMembershipClient : MonoSingleton<BackendMembershipClient>
 
         if (!forceRefresh && IsCacheUsableForUid(currentUid))
         {
+            ApplyUsageResetSignal(_cachedStatus);
             onSuccess?.Invoke(_cachedStatus);
             return;
         }
@@ -50,9 +51,21 @@ public class BackendMembershipClient : MonoSingleton<BackendMembershipClient>
             LoadPersistedCache(currentUid);
 
         if (_cachedStatus != null && _cachedUid == currentUid)
+        {
+            ApplyUsageResetSignal(_cachedStatus);
             return _cachedStatus;
+        }
 
         return CreateFreeStatus(currentUid);
+    }
+
+    private void ApplyUsageResetSignal(MembershipStatusResponse response)
+    {
+        if (response == null) return;
+        UsageStatsManager.Instance?.ApplyDailyOracleResetSignal(
+            response.uid,
+            response.dailyOracleUsageResetVersion,
+            response.dailyOracleUsageResetAt);
     }
 
     private IEnumerator GetMembershipStatusRoutine(Action<MembershipStatusResponse> onSuccess, Action<string> onError)
@@ -89,6 +102,7 @@ public class BackendMembershipClient : MonoSingleton<BackendMembershipClient>
                 _cachedStatus = response;
                 _cachedAt = Time.realtimeSinceStartup;
                 _cachedUid = string.IsNullOrEmpty(response?.uid) ? requestUid : response.uid;
+                ApplyUsageResetSignal(response);
                 PersistCache();
                 onSuccess?.Invoke(response);
             }
@@ -167,6 +181,9 @@ public class BackendMembershipClient : MonoSingleton<BackendMembershipClient>
             membershipStatus = "free",
             isPro = false,
             proExpiresAt = string.Empty,
+            dailyOracleUsageResetVersion = string.Empty,
+            dailyOracleUsageResetAt = string.Empty,
+            dailyOracleUsageResetDay = string.Empty,
         };
     }
 
@@ -206,6 +223,9 @@ public class MembershipStatusResponse
     public string membershipStatus;
     public bool isPro;
     public string proExpiresAt;
+    public string dailyOracleUsageResetVersion;
+    public string dailyOracleUsageResetAt;
+    public string dailyOracleUsageResetDay;
 }
 
 [Serializable]

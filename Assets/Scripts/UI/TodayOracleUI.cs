@@ -75,6 +75,7 @@ public class TodayOracleUI : WindowBase
 		PlayIdleVideo();
 		LoadDueTomorrowHooks();
 		RefreshTodayOracleState();
+		RefreshRemoteDailyOracleResetSignal();
 	}
 
 	public override void OnHide()
@@ -97,6 +98,21 @@ public class TodayOracleUI : WindowBase
 	#endregion
 
 	#region API Function
+
+	private void RefreshRemoteDailyOracleResetSignal()
+	{
+		var client = BackendMembershipClient.Instance;
+		if (client == null)
+		{
+			var go = new GameObject("BackendMembershipClient");
+			client = go.AddComponent<BackendMembershipClient>();
+		}
+
+		client.GetMembershipStatus(
+			_ => RefreshTodayOracleState(),
+			error => Debug.LogWarning("[TodayOracleUI] 今日神谕重置信号同步失败: " + error),
+			forceRefresh: true);
+	}
 
 	private TodayOracleUIComponent ResolveUiComponent()
 	{

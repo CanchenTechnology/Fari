@@ -4982,11 +4982,13 @@
           ${kv("个人简介", data.bio || "未填")}
           ${kv("登录类型", data.loginType || "无")}
           ${kv("最近登录", formatDate(data.lastSignInAt || detail.auth?.lastSignInAt) || "无")}
+          ${kv("今日神谕重置", formatDailyOracleResetText(data, membership))}
         </div>
         <div class="row">
           <button type="button" id="detailEditButton" class="ghost">编辑资料</button>
           <button type="button" id="detailGrantButton">赋予 Pro</button>
           <button type="button" id="detailRevokeButton" class="secondary">取消人工 Pro</button>
+          <button type="button" id="detailResetDailyOracleButton" class="secondary">重置今日神谕</button>
           <button type="button" id="detailPaymentButton" class="ghost">查看支付</button>
         </div>
         ${renderFriendChatSection(detail.social)}
@@ -5000,6 +5002,7 @@
       $("detailEditButton").addEventListener("click", () => openEditUserDialog(detail));
       $("detailGrantButton").addEventListener("click", () => openGrantDialog(detail.uid, pick(data, ["displayName", "email"]) || detail.uid));
       $("detailRevokeButton").addEventListener("click", () => revokePro(detail.uid));
+      $("detailResetDailyOracleButton").addEventListener("click", () => resetDailyOracleUsage(detail.uid));
       $("detailRepairAuthButton")?.addEventListener("click", () => repairAuthUserProfile(detail.uid));
       $("detailPaymentButton").addEventListener("click", async () => {
         await loadModule("membership");
@@ -5010,6 +5013,9 @@
       $("addVirtualFriendButton")?.addEventListener("click", () => openAddVirtualFriendDialog(detail));
       $("seedTestFriendButton")?.addEventListener("click", () => openSeedTestFriendDialog(detail, "single"));
       $("seedTestFriendPackButton")?.addEventListener("click", () => openSeedTestFriendDialog(detail, "pack"));
+      $("userDetail").querySelectorAll("[data-restore-deleted-friend]").forEach((button) => {
+        button.addEventListener("click", () => restoreDeletedFriend(detail.uid, button.dataset.restoreDeletedFriend, button.dataset.restoreDeletedFriendName));
+      });
       const friends = getSocialFriends(detail.social);
       $("userDetail").querySelectorAll("[data-friend-index]").forEach((button) => {
         button.addEventListener("click", () => {
@@ -5056,6 +5062,7 @@
       const realCount = (social.realFriends || []).length;
       const virtualCount = (social.virtualFriends || []).length;
       const pendingRequests = social.pendingRequests || [];
+      const deletedFriends = social.deletedFriends || [];
       const actions = `
         <div class="row">
           <button type="button" id="addRealFriendButton" class="ghost">添加真实好友</button>
@@ -5064,7 +5071,7 @@
           <button type="button" id="seedTestFriendButton" class="secondary">生成单个测试好友</button>
         </div>
       `;
-      if (!friends.length && !pendingRequests.length) {
+      if (!friends.length && !pendingRequests.length && !deletedFriends.length) {
         return `
           <div class="stack">
             <div class="section-title-row">
@@ -5085,6 +5092,7 @@
           ${actions}
           ${pendingRequests.length ? renderPendingFriendRequests(pendingRequests) : ""}
           ${friends.length ? `<div class="friend-list">${friends.map((friend, index) => renderFriendCard(friend, index)).join("")}</div>` : `<div class="empty">暂无正式好友</div>`}
+          ${deletedFriends.length ? renderDeletedFriendArchives(deletedFriends) : ""}
           <div id="friendChatPanel" class="chat-thread">
             <div class="empty">选择一个好友查看匹配到的聊天记录</div>
           </div>
@@ -5166,6 +5174,38 @@
                   <span>时间</span><span>${escapeHtml(formatDate(request.updatedAt) || "无")}</span>
                 </div>
                 ${request.note ? `<div class="muted">${escapeHtml(request.note)}</div>` : ""}
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `;
+    }
+
+    function renderDeletedFriendArchives(items = []) {
+      return `
+        <div class="stack">
+          <div class="section-title-row">
+            <div class="strong">最近删除好友</div>
+            <span class="pill warn">90 天内可恢复</span>
+          </div>
+          ${items.map((item) => {
+            const title = item.displayName || item.email || item.friendUid || "未知好友";
+            const days = Number(item.daysRemaining || 0);
+            return `
+              <div class="list-row">
+                <div class="section-title-row">
+                  <span class="strong">${escapeHtml(title)}</span>
+                  <span class="pill warn">${escapeHtml(days > 0 ? `剩余 ${days} 天` : "即将过期")}</span>
+                </div>
+                <div class="friend-meta-grid">
+                  <span>好友 UID</span><span>${escapeHtml(item.friendUid || "无")}</span>
+                  <span>邮箱</span><span>${escapeHtml(item.email || "未绑定")}</span>
+                  <span>删除时间</span><span>${escapeHtml(formatDate(item.deletedAt) || "无")}</span>
+                  <span>过期时间</span><span>${escapeHtml(formatDate(item.expiresAt) || "无")}</span>
+                </div>
+                <div class="row">
+                  <button type="button" class="secondary" data-restore-deleted-friend="${escapeAttr(item.pairId || item.id)}" data-restore-deleted-friend-name="${escapeAttr(title)}">恢复好友</button>
+                </div>
               </div>
             `;
           }).join("")}
@@ -6653,12 +6693,14 @@
         "user.auth_repair": "补建 Auth 用户资料",
         "friend.real_add": "添加真实好友",
         "friend.virtual_add": "添加虚拟好友",
+        "friend.restore_deleted": "恢复删除好友",
         "friend.test_seed": "生成测试好友数据",
         "friend.test_seed_pack": "生成完整测试好友包",
         "data.upsert": "保存 Firestore 数据",
         "data.delete": "删除 Firestore 数据",
         "membership.grant_pro": "赋予 Pro",
         "membership.revoke_pro": "取消 Pro",
+        "usage.daily_oracle.reset": "重置今日神谕",
         "agent.turn_rate": "评价 AI 轮次",
         "agent.prompt_draft.create": "创建 Prompt 草稿",
         "agent.prompt_draft.action": "处理 Prompt 草稿",
@@ -6805,6 +6847,17 @@
       return state.collections.find((item) => item.key === key);
     }
 
+    function formatDailyOracleResetText(data = {}, membership = {}) {
+      const resetAt = formatDate(
+        membership.dailyOracleUsageResetAt
+          || data.dailyOracleUsageResetAt
+          || data.dailyOracleUsageResetAtIso,
+      );
+      if (!resetAt) return "未重置";
+      const resetDay = membership.dailyOracleUsageResetDay || data.dailyOracleUsageResetDay || "";
+      return resetDay ? `${resetAt} · ${resetDay}` : resetAt;
+    }
+
     function openEditUserDialog(detail) {
       const data = detail.user?.data || {};
       const form = $("editUserForm");
@@ -6841,6 +6894,58 @@
         });
         await refreshCurrentDetail(uid);
         showMessage("已取消人工 Pro", "ok");
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
+    }
+
+    async function resetDailyOracleUsage(uid) {
+      const reason = prompt("重置今日神谕次数的原因", "管理员重置今日神谕次数");
+      if (reason === null) return;
+      if (!confirmSensitiveAction(
+        "重置今日神谕次数",
+        `目标 UID：${uid}\n将清空今日神谕次数，并删除今天已保存的每日神谕记录。\n原因：${reason || "无"}`,
+      )) return;
+      try {
+        const result = await callFunction("/adminResetDailyOracleUsage", {
+          method: "POST",
+          body: JSON.stringify({ uid, reason }),
+        });
+        if (result.bundle) {
+          state.userDetail = result.bundle;
+          renderUserDetail(state.userDetail);
+          await loadUsers($("userSearchInput").value.trim());
+        } else {
+          await refreshCurrentDetail(uid);
+        }
+        const docCount = Array.isArray(result.resetDocs) ? result.resetDocs.length : 0;
+        showMessage(`已重置今日神谕次数，处理 ${docCount} 个用量文档`, "ok");
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
+    }
+
+    async function restoreDeletedFriend(uid, pairId, name = "") {
+      if (!pairId) return;
+      const reason = prompt("恢复删除好友的原因", "管理员恢复三个月内删除的好友");
+      if (reason === null) return;
+      if (!confirmSensitiveAction(
+        "恢复已删除好友",
+        `当前用户：${uid}\n好友：${name || pairId}\n归档：${pairId}\n原因：${reason || "无"}`,
+      )) return;
+      try {
+        const result = await callFunction("/adminRestoreDeletedFriendRelationship", {
+          method: "POST",
+          body: JSON.stringify({ uid, pairId, reason }),
+        });
+        if (result.bundle) {
+          state.userDetail = result.bundle;
+          renderUserDetail(state.userDetail);
+          await loadUsers($("userSearchInput").value.trim());
+        } else {
+          await refreshCurrentDetail(uid);
+        }
+        showMessage("已恢复好友关系", "ok");
       } catch (error) {
         showMessage(error.message, "warn");
       }

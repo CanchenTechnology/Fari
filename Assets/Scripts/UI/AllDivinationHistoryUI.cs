@@ -9,6 +9,7 @@ using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 using SuperScrollView;
+using System;
 using System.Collections.Generic;
 using TMPro;
 
@@ -22,6 +23,8 @@ public class AllDivinationHistoryUI : WindowBase
 	private static string sPendingEmptyTitle = "暂无占卜记录";
 	private static string sPendingEmptyDescription = "还没有可以展示的占卜记录。";
 	private static string sPendingOwnerName = "好友";
+	private static readonly Dictionary<string, List<AllDivinationHistoryEntry>> sBestEntriesByOwner =
+		new Dictionary<string, List<AllDivinationHistoryEntry>>();
 
 	private readonly List<AllDivinationHistoryEntry> historyEntries = new List<AllDivinationHistoryEntry>();
 	private LoopListView2 historyListView;
@@ -110,8 +113,10 @@ public class AllDivinationHistoryUI : WindowBase
 	private void ApplyPendingEntries()
 	{
 		RefreshTitleText();
-		historyEntries.Clear();
 		List<AllDivinationHistoryEntry> entries = CloneEntries(sPendingEntries);
+		entries = MergeWithCurrentEntriesIfNeeded(entries);
+
+		historyEntries.Clear();
 		if (entries != null)
 		{
 			foreach (AllDivinationHistoryEntry entry in entries)
@@ -131,6 +136,152 @@ public class AllDivinationHistoryUI : WindowBase
 		}
 
 		RefreshHistoryList();
+		CacheEntriesIfNeeded();
+	}
+
+	private List<AllDivinationHistoryEntry> MergeWithCurrentEntriesIfNeeded(List<AllDivinationHistoryEntry> incomingEntries)
+	{
+		if (incomingEntries == null)
+			incomingEntries = new List<AllDivinationHistoryEntry>();
+
+		int incomingConcreteCount = CountConcreteEntries(incomingEntries);
+		int currentConcreteCount = CountConcreteEntries(historyEntries);
+		List<AllDivinationHistoryEntry> cachedEntries = GetCachedOwnerEntries();
+		int cachedConcreteCount = CountConcreteEntries(cachedEntries);
+		int bestKnownCount = Mathf.Max(currentConcreteCount, cachedConcreteCount);
+		if (bestKnownCount == 0)
+			return incomingEntries;
+		if (!IsSameOwnerAsCurrentEntries())
+			return incomingEntries;
+		if (incomingConcreteCount >= bestKnownCount)
+			return incomingEntries;
+
+		List<AllDivinationHistoryEntry> merged = new List<AllDivinationHistoryEntry>();
+		HashSet<string> addedKeys = new HashSet<string>();
+		AddUniqueEntries(merged, addedKeys, incomingEntries);
+		AddUniqueEntries(merged, addedKeys, historyEntries);
+		AddUniqueEntries(merged, addedKeys, cachedEntries);
+		SortEntriesByTimeDesc(merged);
+		return merged;
+	}
+
+	private bool IsSameOwnerAsCurrentEntries()
+	{
+		string pendingOwnerName = ResolveOwnerName(sPendingOwnerName);
+		foreach (AllDivinationHistoryEntry entry in historyEntries)
+		{
+			if (entry == null || IsPlaceholderEntry(entry))
+				continue;
+			string entryOwnerName = ResolveOwnerName(entry.ownerName);
+			if (!string.Equals(entryOwnerName, pendingOwnerName, StringComparison.Ordinal))
+				return false;
+		}
+
+		return true;
+	}
+
+	private List<AllDivinationHistoryEntry> GetCachedOwnerEntries()
+	{
+		string ownerKey = ResolveOwnerName(sPendingOwnerName);
+		return sBestEntriesByOwner.TryGetValue(ownerKey, out List<AllDivinationHistoryEntry> entries)
+			? CloneEntries(entries)
+			: new List<AllDivinationHistoryEntry>();
+	}
+
+	private void CacheEntriesIfNeeded()
+	{
+		int concreteCount = CountConcreteEntries(historyEntries);
+		if (concreteCount == 0)
+			return;
+
+		string ownerKey = ResolveOwnerName(sPendingOwnerName);
+		int cachedCount = sBestEntriesByOwner.TryGetValue(ownerKey, out List<AllDivinationHistoryEntry> cachedEntries)
+			? CountConcreteEntries(cachedEntries)
+			: 0;
+		if (concreteCount < cachedCount)
+			return;
+
+		sBestEntriesByOwner[ownerKey] = CloneEntries(historyEntries);
+	}
+
+	private static void AddUniqueEntries(
+		List<AllDivinationHistoryEntry> target,
+		HashSet<string> addedKeys,
+		List<AllDivinationHistoryEntry> source)
+	{
+		if (target == null || addedKeys == null || source == null)
+			return;
+
+		foreach (AllDivinationHistoryEntry entry in source)
+		{
+			if (entry == null || IsPlaceholderEntry(entry))
+				continue;
+
+			string key = BuildEntryKey(entry);
+			if (!addedKeys.Add(key))
+				continue;
+
+			target.Add(entry.Clone());
+		}
+	}
+
+	private static int CountConcreteEntries(List<AllDivinationHistoryEntry> entries)
+	{
+		if (entries == null) return 0;
+
+		int count = 0;
+		foreach (AllDivinationHistoryEntry entry in entries)
+		{
+			if (entry != null && !IsPlaceholderEntry(entry))
+				count++;
+		}
+
+		return count;
+	}
+
+	private static bool IsPlaceholderEntry(AllDivinationHistoryEntry entry)
+	{
+		if (entry == null) return true;
+		if (entry.detailRecord != null) return false;
+		if (entry.cardSprites != null && entry.cardSprites.Count > 0) return false;
+
+		string title = entry.cardNames ?? string.Empty;
+		return title.Contains("暂无")
+			|| title.Contains("正在")
+			|| title.Contains("用户未公开")
+			|| title.Contains("未公开");
+	}
+
+	private static string BuildEntryKey(AllDivinationHistoryEntry entry)
+	{
+		if (entry == null)
+			return string.Empty;
+		if (!string.IsNullOrWhiteSpace(entry.detailRecord?.readingId))
+			return $"record:{entry.detailRecord.readingId.Trim()}";
+		if (!string.IsNullOrWhiteSpace(entry.detailRecord?.oracleId))
+			return $"oracle:{entry.detailRecord.oracleId.Trim()}";
+
+		return $"{entry.source}|{entry.time}|{entry.cardNames}|{entry.description}".Trim();
+	}
+
+	private static void SortEntriesByTimeDesc(List<AllDivinationHistoryEntry> entries)
+	{
+		if (entries == null || entries.Count <= 1)
+			return;
+
+		entries.Sort((left, right) => ParseEntryTime(right?.time).CompareTo(ParseEntryTime(left?.time)));
+	}
+
+	private static DateTime ParseEntryTime(string value)
+	{
+		if (string.IsNullOrWhiteSpace(value))
+			return DateTime.MinValue;
+
+		string trimmed = value.Trim();
+		string[] formats = { "yyyy.M.d", "yyyy.MM.dd", "yyyy-M-d", "yyyy-MM-dd", "yyyy/M/d", "yyyy/MM/dd", "o" };
+		if (DateTime.TryParseExact(trimmed, formats, null, System.Globalization.DateTimeStyles.None, out DateTime exact))
+			return exact;
+		return DateTime.TryParse(trimmed, out DateTime parsed) ? parsed : DateTime.MinValue;
 	}
 
 	private void RefreshTitleText()

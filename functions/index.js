@@ -1024,6 +1024,8 @@ const DEFAULT_DIALOG_SESSION_ID = "default";
 const DIALOG_REPLY_JOB_STALE_MS = 3 * 60 * 1000;
 const DIALOG_REPLY_JOB_SCAN_LIMIT = 50;
 const PUSH_CHANNEL_ID = "moonly_reminders";
+const DELETED_FRIEND_RELATIONSHIP_COLLECTION = "deleted_friend_relationships";
+const DELETED_FRIEND_RESTORE_WINDOW_DAYS = 90;
 const INVALID_PUSH_TOKEN_CODES = new Set([
   "messaging/invalid-registration-token",
   "messaging/registration-token-not-registered",
@@ -1573,12 +1575,31 @@ async function getMembership(uid) {
   const status = data.membershipStatus || "free";
   const expiresAt = data.proExpiresAt || null;
   const isActivePro = status === "pro" && (!expiresAt || expiresAt.toMillis() > Date.now());
+  const usageResets = data.usageResets && typeof data.usageResets === "object"
+    ? data.usageResets
+    : {};
+  const dailyOracleReset = usageResets.dailyOracle && typeof usageResets.dailyOracle === "object"
+    ? usageResets.dailyOracle
+    : {};
 
   return {
     status: isActivePro ? "pro" : "free",
     rawStatus: status,
     proExpiresAt: expiresAt,
     isPro: isActivePro,
+    dailyOracleUsageResetVersion: getAdminScalarText(
+      data.dailyOracleUsageResetVersion || dailyOracleReset.version,
+      80,
+    ),
+    dailyOracleUsageResetAt: data.dailyOracleUsageResetAt || dailyOracleReset.resetAt || null,
+    dailyOracleUsageResetAtIso: getAdminScalarText(
+      data.dailyOracleUsageResetAtIso || dailyOracleReset.resetAtIso,
+      80,
+    ),
+    dailyOracleUsageResetDay: getAdminScalarText(
+      data.dailyOracleUsageResetDay || dailyOracleReset.resetDay,
+      40,
+    ),
   };
 }
 
@@ -2326,6 +2347,75 @@ function serializeAdminChatMessage(message, index, sessionId) {
   };
 }
 
+function getFriendRelationshipPairId(uidA, uidB) {
+  const members = [validateDocumentId(uidA), validateDocumentId(uidB)].sort();
+  return `${members[0]}__${members[1]}`;
+}
+
+function getAdminDeletedFriendSnapshotForUid(data, uid) {
+  if (!data || typeof data !== "object") return {};
+  const snapshots = data.snapshots && typeof data.snapshots === "object" ? data.snapshots : {};
+  const direct = snapshots[uid] && typeof snapshots[uid] === "object" ? snapshots[uid] : null;
+  if (direct) return direct;
+  if (data.uidA === uid) return data.snapshotA && typeof data.snapshotA === "object" ? data.snapshotA : {};
+  if (data.uidB === uid) return data.snapshotB && typeof data.snapshotB === "object" ? data.snapshotB : {};
+  return {};
+}
+
+function serializeAdminDeletedFriendArchive(doc, currentUid) {
+  const data = doc.data() || {};
+  const memberUids = Array.isArray(data.memberUids)
+    ? data.memberUids.map((uid) => getAdminScalarText(uid, 160)).filter(Boolean)
+    : [data.uidA, data.uidB].map((uid) => getAdminScalarText(uid, 160)).filter(Boolean);
+  const otherUid = memberUids.find((uid) => uid && uid !== currentUid)
+    || getAdminScalarText(data.friendUid || data.uidB || data.uidA, 160);
+  const snapshot = getAdminDeletedFriendSnapshotForUid(data, currentUid);
+  const otherSnapshot = getAdminDeletedFriendSnapshotForUid(data, otherUid);
+  const displayName = getAdminFriendDisplayName(snapshot, getAdminFriendDisplayName(otherSnapshot, otherUid));
+  const expiresAt = data.expiresAt || null;
+  const expiresAtMillis = expiresAt && typeof expiresAt.toMillis === "function"
+    ? expiresAt.toMillis()
+    : Date.parse(String(expiresAt || ""));
+
+  return {
+    id: doc.id,
+    pairId: getAdminScalarText(data.pairId || doc.id, 240),
+    uid: currentUid,
+    friendUid: otherUid,
+    displayName,
+    email: getAdminScalarText(snapshot.email || otherSnapshot.email, 160),
+    status: getAdminScalarText(data.status, 40) || "deleted",
+    deletedAt: serializeTimestamp(data.deletedAt || data.updatedAt || data.createdAt),
+    deletedByUid: getAdminScalarText(data.deletedByUid, 160),
+    deletedBySide: getAdminScalarText(data.deletedBySide, 80),
+    expiresAt: serializeTimestamp(expiresAt),
+    daysRemaining: Number.isFinite(expiresAtMillis)
+      ? Math.max(0, Math.ceil((expiresAtMillis - Date.now()) / (24 * 60 * 60 * 1000)))
+      : DELETED_FRIEND_RESTORE_WINDOW_DAYS,
+    canRestore: (getAdminScalarText(data.status, 40) || "deleted") === "deleted"
+      && (!Number.isFinite(expiresAtMillis) || expiresAtMillis > Date.now()),
+  };
+}
+
+async function getAdminDeletedFriendArchives(uid, limit = 20) {
+  const cleanUid = validateDocumentId(uid);
+  const safeLimit = getAdminLimit(limit, 20, 100);
+  const snap = await db.collection(DELETED_FRIEND_RELATIONSHIP_COLLECTION)
+    .where("memberUids", "array-contains", cleanUid)
+    .limit(Math.min(safeLimit * 3, 100))
+    .get()
+    .catch((error) => {
+      console.warn("[admin] deleted friend archive query failed", error.message);
+      return null;
+    });
+  const items = (snap?.docs || [])
+    .map((doc) => serializeAdminDeletedFriendArchive(doc, cleanUid))
+    .filter((item) => item.status === "deleted" && item.canRestore)
+    .sort((a, b) => String(b.deletedAt || "").localeCompare(String(a.deletedAt || "")))
+    .slice(0, safeLimit);
+  return items;
+}
+
 function getAdminFriendTokens(friend) {
   const rawTokens = [
     friend.id,
@@ -2413,11 +2503,13 @@ async function getAdminUserSocialBundle(uid, options = {}) {
     friendRequestsSnap,
     virtualFriendsSnap,
     dialogSessionsSnap,
+    deletedFriends,
   ] = await Promise.all([
     baseRef.collection("friends").limit(100).get().catch(() => null),
     baseRef.collection("friend_requests").limit(100).get().catch(() => null),
     baseRef.collection("virtual_friends").limit(100).get().catch(() => null),
     baseRef.collection("dialog_sessions").limit(30).get().catch(() => null),
+    getAdminDeletedFriendArchives(cleanUid, limit).catch(() => []),
   ]);
 
   const friendUids = friendsSnap?.docs?.map((doc) => doc.id) || [];
@@ -2527,6 +2619,7 @@ async function getAdminUserSocialBundle(uid, options = {}) {
     virtualFriends,
     pendingRequests: [...pendingReceivedRequests, ...pendingSentRequests]
       .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""))),
+    deletedFriends,
     dialogSessions: sessions.map((session) => ({
       id: session.id,
       messageCount: session.messageCount,
@@ -3024,6 +3117,12 @@ function buildAdminMembershipSummary(userData) {
   const data = userData || {};
   const rawStatus = getAdminScalarText(data.membershipStatus, 40) || "free";
   const expiresAt = data.proExpiresAt || null;
+  const usageResets = data.usageResets && typeof data.usageResets === "object"
+    ? data.usageResets
+    : {};
+  const dailyOracleReset = usageResets.dailyOracle && typeof usageResets.dailyOracle === "object"
+    ? usageResets.dailyOracle
+    : {};
   const expiresAtMillis = expiresAt && typeof expiresAt.toMillis === "function"
     ? expiresAt.toMillis()
     : Date.parse(String(expiresAt || ""));
@@ -3040,6 +3139,21 @@ function buildAdminMembershipSummary(userData) {
     updatedAt: serializeTimestamp(data.membershipUpdatedAt),
     manualProGrantedBy: getAdminScalarText(data.manualProGrantedBy, 160),
     manualProGrantReason: getAdminScalarText(data.manualProGrantReason, 500),
+    dailyOracleUsageResetVersion: getAdminScalarText(
+      data.dailyOracleUsageResetVersion || dailyOracleReset.version,
+      80,
+    ),
+    dailyOracleUsageResetAt: serializeTimestamp(
+      data.dailyOracleUsageResetAt || dailyOracleReset.resetAt,
+    ) || getAdminScalarText(data.dailyOracleUsageResetAtIso || dailyOracleReset.resetAtIso, 80),
+    dailyOracleUsageResetDay: getAdminScalarText(
+      data.dailyOracleUsageResetDay || dailyOracleReset.resetDay,
+      40,
+    ),
+    dailyOracleUsageResetReason: getAdminScalarText(
+      data.dailyOracleUsageResetReason || dailyOracleReset.reason,
+      500,
+    ),
   };
 }
 
@@ -7341,6 +7455,11 @@ exports.membershipStatus = onRequest(runtime, async (req, res) => {
     membershipStatus: membership.status,
     isPro: membership.isPro,
     proExpiresAt: membership.proExpiresAt ? membership.proExpiresAt.toDate().toISOString() : null,
+    dailyOracleUsageResetVersion: membership.dailyOracleUsageResetVersion || "",
+    dailyOracleUsageResetAt: serializeTimestamp(membership.dailyOracleUsageResetAt)
+      || membership.dailyOracleUsageResetAtIso
+      || "",
+    dailyOracleUsageResetDay: membership.dailyOracleUsageResetDay || "",
   });
 });
 
@@ -9998,6 +10117,133 @@ exports.adminAddRealFriend = onRequest(runtime, async (req, res) => {
   }
 });
 
+exports.adminRestoreDeletedFriendRelationship = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const uid = await resolveAdminUserUid({
+      uid: req.body?.uid || req.body?.ownerUid,
+      email: req.body?.email || req.body?.ownerEmail,
+      search: req.body?.ownerSearch,
+    });
+    const friendUid = await resolveAdminUserUid({
+      uid: req.body?.friendUid,
+      email: req.body?.friendEmail,
+      search: req.body?.friendSearch,
+    });
+    let pairId = cleanString(req.body?.pairId || req.body?.archiveId, "", 260);
+    if (!pairId && uid && friendUid) {
+      pairId = getFriendRelationshipPairId(uid, friendUid);
+    }
+    if (!pairId) {
+      throw createHttpError(400, "pairId or uid + friendUid is required");
+    }
+
+    const archiveRef = db.collection(DELETED_FRIEND_RELATIONSHIP_COLLECTION).doc(validateDocumentId(pairId));
+    const archiveSnap = await archiveRef.get();
+    if (!archiveSnap.exists) {
+      throw createHttpError(404, "Deleted friend archive not found");
+    }
+
+    const archive = archiveSnap.data() || {};
+    const memberUids = Array.isArray(archive.memberUids)
+      ? archive.memberUids.map((item) => getAdminScalarText(item, 160)).filter(Boolean)
+      : [archive.uidA, archive.uidB].map((item) => getAdminScalarText(item, 160)).filter(Boolean);
+    const uidA = getAdminScalarText(archive.uidA || memberUids[0], 160);
+    const uidB = getAdminScalarText(archive.uidB || memberUids.find((item) => item !== uidA), 160);
+    if (!uidA || !uidB || uidA === uidB) {
+      throw createHttpError(400, "Deleted friend archive is invalid");
+    }
+    if (uid && !memberUids.includes(uid)) {
+      throw createHttpError(400, "Archive does not belong to target user");
+    }
+    if (friendUid && !memberUids.includes(friendUid)) {
+      throw createHttpError(400, "Archive does not include target friend");
+    }
+
+    const status = getAdminScalarText(archive.status, 40) || "deleted";
+    if (status !== "deleted") {
+      throw createHttpError(409, "Deleted friend archive has already been handled");
+    }
+    const expiresAt = archive.expiresAt || null;
+    const expiresAtMillis = expiresAt && typeof expiresAt.toMillis === "function"
+      ? expiresAt.toMillis()
+      : Date.parse(String(expiresAt || ""));
+    if (Number.isFinite(expiresAtMillis) && expiresAtMillis <= Date.now()) {
+      throw createHttpError(410, "Deleted friend archive has expired");
+    }
+
+    const reason = cleanString(req.body?.reason, "管理员恢复三个月内删除的好友", 500);
+    const snapshotA = getAdminDeletedFriendSnapshotForUid(archive, uidA);
+    const snapshotB = getAdminDeletedFriendSnapshotForUid(archive, uidB);
+    const [profileA, profileB] = await Promise.all([
+      getAdminUserFriendProfile(uidA),
+      getAdminUserFriendProfile(uidB),
+    ]);
+    const restoredForA = {
+      ...buildManualRealFriendDoc(profileB, decoded, reason),
+      ...snapshotA,
+      status: "friend",
+      restoredFromDeletedArchive: pairId,
+      restoredAt: admin.firestore.FieldValue.serverTimestamp(),
+      restoredBy: decoded.uid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+    const restoredForB = {
+      ...buildManualRealFriendDoc(profileA, decoded, reason),
+      ...snapshotB,
+      status: "friend",
+      restoredFromDeletedArchive: pairId,
+      restoredAt: admin.firestore.FieldValue.serverTimestamp(),
+      restoredBy: decoded.uid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    const batch = db.batch();
+    batch.set(db.collection("users").doc(uidA).collection("friends").doc(uidB), restoredForA, { merge: true });
+    batch.set(db.collection("users").doc(uidB).collection("friends").doc(uidA), restoredForB, { merge: true });
+    batch.set(archiveRef, {
+      status: "restored",
+      restoredAt: admin.firestore.FieldValue.serverTimestamp(),
+      restoredBy: decoded.uid,
+      restoredByEmail: decoded.email || "",
+      restoreReason: reason,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    await batch.commit();
+
+    await writeAdminAuditLog(decoded, "friend.restore_deleted", {
+      type: "friend",
+      id: pairId,
+      uid: uid || uidA,
+      path: `${DELETED_FRIEND_RELATIONSHIP_COLLECTION}/${pairId}`,
+    }, {
+      uidA,
+      uidB,
+      reason,
+      archivePath: archiveRef.path,
+    }, req);
+
+    json(res, 200, {
+      ok: true,
+      pairId,
+      uid: uid || uidA,
+      friendUid: friendUid || (uid === uidA ? uidB : uidA),
+      uidA,
+      uidB,
+      bundle: await buildAdminUserBundle(uid || uidA, { limit: 12 }),
+    });
+  } catch (error) {
+    console.error("[adminRestoreDeletedFriendRelationship]", error);
+    json(res, error.status || 500, {
+      error: error.message || "Restore deleted friend failed",
+      code: error.status === 410 ? "deleted-friend-archive-expired" : "restore-deleted-friend-error",
+    });
+  }
+});
+
 exports.adminAddVirtualFriend = onRequest(runtime, async (req, res) => {
   if (!requireMethod(req, res, "POST")) return;
   const decoded = await requireAdmin(req, res);
@@ -11082,6 +11328,125 @@ function parseGrantProDays(value) {
   return Math.ceil(days);
 }
 
+const DAILY_ORACLE_USAGE_ACTIONS = ["daily_oracle", "today_oracle", "dailyOracle"];
+
+function formatDateInTimeZone(date, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function getDailyOracleResetDays(date = new Date()) {
+  return [...new Set([
+    date.toISOString().slice(0, 10),
+    formatDateInTimeZone(date, "Asia/Shanghai"),
+  ])].filter(Boolean);
+}
+
+async function resetDailyOracleUsageForUser(uid, decoded, reason) {
+  const cleanUid = validateDocumentId(uid);
+  const userRef = db.collection("users").doc(cleanUid);
+  const userSnap = await userRef.get();
+  if (!userSnap.exists) {
+    throw createHttpError(404, "User not found");
+  }
+
+  const now = new Date();
+  const resetVersion = String(now.getTime());
+  const resetAtIso = now.toISOString();
+  const resetDays = getDailyOracleResetDays(now);
+  const resetDay = resetDays[resetDays.length - 1] || resetDays[0] || now.toISOString().slice(0, 10);
+  const cleanReason = cleanString(reason, "管理员重置今日神谕次数", 500);
+  const usageRefs = [];
+  for (const day of resetDays) {
+    for (const action of DAILY_ORACLE_USAGE_ACTIONS) {
+      usageRefs.push({
+        action,
+        day,
+        ref: db.collection("usage_limits").doc(`${cleanUid}_${action}_${day}`),
+      });
+    }
+  }
+
+  const usageSnaps = await Promise.all(usageRefs.map((item) => item.ref.get()));
+  const batch = db.batch();
+  const resetDocs = [];
+  for (let index = 0; index < usageRefs.length; index += 1) {
+    const item = usageRefs[index];
+    const snap = usageSnaps[index];
+    const isCanonical = item.action === "daily_oracle" && item.day === resetDay;
+    if (!snap.exists && !isCanonical) continue;
+    const previousData = snap.exists ? snap.data() || {} : {};
+    const previousCount = Number(previousData.count || 0);
+    batch.set(item.ref, {
+      uid: cleanUid,
+      action: item.action,
+      day: item.day,
+      count: 0,
+      limit: Number(previousData.limit || 1),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      resetAt: admin.firestore.FieldValue.serverTimestamp(),
+      resetAtIso,
+      resetBy: decoded.uid,
+      resetByEmail: decoded.email || "",
+      resetReason: cleanReason,
+      previousCount,
+    }, { merge: true });
+    resetDocs.push({
+      path: item.ref.path,
+      action: item.action,
+      day: item.day,
+      previousCount,
+    });
+  }
+
+  for (const day of resetDays) {
+    batch.delete(userRef.collection("daily_oracles").doc(day));
+    batch.delete(db.collection("daily_oracle_summaries").doc(`${cleanUid}_${day}`));
+  }
+
+  batch.set(userRef, {
+    dailyOracleUsageResetVersion: resetVersion,
+    dailyOracleUsageResetAt: admin.firestore.FieldValue.serverTimestamp(),
+    dailyOracleUsageResetAtIso: resetAtIso,
+    dailyOracleUsageResetDay: resetDay,
+    dailyOracleUsageResetBy: decoded.uid,
+    dailyOracleUsageResetReason: cleanReason,
+    usageResets: {
+      dailyOracle: {
+        version: resetVersion,
+        resetAt: admin.firestore.FieldValue.serverTimestamp(),
+        resetAtIso,
+        resetDay,
+        resetBy: decoded.uid,
+        resetByEmail: decoded.email || "",
+        reason: cleanReason,
+      },
+    },
+  }, { merge: true });
+
+  await batch.commit();
+
+  return {
+    uid: cleanUid,
+    resetVersion,
+    resetAt: resetAtIso,
+    resetDay,
+    resetDays,
+    resetDocs,
+    reason: cleanReason,
+    clearedDailyOraclePaths: resetDays.flatMap((day) => [
+      `users/${cleanUid}/daily_oracles/${day}`,
+      `daily_oracle_summaries/${cleanUid}_${day}`,
+    ]),
+  };
+}
+
 exports.adminGrantPro = onRequest(runtime, async (req, res) => {
   if (!requireMethod(req, res, "POST")) return;
   const decoded = await requireAdmin(req, res);
@@ -11218,6 +11583,46 @@ exports.adminRevokePro = onRequest(runtime, async (req, res) => {
     json(res, error.status || 500, {
       error: error.message || "Revoke Pro failed",
       code: error.status === 400 ? "invalid-revoke-pro-payload" : "revoke-pro-error",
+    });
+  }
+});
+
+exports.adminResetDailyOracleUsage = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const uid = validateDocumentId(req.body?.uid);
+    const result = await resetDailyOracleUsageForUser(
+      uid,
+      decoded,
+      req.body?.reason,
+    );
+    await writeAdminAuditLog(decoded, "usage.daily_oracle.reset", {
+      type: "usage",
+      id: result.uid,
+      uid: result.uid,
+      path: `users/${result.uid}`,
+    }, {
+      resetVersion: result.resetVersion,
+      resetDay: result.resetDay,
+      resetDays: result.resetDays,
+      resetDocs: result.resetDocs,
+      clearedDailyOraclePaths: result.clearedDailyOraclePaths,
+      reason: result.reason,
+    }, req);
+
+    json(res, 200, {
+      ok: true,
+      ...result,
+      bundle: await buildAdminUserBundle(result.uid, { limit: 12 }),
+    });
+  } catch (error) {
+    console.error("[adminResetDailyOracleUsage]", error);
+    json(res, error.status || 500, {
+      error: error.message || "Reset daily oracle usage failed",
+      code: error.status === 400 ? "invalid-reset-daily-oracle-payload" : "reset-daily-oracle-error",
     });
   }
 });

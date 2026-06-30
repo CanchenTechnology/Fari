@@ -448,7 +448,7 @@ RELEASE_ENV_FILE=scripts/release.env ./scripts/finish-release.sh
 
 ```bash
 APPLE_SHARED_SECRET='<apple_shared_secret>' \
-GOOGLE_PACKAGE_NAME='com.canchentechnology.fari' \
+GOOGLE_PACKAGE_NAME='com.canchentechnology.fariapp' \
 GOOGLE_SERVICE_ACCOUNT_JSON_FILE='/path/to/google-play-service-account.json' \
 ANDROID_KEYSTORE_PASS='<keystore_password>' \
 ANDROID_KEYALIAS_PASS='<alias_password>' \

@@ -293,6 +293,30 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
         Debug.Log("[DailyOracleFirestore] 已清除当前用户本地每日神谕缓存");
     }
 
+    public static void ClearTodayLocalCacheForCurrentUser()
+    {
+        ClearLocalCacheForDate(DateTime.Now.ToString("yyyy-MM-dd"));
+    }
+
+    public static void ClearLocalCacheForDate(string date)
+    {
+        if (string.IsNullOrWhiteSpace(date))
+            date = DateTime.Now.ToString("yyyy-MM-dd");
+
+        foreach (string key in GetLocalCacheKeys(date))
+            PlayerPrefs.DeleteKey(key);
+
+        foreach (string key in GetPendingSaveKeysForSync())
+        {
+            List<string> pending = LoadPendingSaves(key);
+            if (pending.RemoveAll(item => item == date) > 0)
+                SavePendingSaves(key, pending);
+        }
+
+        PlayerPrefs.Save();
+        Debug.Log($"[DailyOracleFirestore] 已清除当前用户 {date} 本地每日神谕缓存");
+    }
+
     public static void SaveByDateLocal(string date, TarotCard card, bool upright, TodayOraclePayload payload, string locale)
     {
         if (card == null || payload == null) return;
@@ -484,7 +508,7 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
             string date = DateTime.Now.AddDays(-i).ToString("yyyy-MM-dd");
             LoadFriendSummary(ownerUid, date, summary =>
             {
-                if (summary != null && summary.IsVisibleInFriendFeed && results.Count < safeLimit)
+                if (summary != null && summary.IsVisibleInFriendFeed)
                     results.Add(summary);
 
                 pending--;

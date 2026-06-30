@@ -168,7 +168,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
         }
     }
 
-    public void CreateInvite(FriendDataManager.FriendData friend, string question, Action<RelationshipDivinationRecord> onComplete)
+    public void CreateInvite(FriendDataManager.FriendData friend, string question, Action<RelationshipDivinationRecord> onComplete, bool showSuccessToast = true)
     {
         if (friend == null)
         {
@@ -179,7 +179,8 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
         if (friend.isVirtual)
         {
             RelationshipDivinationRecord localRecord = CreatedFriendRelationshipDivinationLocalFlow.CreateRecord(friend, question);
-            ToastManager.ShowToast($"已为 {localRecord.receiverName} 生成本地关系占卜");
+            if (showSuccessToast)
+                ToastManager.ShowToast($"已为 {localRecord.receiverName} 生成本地关系占卜");
             onComplete?.Invoke(localRecord);
             return;
         }
@@ -187,7 +188,8 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
         if (IsDebugTestFriendUid(friend.firebaseUid))
         {
             RelationshipDivinationRecord debugRecord = CreateDebugInvite(friend, question);
-            ToastManager.ShowToast($"已创建 {debugRecord.receiverName} 的测试双人占卜房间");
+            if (showSuccessToast)
+                ToastManager.ShowToast($"已创建 {debugRecord.receiverName} 的测试双人占卜房间");
             onComplete?.Invoke(debugRecord);
             return;
         }
@@ -223,12 +225,13 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
                 return;
             }
 
-            ToastManager.ShowToast($"已向 {record.receiverName} 发起关系占卜邀请");
+            if (showSuccessToast)
+                ToastManager.ShowToast($"已向 {record.receiverName} 发起关系占卜邀请");
             onComplete?.Invoke(record);
         });
     }
 
-    public void RevealMyCard(RelationshipDivinationRecord record, Action<RelationshipDivinationRecord> onComplete)
+    public void RevealMyCard(RelationshipDivinationRecord record, Action<RelationshipDivinationRecord> onComplete, bool showSuccessToast = true)
     {
         if (record == null)
         {
@@ -304,7 +307,8 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
                 StartDebugAutoReveal(record.readingId);
             }
 
-            ToastManager.ShowToast(record.status == RelationshipDivinationStatus.Completed ? "双方关系占卜已完成" : "已翻开你的牌");
+            if (showSuccessToast)
+                ToastManager.ShowToast(record.status == RelationshipDivinationStatus.Completed ? "双方关系占卜已完成" : "已翻开你的牌");
             onComplete?.Invoke(record);
             return;
         }
@@ -348,11 +352,11 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
                     return;
                 }
 
-                RefreshRevealStateAndFinish(docRef, record, onComplete);
+                RefreshRevealStateAndFinish(docRef, record, onComplete, showSuccessToast);
             });
     }
 
-    private void RefreshRevealStateAndFinish(DocumentReference docRef, RelationshipDivinationRecord record, Action<RelationshipDivinationRecord> onComplete)
+    private void RefreshRevealStateAndFinish(DocumentReference docRef, RelationshipDivinationRecord record, Action<RelationshipDivinationRecord> onComplete, bool showSuccessToast = true)
     {
         docRef.GetSnapshotAsync().ContinueWithOnMainThread(task =>
         {
@@ -365,15 +369,15 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
 
             if (record.initiatorRevealed && record.receiverRevealed && !record.IsCompleted)
             {
-                CompleteRevealState(docRef, record, onComplete);
+                CompleteRevealState(docRef, record, onComplete, showSuccessToast);
                 return;
             }
 
-            FinishReveal(record, onComplete);
+            FinishReveal(record, onComplete, showSuccessToast);
         });
     }
 
-    private void CompleteRevealState(DocumentReference docRef, RelationshipDivinationRecord record, Action<RelationshipDivinationRecord> onComplete)
+    private void CompleteRevealState(DocumentReference docRef, RelationshipDivinationRecord record, Action<RelationshipDivinationRecord> onComplete, bool showSuccessToast = true)
     {
         string previousStatus = record.status;
         string previousCompletedAt = record.completedAt;
@@ -401,16 +405,17 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
                 return;
             }
 
-            FinishReveal(record, onComplete);
+            FinishReveal(record, onComplete, showSuccessToast);
         });
     }
 
-    private void FinishReveal(RelationshipDivinationRecord record, Action<RelationshipDivinationRecord> onComplete)
+    private void FinishReveal(RelationshipDivinationRecord record, Action<RelationshipDivinationRecord> onComplete, bool showSuccessToast = true)
     {
         if (record.status == RelationshipDivinationStatus.Completed)
             SavePersonalHistory(record);
 
-        ToastManager.ShowToast(record.status == RelationshipDivinationStatus.Completed ? "双方关系占卜已完成" : "已翻开你的牌");
+        if (showSuccessToast)
+            ToastManager.ShowToast(record.status == RelationshipDivinationStatus.Completed ? "双方关系占卜已完成" : "已翻开你的牌");
         onComplete?.Invoke(record);
     }
 
@@ -613,7 +618,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
     {
         if (IsDebugTestFriendUid(friendUid))
         {
-            onComplete?.Invoke(null, true);
+            onComplete?.Invoke(FindLatestDebugCompletedToday(friendUid), true);
             return;
         }
 
@@ -847,6 +852,24 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
 
             if (latest == null || ParseTime(record.createdAt) > ParseTime(latest.createdAt))
                 latest = record;
+        }
+
+        return latest;
+    }
+
+    private RelationshipDivinationRecord FindLatestDebugCompletedToday(string friendUid)
+    {
+        string currentUid = GetCurrentUid();
+        RelationshipDivinationRecord latest = null;
+
+        foreach (RelationshipDivinationRecord record in debugRecords.Values)
+        {
+            if (record == null || !record.IsCompleted || !IsCompletedToday(record)) continue;
+            bool samePair = record.initiatorUid == currentUid && record.receiverUid == friendUid
+                || record.initiatorUid == friendUid && record.receiverUid == currentUid;
+            if (!samePair) continue;
+
+            latest = PickLatest(latest, record);
         }
 
         return latest;

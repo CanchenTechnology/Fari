@@ -171,7 +171,7 @@ print_iap_secret_unblock_command() {
     printf " APPLE_SHARED_SECRET=<secret>"
   fi
   if [[ "$has_google_package" == "1" ]]; then
-    printf " GOOGLE_PACKAGE_NAME=com.canchentechnology.fari"
+    printf " GOOGLE_PACKAGE_NAME=com.canchentechnology.fariapp"
   fi
   if [[ "$has_google_service_account" == "1" ]]; then
     printf " GOOGLE_SERVICE_ACCOUNT_JSON_FILE=/path/to/service-account.json"
