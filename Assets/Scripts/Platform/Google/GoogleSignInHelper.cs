@@ -370,7 +370,7 @@ public class GoogleSignInHelper : MonoSingleton<GoogleSignInHelper>
     ///   失败: "FAILURE:<statusCode>:<message>"
     ///   取消: "CANCELED"
     /// </summary>
-    private void OnNativeSignInResult(string result)
+    public void OnNativeSignInResult(string result)
     {
         Debug.Log($"[GoogleSignInHelper] 收到原生插件回调: {(result?.Length > 50 ? result.Substring(0, 50) + "..." : result)}");
 
@@ -399,12 +399,41 @@ public class GoogleSignInHelper : MonoSingleton<GoogleSignInHelper>
         else if (result.StartsWith("FAILURE:"))
         {
             string errorDetail = result.Substring(8);
-            FinishWithError($"Google 登录失败: {errorDetail}");
+            FinishWithError(FormatNativeSignInError(errorDetail));
         }
         else
         {
             FinishWithError($"未知的登录结果格式: {result}");
         }
+    }
+
+    private static string FormatNativeSignInError(string errorDetail)
+    {
+        if (string.IsNullOrWhiteSpace(errorDetail))
+            return "Google 登录失败: 未返回错误详情";
+
+        string[] parts = errorDetail.Split(new[] { ':' }, 2);
+        if (!int.TryParse(parts[0], out int statusCode))
+            return $"Google 登录失败: {errorDetail}";
+
+        string detail = parts.Length > 1 ? parts[1] : errorDetail;
+        string friendly = statusCode switch
+        {
+            4 => "需要重新选择 Google 账号",
+            5 => "Google 账号无效，请换一个账号重试",
+            7 => "网络异常，请检查网络或 Google Play 服务连接",
+            8 => "Google Play 服务内部错误，请稍后重试",
+            10 => "DEVELOPER_ERROR：包名、签名 SHA-1 或 Web Client ID 与 Firebase/OAuth 配置不匹配",
+            16 => "用户取消了 Google 登录",
+            12500 => "Google 登录失败，通常和 OAuth/Firebase 配置有关",
+            12501 => "用户取消了 Google 登录",
+            12502 => "已有 Google 登录流程正在进行，请稍后再试",
+            _ => $"状态码 {statusCode}"
+        };
+
+        return string.IsNullOrWhiteSpace(detail)
+            ? $"Google 登录失败: {friendly}"
+            : $"Google 登录失败: {friendly} ({detail})";
     }
 
     #endregion
@@ -443,7 +472,7 @@ public class GoogleSignInHelper : MonoSingleton<GoogleSignInHelper>
     /// iOS 静默登录回调 — 由 iOS 原生插件通过 UnitySendMessage 调用
     /// 静默失败 → 自动启动交互式登录
     /// </summary>
-    private void OnSilentSignInResultIOS(string result)
+    public void OnSilentSignInResultIOS(string result)
     {
         Debug.Log($"[GoogleSignInHelper] iOS 静默登录结果: {(result?.Length > 50 ? result.Substring(0, 50) + "..." : result)}");
 

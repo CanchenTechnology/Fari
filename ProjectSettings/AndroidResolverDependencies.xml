@@ -9,6 +9,7 @@
     <package>com.facebook.android:facebook-gamingservices:[18.0.0,19)</package>
     <package>com.facebook.android:facebook-login:[18.0.0,19)</package>
     <package>com.facebook.android:facebook-share:[18.0.0,19)</package>
+    <package>com.google.android.gms:play-services-auth:21.2.0</package>
     <package>com.google.android.gms:play-services-base:18.10.0</package>
     <package>com.google.firebase:firebase-analytics:23.2.0</package>
     <package>com.google.firebase:firebase-app-unity:13.13.0</package>
@@ -27,7 +28,7 @@
   </packages>
   <files />
   <settings>
-    <setting name="androidAbis" value="armeabi-v7a" />
+    <setting name="androidAbis" value="arm64-v8a,armeabi-v7a" />
     <setting name="bundleId" value="com.canchentechnology.fariapp" />
     <setting name="explodeAars" value="True" />
     <setting name="gradleBuildEnabled" value="True" />

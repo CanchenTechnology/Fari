@@ -27,11 +27,13 @@ public static class CommandLineBuild
         bool oldBuildAppBundle = EditorUserBuildSettings.buildAppBundle;
         bool oldExportAndroidProject = EditorUserBuildSettings.exportAsGoogleAndroidProject;
         bool oldUseCustomKeystore = PlayerSettings.Android.useCustomKeystore;
+        AndroidArchitecture oldTargetArchitectures = PlayerSettings.Android.targetArchitectures;
 
         try
         {
             EditorUserBuildSettings.buildAppBundle = false;
             EditorUserBuildSettings.exportAsGoogleAndroidProject = false;
+            PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARMv7 | AndroidArchitecture.ARM64;
 
             if (GetBoolArg("-useDebugKeystore"))
             {
@@ -39,9 +41,9 @@ public static class CommandLineBuild
                 Debug.Log("Android APK build will use the default debug keystore for this batchmode run.");
             }
 
-            SetGameStartPlayMode(EPlayMode.OfflinePlayMode);
-            BuildYooAssetPackage(BuildTarget.Android);
             GenerateHybridClrFiles();
+            BuildYooAssetPackage(BuildTarget.Android);
+            SetGameStartPlayMode(EPlayMode.OfflinePlayMode);
             ApplySigningPasswords();
             ClearBuildOutputPath(outputPath);
 
@@ -63,6 +65,7 @@ public static class CommandLineBuild
             EditorUserBuildSettings.buildAppBundle = oldBuildAppBundle;
             EditorUserBuildSettings.exportAsGoogleAndroidProject = oldExportAndroidProject;
             PlayerSettings.Android.useCustomKeystore = oldUseCustomKeystore;
+            PlayerSettings.Android.targetArchitectures = oldTargetArchitectures;
         }
     }
 
@@ -83,9 +86,9 @@ public static class CommandLineBuild
             EditorUserBuildSettings.exportAsGoogleAndroidProject = false;
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARMv7 | AndroidArchitecture.ARM64;
 
-            SetGameStartPlayMode(EPlayMode.OfflinePlayMode);
-            BuildYooAssetPackage(BuildTarget.Android);
             GenerateHybridClrFiles();
+            BuildYooAssetPackage(BuildTarget.Android);
+            SetGameStartPlayMode(EPlayMode.OfflinePlayMode);
             ApplySigningPasswords();
             ClearBuildOutputPath(outputPath);
 

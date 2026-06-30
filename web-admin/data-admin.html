@@ -1946,6 +1946,38 @@
     </form>
   </dialog>
 
+  <dialog id="sendRelationshipInviteDialog">
+    <form id="sendRelationshipInviteForm" class="dialog-body" method="dialog">
+      <div class="dialog-head">
+        <h2>发送双人占卜邀请</h2>
+        <button type="button" class="ghost icon" data-close-dialog="sendRelationshipInviteDialog">×</button>
+      </div>
+      <input name="uid" type="hidden">
+      <div id="sendRelationshipInviteTarget" class="status"></div>
+      <div class="form-grid">
+        <label class="full">接收好友 UID / 邮箱 / 用户名<input name="friendSearch" list="relationshipInviteFriendOptions" placeholder="输入或选择已有真实好友" required></label>
+        <datalist id="relationshipInviteFriendOptions"></datalist>
+        <label class="full">占卜问题<textarea name="question" style="min-height: 90px;" placeholder="默认：我和对方的关系接下来会如何发展？"></textarea></label>
+        <label class="inline-check full">
+          <input name="ensureFriends" type="checkbox" checked>
+          发送前确保双方是真实好友
+        </label>
+        <label class="inline-check full">
+          <input name="allowDuplicate" type="checkbox">
+          允许重复创建未完成邀请
+        </label>
+        <label class="full">备注<input name="note" value="管理员发送双人占卜邀请"></label>
+        <div class="status full">
+          会写入 relationship_divinations，并触发接收方的双人占卜邀请推送。
+        </div>
+      </div>
+      <div class="row">
+        <button type="submit">发送邀请</button>
+        <button type="button" class="secondary" data-close-dialog="sendRelationshipInviteDialog">取消</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="addVirtualFriendDialog">
     <form id="addVirtualFriendForm" class="dialog-body" method="dialog">
       <div class="dialog-head">
@@ -2568,6 +2600,41 @@
       }
     });
     $("addRealFriendMode").addEventListener("change", updateAddRealFriendModeHint);
+
+    $("sendRelationshipInviteForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formElement = event.currentTarget;
+      const form = new FormData(formElement);
+      const payload = Object.fromEntries(form.entries());
+      payload.ensureFriends = form.get("ensureFriends") === "on";
+      payload.allowDuplicate = form.get("allowDuplicate") === "on";
+      const confirmLines = [
+        `发起用户：${payload.uid}`,
+        `接收好友：${payload.friendSearch || payload.friendUid || payload.receiverUid || ""}`,
+        `问题：${payload.question || "默认问题"}`,
+        `确保好友关系：${payload.ensureFriends ? "是" : "否"}`,
+        `允许重复：${payload.allowDuplicate ? "是" : "否"}`,
+      ];
+      if (!confirmSensitiveAction("发送双人占卜邀请", confirmLines.join("\n"))) return;
+      try {
+        const result = await callFunction("/adminSendRelationshipInvite", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        $("sendRelationshipInviteDialog").close();
+        formElement.reset();
+        if (result.bundle) {
+          state.userDetail = result.bundle;
+          renderUserDetail(state.userDetail);
+          await loadUsers($("userSearchInput").value.trim());
+        } else {
+          await refreshCurrentDetail(payload.uid);
+        }
+        showMessage(`已发送双人占卜邀请：${result.receiverName || result.receiverUid}`, "ok");
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
+    });
 
     $("addVirtualFriendForm").addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -5011,6 +5078,7 @@
       });
       $("addRealFriendButton")?.addEventListener("click", () => openAddRealFriendDialog(detail));
       $("addVirtualFriendButton")?.addEventListener("click", () => openAddVirtualFriendDialog(detail));
+      $("sendRelationshipInviteButton")?.addEventListener("click", () => openSendRelationshipInviteDialog(detail));
       $("seedTestFriendButton")?.addEventListener("click", () => openSeedTestFriendDialog(detail, "single"));
       $("seedTestFriendPackButton")?.addEventListener("click", () => openSeedTestFriendDialog(detail, "pack"));
       $("userDetail").querySelectorAll("[data-restore-deleted-friend]").forEach((button) => {
@@ -5067,6 +5135,7 @@
         <div class="row">
           <button type="button" id="addRealFriendButton" class="ghost">添加真实好友</button>
           <button type="button" id="addVirtualFriendButton" class="ghost">添加虚拟好友</button>
+          <button type="button" id="sendRelationshipInviteButton">发送双人占卜邀请</button>
           <button type="button" id="seedTestFriendPackButton">生成完整测试好友包</button>
           <button type="button" id="seedTestFriendButton" class="secondary">生成单个测试好友</button>
         </div>
@@ -5112,6 +5181,51 @@
       updateAddRealFriendModeHint();
       $("addRealFriendTarget").textContent = `${name} · ${detail.uid}`;
       $("addRealFriendDialog").showModal();
+    }
+
+    function openSendRelationshipInviteDialog(detail) {
+      const data = detail.user?.data || {};
+      const name = pick(data, ["displayName", "email"]) || detail.uid;
+      const form = $("sendRelationshipInviteForm");
+      form.reset();
+      form.elements.uid.value = detail.uid;
+      form.elements.ensureFriends.checked = true;
+      form.elements.allowDuplicate.checked = false;
+      form.elements.note.value = "管理员发送双人占卜邀请";
+      renderRelationshipInviteFriendOptions(detail);
+      const firstRealFriend = (detail.social?.realFriends || [])[0];
+      form.elements.friendSearch.value = firstRealFriend?.uid || "";
+      form.elements.question.value = "";
+      $("sendRelationshipInviteTarget").textContent = `${name} · ${detail.uid}`;
+      $("sendRelationshipInviteDialog").showModal();
+    }
+
+    function renderRelationshipInviteFriendOptions(detail) {
+      const currentUid = detail?.uid || "";
+      const seen = new Set([currentUid]);
+      const options = [];
+      const addOption = (uid, label) => {
+        if (!uid || seen.has(uid)) return;
+        seen.add(uid);
+        options.push(`<option value="${escapeAttr(uid)}" label="${escapeAttr(label || uid)}"></option>`);
+      };
+
+      for (const friend of detail?.social?.realFriends || []) {
+        const uid = friend.uid || friend.id;
+        const name = friend.displayName || friend.name || "未命名好友";
+        const email = friend.email || "";
+        addOption(uid, [name, email, "当前真实好友"].filter(Boolean).join(" · "));
+      }
+
+      for (const item of state.users || []) {
+        const uid = item.id || item.uid;
+        const data = item.data || {};
+        const name = pick(data, ["displayName", "name", "nickname"]) || "未命名用户";
+        const email = data.email || "";
+        addOption(uid, [name, email, "已注册用户"].filter(Boolean).join(" · "));
+      }
+
+      $("relationshipInviteFriendOptions").innerHTML = options.join("");
     }
 
     function openSeedTestFriendDialog(detail, mode = "pack") {
@@ -6696,6 +6810,7 @@
         "friend.restore_deleted": "恢复删除好友",
         "friend.test_seed": "生成测试好友数据",
         "friend.test_seed_pack": "生成完整测试好友包",
+        "relationship.invite_send": "发送双人占卜邀请",
         "data.upsert": "保存 Firestore 数据",
         "data.delete": "删除 Firestore 数据",
         "membership.grant_pro": "赋予 Pro",

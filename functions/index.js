@@ -1026,6 +1026,8 @@ const DIALOG_REPLY_JOB_SCAN_LIMIT = 50;
 const PUSH_CHANNEL_ID = "moonly_reminders";
 const DELETED_FRIEND_RELATIONSHIP_COLLECTION = "deleted_friend_relationships";
 const DELETED_FRIEND_RESTORE_WINDOW_DAYS = 90;
+const RELATIONSHIP_DIVINATION_COLLECTION = "relationship_divinations";
+const RELATIONSHIP_INVITE_VALID_HOURS = 24;
 const INVALID_PUSH_TOKEN_CODES = new Set([
   "messaging/invalid-registration-token",
   "messaging/registration-token-not-registered",
@@ -9649,6 +9651,129 @@ function buildAdminSeedRelationshipCards(variant) {
   ];
 }
 
+function pickAdminRelationshipInviteCard(excludeIds = new Set()) {
+  const deck = [
+    { cardId: "major_06", cardName: "恋人" },
+    { cardId: "major_14", cardName: "节制" },
+    { cardId: "major_18", cardName: "月亮" },
+    { cardId: "major_17", cardName: "星星" },
+    { cardId: "cups_02", cardName: "圣杯二" },
+    { cardId: "swords_02", cardName: "宝剑二" },
+    { cardId: "cups_06", cardName: "圣杯六" },
+    { cardId: "wands_03", cardName: "权杖三" },
+    { cardId: "pentacles_06", cardName: "星币六" },
+  ].filter((card) => !excludeIds.has(card.cardId));
+  return deck[crypto.randomInt(deck.length)];
+}
+
+function buildAdminRelationshipInviteCards() {
+  const positions = [
+    { positionKey: "initiator_private", position: "你的内心与看法", visibleTo: "initiator" },
+    { positionKey: "shared", position: "共同揭示", visibleTo: "both" },
+    { positionKey: "receiver_private", position: "对方的内心与想法", visibleTo: "receiver" },
+  ];
+  const used = new Set();
+  return positions.map((position) => {
+    const card = pickAdminRelationshipInviteCard(used);
+    used.add(card.cardId);
+    return {
+      ...position,
+      cardId: card.cardId,
+      cardName: card.cardName,
+      orientation: crypto.randomInt(2) === 0 ? "upright" : "reversed",
+    };
+  });
+}
+
+function getAdminTimestampMillis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (typeof value.toDate === "function") return value.toDate().getTime();
+  if (value instanceof Date) return value.getTime();
+  const parsed = Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isAdminRelationshipInviteExpired(data = {}) {
+  const expiresAtMillis = getAdminTimestampMillis(data.expiresAt);
+  if (expiresAtMillis > 0) return expiresAtMillis <= Date.now();
+
+  const createdAtMillis = getAdminTimestampMillis(data.createdAt);
+  if (!createdAtMillis) return false;
+  return createdAtMillis + RELATIONSHIP_INVITE_VALID_HOURS * 60 * 60 * 1000 <= Date.now();
+}
+
+function isAdminActiveRelationshipInvite(data = {}) {
+  const status = getAdminScalarText(data.status, 40) || "invited";
+  if (status === "completed" || status === "cancelled") return false;
+  if (data.initiatorRevealed === true && data.receiverRevealed === true) return false;
+  return !isAdminRelationshipInviteExpired(data);
+}
+
+async function findAdminActiveRelationshipInvite(uidA, uidB) {
+  const [outgoingSnap, incomingSnap] = await Promise.all([
+    db.collection(RELATIONSHIP_DIVINATION_COLLECTION)
+      .where("initiatorUid", "==", uidA)
+      .where("receiverUid", "==", uidB)
+      .limit(20)
+      .get(),
+    db.collection(RELATIONSHIP_DIVINATION_COLLECTION)
+      .where("initiatorUid", "==", uidB)
+      .where("receiverUid", "==", uidA)
+      .limit(20)
+      .get(),
+  ]);
+  const candidates = [...outgoingSnap.docs, ...incomingSnap.docs]
+    .map((doc) => ({ doc, data: doc.data() || {} }))
+    .filter((item) => isAdminActiveRelationshipInvite(item.data))
+    .sort((a, b) => {
+      const aTime = getAdminTimestampMillis(a.data.updatedAt) || getAdminTimestampMillis(a.data.createdAt);
+      const bTime = getAdminTimestampMillis(b.data.updatedAt) || getAdminTimestampMillis(b.data.createdAt);
+      return bTime - aTime;
+    });
+  return candidates[0] || null;
+}
+
+function buildAdminRelationshipInviteDoc({
+  readingId,
+  ownerProfile,
+  receiverProfile,
+  question,
+  decoded,
+  note,
+}) {
+  const initiatorName = ownerProfile.displayName || ownerProfile.email || ownerProfile.uid;
+  const receiverName = receiverProfile.displayName || receiverProfile.email || receiverProfile.uid;
+  const cleanQuestion = cleanString(
+    question,
+    `我和 ${receiverName} 的关系接下来会如何发展？`,
+    300,
+  );
+  return {
+    readingId,
+    initiatorUid: ownerProfile.uid,
+    receiverUid: receiverProfile.uid,
+    initiatorName,
+    receiverName,
+    question: cleanQuestion,
+    status: "invited",
+    initiatorRevealed: false,
+    receiverJoined: false,
+    receiverRevealed: false,
+    cards: buildAdminRelationshipInviteCards(),
+    oracleId: "tarot",
+    source: "adminRelationshipInvite",
+    adminNote: note,
+    adminCreatedBy: decoded.uid,
+    adminCreatedByEmail: decoded.email || "",
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    expiresAt: admin.firestore.Timestamp.fromMillis(
+      Date.now() + RELATIONSHIP_INVITE_VALID_HOURS * 60 * 60 * 1000,
+    ),
+  };
+}
+
 function buildAdminSeedDivinationRecord(profile, ownerProfile, readingId, relationshipId, variant) {
   const ownerName = ownerProfile.displayName || ownerProfile.email || "当前用户";
   return {
@@ -10114,6 +10239,107 @@ exports.adminAddRealFriend = onRequest(runtime, async (req, res) => {
   } catch (error) {
     console.error("[adminAddRealFriend]", error);
     json(res, error.status || 500, { error: error.message || "Add real friend failed" });
+  }
+});
+
+exports.adminSendRelationshipInvite = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const ownerUid = await resolveAdminUserUid({
+      uid: req.body?.uid || req.body?.ownerUid || req.body?.initiatorUid,
+      email: req.body?.email || req.body?.ownerEmail || req.body?.initiatorEmail,
+      search: req.body?.ownerSearch || req.body?.initiatorSearch,
+    });
+    const receiverUid = await resolveAdminUserUid({
+      uid: req.body?.receiverUid || req.body?.friendUid,
+      email: req.body?.receiverEmail || req.body?.friendEmail,
+      search: req.body?.receiverSearch || req.body?.friendSearch || req.body?.friend || req.body?.q,
+    });
+    if (!ownerUid || !receiverUid) {
+      throw createHttpError(400, "发起用户和接收好友不能为空");
+    }
+    if (ownerUid === receiverUid) {
+      throw createHttpError(400, "不能给同一个用户发送双人占卜邀请");
+    }
+
+    const allowDuplicate = parseAdminBoolean(req.body?.allowDuplicate, false);
+    const ensureFriends = parseAdminBoolean(req.body?.ensureFriends, true);
+    const note = cleanString(req.body?.note || req.body?.reason, "管理员发送双人占卜邀请", 500);
+
+    const active = allowDuplicate ? null : await findAdminActiveRelationshipInvite(ownerUid, receiverUid);
+    if (active) {
+      throw createHttpError(409, `这两个用户之间已有未完成的双人占卜邀请：${active.doc.id}`);
+    }
+
+    const [ownerProfile, receiverProfile] = await Promise.all([
+      getAdminUserFriendProfile(ownerUid),
+      getAdminUserFriendProfile(receiverUid),
+    ]);
+    const readingId = `rel_admin_${Date.now().toString(36)}_${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
+    const inviteDoc = buildAdminRelationshipInviteDoc({
+      readingId,
+      ownerProfile,
+      receiverProfile,
+      question: req.body?.question,
+      decoded,
+      note,
+    });
+
+    const batch = db.batch();
+    const inviteRef = db.collection(RELATIONSHIP_DIVINATION_COLLECTION).doc(readingId);
+    batch.set(inviteRef, inviteDoc, { merge: true });
+    if (ensureFriends) {
+      batch.set(
+        db.collection("users").doc(ownerUid).collection("friends").doc(receiverUid),
+        buildManualRealFriendDoc(receiverProfile, decoded, "发送双人占卜邀请时确保真实好友关系"),
+        { merge: true },
+      );
+      batch.set(
+        db.collection("users").doc(receiverUid).collection("friends").doc(ownerUid),
+        buildManualRealFriendDoc(ownerProfile, decoded, "发送双人占卜邀请时确保真实好友关系"),
+        { merge: true },
+      );
+      batch.delete(db.collection("users").doc(ownerUid).collection("friend_requests").doc(receiverUid));
+      batch.delete(db.collection("users").doc(receiverUid).collection("friend_requests").doc(ownerUid));
+    }
+    await batch.commit();
+
+    await writeAdminAuditLog(decoded, "relationship.invite_send", {
+      type: "relationship_divination",
+      id: readingId,
+      uid: ownerUid,
+      path: `${RELATIONSHIP_DIVINATION_COLLECTION}/${readingId}`,
+    }, {
+      initiatorUid: ownerUid,
+      receiverUid,
+      question: inviteDoc.question,
+      ensureFriends,
+      allowDuplicate,
+      note,
+    }, req);
+
+    json(res, 200, {
+      ok: true,
+      readingId,
+      uid: ownerUid,
+      receiverUid,
+      initiatorName: inviteDoc.initiatorName,
+      receiverName: inviteDoc.receiverName,
+      question: inviteDoc.question,
+      status: inviteDoc.status,
+      ensureFriends,
+      path: inviteRef.path,
+      bundle: await buildAdminUserBundle(ownerUid, { limit: 12 }),
+    });
+  } catch (error) {
+    console.error("[adminSendRelationshipInvite]", error);
+    json(res, error.status || 500, {
+      error: error.message || "发送双人占卜邀请失败",
+      code: error.status === 409 ? "relationship-invite-active-exists" : "relationship-invite-error",
+    });
   }
 });
 
