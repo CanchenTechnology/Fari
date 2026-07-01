@@ -8,7 +8,7 @@ READINESS_JSON="$TMP_DIR/readiness.json"
 READINESS_STATE="unfetched"
 
 REQUIRED_SECRETS=(
-  DEEPSEEK_API_KEY
+  DASHSCOPE_API_KEY
   VOLC_TTS_API_KEY
   APPLE_SHARED_SECRET
   GOOGLE_PACKAGE_NAME
@@ -16,6 +16,8 @@ REQUIRED_SECRETS=(
 )
 
 OPTIONAL_SECRETS=(
+  VOICE_APP_ID
+  VOICE_ACCESS_KEY
   PAYMENT_WEBHOOK_SECRET
 )
 
@@ -120,8 +122,10 @@ const key = process.argv[2];
 const file = process.argv[3];
 const data = JSON.parse(fs.readFileSync(file, "utf8"));
 const map = {
-  DEEPSEEK_API_KEY: "deepseekApiKey",
+  DASHSCOPE_API_KEY: "dashscopeApiKey",
   VOLC_TTS_API_KEY: "volcanoTtsApiKey",
+  VOICE_APP_ID: "voiceAppId",
+  VOICE_ACCESS_KEY: "voiceAccessKey",
   APPLE_SHARED_SECRET: "appleSharedSecret",
   GOOGLE_PACKAGE_NAME: "googlePackageName",
   GOOGLE_SERVICE_ACCOUNT_JSON: "googleServiceAccountJson",
@@ -189,13 +193,7 @@ check_secret() {
       return 0
       ;;
     missing)
-      if [[ "$required" == "1" ]]; then
-        fail "$key is missing according to readinessStatus"
-        return 1
-      fi
-
-      warn "$key is missing according to readinessStatus"
-      return 0
+      warn "$key is not visible to readinessStatus; checking Secret Manager directly"
       ;;
   esac
 

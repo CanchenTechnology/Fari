@@ -79,6 +79,8 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
     // 自增ID
     private int nextId = 1;
     private string loadedStorageKey = string.Empty;
+    private int batchUpdateDepth;
+    private bool batchUpdateDirty;
 
     protected override void Awake()
     {
@@ -179,6 +181,25 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
     #endregion
 
     #region 数据操作
+
+    public void BeginBatchUpdate()
+    {
+        batchUpdateDepth++;
+    }
+
+    public void EndBatchUpdate()
+    {
+        if (batchUpdateDepth <= 0)
+            return;
+
+        batchUpdateDepth--;
+        if (batchUpdateDepth > 0 || !batchUpdateDirty)
+            return;
+
+        batchUpdateDirty = false;
+        SaveLocalData();
+        DataChanged?.Invoke();
+    }
 
     /// <summary>
     /// 添加真实好友
@@ -947,6 +968,12 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
 
     private void SaveAndNotify()
     {
+        if (batchUpdateDepth > 0)
+        {
+            batchUpdateDirty = true;
+            return;
+        }
+
         SaveLocalData();
         DataChanged?.Invoke();
     }

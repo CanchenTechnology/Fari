@@ -49,6 +49,20 @@ public class DialogUI : WindowBase
     [Tooltip("已废弃：现在不再等待语音生成后才显示 AI 文本")]
     public bool delayAITextUntilVoiceReady = false;
 
+    [Header("ASR 语音输入配置")]
+    [Tooltip("是否启用按住说话转文字。短按问题按钮仍打开快捷占卜，长按会录音识别。")]
+    public bool enableVoiceInput = true;
+    [Tooltip("识别成功后是否直接发送到当前对话。关闭后只会填入输入框。")]
+    public bool voiceAutoSendTranscript = true;
+
+    [Header("语音通话配置")]
+    [Tooltip("是否启用连续语音通话。")]
+    public bool enableVoiceCall = true;
+    [Tooltip("未绑定正式通话按钮时，运行时在输入区旁创建一个临时按钮。")]
+    public bool createVoiceCallButtonAtRuntime = true;
+    [Tooltip("连续语音通话按钮。可在 prefab 里绑定正式按钮。")]
+    public Button voiceCallButton;
+
     private int questionInputMaxVisibleLines = 5;
     private float questionInputExpandedRightExtend = 44f;
     private float questionInputTextLeftOffset = 0f;
@@ -67,6 +81,13 @@ public class DialogUI : WindowBase
     private float questionInputScrollbarVisibleSeconds = 0.7f;
 
     private TTSManager ttsManager;
+    private VoiceAsrClient voiceAsrClient;
+    private DialogVoiceHoldInput voiceHoldInput;
+    private DialogVoiceCallController voiceCallController;
+    private TMP_Text _voiceCallButtonLabel;
+    private bool _voiceCallReadinessCheckInProgress;
+    private System.Action<int, string> _pendingVoiceCallAIComplete;
+    private System.Action<string> _pendingVoiceCallAIError;
     private ChatItem _currentTTSItem; // 当前正在播放语音的 ChatItem
     private int _currentTTSMessageId = -1;
     private Coroutine _ttsPlaybackCoroutine;
@@ -89,6 +110,7 @@ public class DialogUI : WindowBase
     private RectTransform _questionInputLeftButtonRect;
     private RectTransform _questionInputScrollbarRect;
     private TMP_Text _questionInputPlaceholderText;
+    private string _questionInputOriginalPlaceholder = "";
     private Vector2 _questionInputBgOriginalAnchorMin;
     private Vector2 _questionInputBgOriginalAnchorMax;
     private Vector2 _questionInputBgOriginalPivot;
@@ -172,6 +194,8 @@ public class DialogUI : WindowBase
         chatListView.InitListView(0, OnGetChatItemByIndex, CreateChatListInitParam());
         SetupKeyboardInputAdapter();
         SetupExpandingQuestionInput();
+        SetupVoiceInput();
+        SetupVoiceCall();
 
         // 订阅事件
         EventSystem.AddEvent(GameDataStr.RefreshChatUI, OnRefreshChatUI);
@@ -195,6 +219,9 @@ public class DialogUI : WindowBase
     // 物体隐藏时执行
     public override void OnHide()
     {
+        _voiceCallReadinessCheckInProgress = false;
+        voiceCallController?.StopCall();
+        voiceHoldInput?.CancelRecording();
         ResetQuestionInputTransientScrollState();
         PauseDialogBackgroundVideo();
         base.OnHide();
@@ -205,6 +232,8 @@ public class DialogUI : WindowBase
         EventSystem.RemoveEvent(GameDataStr.RefreshChatUI, OnRefreshChatUI);
         EventSystem.RemoveEventListener<string>(GameDataStr.QuickQuestionSelected, OnQuickQuestionSelected);
         EventSystem.RemoveEventListener<string>(GameDataStr.CardTopicSelected, OnCardTopicSelected);
+        TeardownVoiceCall();
+        TeardownVoiceInput();
         ReleaseDialogBackgroundVideoTextureInstance();
         base.OnDestroy();
     }
@@ -521,6 +550,9 @@ public class DialogUI : WindowBase
             ? inputField.textComponent.rectTransform
             : null;
         _questionInputPlaceholderText = inputField.placeholder as TMP_Text;
+        _questionInputOriginalPlaceholder = _questionInputPlaceholderText != null
+            ? _questionInputPlaceholderText.text
+            : "";
 
         CaptureQuestionInputOriginalLayout();
 
@@ -1450,6 +1482,7 @@ public class DialogUI : WindowBase
                 // ---- 执行 AI 显式请求的客户端动作（例如展示牌阵）----
                 if (TryExecuteClientAction(streamingMessageIndex, fullContent))
                 {
+                    NotifyVoiceCallAIComplete(streamingMessageIndex, fullContent);
                     ProcessNextQueuedAIRequest();
                     return;
                 }
@@ -1466,7 +1499,9 @@ public class DialogUI : WindowBase
 
                 HideLoadingIndicator();
                 RefreshChatAfterAIMessage(streamingMessageIndex);
-                PrepareTTSForCompletedAIMessage(streamingMessageIndex);
+                if (_pendingVoiceCallAIComplete == null)
+                    PrepareTTSForCompletedAIMessage(streamingMessageIndex);
+                NotifyVoiceCallAIComplete(streamingMessageIndex, fullContent);
                 ProcessNextQueuedAIRequest();
             },
             // ---- onError: 流式出错 ----
@@ -1482,6 +1517,7 @@ public class DialogUI : WindowBase
                 chatListView.SetListItemCount(msgCount, false);
                 chatListView.RefreshAllShownItem();
                 SyncShownChatItemSizes();
+                NotifyVoiceCallAIError(error);
                 ProcessNextQueuedAIRequest();
             }
         );
@@ -1902,6 +1938,9 @@ public class DialogUI : WindowBase
     /// </summary>
     public void OnquestionButtonClick()
     {
+        if (voiceHoldInput != null && voiceHoldInput.ConsumePendingClickSuppression())
+            return;
+
         // 显示快速占卜面板
         QuickDivinationPanel panel = uiComponent?.QuickDivinationPanelTransform != null
             ? uiComponent.QuickDivinationPanelTransform.GetComponent<QuickDivinationPanel>()
@@ -2235,6 +2274,519 @@ public class DialogUI : WindowBase
     #endregion
 
     #region 语音
+
+    private void SetupVoiceCall()
+    {
+        if (!enableVoiceCall)
+            return;
+
+        if (voiceAsrClient == null)
+        {
+            voiceAsrClient = gameObject.GetComponent<VoiceAsrClient>();
+            if (voiceAsrClient == null)
+                voiceAsrClient = gameObject.AddComponent<VoiceAsrClient>();
+        }
+
+        voiceCallController = gameObject.GetComponent<DialogVoiceCallController>();
+        if (voiceCallController == null)
+            voiceCallController = gameObject.AddComponent<DialogVoiceCallController>();
+
+        voiceCallController.Configure(this, voiceAsrClient);
+        voiceCallController.StateChanged -= OnVoiceCallStateChanged;
+        voiceCallController.Error -= OnVoiceCallError;
+        voiceCallController.StateChanged += OnVoiceCallStateChanged;
+        voiceCallController.Error += OnVoiceCallError;
+
+        if (voiceCallButton == null && createVoiceCallButtonAtRuntime)
+            voiceCallButton = CreateRuntimeVoiceCallButton();
+
+        if (voiceCallButton != null)
+        {
+            voiceCallButton.onClick.RemoveListener(OnVoiceCallButtonClick);
+            voiceCallButton.onClick.AddListener(OnVoiceCallButtonClick);
+            _voiceCallButtonLabel = voiceCallButton.GetComponentInChildren<TMP_Text>(true);
+            RefreshVoiceCallButton(DialogVoiceCallController.VoiceCallState.Idle);
+        }
+    }
+
+    private void TeardownVoiceCall()
+    {
+        if (voiceCallButton != null)
+            voiceCallButton.onClick.RemoveListener(OnVoiceCallButtonClick);
+
+        if (voiceCallController != null)
+        {
+            voiceCallController.StateChanged -= OnVoiceCallStateChanged;
+            voiceCallController.Error -= OnVoiceCallError;
+            voiceCallController.StopCall();
+        }
+
+        _pendingVoiceCallAIComplete = null;
+        _pendingVoiceCallAIError = null;
+    }
+
+    private Button CreateRuntimeVoiceCallButton()
+    {
+        if (uiComponent?.questionButton == null)
+            return null;
+
+        RectTransform sourceRect = uiComponent.questionButton.transform as RectTransform;
+        if (sourceRect == null || sourceRect.parent == null)
+            return null;
+
+        GameObject go = new GameObject("[Button]VoiceCall", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Button));
+        RectTransform rect = go.GetComponent<RectTransform>();
+        rect.SetParent(sourceRect.parent, false);
+        rect.anchorMin = sourceRect.anchorMin;
+        rect.anchorMax = sourceRect.anchorMax;
+        rect.pivot = sourceRect.pivot;
+        rect.sizeDelta = sourceRect.sizeDelta;
+        rect.anchoredPosition = sourceRect.anchoredPosition + new Vector2(-Mathf.Max(56f, sourceRect.rect.width + 8f), 0f);
+        rect.localScale = sourceRect.localScale;
+
+        Image sourceImage = uiComponent.questionButton.GetComponent<Image>();
+        Image image = go.GetComponent<Image>();
+        if (sourceImage != null)
+        {
+            image.sprite = sourceImage.sprite;
+            image.type = sourceImage.type;
+            image.color = sourceImage.color;
+            image.material = sourceImage.material;
+        }
+        else
+        {
+            image.color = new Color(1f, 1f, 1f, 0.9f);
+        }
+
+        Button button = go.GetComponent<Button>();
+        button.transition = Selectable.Transition.ColorTint;
+
+        GameObject labelGo = new GameObject("Label", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+        RectTransform labelRect = labelGo.GetComponent<RectTransform>();
+        labelRect.SetParent(rect, false);
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = Vector2.zero;
+        labelRect.offsetMax = Vector2.zero;
+
+        TextMeshProUGUI label = labelGo.GetComponent<TextMeshProUGUI>();
+        label.text = "Call";
+        label.alignment = TextAlignmentOptions.Center;
+        label.fontSize = 18f;
+        label.enableAutoSizing = true;
+        label.fontSizeMin = 10f;
+        label.fontSizeMax = 18f;
+        label.color = Color.white;
+        _voiceCallButtonLabel = label;
+
+        return button;
+    }
+
+    public void OnVoiceCallButtonClick()
+    {
+        if (voiceCallController == null)
+            return;
+
+        if (!MembershipGate.CanUse(MembershipFeature.DialogMessage))
+            return;
+
+        if (voiceCallController.IsActive)
+        {
+            voiceCallController.ToggleCall();
+            return;
+        }
+
+        if (_voiceCallReadinessCheckInProgress)
+        {
+            ToastManager.ShowToast("正在检查语音服务，请稍候");
+            return;
+        }
+
+        if (voiceAsrClient == null)
+            voiceAsrClient = gameObject.GetComponent<VoiceAsrClient>();
+        if (voiceAsrClient == null)
+            voiceAsrClient = gameObject.AddComponent<VoiceAsrClient>();
+
+        _voiceCallReadinessCheckInProgress = true;
+        RefreshVoiceCallButton(voiceCallController.State);
+        ToastManager.ShowToast("正在检查语音服务");
+        voiceAsrClient.CheckVoiceCallReadiness((ready, message) =>
+        {
+            _voiceCallReadinessCheckInProgress = false;
+            RefreshVoiceCallButton(voiceCallController != null ? voiceCallController.State : DialogVoiceCallController.VoiceCallState.Idle);
+
+            if (gameObject == null || !gameObject.activeInHierarchy)
+                return;
+
+            if (!ready)
+            {
+                ToastManager.ShowToast(string.IsNullOrWhiteSpace(message) ? "语音服务未就绪" : message);
+                return;
+            }
+
+            StartVoiceCall();
+        });
+    }
+
+    private void StartVoiceCall()
+    {
+        if (voiceCallController == null || voiceCallController.IsActive)
+            return;
+
+        StopTTSPlayback();
+        voiceHoldInput?.CancelRecording();
+        SetQuickDivinationPanelVisible(false);
+        ToastManager.ShowToast("语音通话已开始");
+        voiceCallController.ToggleCall();
+    }
+
+    private void OnVoiceCallStateChanged(DialogVoiceCallController.VoiceCallState state, string status)
+    {
+        RefreshVoiceCallButton(state);
+
+        if (state == DialogVoiceCallController.VoiceCallState.Idle)
+        {
+            RestoreQuestionInputPlaceholder();
+            RefreshQuestionInputLayout();
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(status)
+            && uiComponent?.questionInputField != null
+            && string.IsNullOrWhiteSpace(uiComponent.questionInputField.text))
+        {
+            SetVoiceInputPlaceholder(status);
+        }
+    }
+
+    private void OnVoiceCallError(string message)
+    {
+        ToastManager.ShowToast(string.IsNullOrWhiteSpace(message) ? "语音通话失败" : message);
+    }
+
+    private void RefreshVoiceCallButton(DialogVoiceCallController.VoiceCallState state)
+    {
+        bool active = state != DialogVoiceCallController.VoiceCallState.Idle
+            && state != DialogVoiceCallController.VoiceCallState.Error;
+
+        if (_voiceCallButtonLabel != null)
+            _voiceCallButtonLabel.text = _voiceCallReadinessCheckInProgress ? "..." : (active ? "End" : "Call");
+
+        if (voiceCallButton != null)
+        {
+            CanvasGroup group = voiceCallButton.GetComponent<CanvasGroup>();
+            if (group == null) group = voiceCallButton.gameObject.AddComponent<CanvasGroup>();
+            group.alpha = active || _voiceCallReadinessCheckInProgress ? 1f : 0.78f;
+            voiceCallButton.interactable = !_voiceCallReadinessCheckInProgress;
+        }
+    }
+
+    private void SetVoiceInputPlaceholder(string text)
+    {
+        TMP_Text placeholder = uiComponent?.questionInputField != null
+            ? uiComponent.questionInputField.placeholder as TMP_Text
+            : null;
+        if (placeholder != null)
+            placeholder.text = text;
+    }
+
+    private void RestoreQuestionInputPlaceholder()
+    {
+        TMP_Text placeholder = uiComponent?.questionInputField != null
+            ? uiComponent.questionInputField.placeholder as TMP_Text
+            : null;
+        if (placeholder != null)
+            placeholder.text = _questionInputOriginalPlaceholder;
+    }
+
+    private void SetupVoiceInput()
+    {
+        if (!enableVoiceInput || uiComponent?.questionButton == null)
+            return;
+
+        voiceAsrClient = gameObject.GetComponent<VoiceAsrClient>();
+        if (voiceAsrClient == null)
+            voiceAsrClient = gameObject.AddComponent<VoiceAsrClient>();
+
+        voiceHoldInput = uiComponent.questionButton.GetComponent<DialogVoiceHoldInput>();
+        if (voiceHoldInput == null)
+            voiceHoldInput = uiComponent.questionButton.gameObject.AddComponent<DialogVoiceHoldInput>();
+
+        voiceHoldInput.Configure(uiComponent.questionButton, uiComponent.questionInputField, voiceAsrClient);
+        voiceHoldInput.RecordingStarted -= OnVoiceRecordingStarted;
+        voiceHoldInput.RecordingStopped -= OnVoiceRecordingStopped;
+        voiceHoldInput.TranscriptFinal -= OnVoiceTranscriptFinal;
+        voiceHoldInput.Error -= OnVoiceInputError;
+        voiceHoldInput.StatusChanged -= OnVoiceInputStatusChanged;
+
+        voiceHoldInput.RecordingStarted += OnVoiceRecordingStarted;
+        voiceHoldInput.RecordingStopped += OnVoiceRecordingStopped;
+        voiceHoldInput.TranscriptFinal += OnVoiceTranscriptFinal;
+        voiceHoldInput.Error += OnVoiceInputError;
+        voiceHoldInput.StatusChanged += OnVoiceInputStatusChanged;
+    }
+
+    private void TeardownVoiceInput()
+    {
+        if (voiceHoldInput == null)
+            return;
+
+        voiceHoldInput.RecordingStarted -= OnVoiceRecordingStarted;
+        voiceHoldInput.RecordingStopped -= OnVoiceRecordingStopped;
+        voiceHoldInput.TranscriptFinal -= OnVoiceTranscriptFinal;
+        voiceHoldInput.Error -= OnVoiceInputError;
+        voiceHoldInput.StatusChanged -= OnVoiceInputStatusChanged;
+        voiceHoldInput.CancelRecording();
+    }
+
+    private void OnVoiceRecordingStarted()
+    {
+        StopTTSPlayback();
+        SetQuickDivinationPanelVisible(false);
+        ToastManager.ShowToast("正在听，松开发送");
+    }
+
+    private void OnVoiceRecordingStopped()
+    {
+    }
+
+    private void OnVoiceInputStatusChanged(string status)
+    {
+        if (!string.IsNullOrWhiteSpace(status))
+            Debug.Log("[DialogUI] Voice input: " + status);
+    }
+
+    private void OnVoiceInputError(string message)
+    {
+        ToastManager.ShowToast(string.IsNullOrWhiteSpace(message) ? "语音输入失败" : message);
+    }
+
+    private void OnVoiceTranscriptFinal(string transcript)
+    {
+        string text = (transcript ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            ToastManager.ShowToast("没有识别到内容");
+            return;
+        }
+
+        if (!voiceAutoSendTranscript)
+        {
+            SetQuestionInputText(AppendVoiceTranscriptToDraft(text));
+            uiComponent.questionInputField?.ActivateInputField();
+            return;
+        }
+
+        string content = AppendVoiceTranscriptToDraft(text);
+        ClearQuestionInput();
+        SendVoiceUserMessage(content);
+    }
+
+    private string AppendVoiceTranscriptToDraft(string transcript)
+    {
+        string current = uiComponent?.questionInputField != null
+            ? (uiComponent.questionInputField.text ?? string.Empty).Trim()
+            : string.Empty;
+
+        if (string.IsNullOrWhiteSpace(current))
+            return transcript.Trim();
+
+        return $"{current} {transcript.Trim()}".Trim();
+    }
+
+    private void SetQuestionInputText(string text)
+    {
+        if (uiComponent.questionInputField == null)
+            return;
+
+        uiComponent.questionInputField.text = text ?? string.Empty;
+        RefreshSendButtonState(uiComponent.questionInputField.text);
+        RefreshQuestionInputLayout(uiComponent.questionInputField.text);
+    }
+
+    private void SendVoiceUserMessage(string content)
+    {
+        string inputText = (content ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(inputText))
+        {
+            ToastManager.ShowToast("没有识别到内容");
+            return;
+        }
+
+        if (!MembershipGate.CanUse(MembershipFeature.DialogMessage))
+            return;
+
+        if (mIsLoading)
+        {
+            SendUserMessage(inputText);
+            ToastManager.ShowToast("AI正在回复，已为你排队发送。");
+            return;
+        }
+
+        Debug.Log($"发送语音识别文本：{inputText}");
+        SendUserMessage(inputText);
+    }
+
+    public bool SendVoiceCallMessage(string content, System.Action<int, string> onComplete, System.Action<string> onError)
+    {
+        string inputText = (content ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(inputText) || dialogSystem == null)
+            return false;
+
+        if (mIsLoading)
+        {
+            onError?.Invoke("AI 正在回复，请稍后再说");
+            return false;
+        }
+
+        if (!MembershipGate.CanUse(MembershipFeature.DialogMessage))
+            return false;
+
+        _pendingVoiceCallAIComplete = onComplete;
+        _pendingVoiceCallAIError = onError;
+
+        dialogSystem.AddUserMessage(inputText);
+        UpdateChatScrollView();
+        SendMessageToAI();
+        return true;
+    }
+
+    private void NotifyVoiceCallAIComplete(int messageIndex, string fullText)
+    {
+        System.Action<int, string> callback = _pendingVoiceCallAIComplete;
+        _pendingVoiceCallAIComplete = null;
+        _pendingVoiceCallAIError = null;
+        callback?.Invoke(messageIndex, fullText ?? "");
+    }
+
+    private void NotifyVoiceCallAIError(string error)
+    {
+        System.Action<string> callback = _pendingVoiceCallAIError;
+        _pendingVoiceCallAIComplete = null;
+        _pendingVoiceCallAIError = null;
+        callback?.Invoke(ToVoiceCallUserFacingError(error));
+    }
+
+    private string ToVoiceCallUserFacingError(string error)
+    {
+        if (string.IsNullOrWhiteSpace(error))
+            return "AI 响应失败";
+
+        if (error.IndexOf("Incorrect API key", System.StringComparison.OrdinalIgnoreCase) >= 0
+            || error.IndexOf("DASHSCOPE_API_KEY", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return "AI 服务密钥无效或未配置，请更新 DASHSCOPE_API_KEY";
+
+        return error;
+    }
+
+    public bool PlayVoiceCallResponse(int messageIndex, System.Action onComplete, System.Action<string> onError)
+    {
+        if (!enableTTS)
+        {
+            onComplete?.Invoke();
+            return false;
+        }
+
+        if (ttsManager == null)
+            InitTTSManager();
+
+        if (ttsManager == null || dialogSystem == null)
+        {
+            onError?.Invoke("TTS 服务未就绪");
+            return false;
+        }
+
+        ChatMessageData msgData = dialogSystem.GetMessageByIndex(messageIndex);
+        if (msgData == null || msgData.roleType != DialogRoleType.AI || string.IsNullOrWhiteSpace(msgData.content))
+        {
+            onComplete?.Invoke();
+            return false;
+        }
+
+        StopTTSPlayback();
+        _currentTTSItem = null;
+        _currentTTSMessageId = msgData.id;
+        _ttsPlaybackCoroutine = uiComponent.StartCoroutine(PlayVoiceCallResponseRoutine(messageIndex, msgData, onComplete, onError));
+        return true;
+    }
+
+    public void StopVoiceCallSpeech()
+    {
+        StopTTSPlayback();
+    }
+
+    public bool IsVoiceCallSpeechPlaying()
+    {
+        return _currentTTSMessageId >= 0
+            && (_ttsPlaybackCoroutine != null
+                || (AudioManager.Instance != null && AudioManager.Instance.IsVoicePlaying()));
+    }
+
+    private IEnumerator PlayVoiceCallResponseRoutine(
+        int messageIndex,
+        ChatMessageData msgData,
+        System.Action onComplete,
+        System.Action<string> onError)
+    {
+        PreparedTTSAudio prepared = null;
+        string error = null;
+        yield return uiComponent.StartCoroutine(PrepareTTSAudio(msgData.id, msgData.content, msgData.divinerType,
+            (result, synthError) =>
+            {
+                prepared = result;
+                error = synthError;
+            }));
+
+        if (_currentTTSMessageId != msgData.id)
+            yield break;
+
+        if (prepared == null || prepared.totalDuration <= 0f)
+        {
+            CleanupCurrentTTS(msgData.id);
+            _ttsPlaybackCoroutine = null;
+            onError?.Invoke(TTSManager.ToUserFacingError(error));
+            yield break;
+        }
+
+        dialogSystem.SetAIMessageTTSInfo(messageIndex, prepared.totalDuration, true);
+        ChatItem item = GetShownChatItem(messageIndex);
+        if (item != null)
+        {
+            item.SetTTSLength(prepared.totalDuration);
+            item.UpdateTTSButtonAfterStream(msgData.content);
+            RefreshChatItemLayoutAfterRuntimeSizeChange(messageIndex, false);
+        }
+
+        if (AudioManager.Instance == null)
+        {
+            CleanupCurrentTTS(msgData.id);
+            _ttsPlaybackCoroutine = null;
+            onError?.Invoke("音频管理器未就绪");
+            yield break;
+        }
+
+        for (int i = 0; i < prepared.clips.Count; i++)
+        {
+            if (_currentTTSMessageId != msgData.id)
+                yield break;
+
+            AudioClip clip = prepared.clips[i];
+            AudioManager.Instance.PlayVoice(clip, interrupt: true);
+            float elapsed = 0f;
+            while (elapsed < clip.length)
+            {
+                if (_currentTTSMessageId != msgData.id)
+                    yield break;
+
+                elapsed += Time.deltaTime;
+                yield return null;
+            }
+        }
+
+        CleanupCurrentTTS(msgData.id);
+        _ttsPlaybackCoroutine = null;
+        onComplete?.Invoke();
+    }
 
     /// <summary>
     /// ChatItem TTS 播放按钮回调

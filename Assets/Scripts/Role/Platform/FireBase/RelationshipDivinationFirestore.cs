@@ -1,16 +1,20 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text;
+using Firebase.Auth;
 using Firebase.Extensions;
 using Firebase.Firestore;
 using GamerFrameWork.UIFrameWork;
 using GamerFrameWork.OracleRuntime;
 using UnityEngine;
+using UnityEngine.Networking;
 using XFGameFrameWork;
 
 public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinationFirestore>
 {
     private const string CollectionName = "relationship_divinations";
+    private const string ActionFunctionUrl = "https://us-central1-fari-app-b2fd2.cloudfunctions.net/relationshipDivinationAction";
     private const int IncomingLimit = 20;
     private const string DebugFriendUidPrefix = "test_real_friend_";
     private const string DebugReadingIdPrefix = "rel_debug_";
@@ -22,6 +26,21 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
     private readonly Dictionary<string, RelationshipDivinationRecord> debugRecords = new Dictionary<string, RelationshipDivinationRecord>();
     private readonly Dictionary<string, RelationshipDivinationRecord> runtimeRecordStates = new Dictionary<string, RelationshipDivinationRecord>();
     private readonly HashSet<string> debugAutoRevealStarted = new HashSet<string>();
+
+    [Serializable]
+    private class RelationshipActionRequest
+    {
+        public string readingId;
+        public string action;
+    }
+
+    [Serializable]
+    private class RelationshipActionResponse
+    {
+        public bool ok = false;
+        public RelationshipDivinationRecord record = null;
+        public string error = "";
+    }
 
     public bool IsReady => initialized && db != null;
 
@@ -190,6 +209,24 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
             return;
         }
 
+        if (!IsDebugReading(record))
+        {
+            RunBackendAction(record, "reveal", (updated, error) =>
+            {
+                if (updated == null)
+                {
+                    ToastManager.ShowToast(string.IsNullOrWhiteSpace(error) ? "翻牌同步失败，请稍后再试" : error);
+                    onComplete?.Invoke(record);
+                    return;
+                }
+
+                if (showSuccessToast)
+                    ToastManager.ShowToast(updated.IsCompleted ? "双方关系占卜已完成" : "已翻开你的牌");
+                onComplete?.Invoke(updated);
+            });
+            return;
+        }
+
         bool originalInitiatorRevealed = record.initiatorRevealed;
         bool originalReceiverJoined = record.receiverJoined;
         bool originalReceiverRevealed = record.receiverRevealed;
@@ -309,6 +346,24 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
         {
             ToastManager.ShowToast("关系占卜服务初始化中，请稍后再试");
             onComplete?.Invoke(record);
+            return;
+        }
+
+        if (!IsDebugReading(record))
+        {
+            RunBackendAction(record, "accept", (updated, error) =>
+            {
+                if (updated == null)
+                {
+                    ToastManager.ShowToast(string.IsNullOrWhiteSpace(error) ? "接受邀请失败，请稍后再试" : error);
+                    onComplete?.Invoke(record);
+                    return;
+                }
+
+                if (showSuccessToast)
+                    ToastManager.ShowToast("已接受双人占卜邀请");
+                onComplete?.Invoke(updated);
+            });
             return;
         }
 
@@ -1339,6 +1394,163 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
         }
 
         return cards;
+    }
+
+    private void RunBackendAction(RelationshipDivinationRecord record, string action, Action<RelationshipDivinationRecord, string> onComplete)
+    {
+        if (record == null || string.IsNullOrWhiteSpace(record.readingId))
+        {
+            onComplete?.Invoke(null, "占卜记录不存在");
+            return;
+        }
+
+        StartCoroutine(RunBackendActionCoroutine(record, action, onComplete));
+    }
+
+    private IEnumerator RunBackendActionCoroutine(RelationshipDivinationRecord record, string action, Action<RelationshipDivinationRecord, string> onComplete)
+    {
+        string idToken = null;
+        string tokenError = null;
+        yield return GetFirebaseIdToken(
+            token => idToken = token,
+            error => tokenError = error);
+
+        if (string.IsNullOrEmpty(idToken))
+        {
+            onComplete?.Invoke(null, string.IsNullOrWhiteSpace(tokenError) ? "用户未登录，无法同步双人占卜" : tokenError);
+            yield break;
+        }
+
+        RelationshipActionRequest payload = new RelationshipActionRequest
+        {
+            readingId = record.readingId,
+            action = action
+        };
+        string json = JsonUtility.ToJson(payload);
+
+        using (UnityWebRequest request = new UnityWebRequest(ActionFunctionUrl, "POST"))
+        {
+            request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.SetRequestHeader("Authorization", "Bearer " + idToken);
+
+            yield return request.SendWebRequest();
+
+            if (IsRequestFailed(request))
+            {
+                onComplete?.Invoke(null, ExtractBackendError(request, "双人占卜同步失败"));
+                yield break;
+            }
+
+            RelationshipActionResponse response = null;
+            try
+            {
+                response = JsonUtility.FromJson<RelationshipActionResponse>(request.downloadHandler.text);
+            }
+            catch (Exception e)
+            {
+                onComplete?.Invoke(null, "双人占卜同步结果解析失败: " + e.Message);
+                yield break;
+            }
+
+            if (response == null || !response.ok || response.record == null)
+            {
+                string error = response != null && !string.IsNullOrWhiteSpace(response.error)
+                    ? response.error
+                    : "双人占卜同步失败";
+                onComplete?.Invoke(null, error);
+                yield break;
+            }
+
+            RelationshipDivinationRecord updated = ApplyBackendRecord(record, response.record);
+            onComplete?.Invoke(updated, null);
+        }
+    }
+
+    private RelationshipDivinationRecord ApplyBackendRecord(RelationshipDivinationRecord target, RelationshipDivinationRecord backendRecord)
+    {
+        if (backendRecord == null) return null;
+
+        if ((backendRecord.cards == null || backendRecord.cards.Count == 0)
+            && target != null
+            && target.cards != null
+            && target.cards.Count > 0)
+        {
+            backendRecord.cards = target.cards;
+        }
+
+        RelationshipDivinationRecord result = target ?? backendRecord;
+        CopyRecordState(result, backendRecord);
+        PromoteLegacyReceiverCompleted(result);
+        RememberRecordState(result);
+
+        if (result.IsCompleted)
+            SavePersonalHistory(result);
+
+        return result;
+    }
+
+    private IEnumerator GetFirebaseIdToken(Action<string> onToken, Action<string> onError)
+    {
+#if UNITY_EDITOR
+        if (FirebaseAuthManager.Instance != null
+            && FirebaseAuthManager.Instance.TryGetEditorRestIdToken(out string editorRestToken))
+        {
+            onToken?.Invoke(editorRestToken);
+            yield break;
+        }
+#endif
+
+        var user = FirebaseAuth.DefaultInstance?.CurrentUser;
+        if (user == null)
+        {
+            onError?.Invoke("用户未登录，无法同步双人占卜");
+            yield break;
+        }
+
+        var task = user.TokenAsync(false);
+        yield return new WaitUntil(() => task.IsCompleted);
+
+        if (task.IsFaulted || task.IsCanceled)
+        {
+            onError?.Invoke(task.Exception?.InnerException?.Message ?? "获取 Firebase Token 失败");
+            yield break;
+        }
+
+        onToken?.Invoke(task.Result);
+    }
+
+    private static bool IsRequestFailed(UnityWebRequest request)
+    {
+#if UNITY_2020_1_OR_NEWER
+        return request.result == UnityWebRequest.Result.ConnectionError
+            || request.result == UnityWebRequest.Result.ProtocolError;
+#else
+        return request.isNetworkError || request.isHttpError;
+#endif
+    }
+
+    private static string ExtractBackendError(UnityWebRequest request, string fallback)
+    {
+        string body = request.downloadHandler != null ? request.downloadHandler.text : "";
+        if (!string.IsNullOrWhiteSpace(body))
+        {
+            try
+            {
+                RelationshipActionResponse response = JsonUtility.FromJson<RelationshipActionResponse>(body);
+                if (response != null && !string.IsNullOrWhiteSpace(response.error))
+                    return response.error;
+            }
+            catch
+            {
+                // Fall through to request.error/fallback.
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.error))
+            return request.error;
+        return fallback;
     }
 
     private void SavePersonalHistory(RelationshipDivinationRecord record)

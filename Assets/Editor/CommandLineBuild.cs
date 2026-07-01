@@ -117,6 +117,52 @@ public static class CommandLineBuild
         }
     }
 
+    public static void BuildIOSXcodeProject()
+    {
+        string outputPath = Path.GetFullPath(GetArg("-outputPath", "Builds/iOS"));
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
+
+        EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.iOS, BuildTarget.iOS);
+
+        string oldBundleIdentifier = PlayerSettings.GetApplicationIdentifier(BuildTargetGroup.iOS);
+        string oldBuildNumber = PlayerSettings.iOS.buildNumber;
+        string oldAppleDeveloperTeamId = PlayerSettings.iOS.appleDeveloperTeamID;
+        bool oldAppleAutomaticSigning = PlayerSettings.iOS.appleEnableAutomaticSigning;
+        string oldMicrophoneUsageDescription = PlayerSettings.iOS.microphoneUsageDescription;
+
+        GameStartPlayModeSnapshot playModeSnapshot = null;
+        try
+        {
+            ApplyIOSBuildSettings();
+            GenerateHybridClrFiles();
+            BuildYooAssetPackage(BuildTarget.iOS);
+            playModeSnapshot = SetGameStartPlayMode(GetBuildYooPlayMode());
+            ClearBuildOutputPath(outputPath);
+
+            UnityEditor.Build.Reporting.BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+            {
+                scenes = GetEnabledScenes(),
+                locationPathName = outputPath,
+                target = BuildTarget.iOS,
+                options = BuildOptions.None
+            });
+
+            BuildSummary summary = report.summary;
+            Debug.Log($"iOS Xcode project build result: {summary.result}, output: {outputPath}, size: {summary.totalSize} bytes");
+            if (summary.result != UnityBuildResult.Succeeded)
+                throw new InvalidOperationException($"iOS Xcode project build failed: {summary.result}");
+        }
+        finally
+        {
+            playModeSnapshot?.Restore();
+            PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.iOS, oldBundleIdentifier);
+            PlayerSettings.iOS.buildNumber = oldBuildNumber;
+            PlayerSettings.iOS.appleDeveloperTeamID = oldAppleDeveloperTeamId;
+            PlayerSettings.iOS.appleEnableAutomaticSigning = oldAppleAutomaticSigning;
+            PlayerSettings.iOS.microphoneUsageDescription = oldMicrophoneUsageDescription;
+        }
+    }
+
     private static void GenerateHybridClrFiles()
     {
         Debug.Log("HybridCLR GenerateAll start.");
@@ -367,6 +413,30 @@ public static class CommandLineBuild
 
         if (!string.IsNullOrEmpty(keyaliasPass))
             PlayerSettings.Android.keyaliasPass = keyaliasPass;
+    }
+
+    private static void ApplyIOSBuildSettings()
+    {
+        string bundleIdentifier = GetArg("-iosBundleIdentifier", null);
+        if (!string.IsNullOrEmpty(bundleIdentifier))
+            PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.iOS, bundleIdentifier);
+
+        string buildNumber = GetArg("-iosBuildNumber", null);
+        if (!string.IsNullOrEmpty(buildNumber))
+            PlayerSettings.iOS.buildNumber = buildNumber;
+
+        string appleTeamId = GetArg("-appleTeamId", null);
+        if (!string.IsNullOrEmpty(appleTeamId))
+            PlayerSettings.iOS.appleDeveloperTeamID = appleTeamId;
+
+        if (GetBoolArg("-iosAutomaticSigning"))
+            PlayerSettings.iOS.appleEnableAutomaticSigning = true;
+
+        string microphoneUsageDescription = GetArg("-iosMicrophoneUsageDescription", null);
+        if (!string.IsNullOrEmpty(microphoneUsageDescription))
+            PlayerSettings.iOS.microphoneUsageDescription = microphoneUsageDescription;
+        else if (string.IsNullOrEmpty(PlayerSettings.iOS.microphoneUsageDescription))
+            PlayerSettings.iOS.microphoneUsageDescription = "Allow Fari to access the microphone for voice features.";
     }
 
     private static string[] GetEnabledScenes()

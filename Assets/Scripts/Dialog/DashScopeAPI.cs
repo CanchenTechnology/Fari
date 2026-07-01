@@ -10,19 +10,19 @@ using UnityEngine.Networking;
 /// AI API 客户端
 /// 用于与阿里云 DashScope 兼容接口通信
 /// </summary>
-public class DeepSeekAPI : MonoBehaviour
+public class DashScopeAPI : MonoBehaviour
 {
     private const string AI_CHAT_URL = "https://us-central1-fari-app-b2fd2.cloudfunctions.net/aiChat";
     private const string AI_CHAT_STREAM_URL = "https://us-central1-fari-app-b2fd2.cloudfunctions.net/aiChatStream";
-    private const string DEEPSEEK_CHAT_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
-    private const string MODEL = "deepseek-v4-pro";
+    private const string DASHSCOPE_CHAT_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
+    private const string DASHSCOPE_CHAT_MODEL = "qwen-plus";
 
     [Header("Editor 调试")]
     [Tooltip("Editor 下优先使用下面的调试 Key 直连阿里云 DashScope。正式包不生效，正式包始终走 Firebase Functions。")]
-    public bool useEditorDirectDeepSeek = false;
+    public bool useEditorDirectDashScope = false;
 
     [Tooltip("仅用于 Unity Editor 调试的阿里云 DashScope API Key。请使用单独的调试 Key，不要提交真实生产 Key。")]
-    public string editorDeepSeekApiKey = "";
+    public string editorDashScopeApiKey = "";
 
     [Tooltip("Editor 下没有真实 Firebase 用户时，自动使用游客登录拿到 Token，再调用正式的 Cloud Functions。")]
     public bool editorAutoAnonymousSignIn = true;
@@ -30,23 +30,23 @@ public class DeepSeekAPI : MonoBehaviour
     [Tooltip("Editor 后端不可用时是否返回本地模拟回复。正常联调建议关闭，否则会把真实错误伪装成成功回复。正式包不生效。")]
     public bool useEditorMockWhenBackendUnavailable = false;
 
-    public bool HasEditorDirectDeepSeekConfig()
+    public bool HasEditorDirectDashScopeConfig()
     {
 #if UNITY_EDITOR
-        return ShouldUseEditorDirectDeepSeek();
+        return ShouldUseEditorDirectDashScope();
 #else
         return false;
 #endif
     }
 
-    public static DeepSeekAPI ResolveFor(GameObject owner)
+    public static DashScopeAPI ResolveFor(GameObject owner)
     {
-        DeepSeekAPI local = owner != null ? owner.GetComponent<DeepSeekAPI>() : null;
+        DashScopeAPI local = owner != null ? owner.GetComponent<DashScopeAPI>() : null;
 #if UNITY_EDITOR
-        DeepSeekAPI[] apis = FindObjectsOfType<DeepSeekAPI>();
+        DashScopeAPI[] apis = FindObjectsOfType<DashScopeAPI>();
         for (int i = 0; i < apis.Length; i++)
         {
-            if (apis[i] != null && apis[i].HasEditorDirectDeepSeekConfig())
+            if (apis[i] != null && apis[i].HasEditorDirectDashScopeConfig())
             {
                 return apis[i];
             }
@@ -57,7 +57,7 @@ public class DeepSeekAPI : MonoBehaviour
             return local;
         }
 
-        return owner != null ? owner.AddComponent<DeepSeekAPI>() : null;
+        return owner != null ? owner.AddComponent<DashScopeAPI>() : null;
     }
 
     [System.Serializable]
@@ -171,14 +171,14 @@ public class DeepSeekAPI : MonoBehaviour
     {
         RequestBody requestBody = new RequestBody
         {
-            model = MODEL,
+            model = DASHSCOPE_CHAT_MODEL,
             messages = messages
         };
 
         string jsonBody = JsonUtility.ToJson(requestBody);
         // JsonUtility 不支持 List，需要手动替换
         StringBuilder sb = new StringBuilder();
-        sb.Append("{\"model\":\"").Append(MODEL).Append("\",");
+        sb.Append("{\"model\":\"").Append(DASHSCOPE_CHAT_MODEL).Append("\",");
         sb.Append("\"messages\":[");
         for (int i = 0; i < messages.Count; i++)
         {
@@ -199,7 +199,7 @@ public class DeepSeekAPI : MonoBehaviour
         jsonBody = sb.ToString();
 
 #if UNITY_EDITOR
-        if (ShouldUseEditorDirectDeepSeek())
+        if (ShouldUseEditorDirectDashScope())
         {
             yield return SendEditorDirectChatRequest(jsonBody, messages, onSuccess, onError);
             yield break;
@@ -216,7 +216,7 @@ public class DeepSeekAPI : MonoBehaviour
             if (TryCompleteWithEditorMock(messages, onSuccess, tokenError))
                 yield break;
 
-            Debug.LogError("[DeepSeekAPI] Firebase token error: " + tokenError);
+            Debug.LogError("[DashScopeAPI] Firebase token error: " + tokenError);
             onError?.Invoke(tokenError);
             yield break;
         }
@@ -295,7 +295,7 @@ public class DeepSeekAPI : MonoBehaviour
     {
         // 构建请求 JSON（比非流式多 "stream": true）
         StringBuilder sb = new StringBuilder();
-        sb.Append("{\"model\":\"").Append(MODEL).Append("\",");
+        sb.Append("{\"model\":\"").Append(DASHSCOPE_CHAT_MODEL).Append("\",");
         sb.Append("\"messages\":[");
         for (int i = 0; i < messages.Count; i++)
         {
@@ -314,7 +314,7 @@ public class DeepSeekAPI : MonoBehaviour
         string jsonBody = sb.ToString();
 
 #if UNITY_EDITOR
-        if (ShouldUseEditorDirectDeepSeek())
+        if (ShouldUseEditorDirectDashScope())
         {
             yield return SendEditorDirectChatRequestStream(jsonBody, messages, onChunk, onComplete, onError);
             yield break;
@@ -331,7 +331,7 @@ public class DeepSeekAPI : MonoBehaviour
             if (TryCompleteStreamWithEditorMock(messages, onChunk, onComplete, tokenError))
                 yield break;
 
-            Debug.LogError("[DeepSeekAPI] Firebase token error: " + tokenError);
+            Debug.LogError("[DashScopeAPI] Firebase token error: " + tokenError);
             onError?.Invoke(tokenError);
             yield break;
         }
@@ -466,7 +466,7 @@ public class DeepSeekAPI : MonoBehaviour
                     }
                     catch (Exception e)
                     {
-                        Debug.LogWarning("[DeepSeekAPI] SSE parse error: " + e.Message
+                        Debug.LogWarning("[DashScopeAPI] SSE parse error: " + e.Message
                             + " | raw: " + data.Substring(0, Math.Min(data.Length, 80)));
                     }
                 }
@@ -501,9 +501,9 @@ public class DeepSeekAPI : MonoBehaviour
     }
 
 #if UNITY_EDITOR
-    private bool ShouldUseEditorDirectDeepSeek()
+    private bool ShouldUseEditorDirectDashScope()
     {
-        return useEditorDirectDeepSeek && !string.IsNullOrWhiteSpace(editorDeepSeekApiKey);
+        return useEditorDirectDashScope && !string.IsNullOrWhiteSpace(editorDashScopeApiKey);
     }
 
     private IEnumerator SignInAnonymouslyForEditor(Action<FirebaseUser> onSuccess, Action<string> onError)
@@ -525,7 +525,7 @@ public class DeepSeekAPI : MonoBehaviour
             yield break;
         }
 
-        Debug.Log("[DeepSeekAPI] Editor 未检测到 Firebase 用户，正在自动游客登录后调用 AI 后端。");
+        Debug.Log("[DashScopeAPI] Editor 未检测到 Firebase 用户，正在自动游客登录后调用 AI 后端。");
 
         FirebaseAuthManager authManager = null;
         try
@@ -534,7 +534,7 @@ public class DeepSeekAPI : MonoBehaviour
         }
         catch (Exception e)
         {
-            Debug.LogWarning("[DeepSeekAPI] 获取 FirebaseAuthManager 失败，将直接使用 Firebase Auth 游客登录: " + e.Message);
+            Debug.LogWarning("[DashScopeAPI] 获取 FirebaseAuthManager 失败，将直接使用 Firebase Auth 游客登录: " + e.Message);
         }
 
         if (authManager != null)
@@ -639,13 +639,13 @@ public class DeepSeekAPI : MonoBehaviour
     private IEnumerator SendEditorDirectChatRequest(string jsonBody, List<Message> messages,
         Action<string> onSuccess, Action<string> onError)
     {
-        using (UnityWebRequest request = new UnityWebRequest(DEEPSEEK_CHAT_URL, "POST"))
+        using (UnityWebRequest request = new UnityWebRequest(DASHSCOPE_CHAT_URL, "POST"))
         {
             byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Authorization", "Bearer " + editorDeepSeekApiKey.Trim());
+            request.SetRequestHeader("Authorization", "Bearer " + editorDashScopeApiKey.Trim());
 
             yield return request.SendWebRequest();
 
@@ -655,7 +655,7 @@ public class DeepSeekAPI : MonoBehaviour
             if (request.isNetworkError || request.isHttpError)
 #endif
             {
-                Debug.LogError("[DeepSeekAPI] Editor DashScope API Error: " + request.error);
+                Debug.LogError("[DashScopeAPI] Editor DashScope API Error: " + request.error);
                 Debug.LogError("Response: " + request.downloadHandler.text);
                 if (TryCompleteWithEditorMock(messages, onSuccess, request.error))
                     yield break;
@@ -681,7 +681,7 @@ public class DeepSeekAPI : MonoBehaviour
             }
             catch (Exception e)
             {
-                Debug.LogError("[DeepSeekAPI] Editor DashScope parse error: " + e.Message);
+                Debug.LogError("[DashScopeAPI] Editor DashScope parse error: " + e.Message);
                 onError?.Invoke("Parse error: " + e.Message);
             }
         }
@@ -690,7 +690,7 @@ public class DeepSeekAPI : MonoBehaviour
     private IEnumerator SendEditorDirectChatRequestStream(string jsonBody, List<Message> messages,
         Action<string> onChunk, Action<string> onComplete, Action<string> onError)
     {
-        using (UnityWebRequest request = new UnityWebRequest(DEEPSEEK_CHAT_URL, "POST"))
+        using (UnityWebRequest request = new UnityWebRequest(DASHSCOPE_CHAT_URL, "POST"))
         {
             byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
@@ -699,7 +699,7 @@ public class DeepSeekAPI : MonoBehaviour
             request.downloadHandler = handler;
 
             request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Authorization", "Bearer " + editorDeepSeekApiKey.Trim());
+            request.SetRequestHeader("Authorization", "Bearer " + editorDashScopeApiKey.Trim());
 
             yield return request.SendWebRequest();
 
@@ -712,7 +712,7 @@ public class DeepSeekAPI : MonoBehaviour
             {
                 if (!handler.HasCompleted)
                 {
-                    Debug.LogError("[DeepSeekAPI] Editor DashScope Stream Error: " + request.error);
+                    Debug.LogError("[DashScopeAPI] Editor DashScope Stream Error: " + request.error);
                     Debug.LogError("Response: " + request.downloadHandler.text);
                     if (TryCompleteStreamWithEditorMock(messages, onChunk, onComplete, request.error))
                         yield break;
@@ -878,7 +878,7 @@ public class DeepSeekAPI : MonoBehaviour
         if (!useEditorMockWhenBackendUnavailable) return false;
 
         string content = BuildEditorMockResponse(messages, reason);
-        Debug.LogWarning("[DeepSeekAPI] Editor 使用本地模拟 AI 回复: " + reason);
+        Debug.LogWarning("[DashScopeAPI] Editor 使用本地模拟 AI 回复: " + reason);
         onSuccess?.Invoke(content);
         return true;
 #else
@@ -894,7 +894,7 @@ public class DeepSeekAPI : MonoBehaviour
         if (!useEditorMockWhenBackendUnavailable) return false;
 
         string content = BuildEditorMockResponse(messages, reason);
-        Debug.LogWarning("[DeepSeekAPI] Editor 使用本地模拟流式 AI 回复: " + reason);
+        Debug.LogWarning("[DashScopeAPI] Editor 使用本地模拟流式 AI 回复: " + reason);
         onChunk?.Invoke(content);
         onComplete?.Invoke(content);
         return true;

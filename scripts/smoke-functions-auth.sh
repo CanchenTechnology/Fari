@@ -11,6 +11,7 @@ CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-20}"
 CURL_RETRY="${CURL_RETRY:-2}"
 CURL_RETRY_DELAY="${CURL_RETRY_DELAY:-2}"
 REQUIRE_AI_TTS_LIVE="${REQUIRE_AI_TTS_LIVE:-0}"
+SMOKE_CONTINUE_ON_FAILURE="${SMOKE_CONTINUE_ON_FAILURE:-0}"
 
 if [[ -n "${MOONLY_PROXY:-}" ]]; then
   export HTTPS_PROXY="$MOONLY_PROXY"
@@ -172,6 +173,7 @@ if [[ -z "$ID_TOKEN" ]]; then
 fi
 
 echo "smoke uid: $LOCAL_ID"
+SMOKE_FAILURES=0
 
 call_json() {
   local name="$1"
@@ -199,6 +201,7 @@ call_json() {
     )"
   fi
 
+  set +e
   node - "$name" "$http_status" "$output" <<'NODE'
 const fs = require("fs");
 const name = process.argv[2];
@@ -235,7 +238,7 @@ if (name === "publicConfig") {
 } else if (name === "aiChat") {
   if (httpStatus === "200" && typeof data.content === "string" && data.content.trim().length > 0) {
     // Secret is configured and live.
-  } else if (process.env.REQUIRE_AI_TTS_LIVE !== "1" && httpStatus === "500" && String(data.error || "").includes("DEEPSEEK_API_KEY")) {
+  } else if (process.env.REQUIRE_AI_TTS_LIVE !== "1" && httpStatus === "500" && String(data.error || "").includes("DASHSCOPE_API_KEY")) {
     // Expected while the AI secret is intentionally missing.
   } else if (httpStatus === "429") {
     fail("unexpected quota exhaustion for a temporary smoke user");
@@ -256,9 +259,25 @@ if (name === "publicConfig") {
 
 console.log(`${name}: HTTP ${httpStatus} ok`);
 NODE
+  local node_status=$?
+  set -e
+
+  if [[ "$node_status" -ne 0 ]]; then
+    if [[ "$SMOKE_CONTINUE_ON_FAILURE" == "1" ]]; then
+      SMOKE_FAILURES=$((SMOKE_FAILURES + 1))
+      return 0
+    fi
+
+    return "$node_status"
+  fi
 }
 
 call_json "publicConfig" "GET" "$BASE_URL/publicConfig"
 call_json "membershipStatus" "GET" "$BASE_URL/membershipStatus"
 call_json "aiChat" "POST" "$BASE_URL/aiChat" '{"messages":[{"role":"user","content":"smoke test"}],"max_tokens":16}'
 call_json "ttsSynthesize" "POST" "$BASE_URL/ttsSynthesize" '{"text":"smoke test","encoding":"mp3"}'
+
+if [[ "$SMOKE_FAILURES" -gt 0 ]]; then
+  echo "functions smoke completed with $SMOKE_FAILURES failure(s)" >&2
+  exit 10
+fi

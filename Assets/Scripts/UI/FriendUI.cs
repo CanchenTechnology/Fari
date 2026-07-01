@@ -359,20 +359,111 @@ public class FriendUI : WindowBase, IPointerClickHandler
 
 	private void RebuildFriendList(bool resetPos)
 	{
-		sortedFriends.Clear();
+		List<FriendDataManager.FriendData> latestFriends = CollectFriendListData();
+		bool preserveCurrentOrder = !resetPos && HasSameFriendIdentitySet(latestFriends, sortedFriends);
+
+		if (preserveCurrentOrder)
+		{
+			List<FriendDataManager.FriendData> previousOrder = new List<FriendDataManager.FriendData>(sortedFriends);
+			sortedFriends.Clear();
+			AddFriendsInPreviousOrder(previousOrder, latestFriends);
+		}
+		else
+		{
+			sortedFriends.Clear();
+			sortedFriends.AddRange(latestFriends);
+			sortedFriends.Sort(CompareFriendForList);
+		}
+
+		RefreshFriendListView(resetPos);
+		RefreshFriendPresenceWatchers();
+	}
+
+	private List<FriendDataManager.FriendData> CollectFriendListData()
+	{
+		List<FriendDataManager.FriendData> friends = new List<FriendDataManager.FriendData>();
+		if (FriendDataManager.Instance == null)
+			return friends;
 
 		foreach (FriendDataManager.FriendData friend in FriendDataManager.Instance.RealFriendList)
 		{
-			if (friend != null) sortedFriends.Add(friend);
+			if (friend != null) friends.Add(friend);
 		}
 		foreach (FriendDataManager.FriendData friend in FriendDataManager.Instance.VirtualFriendList)
 		{
-			if (friend != null) sortedFriends.Add(friend);
+			if (friend != null) friends.Add(friend);
 		}
 
-		sortedFriends.Sort(CompareFriendForList);
-		RefreshFriendListView(resetPos);
-		RefreshFriendPresenceWatchers();
+		return friends;
+	}
+
+	private bool HasSameFriendIdentitySet(
+		List<FriendDataManager.FriendData> latestFriends,
+		List<FriendDataManager.FriendData> currentFriends)
+	{
+		if (latestFriends == null || currentFriends == null || latestFriends.Count != currentFriends.Count)
+			return false;
+
+		HashSet<string> latestKeys = new HashSet<string>();
+		foreach (FriendDataManager.FriendData friend in latestFriends)
+			latestKeys.Add(GetFriendIdentityKey(friend));
+
+		foreach (FriendDataManager.FriendData friend in currentFriends)
+		{
+			if (!latestKeys.Remove(GetFriendIdentityKey(friend)))
+				return false;
+		}
+
+		return latestKeys.Count == 0;
+	}
+
+	private void AddFriendsInPreviousOrder(
+		List<FriendDataManager.FriendData> previousOrder,
+		List<FriendDataManager.FriendData> latestFriends)
+	{
+		Dictionary<string, FriendDataManager.FriendData> latestByKey = new Dictionary<string, FriendDataManager.FriendData>();
+		foreach (FriendDataManager.FriendData friend in latestFriends)
+		{
+			string key = GetFriendIdentityKey(friend);
+			if (!string.IsNullOrEmpty(key))
+				latestByKey[key] = friend;
+		}
+
+		HashSet<string> addedKeys = new HashSet<string>();
+		foreach (FriendDataManager.FriendData friend in previousOrder)
+		{
+			string key = GetFriendIdentityKey(friend);
+			if (!latestByKey.TryGetValue(key, out FriendDataManager.FriendData latestFriend))
+				continue;
+
+			sortedFriends.Add(latestFriend);
+			addedKeys.Add(key);
+		}
+
+		foreach (FriendDataManager.FriendData friend in latestFriends)
+		{
+			string key = GetFriendIdentityKey(friend);
+			if (addedKeys.Add(key))
+				sortedFriends.Add(friend);
+		}
+	}
+
+	private string GetFriendIdentityKey(FriendDataManager.FriendData friend)
+	{
+		if (friend == null) return string.Empty;
+		if (friend.isVirtual)
+		{
+			if (!string.IsNullOrWhiteSpace(friend.virtualFriendId))
+				return "virtual:" + friend.virtualFriendId.Trim();
+			return "virtual-id:" + friend.id;
+		}
+
+		if (!string.IsNullOrWhiteSpace(friend.firebaseUid))
+			return "real:" + friend.firebaseUid.Trim();
+		if (!string.IsNullOrWhiteSpace(friend.handle))
+			return "real-handle:" + friend.handle.Trim();
+
+		return "real-id:" + friend.id;
 	}
 
 	private int CompareFriendForList(FriendDataManager.FriendData a, FriendDataManager.FriendData b)

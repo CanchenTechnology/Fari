@@ -45,7 +45,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     private int _latestRevealedIndex = -1;
     private int _cardInfoRequestVersion;
     private bool _isCardInfoLoading;
-    private DeepSeekAPI _deepSeekAPI;
+    private DashScopeAPI _dashScopeAPI;
 
     // CardSlotItem 数组（懒加载）
     private CardSlotItem[] _slots;
@@ -98,7 +98,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         AddButtonClickListener(uiComponent.hideBtn, OnHideBtnClick);
         SetBackButtonVisible(false);
         SetDetailEntryVisible(false);
-        _deepSeekAPI = DeepSeekAPI.ResolveFor(gameObject);
+        _dashScopeAPI = DashScopeAPI.ResolveFor(gameObject);
         ResolveRevealMaskReference();
         SetRevealMaskVisible(false, true);
         this.Canvas.sortingOrder = (int)uiComponent.windowLayer;
@@ -2366,16 +2366,16 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     {
         if (card == null) return;
 
-        if (_deepSeekAPI == null)
-            _deepSeekAPI = DeepSeekAPI.ResolveFor(gameObject);
-        if (_deepSeekAPI == null)
+        if (_dashScopeAPI == null)
+            _dashScopeAPI = DashScopeAPI.ResolveFor(gameObject);
+        if (_dashScopeAPI == null)
         {
             SetCardDescriptionIfCurrent(index, requestVersion, fallback);
             return;
         }
 
         var messages = BuildCardDescriptionMessages(card, upright, index);
-        _deepSeekAPI.SendChatRequest(messages, response =>
+        _dashScopeAPI.SendChatRequest(messages, response =>
         {
             if (uiComponent == null) return;
             if (_latestRevealedIndex != index || _cardInfoRequestVersion != requestVersion) return;
@@ -2422,7 +2422,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         return text;
     }
 
-    private List<DeepSeekAPI.Message> BuildCardDescriptionMessages(TarotCard card, bool upright, int index)
+    private List<DashScopeAPI.Message> BuildCardDescriptionMessages(TarotCard card, bool upright, int index)
     {
         string position = GetPositionLabel(index);
         string spreadName = FirstNonEmpty(_spread?.label, GetDefaultTitle(_cardCount));
@@ -2453,12 +2453,12 @@ public class TarorSingleSpreadShuffleUI : WindowBase
             oracleVoiceId: "tarot_reader");
 
         if (assembly?.messages != null && assembly.messages.Count > 0)
-            return assembly.messages.Select(message => new DeepSeekAPI.Message(message.role, message.content)).ToList();
+            return assembly.messages.Select(message => new DashScopeAPI.Message(message.role, message.content)).ToList();
 
-        return new List<DeepSeekAPI.Message>
+        return new List<DashScopeAPI.Message>
         {
-            new DeepSeekAPI.Message("system", ScenePrompts.Get("card_position_description")),
-            new DeepSeekAPI.Message("user", payload.message)
+            new DashScopeAPI.Message("system", ScenePrompts.Get("card_position_description")),
+            new DashScopeAPI.Message("user", payload.message)
         };
     }
 

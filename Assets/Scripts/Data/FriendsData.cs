@@ -489,6 +489,9 @@ public class UserSearchProfileData
     public string birthday;
     public string birthTime;
     public string city;
+    public bool basicInfoVisible;
+    public bool hasBasicInfoVisibility;
+    public string profileVisibility;
     public bool isSelf;
 
     public string Handle => string.IsNullOrEmpty(email) ? $"@{uid}" : $"@{email.Split('@')[0]}";

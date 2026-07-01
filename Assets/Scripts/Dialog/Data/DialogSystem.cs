@@ -163,7 +163,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     public string UserHeadIcon = "UserHead";
 
     [Header("AI API")]
-    public DeepSeekAPI deepSeekAPI;
+    public DashScopeAPI dashScopeAPI;
 
     [Header("系统提示词")]
     [TextArea(3, 10)]
@@ -235,7 +235,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     private List<ChatMessageData> mChatMessageList = new List<ChatMessageData>();
 
     // AI API 消息历史
-    private List<DeepSeekAPI.Message> mApiMessageHistory = new List<DeepSeekAPI.Message>();
+    private List<DashScopeAPI.Message> mApiMessageHistory = new List<DashScopeAPI.Message>();
 
     // 当前聊天带入的上下文。用户消息会保存一份快照，防止后续切换后历史错乱。
     private List<ChatContextAttachment> activeContextAttachments = new List<ChatContextAttachment>();
@@ -265,9 +265,9 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     protected override void Awake()
     {
         base.Awake();
-        if (deepSeekAPI == null)
+        if (dashScopeAPI == null)
         {
-            deepSeekAPI = DeepSeekAPI.ResolveFor(gameObject);
+            dashScopeAPI = DashScopeAPI.ResolveFor(gameObject);
         }
     }
 
@@ -609,7 +609,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         UsageStatsManager.Instance?.TrackDialogMessage();
 
         // 同时添加到 API 历史
-        mApiMessageHistory.Add(new DeepSeekAPI.Message("user", content));
+        mApiMessageHistory.Add(new DashScopeAPI.Message("user", content));
 
         // 追踪最近用户消息
         recentUserMessages.Add(content);
@@ -640,7 +640,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         mChatMessageList.Add(data);
 
         // 同时添加到 API 历史
-        mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", content));
+        mApiMessageHistory.Add(new DashScopeAPI.Message("assistant", content));
 
         // 追踪最近 AI 回复
         recentAssistantReplies.Add(content);
@@ -677,7 +677,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         mChatMessageList.Add(data);
 
         // 同时添加到 API 历史
-        mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", content));
+        mApiMessageHistory.Add(new DashScopeAPI.Message("assistant", content));
 
         SaveCloudDialogHistory();
         return data;
@@ -820,7 +820,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         string targetContent = content.Trim();
         for (int i = mApiMessageHistory.Count - 1; i >= 0; i--)
         {
-            DeepSeekAPI.Message message = mApiMessageHistory[i];
+            DashScopeAPI.Message message = mApiMessageHistory[i];
             if (message == null) continue;
             if (!string.Equals(message.role, "assistant", StringComparison.OrdinalIgnoreCase)) continue;
             if (!string.Equals((message.content ?? "").Trim(), targetContent, StringComparison.Ordinal)) continue;
@@ -878,7 +878,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         // 同时添加到 API 历史，让塔罗师知道当前 @ 的好友档案。
         if (!string.IsNullOrWhiteSpace(messageContent))
         {
-            mApiMessageHistory.Add(new DeepSeekAPI.Message("user", messageContent));
+            mApiMessageHistory.Add(new DashScopeAPI.Message("user", messageContent));
         }
 
         SaveCloudDialogHistory();
@@ -1268,7 +1268,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         mChatMessageList.Add(data);
 
         // 同时添加到 API 历史
-        mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", content));
+        mApiMessageHistory.Add(new DashScopeAPI.Message("assistant", content));
 
         Debug.Log($"[DialogSystem] 添加 InteractionCard3 消息, spreadKind={spreadKind}");
         SaveCloudDialogHistory();
@@ -1297,7 +1297,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         mChatMessageList.Add(data);
 
         // 同时添加到 API 历史
-        mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", content));
+        mApiMessageHistory.Add(new DashScopeAPI.Message("assistant", content));
 
         Debug.Log($"[DialogSystem] 添加 InteractionCard1 消息, spreadKind={spreadKind}");
         SaveCloudDialogHistory();
@@ -1326,7 +1326,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         mChatMessageList.Add(data);
 
         // 同时添加到 API 历史
-        mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", content));
+        mApiMessageHistory.Add(new DashScopeAPI.Message("assistant", content));
 
         Debug.Log($"[DialogSystem] 添加 InteractionCard5 消息, spreadKind={spreadKind}");
         SaveCloudDialogHistory();
@@ -1368,7 +1368,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         string summary = BuildSpreadDrawHistorySummary(data);
         if (string.IsNullOrWhiteSpace(summary)) return;
 
-        mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", summary));
+        mApiMessageHistory.Add(new DashScopeAPI.Message("assistant", summary));
         recentAssistantReplies.Add(summary);
         if (recentAssistantReplies.Count > MAX_RECENT_MESSAGES)
             recentAssistantReplies.RemoveAt(0);
@@ -1957,7 +1957,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         _isRestoringCloudHistory = true;
 
         mChatMessageList = snapshot.messages ?? new List<ChatMessageData>();
-        mApiMessageHistory = snapshot.apiMessages ?? new List<DeepSeekAPI.Message>();
+        mApiMessageHistory = snapshot.apiMessages ?? new List<DashScopeAPI.Message>();
         activeReadingId = snapshot.activeReadingId ?? "";
         activeReadingState = snapshot.activeReadingState ?? "";
         activeActionKind = snapshot.activeActionKind ?? "";
@@ -2088,13 +2088,13 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     /// <summary>
     /// 获取用于 API 请求的消息历史（包含系统提示词）
     /// </summary>
-    public List<DeepSeekAPI.Message> GetApiMessagesWithSystemPrompt()
+    public List<DashScopeAPI.Message> GetApiMessagesWithSystemPrompt()
     {
-        List<DeepSeekAPI.Message> messages = new List<DeepSeekAPI.Message>();
-        messages.Add(new DeepSeekAPI.Message("system", GetCurrentSystemPrompt()));
+        List<DashScopeAPI.Message> messages = new List<DashScopeAPI.Message>();
+        messages.Add(new DashScopeAPI.Message("system", GetCurrentSystemPrompt()));
         if (!string.IsNullOrWhiteSpace(activeFriendContext))
         {
-            messages.Add(new DeepSeekAPI.Message("system",
+            messages.Add(new DashScopeAPI.Message("system",
                 "当前对话已 @ 好友。下面是仅供推理使用的好友上下文，请结合用户的问题自然回复，不要逐字复述这些资料。\n"
                 + activeFriendContext));
         }
@@ -2103,12 +2103,12 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         return messages;
     }
 
-    private void AppendActiveChatContextSystemMessage(List<DeepSeekAPI.Message> messages)
+    private void AppendActiveChatContextSystemMessage(List<DashScopeAPI.Message> messages)
     {
         string contextBlock = BuildChatContextPromptBlock(GetPromptContextSnapshot());
         if (string.IsNullOrWhiteSpace(contextBlock)) return;
 
-        messages.Add(new DeepSeekAPI.Message("system",
+        messages.Add(new DashScopeAPI.Message("system",
             "【当前用户带入上下文】\n"
             + "这些信息是本轮对话的背景，不是用户原文。请结合用户问题自然使用：短、直接、具体；不要机械复述标签；普通聊天不必每句都讲牌。\n"
             + contextBlock));
@@ -2190,7 +2190,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     /// 使用 OracleRuntime ContextAssembler 构建消息列表
     /// 替换旧的简单 system prompt，使用 fari 原版的 5 段结构化提示词 + 对话历史
     /// </summary>
-    private List<DeepSeekAPI.Message> GetOracleAssembledMessages(string userMessage)
+    private List<DashScopeAPI.Message> GetOracleAssembledMessages(string userMessage)
     {
         MemorySource promptMemorySource = GetMemorySourceForPrompt();
         // 构建 ChatPayload
@@ -2202,13 +2202,13 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             payload, promptMemorySource, readingLock);
         lastAssemblyResult = assemblyResult;
 
-        var messages = new List<DeepSeekAPI.Message>();
+        var messages = new List<DashScopeAPI.Message>();
 
         if (assemblyResult?.messages != null)
         {
             foreach (var cm in assemblyResult.messages)
             {
-                messages.Add(new DeepSeekAPI.Message(cm.role, cm.content));
+                messages.Add(new DashScopeAPI.Message(cm.role, cm.content));
             }
             AppendActiveChatContextSystemMessage(messages);
             AppendStructuredDivinationOutputContract(messages);
@@ -2226,7 +2226,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         return messages;
     }
 
-    private void AppendStructuredDivinationOutputContract(List<DeepSeekAPI.Message> messages)
+    private void AppendStructuredDivinationOutputContract(List<DashScopeAPI.Message> messages)
     {
         if (!ShouldRequestStructuredDivinationReply()) return;
 
@@ -2239,7 +2239,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
             + "\"adviceContent\":\"详情页行动建议，2到4条，可用换行分隔\","
             + "\"topics\":[\"适合继续追问的问题1？\",\"适合继续追问的问题2？\",\"适合继续追问的问题3？\"]}");
 
-        messages.Add(new DeepSeekAPI.Message("system",
+        messages.Add(new DashScopeAPI.Message("system",
             "本轮是在完成已锁定牌阵的完整解读。请只返回严格 JSON，不要 Markdown，不要代码块，不要额外解释。"
             + "必须符合下面 JSON Schema：\n"
             + schema));
@@ -2552,11 +2552,11 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         if (assembly?.messages == null || assembly.messages.Count == 0)
             return;
 
-        var messages = new List<DeepSeekAPI.Message>();
+        var messages = new List<DashScopeAPI.Message>();
         foreach (var cm in assembly.messages)
-            messages.Add(new DeepSeekAPI.Message(cm.role, cm.content));
+            messages.Add(new DashScopeAPI.Message(cm.role, cm.content));
 
-        deepSeekAPI.SendChatRequest(messages,
+        dashScopeAPI.SendChatRequest(messages,
             (response) =>
             {
                 if (assembly.promptRecord != null)
@@ -2847,7 +2847,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     /// </summary>
     public void SendMessageToAI(System.Action<string> onSuccess, System.Action<string> onError)
     {
-        List<DeepSeekAPI.Message> messages;
+        List<DashScopeAPI.Message> messages;
 
         if (useOracleRuntime)
         {
@@ -2865,7 +2865,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         string replyJobId = CreateDialogueReplyJobId();
         QueueDialogueReplyJob(replyJobId, messages, () =>
         {
-            deepSeekAPI.SendChatRequest(messages,
+            dashScopeAPI.SendChatRequest(messages,
                 (aiResponse) =>
                 {
                     var guardedOutput = ApplyOutputGuard(aiResponse);
@@ -2886,7 +2886,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         return Guid.NewGuid().ToString("N");
     }
 
-    private void QueueDialogueReplyJob(string replyJobId, List<DeepSeekAPI.Message> messages, Action onReady)
+    private void QueueDialogueReplyJob(string replyJobId, List<DashScopeAPI.Message> messages, Action onReady)
     {
         DialogHistoryFirestore store = DialogHistoryFirestore.Instance;
         if (store == null || string.IsNullOrWhiteSpace(replyJobId) || messages == null || messages.Count == 0)
@@ -2931,7 +2931,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
     {
         lastClientActionRequest = null;
         streamingClientActionMessageIndex = -1;
-        List<DeepSeekAPI.Message> messages;
+        List<DashScopeAPI.Message> messages;
 
         if (useOracleRuntime)
         {
@@ -2952,7 +2952,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         string replyJobId = CreateDialogueReplyJobId();
         QueueDialogueReplyJob(replyJobId, messages, () =>
         {
-            deepSeekAPI.SendChatRequestStream(messages,
+            dashScopeAPI.SendChatRequestStream(messages,
                 (chunk) =>
                 {
                     AppendToStreamingMessage(streamingMessageIndex, chunk);
@@ -3054,7 +3054,7 @@ public class DialogSystem : MonoSingleton<DialogSystem>
         ApplyOracleRuntimeMetadata(mChatMessageList[messageIndex], lastAssemblyResult?.promptRecord);
 
         // 加入 API 历史
-        mApiMessageHistory.Add(new DeepSeekAPI.Message("assistant", fullContent));
+        mApiMessageHistory.Add(new DashScopeAPI.Message("assistant", fullContent));
 
         // 追踪最近 AI 回复
         recentAssistantReplies.Add(fullContent);

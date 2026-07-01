@@ -1763,46 +1763,55 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 foreach (DocumentSnapshot _ in task.Result.Documents)
                     friendDocCount++;
 
-                FriendDataManager.Instance.BeginCloudRealFriendRefresh();
-                FriendDataManager.Instance.RemoveLocalDebugRealFriends();
-                Debug.Log($"[FirestoreManager] 拉取好友成功: localUid={currentUid}, authUid={GetFirebaseAuthUid()}, count={friendDocCount}");
-
-                foreach (DocumentSnapshot doc in task.Result.Documents)
+                FriendDataManager friendDataManager = FriendDataManager.Instance;
+                friendDataManager.BeginBatchUpdate();
+                try
                 {
-                    if (!doc.Exists) continue;
+                    friendDataManager.BeginCloudRealFriendRefresh();
+                    friendDataManager.RemoveLocalDebugRealFriends();
+                    Debug.Log($"[FirestoreManager] 拉取好友成功: localUid={currentUid}, authUid={GetFirebaseAuthUid()}, count={friendDocCount}");
 
-                    if (IsRealFriendPendingRemoval(doc.Id))
+                    foreach (DocumentSnapshot doc in task.Result.Documents)
                     {
-                        FriendDataManager.Instance.RemoveRealFriendByFirebaseUid(doc.Id);
-                        continue;
+                        if (!doc.Exists) continue;
+
+                        if (IsRealFriendPendingRemoval(doc.Id))
+                        {
+                            friendDataManager.RemoveRealFriendByFirebaseUid(doc.Id);
+                            continue;
+                        }
+
+                        Dictionary<string, object> data = doc.ToDictionary();
+                        string status = GetString(data, "status", "friend");
+                        if (status != "friend")
+                        {
+                            friendDataManager.RemoveRealFriendByFirebaseUid(doc.Id);
+                            continue;
+                        }
+
+                        string displayName = GetString(data, "displayName", "未命名用户");
+                        string email = GetString(data, "email", string.Empty);
+                        string photoUrl = GetString(data, "photoUrl", string.Empty);
+                        string handle = string.IsNullOrEmpty(email) ? $"@{doc.Id}" : $"@{email.Split('@')[0]}";
+                        long lastLoginUnixMs = GetPresenceUnixMs(data);
+                        bool isOnline = ResolvePresenceOnline(data, lastLoginUnixMs);
+
+                        friendDataManager.UpsertRealFriendFromFirebase(
+                            doc.Id,
+                            displayName,
+                            handle,
+                            GetFriendStatusText(status),
+                            null,
+                            "Firebase",
+                            photoUrl,
+                            isOnline,
+                            lastLoginUnixMs);
+                        LoadFriendPublicProfile(doc.Id, displayName, handle, photoUrl, lastLoginUnixMs);
                     }
-
-                    Dictionary<string, object> data = doc.ToDictionary();
-                    string status = GetString(data, "status", "friend");
-                    if (status != "friend")
-                    {
-                        FriendDataManager.Instance.RemoveRealFriendByFirebaseUid(doc.Id);
-                        continue;
-                    }
-
-                    string displayName = GetString(data, "displayName", "未命名用户");
-                    string email = GetString(data, "email", string.Empty);
-                    string photoUrl = GetString(data, "photoUrl", string.Empty);
-                    string handle = string.IsNullOrEmpty(email) ? $"@{doc.Id}" : $"@{email.Split('@')[0]}";
-                    long lastLoginUnixMs = GetPresenceUnixMs(data);
-                    bool isOnline = ResolvePresenceOnline(data, lastLoginUnixMs);
-
-                    FriendDataManager.Instance.UpsertRealFriendFromFirebase(
-                        doc.Id,
-                        displayName,
-                        handle,
-                        GetFriendStatusText(status),
-                        null,
-                        "Firebase",
-                        photoUrl,
-                        isOnline,
-                        lastLoginUnixMs);
-                    LoadFriendPublicProfile(doc.Id, displayName, handle, photoUrl, lastLoginUnixMs);
+                }
+                finally
+                {
+                    friendDataManager.EndBatchUpdate();
                 }
 
                 onComplete?.Invoke(true);
@@ -2085,17 +2094,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 }
 
                 Dictionary<string, object> data = task.Result.ToDictionary();
-                onComplete?.Invoke(new UserSearchResult
-                {
-                    uid = uid,
-                    displayName = GetString(data, "displayName", "未命名用户"),
-                    email = GetString(data, "email", string.Empty),
-                    photoUrl = GetString(data, "photoUrl", string.Empty),
-                    birthday = GetString(data, "birthday", string.Empty),
-                    birthTime = GetString(data, "birthTime", string.Empty),
-                    city = GetString(data, "city", string.Empty),
-                    isSelf = uid == UserDataManager.Instance.FirebaseUid
-                });
+                onComplete?.Invoke(BuildUserSearchResultFromPublicProfile(uid, data, UserDataManager.Instance.FirebaseUid));
             });
     }
 
@@ -2345,27 +2344,36 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                     return;
                 }
 
-                FriendDataManager.Instance.BeginCloudVirtualFriendRefresh();
-                foreach (DocumentSnapshot doc in task.Result.Documents)
+                FriendDataManager friendDataManager = FriendDataManager.Instance;
+                friendDataManager.BeginBatchUpdate();
+                try
                 {
-                    if (!doc.Exists) continue;
-                    if (IsVirtualFriendPendingSave(doc.Id) || IsVirtualFriendPendingDelete(doc.Id)) continue;
+                    friendDataManager.BeginCloudVirtualFriendRefresh();
+                    foreach (DocumentSnapshot doc in task.Result.Documents)
+                    {
+                        if (!doc.Exists) continue;
+                        if (IsVirtualFriendPendingSave(doc.Id) || IsVirtualFriendPendingDelete(doc.Id)) continue;
 
-                    Dictionary<string, object> data = doc.ToDictionary();
-                    if (GetBool(data, "isDeleted", false)) continue;
+                        Dictionary<string, object> data = doc.ToDictionary();
+                        if (GetBool(data, "isDeleted", false)) continue;
 
-                    FriendDataManager.Instance.UpsertVirtualFriendFromFirebase(
-                        doc.Id,
-                        GetString(data, "name", "未命名好友"),
-                        GetString(data, "relationship", "好友"),
-                        GetString(data, "birthday", string.Empty),
-                        GetString(data, "birthTime", string.Empty),
-                        GetString(data, "city", string.Empty),
-                        GetString(data, "notes", string.Empty),
-                        null,
-                        GetString(data, "avatarUrl", string.Empty),
-                        GetString(data, "avatarStoragePath", string.Empty),
-                        GetLong(data, "lastOperatedUnixMs", GetUnixMs(data, "updatedAt")));
+                        friendDataManager.UpsertVirtualFriendFromFirebase(
+                            doc.Id,
+                            GetString(data, "name", "未命名好友"),
+                            GetString(data, "relationship", "好友"),
+                            GetString(data, "birthday", string.Empty),
+                            GetString(data, "birthTime", string.Empty),
+                            GetString(data, "city", string.Empty),
+                            GetString(data, "notes", string.Empty),
+                            null,
+                            GetString(data, "avatarUrl", string.Empty),
+                            GetString(data, "avatarStoragePath", string.Empty),
+                            GetLong(data, "lastOperatedUnixMs", GetUnixMs(data, "updatedAt")));
+                    }
+                }
+                finally
+                {
+                    friendDataManager.EndBatchUpdate();
                 }
 
                 onComplete?.Invoke(true);
@@ -2950,6 +2958,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                     return;
                 }
 
+                SavePublicProfile();
                 onComplete?.Invoke(true);
             });
     }
@@ -3433,6 +3442,11 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         long nowUnixMs)
     {
         profile ??= new UserProfileData();
+        DailyDivinationSyncSettings syncSettings = DailyDivinationSyncSettingsManager.Instance != null
+            ? DailyDivinationSyncSettingsManager.Instance.GetSettings()
+            : new DailyDivinationSyncSettings();
+        bool basicInfoVisible = syncSettings.ShouldPublishToFeed;
+        string profileVisibility = syncSettings.VisibilityKey;
 
         return new Dictionary<string, object>
         {
@@ -3445,6 +3459,11 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             { "photoUrl", profile.photoUrl ?? string.Empty },
             { "avatarStoragePath", profile.avatarStoragePath ?? string.Empty },
             { "bio", profile.profileBio ?? string.Empty },
+            { "basicInfoVisible", basicInfoVisible },
+            { "profileVisibility", profileVisibility },
+            { "birthday", basicInfoVisible ? profile.birthday ?? string.Empty : string.Empty },
+            { "birthTime", basicInfoVisible ? profile.birthTime ?? string.Empty : string.Empty },
+            { "city", basicInfoVisible ? profile.city ?? string.Empty : string.Empty },
             { "facebookProviderId", facebookProviderId ?? string.Empty },
             { "isOnline", true },
             { "lastActiveUnixMs", nowUnixMs },
@@ -3759,34 +3778,43 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                     return;
                 }
 
-                FriendDataManager.Instance.RemoveLocalDebugRealFriends();
-                FriendDataManager.Instance.BeginCloudRealFriendRefresh();
-                foreach (EditorRestFriendRecord record in result.records)
+                FriendDataManager friendDataManager = FriendDataManager.Instance;
+                friendDataManager.BeginBatchUpdate();
+                try
                 {
-                    if (record == null || string.IsNullOrEmpty(record.uid)) continue;
-                    if (IsRealFriendPendingRemoval(record.uid))
+                    friendDataManager.RemoveLocalDebugRealFriends();
+                    friendDataManager.BeginCloudRealFriendRefresh();
+                    foreach (EditorRestFriendRecord record in result.records)
                     {
-                        FriendDataManager.Instance.RemoveRealFriendByFirebaseUid(record.uid);
-                        continue;
-                    }
+                        if (record == null || string.IsNullOrEmpty(record.uid)) continue;
+                        if (IsRealFriendPendingRemoval(record.uid))
+                        {
+                            friendDataManager.RemoveRealFriendByFirebaseUid(record.uid);
+                            continue;
+                        }
 
-                    if (record.status != "friend")
-                    {
-                        FriendDataManager.Instance.RemoveRealFriendByFirebaseUid(record.uid);
-                        continue;
-                    }
+                        if (record.status != "friend")
+                        {
+                            friendDataManager.RemoveRealFriendByFirebaseUid(record.uid);
+                            continue;
+                        }
 
-                    string handle = string.IsNullOrEmpty(record.email) ? $"@{record.uid}" : $"@{record.email.Split('@')[0]}";
-                    FriendDataManager.Instance.UpsertRealFriendFromFirebase(
-                        record.uid,
-                        string.IsNullOrEmpty(record.displayName) ? "未命名用户" : record.displayName,
-                        handle,
-                        record.isOnline ? "online" : "offline",
-                        null,
-                        "Firebase",
-                        record.photoUrl,
-                        record.isOnline,
-                        record.lastActiveUnixMs);
+                        string handle = string.IsNullOrEmpty(record.email) ? $"@{record.uid}" : $"@{record.email.Split('@')[0]}";
+                        friendDataManager.UpsertRealFriendFromFirebase(
+                            record.uid,
+                            string.IsNullOrEmpty(record.displayName) ? "未命名用户" : record.displayName,
+                            handle,
+                            record.isOnline ? "online" : "offline",
+                            null,
+                            "Firebase",
+                            record.photoUrl,
+                            record.isOnline,
+                            record.lastActiveUnixMs);
+                    }
+                }
+                finally
+                {
+                    friendDataManager.EndBatchUpdate();
                 }
 
                 Debug.Log($"[FirestoreManager] Editor REST 好友读取成功，来源={result.proxyLabel}，数量={result.records.Count}");
@@ -3858,24 +3886,33 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                     return;
                 }
 
-                FriendDataManager.Instance.BeginCloudVirtualFriendRefresh();
-                foreach (EditorRestVirtualFriendRecord record in result.records)
+                FriendDataManager friendDataManager = FriendDataManager.Instance;
+                friendDataManager.BeginBatchUpdate();
+                try
                 {
-                    if (record == null || string.IsNullOrEmpty(record.id) || record.isDeleted) continue;
-                    if (IsVirtualFriendPendingSave(record.id) || IsVirtualFriendPendingDelete(record.id)) continue;
+                    friendDataManager.BeginCloudVirtualFriendRefresh();
+                    foreach (EditorRestVirtualFriendRecord record in result.records)
+                    {
+                        if (record == null || string.IsNullOrEmpty(record.id) || record.isDeleted) continue;
+                        if (IsVirtualFriendPendingSave(record.id) || IsVirtualFriendPendingDelete(record.id)) continue;
 
-                    FriendDataManager.Instance.UpsertVirtualFriendFromFirebase(
-                        record.id,
-                        string.IsNullOrEmpty(record.name) ? "未命名好友" : record.name,
-                        string.IsNullOrEmpty(record.relationship) ? "好友" : record.relationship,
-                        record.birthday,
-                        record.birthTime,
-                        record.city,
-                        record.notes,
-                        null,
-                        record.avatarUrl,
-                        record.avatarStoragePath,
-                        record.lastOperatedUnixMs);
+                        friendDataManager.UpsertVirtualFriendFromFirebase(
+                            record.id,
+                            string.IsNullOrEmpty(record.name) ? "未命名好友" : record.name,
+                            string.IsNullOrEmpty(record.relationship) ? "好友" : record.relationship,
+                            record.birthday,
+                            record.birthTime,
+                            record.city,
+                            record.notes,
+                            null,
+                            record.avatarUrl,
+                            record.avatarStoragePath,
+                            record.lastOperatedUnixMs);
+                    }
+                }
+                finally
+                {
+                    friendDataManager.EndBatchUpdate();
                 }
 
                 Debug.Log($"[FirestoreManager] Editor REST 虚拟好友读取成功，来源={result.proxyLabel}，数量={result.records.Count}");
@@ -4511,18 +4548,56 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 continue;
             }
 
-            results.Add(new UserSearchResult
-            {
-                uid = uid,
-                displayName = displayName,
-                email = email,
-                photoUrl = GetRestString(fields, "photoUrl", string.Empty),
-                birthday = GetRestString(fields, "birthday", string.Empty),
-                birthTime = GetRestString(fields, "birthTime", string.Empty),
-                city = GetRestString(fields, "city", string.Empty),
-                isSelf = uid == currentUid,
-            });
+            results.Add(BuildUserSearchResultFromRestPublicProfile(uid, fields, currentUid, displayName, email));
         }
+    }
+
+    private static UserSearchResult BuildUserSearchResultFromRestPublicProfile(
+        string uid,
+        JObject fields,
+        string currentUid,
+        string displayName = "",
+        string email = "")
+    {
+        bool hasBasicInfoVisibility = HasRestPublicBasicInfoVisibility(fields);
+        bool basicInfoVisible = ResolveRestPublicBasicInfoVisible(fields);
+        string profileVisibility = GetRestString(
+            fields,
+            "profileVisibility",
+            basicInfoVisible ? DailyDivinationSyncSettingsManager.ToVisibilityKey(DailyDivinationSyncVisibility.AllFriends) : DailyDivinationSyncSettingsManager.ToVisibilityKey(DailyDivinationSyncVisibility.OnlyMe));
+
+        return new UserSearchResult
+        {
+            uid = uid,
+            displayName = string.IsNullOrWhiteSpace(displayName) ? GetRestString(fields, "displayName", "未命名用户") : displayName,
+            email = string.IsNullOrWhiteSpace(email) ? GetRestString(fields, "email", string.Empty) : email,
+            photoUrl = GetRestString(fields, "photoUrl", string.Empty),
+            birthday = basicInfoVisible ? GetRestString(fields, "birthday", string.Empty) : string.Empty,
+            birthTime = basicInfoVisible ? GetRestString(fields, "birthTime", string.Empty) : string.Empty,
+            city = basicInfoVisible ? GetRestString(fields, "city", string.Empty) : string.Empty,
+            basicInfoVisible = basicInfoVisible,
+            hasBasicInfoVisibility = hasBasicInfoVisibility,
+            profileVisibility = profileVisibility,
+            isSelf = uid == currentUid,
+        };
+    }
+
+    private static bool HasRestPublicBasicInfoVisibility(JObject fields)
+    {
+        return fields != null && fields["basicInfoVisible"] != null;
+    }
+
+    private static bool ResolveRestPublicBasicInfoVisible(JObject fields)
+    {
+        if (fields == null) return false;
+        if (HasRestPublicBasicInfoVisibility(fields))
+            return GetRestBool(fields, "basicInfoVisible", false);
+
+        string visibility = GetRestString(fields, "profileVisibility", string.Empty);
+        if (!string.IsNullOrWhiteSpace(visibility))
+            return visibility != DailyDivinationSyncSettingsManager.ToVisibilityKey(DailyDivinationSyncVisibility.OnlyMe);
+
+        return false;
     }
 
     private static string ExtractDocumentId(string documentName)
@@ -4676,17 +4751,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             if (results.Exists(result => result.uid == doc.Id)) continue;
 
             Dictionary<string, object> data = doc.ToDictionary();
-            results.Add(new UserSearchResult
-            {
-                uid = doc.Id,
-                displayName = GetString(data, "displayName", "未命名用户"),
-                email = GetString(data, "email", string.Empty),
-                photoUrl = GetString(data, "photoUrl", string.Empty),
-                birthday = GetString(data, "birthday", string.Empty),
-                birthTime = GetString(data, "birthTime", string.Empty),
-                city = GetString(data, "city", string.Empty),
-                isSelf = doc.Id == currentUid,
-            });
+            results.Add(BuildUserSearchResultFromPublicProfile(doc.Id, data, currentUid));
         }
     }
 
@@ -4711,18 +4776,51 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             if (!MatchesUserSearchKeyword(displayName, displayNameLower, email, emailLower, normalizedKeyword))
                 continue;
 
-            results.Add(new UserSearchResult
-            {
-                uid = doc.Id,
-                displayName = displayName,
-                email = email,
-                photoUrl = GetString(data, "photoUrl", string.Empty),
-                birthday = GetString(data, "birthday", string.Empty),
-                birthTime = GetString(data, "birthTime", string.Empty),
-                city = GetString(data, "city", string.Empty),
-                isSelf = doc.Id == currentUid,
-            });
+            results.Add(BuildUserSearchResultFromPublicProfile(doc.Id, data, currentUid));
         }
+    }
+
+    private static UserSearchResult BuildUserSearchResultFromPublicProfile(string uid, Dictionary<string, object> data, string currentUid)
+    {
+        bool hasBasicInfoVisibility = HasPublicBasicInfoVisibility(data);
+        bool basicInfoVisible = ResolvePublicBasicInfoVisible(data);
+        string profileVisibility = GetString(
+            data,
+            "profileVisibility",
+            basicInfoVisible ? DailyDivinationSyncSettingsManager.ToVisibilityKey(DailyDivinationSyncVisibility.AllFriends) : DailyDivinationSyncSettingsManager.ToVisibilityKey(DailyDivinationSyncVisibility.OnlyMe));
+
+        return new UserSearchResult
+        {
+            uid = uid,
+            displayName = GetString(data, "displayName", "未命名用户"),
+            email = GetString(data, "email", string.Empty),
+            photoUrl = GetString(data, "photoUrl", string.Empty),
+            birthday = basicInfoVisible ? GetString(data, "birthday", string.Empty) : string.Empty,
+            birthTime = basicInfoVisible ? GetString(data, "birthTime", string.Empty) : string.Empty,
+            city = basicInfoVisible ? GetString(data, "city", string.Empty) : string.Empty,
+            basicInfoVisible = basicInfoVisible,
+            hasBasicInfoVisibility = hasBasicInfoVisibility,
+            profileVisibility = profileVisibility,
+            isSelf = uid == currentUid,
+        };
+    }
+
+    private static bool HasPublicBasicInfoVisibility(Dictionary<string, object> data)
+    {
+        return data != null && data.ContainsKey("basicInfoVisible");
+    }
+
+    private static bool ResolvePublicBasicInfoVisible(Dictionary<string, object> data)
+    {
+        if (data == null) return false;
+        if (HasPublicBasicInfoVisibility(data))
+            return GetBool(data, "basicInfoVisible", false);
+
+        string visibility = GetString(data, "profileVisibility", string.Empty);
+        if (!string.IsNullOrWhiteSpace(visibility))
+            return visibility != DailyDivinationSyncSettingsManager.ToVisibilityKey(DailyDivinationSyncVisibility.OnlyMe);
+
+        return false;
     }
 
     private static bool MatchesUserSearchKeyword(

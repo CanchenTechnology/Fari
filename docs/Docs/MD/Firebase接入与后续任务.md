@@ -76,7 +76,7 @@ paymentWebhook     支付回调入口
 Unity 客户端已改为通过 Firebase ID Token 调用后端代理：
 
 ```text
-DeepSeekAPI.cs  -> aiChat / aiChatStream
+DashScopeAPI.cs  -> aiChat / aiChatStream
 TTSManager.cs   -> ttsSynthesize
 UnlockProUI.cs  -> membershipStatus
 IapPurchaseManager.cs -> submitIapReceipt
@@ -93,7 +93,7 @@ https://console.firebase.google.com/project/fari-app-b2fd2/usage/details
 升级后先设置 Secrets。可以用环境变量一次性配置，脚本不会把密钥写入仓库：
 
 ```bash
-export DEEPSEEK_API_KEY="..."
+export DASHSCOPE_API_KEY="..."
 export VOLC_TTS_API_KEY="..."
 export APPLE_SHARED_SECRET="..."
 export GOOGLE_PACKAGE_NAME="com.company.moonly"
@@ -109,7 +109,7 @@ MOONLY_PROXY='http://[::1]:7897' MOONLY_ALL_PROXY=socks5://127.0.0.1:10808 ./scr
 也可以继续手动逐个设置：
 
 ```bash
-HTTPS_PROXY='http://[::1]:7897' firebase functions:secrets:set DEEPSEEK_API_KEY
+HTTPS_PROXY='http://[::1]:7897' firebase functions:secrets:set DASHSCOPE_API_KEY
 HTTPS_PROXY='http://[::1]:7897' firebase functions:secrets:set VOLC_TTS_API_KEY
 ```
 
@@ -154,7 +154,7 @@ MOONLY_PROXY='http://[::1]:7897' MOONLY_ALL_PROXY=socks5://127.0.0.1:10808 ./scr
 MOONLY_BIND_ALL_SECRETS=1 ./scripts/deploy-firebase.sh
 
 # 只绑定部分已创建的远端 secrets
-MOONLY_DEPLOYED_SECRETS=DEEPSEEK_API_KEY,VOLC_TTS_API_KEY ./scripts/deploy-firebase.sh
+MOONLY_DEPLOYED_SECRETS=DASHSCOPE_API_KEY,VOLC_TTS_API_KEY ./scripts/deploy-firebase.sh
 
 # 明确想部署缺配置的函数作为 configuration-error stub 时才使用
 MOONLY_DEPLOY_INCOMPLETE_FUNCTIONS=1 ./scripts/deploy-firebase.sh
@@ -170,7 +170,7 @@ MOONLY_DEPLOY_HOSTING=1 ./scripts/deploy-firebase.sh
 
 当前已验证：Firestore Rules/Indexes 已部署；基础 Functions 已部署；`readinessStatus` 在线返回 HTTP 200。线上 Functions 列表显示 `membershipStatus`、`readinessStatus`、`publicConfig`、反馈/后台配置、`aiChat`、`aiChatStream`、`ttsSynthesize`、`paymentWebhook`、`submitIapReceipt` 均已存在；客户端 Functions authenticated smoke test 通过，`aiChat` / `ttsSynthesize` 当前返回 `HTTP 200`；`submitIapReceipt` 无 token 请求返回 401，authenticated smoke test 返回 `HTTP 202` + `pending_configuration`，说明 endpoint 已上线且能接收带 Firebase ID Token 的 receipt。客户端 Game Center 登录入口已接 Firebase `GameCenterAuthProvider.GetCredentialAsync()`，iOS 导出后处理器会自动写入 Game Center / Sign in with Apple / In-App Purchase capabilities，本地 readiness 会检查接线、provider 类型解析和后处理器配置；真实登录仍需要 iOS/tvOS 真机或模拟器、Apple Game Center 后台能力和 Firebase Auth Game Center provider 配置。`readinessStatus.secretDiagnostics` 已明确说明：未绑定给健康检查函数的 secret 会显示为 false，但客户端 smoke 通过时仍以目标函数真实调用结果为准。
 
-当前远端 Functions Secrets 状态：`DEEPSEEK_API_KEY`、`VOLC_TTS_API_KEY`、`PAYMENT_WEBHOOK_SECRET`、`GOOGLE_PACKAGE_NAME` 已存在，并已重新绑定部署到对应 Functions / readiness 检查；`APPLE_SHARED_SECRET`、`GOOGLE_SERVICE_ACCOUNT_JSON` 仍缺失，所以真实 IAP receipt 校验仍处于待配置状态。
+当前远端 Functions Secrets 状态：`DASHSCOPE_API_KEY`、`VOLC_TTS_API_KEY`、`PAYMENT_WEBHOOK_SECRET`、`GOOGLE_PACKAGE_NAME` 已存在，并已重新绑定部署到对应 Functions / readiness 检查；`APPLE_SHARED_SECRET`、`GOOGLE_SERVICE_ACCOUNT_JSON` 仍缺失，所以真实 IAP receipt 校验仍处于待配置状态。
 
 本地状态可先跑：
 
@@ -395,7 +395,7 @@ CHECK_ANDROID_BUILD=1 ./scripts/check-local-readiness.sh
 https://us-central1-fari-app-b2fd2.cloudfunctions.net/readinessStatus
 ```
 
-返回内容只包含布尔状态，不会泄露密钥值；它会报告 Firestore 是否可读、基础 Functions 是否已部署、`DEEPSEEK_API_KEY` / `VOLC_TTS_API_KEY` / Apple / Google / webhook secrets 是否已配置，以及仍需要做的外部动作。
+返回内容只包含布尔状态，不会泄露密钥值；它会报告 Firestore 是否可读、基础 Functions 是否已部署、`DASHSCOPE_API_KEY` / `VOLC_TTS_API_KEY` / Apple / Google / webhook secrets 是否已配置，以及仍需要做的外部动作。
 
 支付回调目前是安全入口骨架，要求请求带 `x-fari-signature`。签名算法为：
 
@@ -591,7 +591,7 @@ quick_reading/{oracleId}
 ## 后续建议优先级
 
 1. P0：先运行 `REPORT_ONLY=1 ./scripts/prepare-release.sh` 或 `ALLOW_RELEASE_BLOCKERS=1 ./scripts/check-release-blockers.sh`，按报告处理发版阻断项；如果 `scripts/release.env` 已填完整，可直接运行 `RELEASE_ENV_FILE=scripts/release.env ./scripts/finish-release.sh` 续跑完整发布链路。
-2. P0：补齐真实 IAP Secrets：`APPLE_SHARED_SECRET`、`GOOGLE_SERVICE_ACCOUNT_JSON`；`DEEPSEEK_API_KEY`、`VOLC_TTS_API_KEY`、`PAYMENT_WEBHOOK_SECRET`、`GOOGLE_PACKAGE_NAME` 已存在。
+2. P0：补齐真实 IAP Secrets：`APPLE_SHARED_SECRET`、`GOOGLE_SERVICE_ACCOUNT_JSON`；`DASHSCOPE_API_KEY`、`VOLC_TTS_API_KEY`、`PAYMENT_WEBHOOK_SECRET`、`GOOGLE_PACKAGE_NAME` 已存在。
 3. P0：IAP secrets 齐全后用 `MOONLY_BIND_ALL_SECRETS=1 ./scripts/deploy-firebase.sh` 或 `./scripts/deploy-iap-functions.sh` 重新部署 `submitIapReceipt`；Firestore Rules/Indexes、基础 Functions、AI/TTS/Webhook 和 readiness 已部署。
 4. P0：关闭 Unity 后重新导出 iOS Xcode 工程、重新构建 Android APK。
 5. P0：配置 App Store / Google Play 商品，用沙盒账号验证 Unity IAP 购买、恢复和真实 receipt 校验。

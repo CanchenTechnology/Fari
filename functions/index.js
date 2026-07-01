@@ -3,11 +3,13 @@
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
+const zlib = require("node:zlib");
 const admin = require("firebase-admin");
 const { onRequest } = require("firebase-functions/v2/https");
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
+const WebSocket = require("ws");
 
 admin.initializeApp();
 
@@ -22,14 +24,19 @@ const providerKeyEventBucketsCollection = db.collection("provider_key_event_buck
 const providerKeyHealthRunsCollection = db.collection("provider_key_health_runs");
 const modelUsageLogsCollection = db.collection("model_usage_logs");
 
+const DASHSCOPE_PROVIDER = "dashscope";
+const DASHSCOPE_SECRET_NAME = "DASHSCOPE_API_KEY";
+
 const ALL_SECRET_NAMES = Object.freeze([
-  "DEEPSEEK_API_KEY",
+  "DASHSCOPE_API_KEY",
   "OPENAI_API_KEY",
   "OPENAI_ADMIN_KEY",
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_ADMIN_KEY",
   "GOOGLE_GEMINI_API_KEY",
   "VOLC_TTS_API_KEY",
+  "VOICE_APP_ID",
+  "VOICE_ACCESS_KEY",
   "PAYMENT_WEBHOOK_SECRET",
   "APPLE_SHARED_SECRET",
   "GOOGLE_PACKAGE_NAME",
@@ -87,25 +94,29 @@ function optionalSecret(name) {
   };
 }
 
-const deepseekApiKey = optionalSecret("DEEPSEEK_API_KEY");
+const dashscopeApiKey = optionalSecret("DASHSCOPE_API_KEY");
 const openaiApiKey = optionalSecret("OPENAI_API_KEY");
 const openaiAdminKey = optionalSecret("OPENAI_ADMIN_KEY");
 const anthropicApiKey = optionalSecret("ANTHROPIC_API_KEY");
 const anthropicAdminKey = optionalSecret("ANTHROPIC_ADMIN_KEY");
 const googleGeminiApiKey = optionalSecret("GOOGLE_GEMINI_API_KEY");
 const volcanoTtsApiKey = optionalSecret("VOLC_TTS_API_KEY");
+const voiceAppId = optionalSecret("VOICE_APP_ID");
+const voiceAccessKey = optionalSecret("VOICE_ACCESS_KEY");
 const paymentWebhookSecret = optionalSecret("PAYMENT_WEBHOOK_SECRET");
 const appleSharedSecret = optionalSecret("APPLE_SHARED_SECRET");
 const googlePackageName = optionalSecret("GOOGLE_PACKAGE_NAME");
 const googleServiceAccountJson = defineSecret("GOOGLE_SERVICE_ACCOUNT_JSON");
 const SECRET_PARAMS = Object.freeze({
-  DEEPSEEK_API_KEY: deepseekApiKey,
+  DASHSCOPE_API_KEY: dashscopeApiKey,
   OPENAI_API_KEY: openaiApiKey,
   OPENAI_ADMIN_KEY: openaiAdminKey,
   ANTHROPIC_API_KEY: anthropicApiKey,
   ANTHROPIC_ADMIN_KEY: anthropicAdminKey,
   GOOGLE_GEMINI_API_KEY: googleGeminiApiKey,
   VOLC_TTS_API_KEY: volcanoTtsApiKey,
+  VOICE_APP_ID: voiceAppId,
+  VOICE_ACCESS_KEY: voiceAccessKey,
   PAYMENT_WEBHOOK_SECRET: paymentWebhookSecret,
   APPLE_SHARED_SECRET: appleSharedSecret,
   GOOGLE_PACKAGE_NAME: googlePackageName,
@@ -113,8 +124,8 @@ const SECRET_PARAMS = Object.freeze({
 });
 
 const MODEL_SECRET_CONFIGS = Object.freeze({
-  DEEPSEEK_API_KEY: {
-    provider: "deepseek",
+  DASHSCOPE_API_KEY: {
+    provider: "dashscope",
     label: "Aliyun DashScope API Key",
     keyKind: "api_key",
     hint: "Alibaba Cloud DashScope sk- key.",
@@ -161,10 +172,20 @@ const MODEL_SECRET_NAMES = Object.freeze(Object.keys(MODEL_SECRET_CONFIGS));
 const REGION = "us-central1";
 const FIRESTORE_TRIGGER_REGION = "asia-east2";
 const DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1";
-const DEEPSEEK_URL = `${DASHSCOPE_BASE_URL}/chat/completions`;
+const DASHSCOPE_CHAT_URL = `${DASHSCOPE_BASE_URL}/chat/completions`;
 const DASHSCOPE_MODELS_URL = `${DASHSCOPE_BASE_URL}/models`;
-const DEEPSEEK_MODEL = "deepseek-v4-pro";
-const DASHSCOPE_DEEPSEEK_MODELS = new Set(["deepseek-v4-pro", "deepseek-v4-flash"]);
+const DASHSCOPE_CHAT_MODEL = "qwen-plus";
+const DASHSCOPE_CHAT_MODELS = new Set([
+  "qwen-plus",
+  "qwen-turbo",
+  "qwen-max",
+  "qwen-long",
+  "qwen3-plus",
+  "qwen3-max",
+  "qwen3-turbo",
+  "qwen3.6-plus",
+  "qwen3.6-max",
+]);
 const OPENAI_MODELS_URL = "https://api.openai.com/v1/models";
 const OPENAI_COSTS_URL = "https://api.openai.com/v1/organization/costs";
 const ANTHROPIC_MODELS_URL = "https://api.anthropic.com/v1/models";
@@ -183,11 +204,20 @@ const PROVIDER_KEY_TEMPORARY_FAILURE_COOLDOWNS_MS = Object.freeze({
   rate_limited: 10 * 60 * 1000,
 });
 const VOLCANO_TTS_V3_URL = "https://openspeech.bytedance.com/api/v3/tts/unidirectional";
+const VOLCANO_ASR_WS_URL = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async";
+const VOLCANO_ASR_RESOURCE_ID = "volc.seedasr.sauc.duration";
+const DASHSCOPE_ASR_WS_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/inference";
+const DASHSCOPE_ASR_MODEL = "paraformer-realtime-v2";
 
 const FREE_AI_DAILY_LIMIT = 30;
 const PRO_AI_DAILY_LIMIT = 300;
 const FREE_TTS_DAILY_LIMIT = 20;
 const PRO_TTS_DAILY_LIMIT = 200;
+const FREE_ASR_DAILY_LIMIT = 40;
+const PRO_ASR_DAILY_LIMIT = 300;
+const VOICE_ASR_MAX_AUDIO_BYTES = 2 * 1024 * 1024;
+const VOICE_ASR_MIN_AUDIO_BYTES = 1600;
+const VOICE_ASR_MIN_RMS = 0.003;
 const FEEDBACK_STATUSES = new Set(["new", "triaged", "in_progress", "resolved", "closed"]);
 const DELETE_BATCH_LIMIT = 450;
 const USER_OWNED_SUBCOLLECTIONS = Object.freeze([
@@ -1469,7 +1499,7 @@ async function processDialogueReplyJobDoc(jobSnap) {
     const membership = await getMembership(uid);
     await incrementUsage(uid, "aiChat", membership.isPro ? PRO_AI_DAILY_LIMIT : FREE_AI_DAILY_LIMIT);
 
-    const response = await callDeepSeek({
+    const response = await callDashScope({
       messages,
       temperature: typeof job.temperature === "number" ? job.temperature : 0.7,
       max_tokens: Number(job.max_tokens || job.maxTokens || 2000),
@@ -1502,7 +1532,7 @@ async function processDialogueReplyJobDoc(jobSnap) {
       action: "dialogueReplyScheduler",
       endpoint: "processStaleDialogueReplyJobs",
       source: "scheduler",
-      provider: "deepseek",
+      provider: DASHSCOPE_PROVIDER,
       providerMeta: error.providerUsageMeta || error.providerAttempts?.[error.providerAttempts.length - 1] || null,
       model: normalizeAiChatModel(job?.model),
       context: getModelUsageContext({
@@ -5104,6 +5134,10 @@ function normalizePoolProvider(provider) {
   return String(provider || "").trim().toLowerCase();
 }
 
+function displayPoolProvider(provider) {
+  return String(provider || "").trim().toLowerCase();
+}
+
 function buildPoolSecretName(baseSecretName, keyId) {
   return `MOONLY_POOL_${normalizeSecretName(baseSecretName)}_${String(keyId || "").replace(/[^A-Za-z0-9_]/g, "_").toUpperCase()}`;
 }
@@ -5334,7 +5368,7 @@ async function listProviderKeyEvents(provider, keyId = "", limitValue = 30) {
 
 function buildModelUsageProviderMeta(candidate = {}) {
   return {
-    provider: normalizePoolProvider(candidate.provider || "deepseek"),
+    provider: displayPoolProvider(normalizePoolProvider(candidate.provider || DASHSCOPE_PROVIDER)),
     keyId: cleanString(candidate.id || "primary", "primary", 120),
     keyLabel: cleanString(candidate.label || candidate.id || "Primary", "Primary", 200),
     keySource: cleanString(candidate.source || "", "", 80),
@@ -5804,7 +5838,7 @@ async function resetProviderPoolKeyFailures(provider, decoded, req) {
   const resettable = docs.filter(({ data }) => ["exhausted", "invalid"].includes(String(data.status || "active")));
   if (!resettable.length) {
     return {
-      provider: normalizedProvider,
+      provider: displayPoolProvider(normalizedProvider),
       resetCount: 0,
       keyIds: [],
     };
@@ -5834,7 +5868,7 @@ async function resetProviderPoolKeyFailures(provider, decoded, req) {
   }, req);
 
   return {
-    provider: normalizedProvider,
+    provider: displayPoolProvider(normalizedProvider),
     resetCount: keyIds.length,
     keyIds,
   };
@@ -5989,11 +6023,12 @@ async function getProviderPoolSummary(provider) {
 async function createProviderPoolKey(baseSecretName, secretValue, options = {}) {
   const normalizedBaseSecretName = assertAllowedModelSecretName(baseSecretName);
   const config = MODEL_SECRET_CONFIGS[normalizedBaseSecretName];
+  const provider = normalizePoolProvider(config.provider);
   const value = validateSecretValue(secretValue);
   const keyId = crypto.randomBytes(6).toString("hex");
   const poolSecretName = buildPoolSecretName(normalizedBaseSecretName, keyId);
   const fingerprint = buildSecretFingerprint(value);
-  const existingDocs = await listProviderPoolKeyDocs(config.provider, { includeInactive: true }).catch(() => []);
+  const existingDocs = await listProviderPoolKeyDocs(provider, { includeInactive: true }).catch(() => []);
   const label = cleanString(
     options.label,
     createPoolKeyLabel(config, existingDocs.length + 1),
@@ -6005,7 +6040,7 @@ async function createProviderPoolKey(baseSecretName, secretValue, options = {}) 
 
   const result = await addSecretVersion(poolSecretName, value);
   await providerKeyPoolCollection.doc(keyId).set({
-    provider: config.provider,
+    provider,
     baseSecretName: normalizedBaseSecretName,
     secretName: poolSecretName,
     keyKind: config.keyKind,
@@ -6020,7 +6055,7 @@ async function createProviderPoolKey(baseSecretName, secretValue, options = {}) 
 
   return {
     id: keyId,
-    provider: config.provider,
+    provider,
     baseSecretName: normalizedBaseSecretName,
     label,
     status: "active",
@@ -6036,23 +6071,31 @@ async function getProviderKeyCandidates(provider, primarySecretName, primarySecr
   const normalizedProvider = normalizePoolProvider(provider);
   const selectedKeyId = await getProviderSelectedKeyId(normalizedProvider);
   const now = Date.now();
-  const primaryValue = await getRuntimeSecretValue(primarySecretName, primarySecretParam, {
-    forceRefresh: options.forceRefresh === true,
-  });
-  if (primaryValue) {
-    candidates.push({
-      id: "primary",
-      source: "primary",
-      label: "Primary SK",
-      provider,
-      baseSecretName: primarySecretName,
-      secretName: primarySecretName,
-      value: primaryValue,
-      priority: 0,
-      selected: selectedKeyId === "primary",
-      coolingDown: false,
-      cooldownUntilMillis: 0,
+  const primaryBindings = [
+    { secretName: primarySecretName, secretParam: primarySecretParam },
+    ...(Array.isArray(options.alternatePrimarySecrets) ? options.alternatePrimarySecrets : []),
+  ].filter((binding) => binding.secretName && binding.secretParam);
+
+  for (const binding of primaryBindings) {
+    const primaryValue = await getRuntimeSecretValue(binding.secretName, binding.secretParam, {
+      forceRefresh: options.forceRefresh === true,
     });
+    if (primaryValue) {
+      candidates.push({
+        id: "primary",
+        source: "primary",
+        label: "Primary SK",
+        provider,
+        baseSecretName: binding.secretName,
+        secretName: binding.secretName,
+        value: primaryValue,
+        priority: 0,
+        selected: selectedKeyId === "primary",
+        coolingDown: false,
+        cooldownUntilMillis: 0,
+      });
+      break;
+    }
   }
 
   const docs = await listProviderPoolKeyDocs(normalizedProvider, {
@@ -6096,7 +6139,7 @@ async function getProviderKeyCandidates(provider, primarySecretName, primarySecr
 
 function getProviderPrimarySecretBinding(provider) {
   const normalizedProvider = normalizePoolProvider(provider);
-  if (normalizedProvider === "deepseek") return ["DEEPSEEK_API_KEY", deepseekApiKey];
+  if (normalizedProvider === DASHSCOPE_PROVIDER) return [DASHSCOPE_SECRET_NAME, dashscopeApiKey];
   if (normalizedProvider === "openai") return ["OPENAI_API_KEY", openaiApiKey];
   if (normalizedProvider === "anthropic") return ["ANTHROPIC_API_KEY", anthropicApiKey];
   if (normalizedProvider === "google_gemini") return ["GOOGLE_GEMINI_API_KEY", googleGeminiApiKey];
@@ -6236,13 +6279,15 @@ async function attachProviderKeyPool(providerStatus, primarySecretName, primaryS
 
 function buildSecretReadiness() {
   return {
-    deepseekApiKey: Boolean(getOptionalSecret(deepseekApiKey)),
+    dashscopeApiKey: Boolean(getOptionalSecret(dashscopeApiKey)),
     openaiApiKey: Boolean(getOptionalSecret(openaiApiKey)),
     openaiAdminKey: Boolean(getOptionalSecret(openaiAdminKey)),
     anthropicApiKey: Boolean(getOptionalSecret(anthropicApiKey)),
     anthropicAdminKey: Boolean(getOptionalSecret(anthropicAdminKey)),
     googleGeminiApiKey: Boolean(getOptionalSecret(googleGeminiApiKey)),
     volcanoTtsApiKey: Boolean(getOptionalSecret(volcanoTtsApiKey)),
+    voiceAppId: Boolean(getOptionalSecret(voiceAppId)),
+    voiceAccessKey: Boolean(getOptionalSecret(voiceAccessKey)),
     paymentWebhookSecret: Boolean(getOptionalSecret(paymentWebhookSecret)),
     appleSharedSecret: Boolean(getOptionalSecret(appleSharedSecret)),
     googlePackageName: Boolean(getOptionalSecret(googlePackageName)),
@@ -6252,13 +6297,15 @@ function buildSecretReadiness() {
 
 function buildSecretDiagnostics(secrets) {
   const inspectedSecrets = [
-    secrets.deepseekApiKey ? "DEEPSEEK_API_KEY" : "",
+    getOptionalSecret(dashscopeApiKey) ? "DASHSCOPE_API_KEY" : "",
     secrets.openaiApiKey ? "OPENAI_API_KEY" : "",
     secrets.openaiAdminKey ? "OPENAI_ADMIN_KEY" : "",
     secrets.anthropicApiKey ? "ANTHROPIC_API_KEY" : "",
     secrets.anthropicAdminKey ? "ANTHROPIC_ADMIN_KEY" : "",
     secrets.googleGeminiApiKey ? "GOOGLE_GEMINI_API_KEY" : "",
     secrets.volcanoTtsApiKey ? "VOLC_TTS_API_KEY" : "",
+    secrets.voiceAppId ? "VOICE_APP_ID" : "",
+    secrets.voiceAccessKey ? "VOICE_ACCESS_KEY" : "",
     secrets.paymentWebhookSecret ? "PAYMENT_WEBHOOK_SECRET" : "",
     secrets.appleSharedSecret ? "APPLE_SHARED_SECRET" : "",
     secrets.googlePackageName ? "GOOGLE_PACKAGE_NAME" : "",
@@ -6286,11 +6333,14 @@ function buildReadinessActions(secrets, firestoreOk, publicConfigReadiness) {
   if (publicConfigReadiness?.missingPriceLabels?.length) {
     actions.push(`Set optional IAP price labels in app_config/public for display polish: ${publicConfigReadiness.missingPriceLabels.join(", ")}.`);
   }
-  if (!secrets.deepseekApiKey) {
-    actions.push("Set DEEPSEEK_API_KEY with an Aliyun DashScope key for aiChat / aiChatStream.");
+  if (!secrets.dashscopeApiKey) {
+    actions.push("Set DASHSCOPE_API_KEY with an Aliyun DashScope key for aiChat / aiChatStream.");
   }
   if (!secrets.volcanoTtsApiKey) {
     actions.push("Set VOLC_TTS_API_KEY for ttsSynthesize.");
+  }
+  if ((!secrets.voiceAppId || !secrets.voiceAccessKey) && !secrets.dashscopeApiKey) {
+    actions.push("Set VOICE_APP_ID and VOICE_ACCESS_KEY, or set DASHSCOPE_API_KEY for voiceAsrTranscribe fallback.");
   }
   if (!secrets.appleSharedSecret) {
     actions.push("Set APPLE_SHARED_SECRET for App Store receipt verification.");
@@ -6944,11 +6994,11 @@ function buildFallbackExpiry(productId) {
 function normalizeAiChatModel(model) {
   const normalized = cleanString(model, "", 120);
   const lower = normalized.toLowerCase();
-  if (DASHSCOPE_DEEPSEEK_MODELS.has(lower)) return lower;
-  return DEEPSEEK_MODEL;
+  if (DASHSCOPE_CHAT_MODELS.has(lower)) return lower;
+  return DASHSCOPE_CHAT_MODEL;
 }
 
-async function callDeepSeek(body, stream) {
+async function callDashScope(body, stream) {
   const messages = sanitizeMessages(body.messages);
   if (messages.length === 0) {
     const err = new Error("messages is required");
@@ -6964,10 +7014,10 @@ async function callDeepSeek(body, stream) {
     stream,
   };
 
-  const candidates = await getProviderKeyCandidates("deepseek", "DEEPSEEK_API_KEY", deepseekApiKey, {
+  const candidates = await getProviderKeyCandidates(DASHSCOPE_PROVIDER, DASHSCOPE_SECRET_NAME, dashscopeApiKey, {
     forceRefresh: true,
   });
-  if (!candidates.length) throw new Error("DEEPSEEK_API_KEY is not configured for DashScope");
+  if (!candidates.length) throw new Error("DASHSCOPE_API_KEY is not configured for DashScope");
 
   const failures = [];
   const failureHttpStatuses = [];
@@ -6976,7 +7026,7 @@ async function callDeepSeek(body, stream) {
     const providerMeta = buildModelUsageProviderMeta(candidate);
     let response = null;
     try {
-      response = await fetch(DEEPSEEK_URL, {
+      response = await fetch(DASHSCOPE_CHAT_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -7005,7 +7055,7 @@ async function callDeepSeek(body, stream) {
     if (response.ok) {
       await markPoolKeySuccess(candidate);
       if (!candidate.selected) {
-        await autoSelectProviderKey("deepseek", candidate.id, "chat_fallback_success");
+        await autoSelectProviderKey(DASHSCOPE_PROVIDER, candidate.id, "chat_fallback_success");
       }
       response.modelUsageMeta = {
         ...providerMeta,
@@ -7055,7 +7105,7 @@ function getAggregateProviderFailureStatus(statuses = []) {
   return codes[0] || 500;
 }
 
-async function checkDeepSeekCandidateBalance(candidate) {
+async function checkDashScopeCandidateBalance(candidate) {
   try {
     const response = await fetch(DASHSCOPE_MODELS_URL, {
       method: "GET",
@@ -7272,7 +7322,7 @@ async function checkVolcanoTtsKeyCandidate(candidate) {
 }
 
 async function checkProviderKeyCandidate(candidate) {
-  if (candidate.provider === "deepseek") return checkDeepSeekCandidateBalance(candidate);
+  if (normalizePoolProvider(candidate.provider) === DASHSCOPE_PROVIDER) return checkDashScopeCandidateBalance(candidate);
   if (candidate.provider === "openai") return checkOpenAIKeyCandidate(candidate);
   if (candidate.provider === "anthropic") return checkAnthropicKeyCandidate(candidate);
   if (candidate.provider === "google_gemini") return checkGeminiKeyCandidate(candidate);
@@ -7480,25 +7530,25 @@ async function cleanupProviderKeyMaintenanceData() {
   };
 }
 
-async function checkDeepSeekBalance() {
-  const keyPool = await getProviderPoolSummary("deepseek");
-  const candidates = await getProviderKeyCandidates("deepseek", "DEEPSEEK_API_KEY", deepseekApiKey, {
+async function checkDashScopeBalance() {
+  const keyPool = await getProviderPoolSummary(DASHSCOPE_PROVIDER);
+  const candidates = await getProviderKeyCandidates(DASHSCOPE_PROVIDER, DASHSCOPE_SECRET_NAME, dashscopeApiKey, {
     forceRefresh: true,
   });
   if (!candidates.length) {
     return {
-      ...buildMissingProvider("deepseek", "Aliyun DashScope", "llm", "DEEPSEEK_API_KEY", false),
+      ...buildMissingProvider(DASHSCOPE_PROVIDER, "Aliyun DashScope", "llm", DASHSCOPE_SECRET_NAME, false),
       keyPool,
     };
   }
 
-  const keyChecks = await Promise.all(candidates.map(checkDeepSeekCandidateBalance));
+  const keyChecks = await Promise.all(candidates.map(checkDashScopeCandidateBalance));
   const available = keyChecks.find((item) => item.ok) || null;
   const first = keyChecks[0] || {};
   let selectedKeyId = keyPool.selectedKeyId || "primary";
   let autoSwitch = null;
   if (available && available.keyId !== selectedKeyId) {
-    autoSwitch = await autoSelectProviderKey("deepseek", available.keyId, "balance_check_available");
+    autoSwitch = await autoSelectProviderKey(DASHSCOPE_PROVIDER, available.keyId, "balance_check_available");
     selectedKeyId = available.keyId;
   }
   const poolById = new Map(keyPool.keys.map((key) => [key.id, key]));
@@ -7511,13 +7561,13 @@ async function checkDeepSeekBalance() {
     enrichedPoolKeys.push({
       id: "primary",
       source: "primary",
-      provider: "deepseek",
-      baseSecretName: "DEEPSEEK_API_KEY",
+      provider: DASHSCOPE_PROVIDER,
+      baseSecretName: primaryCheck.baseSecretName || DASHSCOPE_SECRET_NAME,
       label: "主 SK",
       status: primaryCheck.status,
       ok: primaryCheck.ok,
       selected: selectedKeyId === "primary",
-      stats: statsByKeyId.primary || emptyProviderKeyStats("deepseek", "primary"),
+      stats: statsByKeyId.primary || emptyProviderKeyStats(DASHSCOPE_PROVIDER, "primary"),
       totalBalance: null,
       balanceInfos: [],
       modelCount: primaryCheck.modelCount || 0,
@@ -7536,7 +7586,7 @@ async function checkDeepSeekBalance() {
       status: check?.status || key.status || "active",
       ok: check?.ok === true,
       selected: key.id === selectedKeyId,
-      stats: statsByKeyId[key.id] || emptyProviderKeyStats("deepseek", key.id),
+      stats: statsByKeyId[key.id] || emptyProviderKeyStats(DASHSCOPE_PROVIDER, key.id),
       totalBalance: null,
       balanceInfos: [],
       modelCount: check?.modelCount || key.modelCount || 0,
@@ -7552,13 +7602,13 @@ async function checkDeepSeekBalance() {
     enrichedPoolKeys.push({
       id: check.keyId,
       source: check.source || "pool",
-      provider: "deepseek",
-      baseSecretName: "DEEPSEEK_API_KEY",
+      provider: DASHSCOPE_PROVIDER,
+      baseSecretName: check.baseSecretName || DASHSCOPE_SECRET_NAME,
       label: check.label || check.keyId,
       status: check.status,
       ok: check.ok,
       selected: check.keyId === selectedKeyId,
-      stats: statsByKeyId[check.keyId] || emptyProviderKeyStats("deepseek", check.keyId),
+      stats: statsByKeyId[check.keyId] || emptyProviderKeyStats(DASHSCOPE_PROVIDER, check.keyId),
       totalBalance: null,
       balanceInfos: [],
       modelCount: check.modelCount || 0,
@@ -7570,7 +7620,7 @@ async function checkDeepSeekBalance() {
   }
 
   return {
-    provider: "deepseek",
+    provider: DASHSCOPE_PROVIDER,
     label: "Aliyun DashScope",
     kind: "llm",
     configured: true,
@@ -7583,7 +7633,7 @@ async function checkDeepSeekBalance() {
     totalBalance: null,
     modelCount: available?.modelCount || first.modelCount || 0,
     sampleModels: available?.sampleModels || first.sampleModels || [],
-    secretNames: ["DEEPSEEK_API_KEY"],
+    secretNames: [DASHSCOPE_SECRET_NAME],
     activeKeyId: selectedKeyId,
     autoSwitch,
     keyPool: {
@@ -7993,14 +8043,14 @@ async function buildTtsProviderStatus() {
 
 async function buildModelQuotaStatus() {
   const providers = await Promise.all([
-    checkDeepSeekBalance(),
+    checkDashScopeBalance(),
     checkOpenAIStatus(),
     checkAnthropicStatus(),
     checkGeminiStatus(),
     buildTtsProviderStatus(),
   ]);
   const poolSecrets = {
-    deepseek: ["DEEPSEEK_API_KEY", deepseekApiKey],
+    dashscope: [DASHSCOPE_SECRET_NAME, dashscopeApiKey],
     openai: ["OPENAI_API_KEY", openaiApiKey],
     anthropic: ["ANTHROPIC_API_KEY", anthropicApiKey],
     google_gemini: ["GOOGLE_GEMINI_API_KEY", googleGeminiApiKey],
@@ -8016,7 +8066,7 @@ async function buildModelQuotaStatus() {
     .catch(() => null);
 
   return {
-    ok: providersWithPools.some((provider) => provider.provider === "deepseek" && provider.ok),
+    ok: providersWithPools.some((provider) => provider.provider === DASHSCOPE_PROVIDER && provider.ok),
     checkedAt: new Date().toISOString(),
     latestHealthRun,
     secretCatalog: buildSecretCatalog(),
@@ -8067,7 +8117,7 @@ exports.readinessStatus = onRequest({
   json(res, 200, {
     ok: firestoreOk
       && publicConfigReadiness.configured
-      && secrets.deepseekApiKey
+      && secrets.dashscopeApiKey
       && secrets.volcanoTtsApiKey
       && secrets.appleSharedSecret
       && secrets.googlePackageName
@@ -8107,19 +8157,19 @@ exports.readinessStatus = onRequest({
       },
       aiChat: {
         deployedByDefaultWhenConfigured: true,
-        configured: secrets.deepseekApiKey,
-        missingSecrets: secrets.deepseekApiKey ? [] : ["DEEPSEEK_API_KEY"],
+        configured: secrets.dashscopeApiKey,
+        missingSecrets: secrets.dashscopeApiKey ? [] : [DASHSCOPE_SECRET_NAME],
       },
       aiChatStream: {
         deployedByDefaultWhenConfigured: true,
-        configured: secrets.deepseekApiKey,
-        missingSecrets: secrets.deepseekApiKey ? [] : ["DEEPSEEK_API_KEY"],
+        configured: secrets.dashscopeApiKey,
+        missingSecrets: secrets.dashscopeApiKey ? [] : [DASHSCOPE_SECRET_NAME],
       },
       adminModelQuotaStatus: {
         deployed: true,
-        configured: secrets.deepseekApiKey || secrets.volcanoTtsApiKey,
+        configured: secrets.dashscopeApiKey || secrets.volcanoTtsApiKey,
         missingSecrets: [
-          secrets.deepseekApiKey ? "" : "DEEPSEEK_API_KEY",
+          secrets.dashscopeApiKey ? "" : DASHSCOPE_SECRET_NAME,
           secrets.volcanoTtsApiKey ? "" : "VOLC_TTS_API_KEY",
         ].filter(Boolean),
       },
@@ -8187,6 +8237,13 @@ exports.readinessStatus = onRequest({
         deployedByDefaultWhenConfigured: true,
         configured: secrets.volcanoTtsApiKey,
         missingSecrets: secrets.volcanoTtsApiKey ? [] : ["VOLC_TTS_API_KEY"],
+      },
+      voiceAsrTranscribe: {
+        deployedByDefaultWhenConfigured: true,
+        configured: (secrets.voiceAppId && secrets.voiceAccessKey) || secrets.dashscopeApiKey,
+        missingSecrets: (secrets.voiceAppId && secrets.voiceAccessKey) || secrets.dashscopeApiKey
+          ? []
+          : ["VOICE_APP_ID", "VOICE_ACCESS_KEY", DASHSCOPE_SECRET_NAME],
       },
       submitIapReceipt: {
         deployedByDefaultWhenConfigured: true,
@@ -8560,7 +8617,7 @@ exports.adminConfigOverview = onRequest(runtime, async (req, res) => {
 
 exports.adminModelQuotaStatus = onRequest({
   ...runtime,
-  secrets: boundSecrets("DEEPSEEK_API_KEY", "VOLC_TTS_API_KEY"),
+  secrets: boundSecrets(DASHSCOPE_SECRET_NAME, "VOLC_TTS_API_KEY"),
 }, async (req, res) => {
   if (!requireMethod(req, res, "GET")) return;
   const decoded = await requireAdmin(req, res);
@@ -12993,7 +13050,7 @@ exports.purgeExpiredDeletedAccounts = onSchedule({
   console.log("[purgeExpiredDeletedAccounts]", result);
 });
 
-exports.aiChat = onRequest({ ...runtime, secrets: boundSecrets("DEEPSEEK_API_KEY") }, async (req, res) => {
+exports.aiChat = onRequest({ ...runtime, secrets: boundSecrets(DASHSCOPE_SECRET_NAME) }, async (req, res) => {
   if (!requireMethod(req, res, "POST")) return;
   const decoded = await requireAuth(req, res);
   if (!decoded) return;
@@ -13011,7 +13068,7 @@ exports.aiChat = onRequest({ ...runtime, secrets: boundSecrets("DEEPSEEK_API_KEY
       await markDialogueReplyJobProcessing(decoded.uid, requestBody, "http");
     }
 
-    const response = await callDeepSeek(requestBody, false);
+    const response = await callDashScope(requestBody, false);
     const data = await response.json();
     const content = data?.choices?.[0]?.message?.content || "";
     await recordModelUsageLog({
@@ -13049,7 +13106,7 @@ exports.aiChat = onRequest({ ...runtime, secrets: boundSecrets("DEEPSEEK_API_KEY
       action: "aiChat",
       endpoint: "aiChat",
       source: "http",
-      provider: "deepseek",
+      provider: DASHSCOPE_PROVIDER,
       providerMeta: error.providerUsageMeta || error.providerAttempts?.[error.providerAttempts.length - 1] || null,
       model: normalizeAiChatModel(requestBody?.model),
       membershipStatus: membership?.status || "",
@@ -13068,7 +13125,7 @@ exports.aiChat = onRequest({ ...runtime, secrets: boundSecrets("DEEPSEEK_API_KEY
   }
 });
 
-exports.aiChatStream = onRequest({ ...runtime, secrets: boundSecrets("DEEPSEEK_API_KEY") }, async (req, res) => {
+exports.aiChatStream = onRequest({ ...runtime, secrets: boundSecrets(DASHSCOPE_SECRET_NAME) }, async (req, res) => {
   if (!requireMethod(req, res, "POST")) return;
   const decoded = await requireAuth(req, res);
   if (!decoded) return;
@@ -13088,7 +13145,7 @@ exports.aiChatStream = onRequest({ ...runtime, secrets: boundSecrets("DEEPSEEK_A
       await markDialogueReplyJobProcessing(decoded.uid, requestBody, "http");
     }
 
-    response = await callDeepSeek(requestBody, true);
+    response = await callDashScope(requestBody, true);
     const decoder = new TextDecoder();
     let clientOpen = true;
     res.on("close", () => {
@@ -13147,7 +13204,7 @@ exports.aiChatStream = onRequest({ ...runtime, secrets: boundSecrets("DEEPSEEK_A
       action: "aiChatStream",
       endpoint: "aiChatStream",
       source: "http",
-      provider: "deepseek",
+      provider: DASHSCOPE_PROVIDER,
       providerMeta: error.providerUsageMeta || error.providerAttempts?.[error.providerAttempts.length - 1] || response?.modelUsageMeta || null,
       model: normalizeAiChatModel(requestBody?.model),
       outputChars: streamState.fullText.length,
@@ -13178,7 +13235,7 @@ exports.processStaleDialogueReplyJobs = onSchedule({
   region: FIRESTORE_TRIGGER_REGION,
   timeoutSeconds: 300,
   memory: "512MiB",
-  secrets: boundSecrets("DEEPSEEK_API_KEY"),
+  secrets: boundSecrets(DASHSCOPE_SECRET_NAME),
 }, async () => {
   let processed = 0;
   let skipped = 0;
@@ -13231,6 +13288,116 @@ exports.cleanupProviderKeyMaintenanceData = onSchedule({
     eventRetentionDays: result.eventRetentionDays,
     healthRunRetentionDays: result.healthRunRetentionDays,
   });
+});
+
+exports.voiceAsrTranscribe = onRequest({
+  ...runtime,
+  timeoutSeconds: 120,
+  secrets: boundSecrets("VOICE_APP_ID", "VOICE_ACCESS_KEY", DASHSCOPE_SECRET_NAME),
+}, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAuth(req, res);
+  if (!decoded) return;
+
+  let usageReserved = false;
+  let membership = null;
+  let requestBody = {};
+  let audioBytes = 0;
+  try {
+    requestBody = req.body || {};
+    const audioBase64 = String(requestBody.audioBase64 || "").replace(/\s/g, "");
+    if (!audioBase64) {
+      json(res, 400, { error: "audioBase64 is required", code: "missing-audio" });
+      return;
+    }
+    if (audioBase64.length > Math.ceil(VOICE_ASR_MAX_AUDIO_BYTES * 1.5)) {
+      json(res, 400, { error: "audioBase64 is too large", code: "audio-too-large" });
+      return;
+    }
+
+    const sampleRate = normalizeVoiceAsrSampleRate(requestBody.sampleRate);
+    const pcmBuffer = Buffer.from(audioBase64, "base64");
+    audioBytes = pcmBuffer.length;
+    if (audioBytes < VOICE_ASR_MIN_AUDIO_BYTES) {
+      json(res, 200, { text: "", skipped: true, reason: "audio-too-short" });
+      return;
+    }
+    if (audioBytes > VOICE_ASR_MAX_AUDIO_BYTES) {
+      json(res, 400, { error: `audio is too large (${audioBytes} bytes)`, code: "audio-too-large" });
+      return;
+    }
+
+    const rms = computePcm16Rms(pcmBuffer);
+    if (rms < VOICE_ASR_MIN_RMS) {
+      json(res, 200, { text: "", skipped: true, reason: "silent-audio", rms });
+      return;
+    }
+
+    membership = await getMembership(decoded.uid);
+    await incrementUsage(decoded.uid, "voiceAsr", membership.isPro ? PRO_ASR_DAILY_LIMIT : FREE_ASR_DAILY_LIMIT);
+    usageReserved = true;
+
+    const result = await callVoiceAsrOnce({
+      uid: decoded.uid,
+      pcmBuffer,
+      sampleRate,
+    });
+    const text = cleanVoiceTranscript(result.text);
+
+    await recordModelUsageLog({
+      uid: decoded.uid,
+      userEmail: decoded.email,
+      action: "voiceAsr",
+      endpoint: "voiceAsrTranscribe",
+      source: "http",
+      provider: result.provider || "voice_asr",
+      providerMeta: result.providerMeta || null,
+      model: result.model || "voice_asr",
+      inputChars: audioBytes,
+      outputChars: text.length,
+      membershipStatus: membership.status,
+      feature: "ASR voice recognition",
+      requestId: result.requestId,
+      ok: true,
+      httpStatus: 200,
+    });
+
+    json(res, 200, {
+      text,
+      membershipStatus: membership.status,
+      requestId: result.requestId,
+      provider: result.provider || "voice_asr",
+      rms,
+      audioBytes,
+    });
+  } catch (error) {
+    console.error("[voiceAsrTranscribe]", error);
+    if (usageReserved && error.code !== "quota-exceeded") {
+      await refundUsageSafely(decoded.uid, "voiceAsr");
+    }
+    await recordModelUsageLog({
+      uid: decoded.uid,
+      userEmail: decoded.email,
+      action: "voiceAsr",
+      endpoint: "voiceAsrTranscribe",
+      source: "http",
+      provider: error.provider || "voice_asr",
+      model: error.model || "voice_asr",
+      inputChars: audioBytes,
+      membershipStatus: membership?.status || "",
+      feature: "ASR voice recognition",
+      ok: false,
+      status: error.code || "request_failed",
+      httpStatus: error.status || null,
+      error: error.message || "ASR request failed",
+    });
+    json(res, error.code === "quota-exceeded" ? 429 : (error.status || 500), {
+      error: error.message || "ASR request failed",
+      code: error.code || "voice-asr-error",
+      limit: error.limit,
+      used: error.used,
+    });
+  }
 });
 
 exports.ttsSynthesize = onRequest({
@@ -13331,6 +13498,480 @@ exports.ttsSynthesize = onRequest({
     });
   }
 });
+
+const ASR_PROTO_VERSION = 0x01;
+const ASR_HEADER_SIZE = 0x01;
+const ASR_MSG_TYPE_FULL_CLIENT = 0b0001;
+const ASR_MSG_TYPE_AUDIO_CLIENT = 0b0010;
+const ASR_MSG_TYPE_FULL_SERVER = 0b1001;
+const ASR_MSG_TYPE_ERROR = 0b1111;
+const ASR_FLAG_NONE = 0b0000;
+const ASR_FLAG_LAST = 0b0010;
+const ASR_FLAG_SEQ_NEG = 0b0011;
+const ASR_SERIAL_JSON = 0b0001;
+const ASR_SERIAL_NONE = 0b0000;
+const ASR_COMPRESS_GZIP = 0b0001;
+const ASR_COMPRESS_NONE = 0b0000;
+const VOICE_PUNCTUATION_ONLY_RE = /^[\s.,!?;:，。！？、；：“”"'‘’（）()【】[\]{}《》<>…·~\-—_]+$/;
+const VOICE_EMPTY_AUDIO_ERROR_RE = /Timeout waiting next packet|waiting next packet timeout|session has ended/i;
+
+function cleanVoiceTranscript(text) {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  return VOICE_PUNCTUATION_ONLY_RE.test(normalized) ? "" : normalized;
+}
+
+function normalizeVoiceAsrSampleRate(value) {
+  const sampleRate = Number(value || 16000);
+  if (sampleRate !== 16000) {
+    throw createHttpError(400, "sampleRate must be 16000");
+  }
+  return sampleRate;
+}
+
+function computePcm16Rms(pcmBuffer) {
+  if (!Buffer.isBuffer(pcmBuffer) || pcmBuffer.length < 2) return 0;
+  const sampleCount = Math.floor(pcmBuffer.length / 2);
+  if (sampleCount <= 0) return 0;
+
+  let sumSquares = 0;
+  for (let i = 0; i < sampleCount; i += 1) {
+    const sample = pcmBuffer.readInt16LE(i * 2) / 32768;
+    sumSquares += sample * sample;
+  }
+  return Math.sqrt(sumSquares / sampleCount);
+}
+
+function buildVolcanoAsrHeader(msgType, flags, serial, compress) {
+  return Buffer.from([
+    (ASR_PROTO_VERSION << 4) | ASR_HEADER_SIZE,
+    (msgType << 4) | flags,
+    (serial << 4) | compress,
+    0x00,
+  ]);
+}
+
+function buildVolcanoAsrFullClientRequest(config) {
+  const header = buildVolcanoAsrHeader(
+    ASR_MSG_TYPE_FULL_CLIENT,
+    ASR_FLAG_NONE,
+    ASR_SERIAL_JSON,
+    ASR_COMPRESS_GZIP,
+  );
+  const payload = zlib.gzipSync(Buffer.from(JSON.stringify(config), "utf8"));
+  const size = Buffer.allocUnsafe(4);
+  size.writeUInt32BE(payload.length, 0);
+  return Buffer.concat([header, size, payload]);
+}
+
+function buildVolcanoAsrAudioRequest(pcm, isLast = false) {
+  const header = buildVolcanoAsrHeader(
+    ASR_MSG_TYPE_AUDIO_CLIENT,
+    isLast ? ASR_FLAG_LAST : ASR_FLAG_NONE,
+    ASR_SERIAL_NONE,
+    ASR_COMPRESS_NONE,
+  );
+  const size = Buffer.allocUnsafe(4);
+  size.writeUInt32BE(pcm.length, 0);
+  return Buffer.concat([header, size, pcm]);
+}
+
+function parseVolcanoAsrResponse(data) {
+  const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  if (buffer.length < 4) return null;
+
+  const msgType = (buffer[1] >> 4) & 0x0f;
+  const flags = buffer[1] & 0x0f;
+  const compress = buffer[2] & 0x0f;
+  let offset = 4;
+  let sequence = null;
+
+  if (flags & 0b0001) {
+    if (buffer.length >= offset + 4) {
+      sequence = buffer.readInt32BE(offset);
+      offset += 4;
+    }
+  }
+
+  const isLast = flags === ASR_FLAG_SEQ_NEG || (flags & ASR_FLAG_LAST) !== 0 || (sequence !== null && sequence < 0);
+
+  if (msgType === ASR_MSG_TYPE_ERROR) {
+    let errorCode;
+    let errorMsg = "";
+    if (buffer.length >= offset + 4) {
+      errorCode = buffer.readUInt32BE(offset);
+      offset += 4;
+    }
+    if (buffer.length >= offset + 4) {
+      const msgSize = buffer.readUInt32BE(offset);
+      offset += 4;
+      if (buffer.length >= offset + msgSize) {
+        errorMsg = buffer.slice(offset, offset + msgSize).toString("utf8");
+      }
+    }
+    return { msgType, flags, sequence, errorCode, errorMsg, isLast: true };
+  }
+
+  let payload = null;
+  if (buffer.length >= offset + 4) {
+    const payloadSize = buffer.readUInt32BE(offset);
+    offset += 4;
+    if (payloadSize > 0 && buffer.length >= offset + payloadSize) {
+      const raw = buffer.slice(offset, offset + payloadSize);
+      try {
+        const decoded = compress === ASR_COMPRESS_GZIP ? zlib.gunzipSync(raw) : raw;
+        payload = JSON.parse(decoded.toString("utf8"));
+      } catch (error) {
+        payload = raw.toString("utf8");
+      }
+    }
+  }
+
+  return { msgType, flags, sequence, payload, isLast };
+}
+
+async function callVoiceAsrOnce(options) {
+  const errors = [];
+  const appId = await getRuntimeSecretValue("VOICE_APP_ID", voiceAppId);
+  const accessKey = await getRuntimeSecretValue("VOICE_ACCESS_KEY", voiceAccessKey);
+
+  if (appId && accessKey) {
+    try {
+      const result = await callVolcanoAsrOnce({
+        appId,
+        accessKey,
+        uid: options.uid,
+        pcmBuffer: options.pcmBuffer,
+        sampleRate: options.sampleRate,
+      });
+      return {
+        ...result,
+        provider: "volcano_asr",
+        model: "seed_asr_bigmodel",
+        providerMeta: {
+          provider: "volcano_asr",
+          keyId: "primary",
+          keyLabel: "Primary",
+          keySource: "secret",
+          baseSecretName: "VOICE_ACCESS_KEY",
+        },
+      };
+    } catch (error) {
+      errors.push(`volcano_asr: ${error.message || "failed"}`);
+    }
+  }
+
+  try {
+    return await callDashScopeAsrOnce(options);
+  } catch (error) {
+    errors.push(`dashscope_asr: ${error.message || "failed"}`);
+  }
+
+  const message = errors.length
+    ? `All voice ASR providers failed: ${errors.join(" | ")}`
+    : "VOICE_APP_ID/VOICE_ACCESS_KEY or DASHSCOPE_API_KEY is required for voice ASR";
+  const error = new Error(message);
+  error.status = errors.length ? 502 : 500;
+  error.code = "voice-asr-provider-unavailable";
+  error.provider = "voice_asr";
+  error.model = "voice_asr";
+  throw error;
+}
+
+function callVolcanoAsrOnce(options) {
+  const requestId = crypto.randomUUID();
+  const chunkSize = 3200;
+  const timeoutMs = Number(options.timeoutMs || 35000);
+  let settled = false;
+  let lastText = "";
+  let finalText = "";
+  let ws = null;
+  let timeout = null;
+
+  return new Promise((resolve, reject) => {
+    const settle = (error, value) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      try {
+        ws?.close();
+      } catch {}
+      if (error) {
+        reject(error);
+      } else {
+        resolve(value);
+      }
+    };
+
+    timeout = setTimeout(() => {
+      const error = new Error("ASR request timed out");
+      error.status = 504;
+      settle(error);
+    }, timeoutMs);
+
+    ws = new WebSocket(VOLCANO_ASR_WS_URL, {
+      headers: {
+        "X-Api-App-Key": options.appId,
+        "X-Api-Access-Key": options.accessKey,
+        "X-Api-Resource-Id": VOLCANO_ASR_RESOURCE_ID,
+        "X-Api-Connect-Id": requestId,
+      },
+    });
+
+    ws.on("open", () => {
+      const config = {
+        user: {
+          uid: options.uid || "voice_user",
+          appid: options.appId,
+        },
+        audio: {
+          format: "pcm",
+          rate: options.sampleRate || 16000,
+          bits: 16,
+          channel: 1,
+          encoding: "raw",
+        },
+        request: {
+          model_name: "bigmodel",
+          result_type: "full",
+          enable_itn: true,
+          show_utterances: false,
+          vad_segment_duration: 400,
+        },
+      };
+
+      ws.send(buildVolcanoAsrFullClientRequest(config));
+      for (let offset = 0; offset < options.pcmBuffer.length; offset += chunkSize) {
+        ws.send(buildVolcanoAsrAudioRequest(options.pcmBuffer.slice(offset, offset + chunkSize), false));
+      }
+      ws.send(buildVolcanoAsrAudioRequest(Buffer.alloc(0), true));
+    });
+
+    ws.on("message", (data) => {
+      const frame = parseVolcanoAsrResponse(data);
+      if (!frame) return;
+
+      if (frame.msgType === ASR_MSG_TYPE_ERROR) {
+        const message = frame.errorMsg || `ASR error code: ${frame.errorCode}`;
+        if (VOICE_EMPTY_AUDIO_ERROR_RE.test(message) && !lastText) {
+          settle(null, { text: "", requestId });
+          return;
+        }
+        const error = new Error(message);
+        error.status = 502;
+        settle(error);
+        return;
+      }
+
+      if (frame.msgType !== ASR_MSG_TYPE_FULL_SERVER || !frame.payload) return;
+
+      const text = cleanVoiceTranscript(frame.payload?.result?.text || "");
+      if (text) {
+        lastText = text;
+        if (frame.isLast) finalText = text;
+      }
+
+      if (frame.isLast) {
+        settle(null, { text: finalText || lastText, requestId });
+      }
+    });
+
+    ws.on("error", (error) => {
+      const wrapped = new Error(error.message || "ASR websocket failed");
+      wrapped.status = 502;
+      settle(wrapped);
+    });
+
+    ws.on("close", () => {
+      settle(null, { text: finalText || lastText, requestId });
+    });
+  });
+}
+
+async function callDashScopeAsrOnce(options) {
+  const candidates = await getProviderKeyCandidates(DASHSCOPE_PROVIDER, DASHSCOPE_SECRET_NAME, dashscopeApiKey, {
+    forceRefresh: true,
+  });
+  if (!candidates.length) {
+    const error = new Error("DASHSCOPE_API_KEY is not configured for DashScope ASR");
+    error.status = 500;
+    error.code = "dashscope-asr-missing-secret";
+    throw error;
+  }
+
+  const failures = [];
+  const statuses = [];
+  for (const candidate of candidates) {
+    try {
+      const result = await callDashScopeAsrWithCandidate(options, candidate);
+      await markPoolKeySuccess(candidate);
+      if (!candidate.selected) {
+        await autoSelectProviderKey(DASHSCOPE_PROVIDER, candidate.id, "asr_fallback_success");
+      }
+      return result;
+    } catch (error) {
+      const status = Number(error.status || 502);
+      statuses.push(status);
+      failures.push(`${candidate.label}: ${status} ${error.message || "failed"}`.slice(0, 700));
+      await markPoolKeyFailure(candidate, providerErrorStatus(status), error.message || "DashScope ASR failed");
+    }
+  }
+
+  const error = new Error(`All DashScope ASR keys failed: ${failures.join(" | ")}`);
+  error.status = getAggregateProviderFailureStatus(statuses);
+  error.code = "dashscope-asr-error";
+  error.provider = "dashscope_asr";
+  error.model = DASHSCOPE_ASR_MODEL;
+  throw error;
+}
+
+function callDashScopeAsrWithCandidate(options, candidate) {
+  const requestId = crypto.randomUUID();
+  const chunkSize = 3200;
+  const timeoutMs = Number(options.timeoutMs || 35000);
+  const providerMeta = {
+    ...buildModelUsageProviderMeta(candidate),
+    model: DASHSCOPE_ASR_MODEL,
+  };
+  let settled = false;
+  let ws = null;
+  let timeout = null;
+  let lastText = "";
+  let finalText = "";
+
+  return new Promise((resolve, reject) => {
+    const settle = (error, value) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      try {
+        ws?.close();
+      } catch {}
+      if (error) {
+        error.provider = "dashscope_asr";
+        error.model = DASHSCOPE_ASR_MODEL;
+        reject(error);
+      } else {
+        resolve(value);
+      }
+    };
+
+    const sendJson = (value) => {
+      ws.send(JSON.stringify(value));
+    };
+
+    timeout = setTimeout(() => {
+      const error = new Error("DashScope ASR request timed out");
+      error.status = 504;
+      settle(error);
+    }, timeoutMs);
+
+    ws = new WebSocket(DASHSCOPE_ASR_WS_URL, {
+      headers: {
+        Authorization: `Bearer ${candidate.value}`,
+        "user-agent": "FariAppVoiceASR/1.0",
+      },
+    });
+
+    ws.on("open", () => {
+      sendJson({
+        header: {
+          action: "run-task",
+          task_id: requestId,
+          streaming: "duplex",
+        },
+        payload: {
+          task_group: "audio",
+          task: "asr",
+          function: "recognition",
+          model: DASHSCOPE_ASR_MODEL,
+          parameters: {
+            format: "pcm",
+            sample_rate: options.sampleRate || 16000,
+            language_hints: ["zh"],
+            disfluency_removal_enabled: false,
+            punctuation_prediction_enabled: true,
+            inverse_text_normalization_enabled: true,
+          },
+          input: {},
+        },
+      });
+    });
+
+    ws.on("message", (data) => {
+      let message = null;
+      try {
+        message = JSON.parse(data.toString());
+      } catch {
+        return;
+      }
+
+      const event = message?.header?.event || "";
+      if (event === "task-started") {
+        for (let offset = 0; offset < options.pcmBuffer.length; offset += chunkSize) {
+          ws.send(options.pcmBuffer.slice(offset, offset + chunkSize));
+        }
+        sendJson({
+          header: {
+            action: "finish-task",
+            task_id: requestId,
+            streaming: "duplex",
+          },
+          payload: {
+            input: {},
+          },
+        });
+        return;
+      }
+
+      if (event === "result-generated") {
+        const sentence = message?.payload?.output?.sentence;
+        const text = cleanVoiceTranscript(sentence?.text || "");
+        if (text) {
+          lastText = text;
+          if (sentence?.sentence_end === true) finalText = text;
+        }
+        return;
+      }
+
+      if (event === "task-finished") {
+        settle(null, {
+          text: finalText || lastText,
+          requestId,
+          provider: "dashscope_asr",
+          model: DASHSCOPE_ASR_MODEL,
+          providerMeta,
+        });
+        return;
+      }
+
+      if (event === "task-failed") {
+        const error = new Error(message?.header?.error_message || "DashScope ASR task failed");
+        error.status = 502;
+        error.code = message?.header?.error_code || "dashscope-asr-task-failed";
+        settle(error);
+      }
+    });
+
+    ws.on("error", (error) => {
+      const wrapped = new Error(error.message || "DashScope ASR websocket failed");
+      if (wrapped.message.includes("401")) wrapped.status = 401;
+      else if (wrapped.message.includes("403")) wrapped.status = 403;
+      else wrapped.status = 502;
+      settle(wrapped);
+    });
+
+    ws.on("close", () => {
+      settle(null, {
+        text: finalText || lastText,
+        requestId,
+        provider: "dashscope_asr",
+        model: DASHSCOPE_ASR_MODEL,
+        providerMeta,
+      });
+    });
+  });
+}
 
 function resolveVolcanoTtsSpeaker(body) {
   const explicitSpeaker = cleanString(body?.speaker, "", 120);
@@ -13917,6 +14558,118 @@ async function syncRelationshipDivinationHistories(data = {}, readingId) {
   );
   await batch.commit();
 }
+
+function relationshipActionResponse(data = {}, readingId) {
+  return {
+    readingId: cleanString(data.readingId || readingId, readingId, 180),
+    initiatorUid: cleanString(data.initiatorUid, "", 200),
+    receiverUid: cleanString(data.receiverUid, "", 200),
+    initiatorName: cleanString(data.initiatorName, "好友", 120),
+    receiverName: cleanString(data.receiverName, "好友", 120),
+    question: cleanString(data.question, "", 600),
+    status: cleanString(data.status, "invited", 80),
+    initiatorRevealed: data.initiatorRevealed === true,
+    receiverJoined: data.receiverJoined === true,
+    receiverRevealed: data.receiverRevealed === true,
+    cards: getRelationshipCards(data).map((card) => ({
+      ...normalizeRelationshipHistoryCard(card),
+      visibleTo: cleanString(card?.visibleTo, "", 80),
+    })),
+    createdAt: serializeTimestamp(data.createdAt) || "",
+    updatedAt: serializeTimestamp(data.updatedAt) || "",
+    completedAt: serializeTimestamp(data.completedAt) || "",
+    receiverSeenAt: serializeTimestamp(data.receiverSeenAt) || "",
+    oracleId: cleanString(data.oracleId, "tarot", 80) || "tarot",
+  };
+}
+
+exports.relationshipDivinationAction = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAuth(req, res);
+  if (!decoded) return;
+
+  try {
+    const uid = decoded.uid;
+    const readingId = cleanString(req.body?.readingId, "", 180);
+    const action = cleanString(req.body?.action, "", 40).toLowerCase();
+    if (!readingId || !["accept", "reveal"].includes(action)) {
+      throw createHttpError(400, "readingId and valid action are required");
+    }
+
+    const ref = db.collection(RELATIONSHIP_DIVINATION_COLLECTION).doc(readingId);
+    await db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists) throw createHttpError(404, "Relationship divination not found");
+
+      const data = snap.data() || {};
+      const initiatorUid = cleanString(data.initiatorUid, "", 200);
+      const receiverUid = cleanString(data.receiverUid, "", 200);
+      if (uid !== initiatorUid && uid !== receiverUid) {
+        throw createHttpError(403, "No permission for this relationship divination");
+      }
+      if (data.status === "cancelled") {
+        throw createHttpError(409, "Relationship divination has been cancelled");
+      }
+
+      let initiatorRevealed = data.initiatorRevealed === true;
+      let receiverJoined = data.receiverJoined === true;
+      let receiverRevealed = data.receiverRevealed === true;
+      let status = cleanString(data.status, "invited", 80);
+
+      if (action === "accept") {
+        if (uid !== receiverUid) throw createHttpError(403, "Only receiver can accept this invite");
+        initiatorRevealed = true;
+        receiverJoined = true;
+        if (status === "invited" || status === "initiator_revealed" || !status) {
+          status = "receiver_joined";
+        }
+      } else if (action === "reveal") {
+        if (uid === initiatorUid) {
+          initiatorRevealed = true;
+        } else {
+          initiatorRevealed = true;
+          receiverJoined = true;
+          receiverRevealed = true;
+        }
+      }
+
+      const updates = {
+        initiatorRevealed,
+        receiverJoined,
+        receiverRevealed,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+
+      if (initiatorRevealed && receiverRevealed) {
+        updates.status = "completed";
+        updates.completedAt = admin.firestore.FieldValue.serverTimestamp();
+      } else {
+        updates.status = status === "completed" ? "completed" : status;
+      }
+
+      transaction.set(ref, updates, { merge: true });
+    });
+
+    const finalSnap = await ref.get();
+    const finalData = finalSnap.exists ? finalSnap.data() || {} : {};
+    if (finalData.status === "completed"
+      || (finalData.initiatorRevealed === true && finalData.receiverRevealed === true)) {
+      await syncRelationshipDivinationHistories({
+        ...finalData,
+        status: "completed",
+        receiverJoined: true,
+      }, readingId);
+    }
+
+    json(res, 200, {
+      ok: true,
+      record: relationshipActionResponse(finalData, readingId),
+    });
+  } catch (error) {
+    console.error("[relationshipDivinationAction]", error);
+    json(res, error.status || 500, { error: error.message || "Relationship divination action failed" });
+  }
+});
 
 exports.relationshipDivinationCompletionSync = onDocumentUpdated({
   region: FIRESTORE_TRIGGER_REGION,

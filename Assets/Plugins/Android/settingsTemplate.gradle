@@ -16,7 +16,7 @@ dependencyResolutionManagement {
         **ARTIFACTORYREPOSITORY**
         def unityProjectPathForAndroidX = $/file:///**DIR_UNITYPROJECT**/$.replace("\\", "/")
         maven {
-            url (unityProjectPathForAndroidX + "/Assets/GeneratedLocalRepo/AndroidX/m2repository")
+            url (unityProjectPathForAndroidX + "/LocalMaven/AndroidX/m2repository")
         }
         google()
         mavenCentral()

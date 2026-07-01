@@ -26,7 +26,6 @@ public class AvatarUploadManager : MonoSingleton<AvatarUploadManager>
     }
 
     private const string StorageBucket = "fari-app-b2fd2.firebasestorage.app";
-    private const string StorageUploadUrl = "https://firebasestorage.googleapis.com/v0/b/" + StorageBucket + "/o?uploadType=multipart";
     private const int AvatarSize = 512;
     private const int MaxBytes = 2 * 1024 * 1024;
 
@@ -160,7 +159,7 @@ public class AvatarUploadManager : MonoSingleton<AvatarUploadManager>
         string storagePath = string.IsNullOrWhiteSpace(storagePathOverride)
             ? $"avatars/{uid}/avatar_{AvatarSize}.jpg"
             : storagePathOverride;
-        string downloadToken = Guid.NewGuid().ToString("N");
+        string downloadToken = null;
 
         string idToken = null;
         string tokenError = null;
@@ -178,25 +177,26 @@ public class AvatarUploadManager : MonoSingleton<AvatarUploadManager>
             yield break;
         }
 
-        string boundary = "fari_avatar_" + Guid.NewGuid().ToString("N");
-        byte[] body = BuildMultipartBody(boundary, storagePath, downloadToken, jpgBytes);
-        using (UnityWebRequest request = new UnityWebRequest(StorageUploadUrl, "POST"))
+        string uploadUrl = BuildUploadUrl(storagePath);
+        using (UnityWebRequest request = new UnityWebRequest(uploadUrl, "POST"))
         {
-            request.uploadHandler = new UploadHandlerRaw(body);
+            request.uploadHandler = new UploadHandlerRaw(jpgBytes);
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Authorization", "Firebase " + idToken);
-            request.SetRequestHeader("Content-Type", "multipart/related; boundary=" + boundary);
+            request.SetRequestHeader("Content-Type", "image/jpeg");
             request.SetRequestHeader("X-Firebase-Storage-Version", "unity-avatar-upload/1.0");
 
             yield return request.SendWebRequest();
 
+            string response = request.downloadHandler == null ? "" : request.downloadHandler.text;
             if (request.result != UnityWebRequest.Result.Success)
             {
                 IsUploading = false;
-                string response = request.downloadHandler == null ? "" : request.downloadHandler.text;
                 onError?.Invoke($"头像上传失败: {request.responseCode} {request.error} {response}");
                 yield break;
             }
+
+            downloadToken = ExtractDownloadToken(response);
         }
 
         string photoUrl = BuildDownloadUrl(storagePath, downloadToken);
@@ -276,32 +276,6 @@ public class AvatarUploadManager : MonoSingleton<AvatarUploadManager>
         return source;
     }
 
-    private static byte[] BuildMultipartBody(string boundary, string storagePath, string downloadToken, byte[] imageBytes)
-    {
-        string metadata =
-            "{" +
-            $"\"name\":\"{EscapeJson(storagePath)}\"," +
-            "\"contentType\":\"image/jpeg\"," +
-            "\"metadata\":{" +
-            $"\"firebaseStorageDownloadTokens\":\"{EscapeJson(downloadToken)}\"" +
-            "}" +
-            "}";
-
-        byte[] head = Encoding.UTF8.GetBytes(
-            "--" + boundary + "\r\n" +
-            "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
-            metadata + "\r\n" +
-            "--" + boundary + "\r\n" +
-            "Content-Type: image/jpeg\r\n\r\n");
-        byte[] tail = Encoding.UTF8.GetBytes("\r\n--" + boundary + "--\r\n");
-
-        byte[] body = new byte[head.Length + imageBytes.Length + tail.Length];
-        Buffer.BlockCopy(head, 0, body, 0, head.Length);
-        Buffer.BlockCopy(imageBytes, 0, body, head.Length, imageBytes.Length);
-        Buffer.BlockCopy(tail, 0, body, head.Length + imageBytes.Length, tail.Length);
-        return body;
-    }
-
     private static Texture2D CropAndResizeSquare(Texture2D source, int size)
     {
         int cropSize = Mathf.Min(source.width, source.height);
@@ -340,7 +314,73 @@ public class AvatarUploadManager : MonoSingleton<AvatarUploadManager>
     private static string BuildDownloadUrl(string storagePath, string token)
     {
         string encodedPath = Uri.EscapeDataString(storagePath);
-        return $"https://firebasestorage.googleapis.com/v0/b/{StorageBucket}/o/{encodedPath}?alt=media&token={token}";
+        return string.IsNullOrWhiteSpace(token)
+            ? $"https://firebasestorage.googleapis.com/v0/b/{StorageBucket}/o/{encodedPath}?alt=media"
+            : $"https://firebasestorage.googleapis.com/v0/b/{StorageBucket}/o/{encodedPath}?alt=media&token={token}";
+    }
+
+    private static string BuildUploadUrl(string storagePath)
+    {
+        string encodedPath = Uri.EscapeDataString(storagePath);
+        return $"https://firebasestorage.googleapis.com/v0/b/{StorageBucket}/o/{encodedPath}";
+    }
+
+    private static string ExtractDownloadToken(string response)
+    {
+        if (string.IsNullOrWhiteSpace(response))
+            return string.Empty;
+
+        string token = ExtractJsonString(response, "downloadTokens");
+        if (!string.IsNullOrWhiteSpace(token))
+            return token.Split(',')[0].Trim();
+
+        token = ExtractJsonString(response, "firebaseStorageDownloadTokens");
+        return string.IsNullOrWhiteSpace(token) ? string.Empty : token.Split(',')[0].Trim();
+    }
+
+    private static string ExtractJsonString(string json, string key)
+    {
+        if (string.IsNullOrEmpty(json) || string.IsNullOrEmpty(key))
+            return string.Empty;
+
+        string marker = "\"" + key + "\"";
+        int keyIndex = json.IndexOf(marker, StringComparison.Ordinal);
+        if (keyIndex < 0)
+            return string.Empty;
+
+        int colonIndex = json.IndexOf(':', keyIndex + marker.Length);
+        if (colonIndex < 0)
+            return string.Empty;
+
+        int valueStart = json.IndexOf('"', colonIndex + 1);
+        if (valueStart < 0)
+            return string.Empty;
+
+        StringBuilder builder = new StringBuilder();
+        bool escaping = false;
+        for (int i = valueStart + 1; i < json.Length; i++)
+        {
+            char c = json[i];
+            if (escaping)
+            {
+                builder.Append(c);
+                escaping = false;
+                continue;
+            }
+
+            if (c == '\\')
+            {
+                escaping = true;
+                continue;
+            }
+
+            if (c == '"')
+                break;
+
+            builder.Append(c);
+        }
+
+        return builder.ToString();
     }
 
     private static void SaveAvatarCache(byte[] jpgBytes, string photoUrl)
@@ -377,12 +417,6 @@ public class AvatarUploadManager : MonoSingleton<AvatarUploadManager>
     {
         if (texture == null) return null;
         return Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
-    }
-
-    private static string EscapeJson(string value)
-    {
-        if (string.IsNullOrEmpty(value)) return "";
-        return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
     }
 
     private static string SanitizeStorageName(string value)

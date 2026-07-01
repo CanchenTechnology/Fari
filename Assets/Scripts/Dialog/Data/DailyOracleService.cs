@@ -53,7 +53,7 @@ public class DailyOracleService : MonoBehaviour
     /// <summary>完整解读生成完成事件</summary>
     public event Action<CompleteInterpretationPayload> OnInterpretationGenerated;
 
-    private DeepSeekAPI _deepSeekAPI;
+    private DashScopeAPI _dashScopeAPI;
     private string _cachedOracleCardId;
     private bool _cachedOracleUpright;
     private string _cachedInterpretationCardId;
@@ -71,7 +71,7 @@ public class DailyOracleService : MonoBehaviour
         Instance = this;
         DontDestroyOnLoad(gameObject);
 
-        _deepSeekAPI = DeepSeekAPI.ResolveFor(gameObject);
+        _dashScopeAPI = DashScopeAPI.ResolveFor(gameObject);
     }
 
     private void OnDestroy()
@@ -217,10 +217,10 @@ public class DailyOracleService : MonoBehaviour
         }
 
         // 4. 转换为 AI API Message 格式
-        var apiMessages = new List<DeepSeekAPI.Message>();
+        var apiMessages = new List<DashScopeAPI.Message>();
         foreach (var cm in assemblyResult.messages)
         {
-            apiMessages.Add(new DeepSeekAPI.Message(cm.role, cm.content));
+            apiMessages.Add(new DashScopeAPI.Message(cm.role, cm.content));
         }
 
         // 5. 发送到 AI API
@@ -228,7 +228,7 @@ public class DailyOracleService : MonoBehaviour
         string errorMsg = null;
         bool completed = false;
 
-        _deepSeekAPI.SendChatRequest(apiMessages,
+        _dashScopeAPI.SendChatRequest(apiMessages,
             (response) =>
             {
                 aiResponse = response;
@@ -1018,17 +1018,17 @@ public class DailyOracleService : MonoBehaviour
             yield break;
         }
 
-        var apiMessages = new List<DeepSeekAPI.Message>();
+        var apiMessages = new List<DashScopeAPI.Message>();
         foreach (var cm in assemblyResult.messages)
         {
-            apiMessages.Add(new DeepSeekAPI.Message(cm.role, cm.content));
+            apiMessages.Add(new DashScopeAPI.Message(cm.role, cm.content));
         }
 
         string aiResponse = null;
         string errorMsg = null;
         bool completed = false;
 
-        _deepSeekAPI.SendChatRequest(apiMessages,
+        _dashScopeAPI.SendChatRequest(apiMessages,
             (response) => { aiResponse = response; completed = true; },
             (error) => { errorMsg = error; completed = true; });
 

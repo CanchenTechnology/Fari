@@ -111,7 +111,7 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
 
     public void QueueDialogueReplyJob(
         string jobId,
-        List<DeepSeekAPI.Message> messages,
+        List<DashScopeAPI.Message> messages,
         string lastUserMessage,
         string divinerType,
         Action<bool> onComplete = null)
@@ -206,7 +206,7 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
             if (snapshot.messages == null)
                 snapshot.messages = new List<ChatMessageData>();
             if (snapshot.apiMessages == null)
-                snapshot.apiMessages = new List<DeepSeekAPI.Message>();
+                snapshot.apiMessages = new List<DashScopeAPI.Message>();
             return snapshot;
         }
         catch (Exception ex)
@@ -329,7 +329,7 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
         return list;
     }
 
-    private List<object> SerializeApiMessages(List<DeepSeekAPI.Message> messages)
+    private List<object> SerializeApiMessages(List<DashScopeAPI.Message> messages)
     {
         var list = new List<object>();
         if (messages == null) return list;
@@ -469,9 +469,9 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
         return messages;
     }
 
-    private List<DeepSeekAPI.Message> DeserializeApiMessages(List<object> values)
+    private List<DashScopeAPI.Message> DeserializeApiMessages(List<object> values)
     {
-        var messages = new List<DeepSeekAPI.Message>();
+        var messages = new List<DashScopeAPI.Message>();
         if (values == null) return messages;
 
         foreach (var value in values)
@@ -481,7 +481,7 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
             string role = GetString(map, "role");
             string content = GetString(map, "content");
             if (!string.IsNullOrEmpty(role) || !string.IsNullOrEmpty(content))
-                messages.Add(new DeepSeekAPI.Message(role, content));
+                messages.Add(new DashScopeAPI.Message(role, content));
         }
 
         return messages;
@@ -638,7 +638,7 @@ public class DialogHistoryFirestore : MonoSingleton<DialogHistoryFirestore>
 public class DialogHistorySnapshot
 {
     public List<ChatMessageData> messages = new List<ChatMessageData>();
-    public List<DeepSeekAPI.Message> apiMessages = new List<DeepSeekAPI.Message>();
+    public List<DashScopeAPI.Message> apiMessages = new List<DashScopeAPI.Message>();
     public List<ChatContextAttachment> activeContextAttachments = new List<ChatContextAttachment>();
     public string activeReadingId;
     public string activeReadingState;

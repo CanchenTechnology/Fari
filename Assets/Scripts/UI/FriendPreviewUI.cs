@@ -44,6 +44,7 @@ public class FriendPreviewUI : WindowBase
 	private bool currentFromRequestFlow;
 	private bool isSendingRequest;
 	private bool isAcceptingRelationshipInvite;
+	private bool currentBasicInfoVisible;
 	private int requestVersion;
 	private int fullHistoryRequestVersion;
 	private Sprite defaultAvatarSprite;
@@ -94,6 +95,7 @@ public class FriendPreviewUI : WindowBase
 		isSendingRequest = false;
 		isAcceptingRelationshipInvite = false;
 		isDeletingFriend = false;
+		currentBasicInfoVisible = IsVirtualFriendPreview() || IsProfileBasicInfoVisible(currentUser);
 		requestVersion++;
 
 		RefreshSettingControls();
@@ -268,6 +270,7 @@ public class FriendPreviewUI : WindowBase
 			ApplyPublicProfile(profile);
 			RefreshProfile(true);
 			RefreshInviteButton();
+			LoadPreviewHistory();
 		});
 	}
 
@@ -275,14 +278,18 @@ public class FriendPreviewUI : WindowBase
 	{
 		if (profile == null) return;
 
+		currentBasicInfoVisible = IsProfileBasicInfoVisible(profile);
 		if (currentUser != null)
 		{
 			currentUser.displayName = FirstNonEmpty(profile.displayName, currentUser.displayName);
 			currentUser.email = FirstNonEmpty(profile.email, currentUser.email);
 			currentUser.photoUrl = FirstNonEmpty(profile.photoUrl, currentUser.photoUrl);
-			currentUser.birthday = FirstNonEmpty(profile.birthday, currentUser.birthday);
-			currentUser.birthTime = FirstNonEmpty(profile.birthTime, currentUser.birthTime);
-			currentUser.city = FirstNonEmpty(profile.city, currentUser.city);
+			currentUser.basicInfoVisible = currentBasicInfoVisible;
+			currentUser.hasBasicInfoVisibility = profile.hasBasicInfoVisibility;
+			currentUser.profileVisibility = profile.profileVisibility;
+			currentUser.birthday = currentBasicInfoVisible ? FirstNonEmpty(profile.birthday, currentUser.birthday) : string.Empty;
+			currentUser.birthTime = currentBasicInfoVisible ? FirstNonEmpty(profile.birthTime, currentUser.birthTime) : string.Empty;
+			currentUser.city = currentBasicInfoVisible ? FirstNonEmpty(profile.city, currentUser.city) : string.Empty;
 		}
 
 		if (currentFriend != null)
@@ -290,17 +297,18 @@ public class FriendPreviewUI : WindowBase
 			currentFriend.name = FirstNonEmpty(profile.displayName, currentFriend.name);
 			currentFriend.handle = FirstNonEmpty(profile.Handle, currentFriend.handle);
 			currentFriend.photoUrl = FirstNonEmpty(profile.photoUrl, currentFriend.photoUrl);
-			currentFriend.birthday = FirstNonEmpty(profile.birthday, currentFriend.birthday);
-			currentFriend.birthTime = FirstNonEmpty(profile.birthTime, currentFriend.birthTime);
-			currentFriend.city = FirstNonEmpty(profile.city, currentFriend.city);
+			currentFriend.birthday = currentBasicInfoVisible ? FirstNonEmpty(profile.birthday, currentFriend.birthday) : string.Empty;
+			currentFriend.birthTime = currentBasicInfoVisible ? FirstNonEmpty(profile.birthTime, currentFriend.birthTime) : string.Empty;
+			currentFriend.city = currentBasicInfoVisible ? FirstNonEmpty(profile.city, currentFriend.city) : string.Empty;
 		}
 	}
 
 	private void RefreshBasicInfo()
 	{
-		SetBasicInfoField("BirthdayDay", uiComponent.birthdayTextTextMeshProUGUI, FormatBirthDate(CurrentBirthday()));
-		SetBasicInfoField("BirthdayTime", uiComponent.birthdayTimeTextTextMeshProUGUI, CurrentBirthTime());
-		SetBasicInfoField("BirthdayCity", uiComponent.birthdayPlaceTextTextMeshProUGUI, CurrentCity());
+		bool canShowBasicInfo = CanShowBasicInfo();
+		SetBasicInfoField("BirthdayDay", uiComponent.birthdayTextTextMeshProUGUI, canShowBasicInfo ? FormatBirthDate(CurrentBirthday()) : string.Empty);
+		SetBasicInfoField("BirthdayTime", uiComponent.birthdayTimeTextTextMeshProUGUI, canShowBasicInfo ? CurrentBirthTime() : string.Empty);
+		SetBasicInfoField("BirthdayCity", uiComponent.birthdayPlaceTextTextMeshProUGUI, canShowBasicInfo ? CurrentCity() : string.Empty);
 		SetBasicInfoPanelVisible(true);
 	}
 
@@ -1102,7 +1110,23 @@ public class FriendPreviewUI : WindowBase
 
 	private bool CanLoadFriendHistory()
 	{
-		return IsAcceptedFriend(CurrentUid());
+		return CanShowBasicInfo() && IsAcceptedFriend(CurrentUid());
+	}
+
+	private bool CanShowBasicInfo()
+	{
+		return IsVirtualFriendPreview() || currentBasicInfoVisible;
+	}
+
+	private static bool IsProfileBasicInfoVisible(FirestoreManager.UserSearchResult profile)
+	{
+		if (profile == null) return false;
+		if (profile.hasBasicInfoVisibility) return profile.basicInfoVisible;
+		if (profile.basicInfoVisible) return true;
+		if (!string.IsNullOrWhiteSpace(profile.profileVisibility))
+			return profile.profileVisibility != DailyDivinationSyncSettingsManager.ToVisibilityKey(DailyDivinationSyncVisibility.OnlyMe);
+
+		return false;
 	}
 
 	private string GetMissingBasicInfoText()
@@ -1150,6 +1174,11 @@ public class FriendPreviewUI : WindowBase
 			birthday = CurrentBirthday(),
 			birthTime = CurrentBirthTime(),
 			city = CurrentCity(),
+			basicInfoVisible = CanShowBasicInfo(),
+			hasBasicInfoVisibility = true,
+			profileVisibility = CanShowBasicInfo()
+				? DailyDivinationSyncSettingsManager.ToVisibilityKey(DailyDivinationSyncVisibility.AllFriends)
+				: DailyDivinationSyncSettingsManager.ToVisibilityKey(DailyDivinationSyncVisibility.OnlyMe),
 			isSelf = false
 		};
 	}

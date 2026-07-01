@@ -1269,7 +1269,7 @@ const uiSendsBuiltContent = /SendTodayOracleMessage\(\)[\s\S]*?BuildTodayCardMes
   && !/AddTodayDivinationMessage\(""\)/.test(dialogUi);
 const systemBuildsPayloadSummary = /public string BuildTodayCardMessageContent\(\)[\s\S]*?todayCardPayload[\s\S]*?displayName[\s\S]*?orientation[\s\S]*?oracleText[\s\S]*?generatedAt/.test(dialogSystem);
 const systemRejectsBlankContent = /public ChatMessageData AddTodayDivinationMessage\(string content\)[\s\S]*?string\.IsNullOrWhiteSpace\(content\) \? BuildTodayCardMessageContent\(\) : content\.Trim\(\)/.test(dialogSystem)
-  && /mApiMessageHistory\.Add\(new DeepSeekAPI\.Message\("assistant", content\)\)/.test(dialogSystem);
+  && /mApiMessageHistory\.Add\(new DashScopeAPI\.Message\("assistant", content\)\)/.test(dialogSystem);
 const servicePayloadCarriesOracleText = /public TodayCardPayload GetTodayCardPayload\(\)[\s\S]*?IsCachedOracleFor\(CurrentCard, CurrentUpright\)[\s\S]*?oraclePayload = CachedPayload[\s\S]*?IsCachedPreparedReadingFor\(CurrentCard, CurrentUpright\)[\s\S]*?oraclePayload = CachedPreparedReading\?\.oraclePayload[\s\S]*?oracleText = oraclePayload\?\.oracle[\s\S]*?title = FirstNonEmpty\(oraclePayload\?\.title, "今日塔罗"\)/.test(dailyService);
 const detailBuildsPayloadWithOracleText = /private TodayCardPayload BuildTodayCardPayloadForDialog\(\)[\s\S]*?payload\.oracleText = FirstNonEmpty/.test(todayCardUi)
   && /private void SyncTodayCardPayloadToDialogSystem\(\)[\s\S]*?SetTodayCardPayload\(payload\)/.test(todayCardUi);
@@ -1475,9 +1475,9 @@ if node <<'NODE' >/tmp/moonly_readiness_dialogue_remote_push.log 2>&1
 const fs = require("fs");
 
 const functionsIndex = fs.readFileSync("functions/index.js", "utf8");
-const deepSeekApi = fs.readFileSync("Assets/Scripts/Dialog/DeepSeekAPI.cs", "utf8");
+const dashScopeApi = fs.readFileSync("Assets/Scripts/Dialog/DashScopeAPI.cs", "utf8");
 const dialogSystem = fs.readFileSync("Assets/Scripts/Dialog/Data/DialogSystem.cs", "utf8");
-const dialogHistory = fs.readFileSync("Assets/Scripts/Platform/FireBase/DialogHistoryFirestore.cs", "utf8");
+const dialogHistory = fs.readFileSync("Assets/Scripts/Role/Platform/FireBase/DialogHistoryFirestore.cs", "utf8");
 const remotePush = fs.readFileSync("Assets/Scripts/GameManager/RemotePushManager.cs", "utf8");
 const rules = fs.readFileSync("firestore.rules", "utf8");
 const deploy = fs.readFileSync("scripts/deploy-firebase.sh", "utf8");
@@ -1490,10 +1490,10 @@ const functionsQueuesReply = /function shouldNotifyDialogueReply/.test(functions
   && /collection\(PUSH_OUTBOX_COLLECTION\)/.test(functionsIndex)
   && /preferenceKey: "dialogueReplyEnabled"/.test(functionsIndex)
   && /remote_notifications/.test(functionsIndex);
-const clientCanRequestReplyPush = /AppendNotificationOptions/.test(deepSeekApi)
-  && /notifyOnComplete/.test(deepSeekApi)
-  && /notificationType\\":\\"dialogue_reply/.test(deepSeekApi)
-  && /clientRequestId/.test(deepSeekApi);
+const clientCanRequestReplyPush = /AppendNotificationOptions/.test(dashScopeApi)
+  && /notifyOnComplete/.test(dashScopeApi)
+  && /notificationType\\":\\"dialogue_reply/.test(dashScopeApi)
+  && /clientRequestId/.test(dashScopeApi);
 const dialogOptsIn = /QueueDialogueReplyJob\(replyJobId, messages/.test(dialogSystem)
   && /SendChatRequest\(messages,[\s\S]*?true,[\s\S]*?replyJobId/.test(dialogSystem)
   && /SendChatRequestStream\(messages,[\s\S]*?true,[\s\S]*?replyJobId/.test(dialogSystem);
@@ -1507,7 +1507,7 @@ const rulesAllowClientCreate = /match \/dialog_reply_jobs\/\{jobId\}[\s\S]*?allo
 const deploysScheduler = /functions:processStaleDialogueReplyJobs/.test(deploy);
 
 if (!functionsQueuesReply) throw new Error("functions dialogue reply outbox wiring missing");
-if (!clientCanRequestReplyPush) throw new Error("DeepSeekAPI notify-on-complete payload missing");
+if (!clientCanRequestReplyPush) throw new Error("DashScopeAPI notify-on-complete payload missing");
 if (!dialogOptsIn) throw new Error("DialogSystem does not opt chat requests into remote reply push");
 if (!clientQueuesFallbackJob) throw new Error("DialogHistoryFirestore does not queue fallback reply jobs");
 if (!foregroundDedupesReply) throw new Error("RemotePushManager foreground dialogue dedupe missing");
@@ -1718,7 +1718,7 @@ fi
 
 if [[ "${CHECK_SECRETS_ENV:-0}" == "1" ]]; then
   missing_secret_env=()
-  for key in DEEPSEEK_API_KEY VOLC_TTS_API_KEY APPLE_SHARED_SECRET GOOGLE_PACKAGE_NAME GOOGLE_SERVICE_ACCOUNT_JSON; do
+  for key in DASHSCOPE_API_KEY VOLC_TTS_API_KEY APPLE_SHARED_SECRET GOOGLE_PACKAGE_NAME GOOGLE_SERVICE_ACCOUNT_JSON; do
     if [[ "$key" == "GOOGLE_SERVICE_ACCOUNT_JSON" && -n "${GOOGLE_SERVICE_ACCOUNT_JSON_FILE:-}" ]]; then
       continue
     fi

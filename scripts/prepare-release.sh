@@ -310,7 +310,7 @@ if [[ "$configure_google" == "1" ]]; then
 fi
 
 if truthy "$RUN_ALL_SECRET_SETUP"; then
-  require_env DEEPSEEK_API_KEY
+  require_env DASHSCOPE_API_KEY
   require_env VOLC_TTS_API_KEY
   require_env APPLE_SHARED_SECRET
   require_env GOOGLE_PACKAGE_NAME

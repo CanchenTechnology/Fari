@@ -29,13 +29,15 @@ secret_enabled() {
 resolve_secret_bindings() {
   if [[ "${MOONLY_BIND_ALL_SECRETS:-0}" == "1" ]]; then
     RESOLVED_SECRET_NAMES=(
-      DEEPSEEK_API_KEY
+      DASHSCOPE_API_KEY
       OPENAI_API_KEY
       OPENAI_ADMIN_KEY
       ANTHROPIC_API_KEY
       ANTHROPIC_ADMIN_KEY
       GOOGLE_GEMINI_API_KEY
       VOLC_TTS_API_KEY
+      VOICE_APP_ID
+      VOICE_ACCESS_KEY
       PAYMENT_WEBHOOK_SECRET
       APPLE_SHARED_SECRET
       GOOGLE_PACKAGE_NAME
@@ -108,16 +110,26 @@ build_default_targets() {
     DEPLOY_TARGETS+=("hosting")
   fi
 
-  if secret_enabled DEEPSEEK_API_KEY || [[ "$DEPLOY_INCOMPLETE_FUNCTIONS" == "1" ]]; then
+  if secret_enabled DASHSCOPE_API_KEY || [[ "$DEPLOY_INCOMPLETE_FUNCTIONS" == "1" ]]; then
     DEPLOY_TARGETS+=("functions:aiChat" "functions:aiChatStream" "functions:processStaleDialogueReplyJobs")
   else
-    SKIPPED_TARGETS+=("aiChat/aiChatStream/processStaleDialogueReplyJobs need DEEPSEEK_API_KEY")
+    SKIPPED_TARGETS+=("aiChat/aiChatStream/processStaleDialogueReplyJobs need DASHSCOPE_API_KEY")
   fi
 
   if secret_enabled VOLC_TTS_API_KEY || [[ "$DEPLOY_INCOMPLETE_FUNCTIONS" == "1" ]]; then
     DEPLOY_TARGETS+=("functions:ttsSynthesize")
   else
     SKIPPED_TARGETS+=("ttsSynthesize needs VOLC_TTS_API_KEY")
+  fi
+
+  if {
+    secret_enabled VOICE_APP_ID \
+      && secret_enabled VOICE_ACCESS_KEY
+  } || secret_enabled DASHSCOPE_API_KEY \
+    || [[ "$DEPLOY_INCOMPLETE_FUNCTIONS" == "1" ]]; then
+    DEPLOY_TARGETS+=("functions:voiceAsrTranscribe")
+  else
+    SKIPPED_TARGETS+=("voiceAsrTranscribe needs VOICE_APP_ID + VOICE_ACCESS_KEY, or DASHSCOPE_API_KEY fallback")
   fi
 
   if {
@@ -143,13 +155,15 @@ const fs = require("fs");
 const path = process.argv[2];
 const raw = String(process.argv[3] || "").trim();
 const allSecrets = [
-  "DEEPSEEK_API_KEY",
+  "DASHSCOPE_API_KEY",
   "OPENAI_API_KEY",
   "OPENAI_ADMIN_KEY",
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_ADMIN_KEY",
   "GOOGLE_GEMINI_API_KEY",
   "VOLC_TTS_API_KEY",
+  "VOICE_APP_ID",
+  "VOICE_ACCESS_KEY",
   "PAYMENT_WEBHOOK_SECRET",
   "APPLE_SHARED_SECRET",
   "GOOGLE_PACKAGE_NAME",
