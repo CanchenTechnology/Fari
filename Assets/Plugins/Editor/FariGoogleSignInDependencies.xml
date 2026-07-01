@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<dependencies>
+  <!-- Google Sign-In SDK for iOS native plugin (FariGoogleSignIn.mm). -->
+  <!-- Use SwiftPM to share Google transitive dependencies with Firebase SwiftPM packages. -->
+  <remoteSwiftPackage url="https://github.com/google/GoogleSignIn-iOS.git"
+                      version="9.2.0"
+                      upToNextMajor="true">
+    <swiftPackage name="GoogleSignIn" replacesPod="GoogleSignIn" />
+  </remoteSwiftPackage>
+</dependencies>
