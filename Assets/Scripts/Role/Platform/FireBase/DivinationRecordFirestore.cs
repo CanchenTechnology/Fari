@@ -437,6 +437,9 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
             { "judgeContent", record.judgeContent ?? "" },
             { "adviceContent", record.adviceContent ?? "" },
             { "oracleId",   record.oracleId ?? "tarot" },
+            { "relationshipFriendUid", record.relationshipFriendUid ?? "" },
+            { "relationshipFriendName", record.relationshipFriendName ?? "" },
+            { "relationshipFriendAvatarUrl", record.relationshipFriendAvatarUrl ?? "" },
         };
 
         // 序列化追问话题
@@ -498,6 +501,9 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
         record.judgeContent  = GetStr(d, "judgeContent");
         record.adviceContent = GetStr(d, "adviceContent");
         record.oracleId      = GetStr(d, "oracleId");
+        record.relationshipFriendUid = GetStr(d, "relationshipFriendUid");
+        record.relationshipFriendName = GetStr(d, "relationshipFriendName");
+        record.relationshipFriendAvatarUrl = GetStr(d, "relationshipFriendAvatarUrl");
 
         // 解析追问话题
         record.topics = new List<string>();
@@ -1046,94 +1052,4 @@ public class DivinationRecordFirestore : MonoSingleton<DivinationRecordFirestore
     }
 
     #endregion
-}
-
-[Serializable]
-public class DivinationRecordCacheWrapper
-{
-    public List<DivinationRecordData> records = new List<DivinationRecordData>();
-}
-
-/// <summary>
-/// 占卜记录数据模型 —— 用于 Firestore 序列化 和 UI 展示
-/// </summary>
-[Serializable]
-public class DivinationRecordData
-{
-    public string readingId;
-    public string question;
-    public string scene;
-    public string spreadKind;
-    public List<LockedCard> lockedCards;
-    public string shortVerdict;
-    /// <summary>AI 生成的详细评判内容</summary>
-    public string judgeContent;
-    /// <summary>AI 生成的建议内容</summary>
-    public string adviceContent;
-    /// <summary>AI 建议的追问话题列表</summary>
-    public List<string> topics;
-    public string oracleId;
-    public string createdAt;
-
-    /// <summary>格式化时间（友好显示）</summary>
-    public string DisplayTime
-    {
-        get
-        {
-            if (DateTime.TryParse(createdAt, out var dt))
-                return dt.ToString("MM/dd HH:mm");
-            return createdAt ?? "";
-        }
-    }
-
-    /// <summary>问题摘要（截断）</summary>
-    public string QuestionPreview
-    {
-        get
-        {
-            if (string.IsNullOrEmpty(question)) return "";
-            return question.Length > 20 ? question.Substring(0, 20) + "..." : question;
-        }
-    }
-
-    /// <summary>卡牌名称摘要</summary>
-    public string CardsSummary
-    {
-        get
-        {
-            if (lockedCards == null || lockedCards.Count == 0) return "";
-            var names = new List<string>();
-            foreach (var c in lockedCards)
-            {
-                string orientation = c.orientation == "upright" ? "正" : "逆";
-                names.Add(TarotDeck.FormatDisplayName(string.IsNullOrWhiteSpace(c.cardName) ? c.cardId : c.cardName, orientation));
-            }
-            return string.Join(" · ", names);
-        }
-    }
-
-    /// <summary>牌阵类型中文名</summary>
-    public string SpreadLabel
-    {
-        get
-        {
-            string builtInLabel = GetBuiltInSpreadLabel(spreadKind);
-            if (!string.IsNullOrEmpty(builtInLabel))
-                return builtInLabel;
-
-            if (DivinationEngine.Instance == null) return spreadKind ?? "";
-            var def = DivinationEngine.Instance.GetSpreadDefinition(spreadKind);
-            return def?.label ?? spreadKind ?? "";
-        }
-    }
-
-    private static string GetBuiltInSpreadLabel(string kind)
-    {
-        return kind switch
-        {
-            "friend_relationship_divination" => "双人关系占卜",
-            "relationship_tension" => "双人关系占卜",
-            _ => ""
-        };
-    }
 }

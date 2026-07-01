@@ -160,13 +160,20 @@ public class FriendProfileUI : WindowBase
 	{
 		if (string.IsNullOrWhiteSpace(url)) yield break;
 
-		using UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
+		string normalizedUrl = NormalizeAvatarUrl(url);
+		if (string.IsNullOrEmpty(normalizedUrl))
+		{
+			LogAvatarDownloadFailure(url, "URL 非法");
+			yield break;
+		}
+
+		using UnityWebRequest request = UnityWebRequestTexture.GetTexture(normalizedUrl);
 		yield return request.SendWebRequest();
 
 		if (requestId != requestVersion || currentFriend == null) yield break;
 		if (request.result != UnityWebRequest.Result.Success)
 		{
-			Debug.LogWarning("[FriendProfileUI] 好友头像下载失败: " + request.error);
+			LogAvatarDownloadFailure(url, request.error);
 			yield break;
 		}
 
@@ -179,6 +186,29 @@ public class FriendProfileUI : WindowBase
 			new Vector2(0.5f, 0.5f));
 		currentFriend.headSprite = avatar;
 		ApplyAvatar(avatar);
+	}
+
+	private string NormalizeAvatarUrl(string url)
+	{
+		if (string.IsNullOrWhiteSpace(url))
+			return string.Empty;
+
+		string trimmed = url.Trim();
+		if (!Uri.TryCreate(trimmed, UriKind.Absolute, out Uri uri))
+			return string.Empty;
+
+		if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+			return string.Empty;
+
+		return uri.AbsoluteUri;
+	}
+
+	private void LogAvatarDownloadFailure(string url, string reason)
+	{
+		string userName = string.IsNullOrWhiteSpace(currentFriend?.name) ? "未知用户" : currentFriend.name.Trim();
+		string displayUrl = string.IsNullOrWhiteSpace(url) ? "(空)" : url.Trim();
+		string suffix = string.IsNullOrWhiteSpace(reason) ? string.Empty : $"，原因：{reason}";
+		Debug.LogWarning($"下载用户{userName} 失败，图片地址是{displayUrl}{suffix}");
 	}
 
 	private void ApplyAvatar(Sprite avatar)

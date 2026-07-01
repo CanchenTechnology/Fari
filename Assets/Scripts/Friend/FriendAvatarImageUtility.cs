@@ -51,9 +51,13 @@ public static class FriendAvatarImageUtility
         if (target == null) return;
 
         Sprite resolved = ResolveAvatar(sprite, target, localFallback);
-        target.sprite = resolved;
-        target.enabled = resolved != null;
-        target.preserveAspect = true;
+        bool shouldEnable = resolved != null;
+        if (target.sprite != resolved)
+            target.sprite = resolved;
+        if (target.enabled != shouldEnable)
+            target.enabled = shouldEnable;
+        if (!target.preserveAspect)
+            target.preserveAspect = true;
     }
 
     public static Sprite ResolveAvatar(Sprite sprite, Image fallbackImage = null, Sprite localFallback = null)
@@ -107,6 +111,39 @@ public static class FriendAvatarImageUtility
         }
 
         return ResolveAvatar(null, fallbackImage, localFallback);
+    }
+
+    public static Sprite ResolveCurrentUserAvatar(Image fallbackImage = null, Sprite localFallback = null)
+    {
+        return TryResolveCurrentUserAvatar(out Sprite sprite, out _)
+            ? sprite
+            : ResolveAvatar(null, fallbackImage, localFallback);
+    }
+
+    public static bool TryResolveCurrentUserAvatar(out Sprite sprite, out string cachePath)
+    {
+        sprite = null;
+        cachePath = string.Empty;
+
+        UserDataManager userData = UserDataManager.Instance;
+        if (userData == null || string.IsNullOrWhiteSpace(userData.PhotoUrl))
+            return false;
+
+        string uid = userData.FirebaseUid;
+        string photoUrl = userData.PhotoUrl;
+        if (TryResolveCachedRemoteAvatar(uid, photoUrl, out sprite))
+            return true;
+
+        LoginType loginType = userData.CurrentLoginType;
+        cachePath = GetPreferredAccountCachePath(loginType);
+        if (TryLoadAccountCachedAvatar(loginType, photoUrl, out sprite))
+        {
+            CacheRemoteAvatar(uid, photoUrl, sprite);
+            SaveRemoteAvatarTexture(photoUrl, sprite.texture);
+            return true;
+        }
+
+        return false;
     }
 
     public static void SetAvatarTargetToken(Image target, string token)
@@ -177,6 +214,7 @@ public static class FriendAvatarImageUtility
     {
         UserDataManager userData = UserDataManager.Instance;
         string photoUrl = userData != null ? userData.PhotoUrl : string.Empty;
+        string userName = userData != null ? userData.UserName : string.Empty;
         LoginType loginType = userData != null ? userData.CurrentLoginType : LoginType.Email;
         Sprite loadedSprite = null;
         string cachePath = GetPreferredAccountCachePath(loginType);
@@ -184,15 +222,15 @@ public static class FriendAvatarImageUtility
         switch (loginType)
         {
             case LoginType.Apple:
-                yield return AppleUserInfoHelper.LoadAndCacheAvatarCoroutine(photoUrl, sprite => loadedSprite = sprite);
+                yield return AppleUserInfoHelper.LoadAndCacheAvatarCoroutine(photoUrl, sprite => loadedSprite = sprite, false, userName);
                 cachePath = AppleUserInfoHelper.LocalAvatarPath;
                 break;
             case LoginType.Facebook:
-                yield return FacebookUserInfoHelper.LoadAndCacheAvatarCoroutine(photoUrl, sprite => loadedSprite = sprite);
+                yield return FacebookUserInfoHelper.LoadAndCacheAvatarCoroutine(photoUrl, sprite => loadedSprite = sprite, false, userName);
                 cachePath = FacebookUserInfoHelper.LocalAvatarPath;
                 break;
             default:
-                yield return GoogleUserInfoHelper.LoadAndCacheAvatarCoroutine(photoUrl, sprite => loadedSprite = sprite);
+                yield return GoogleUserInfoHelper.LoadAndCacheAvatarCoroutine(photoUrl, sprite => loadedSprite = sprite, false, userName);
                 cachePath = GoogleUserInfoHelper.LocalAvatarPath;
                 break;
         }
@@ -200,11 +238,14 @@ public static class FriendAvatarImageUtility
         if (loadedSprite != null)
         {
             CacheRemoteAvatar(userData != null ? userData.FirebaseUid : string.Empty, photoUrl, loadedSprite);
+            SaveRemoteAvatarTexture(photoUrl, loadedSprite.texture);
             onComplete?.Invoke(loadedSprite, File.Exists(cachePath) ? cachePath : string.Empty);
         }
         else
         {
-            onComplete?.Invoke(null, string.Empty);
+            onComplete?.Invoke(
+                TryResolveCurrentUserAvatar(out Sprite cachedSprite, out string cachedPath) ? cachedSprite : null,
+                File.Exists(cachedPath) ? cachedPath : string.Empty);
         }
     }
 
@@ -220,17 +261,32 @@ public static class FriendAvatarImageUtility
 
     public static IEnumerator LoadSpriteFromUrlCoroutine(string url, Action<Sprite> onComplete)
     {
-        yield return LoadRemoteAvatarCoroutine(string.Empty, url, onComplete);
+        yield return LoadRemoteAvatarCoroutine(string.Empty, string.Empty, url, onComplete);
     }
 
     public static IEnumerator LoadSpriteFromUrlCoroutine(string uid, string url, Action<Sprite> onComplete)
     {
-        yield return LoadRemoteAvatarCoroutine(uid, url, onComplete);
+        yield return LoadRemoteAvatarCoroutine(uid, string.Empty, url, onComplete);
+    }
+
+    public static IEnumerator LoadUserSpriteFromUrlCoroutine(string userName, string url, Action<Sprite> onComplete)
+    {
+        yield return LoadRemoteAvatarCoroutine(string.Empty, userName, url, onComplete);
+    }
+
+    public static IEnumerator LoadUserSpriteFromUrlCoroutine(string uid, string userName, string url, Action<Sprite> onComplete)
+    {
+        yield return LoadRemoteAvatarCoroutine(uid, userName, url, onComplete);
     }
 
     public static IEnumerator PreloadRemoteAvatarCoroutine(string uid, string url, Action<Sprite> onComplete = null)
     {
-        yield return LoadRemoteAvatarCoroutine(uid, url, onComplete);
+        yield return LoadRemoteAvatarCoroutine(uid, string.Empty, url, onComplete);
+    }
+
+    public static IEnumerator PreloadRemoteAvatarCoroutine(string uid, string userName, string url, Action<Sprite> onComplete = null)
+    {
+        yield return LoadRemoteAvatarCoroutine(uid, userName, url, onComplete);
     }
 
     public static bool TryResolveCachedRemoteAvatar(string uid, string url, out Sprite sprite)
@@ -266,7 +322,7 @@ public static class FriendAvatarImageUtility
         return false;
     }
 
-    private static IEnumerator LoadRemoteAvatarCoroutine(string uid, string url, Action<Sprite> onComplete)
+    private static IEnumerator LoadRemoteAvatarCoroutine(string uid, string userName, string url, Action<Sprite> onComplete)
     {
         if (string.IsNullOrWhiteSpace(url))
         {
@@ -281,12 +337,19 @@ public static class FriendAvatarImageUtility
         }
 
         string normalizedUrl = NormalizeRemoteAvatarUrl(url);
+        if (string.IsNullOrEmpty(normalizedUrl))
+        {
+            LogAvatarDownloadFailure(userName, url, "URL 非法");
+            onComplete?.Invoke(null);
+            yield break;
+        }
+
         using UnityWebRequest request = UnityWebRequestTexture.GetTexture(normalizedUrl);
         yield return request.SendWebRequest();
 
         if (request.result != UnityWebRequest.Result.Success)
         {
-            Debug.LogWarning("[FriendAvatarImageUtility] 下载好友头像失败: " + request.error);
+            LogAvatarDownloadFailure(userName, url, request.error);
             onComplete?.Invoke(null);
             yield break;
         }
@@ -406,7 +469,25 @@ public static class FriendAvatarImageUtility
 
     private static string NormalizeRemoteAvatarUrl(string url)
     {
-        return string.IsNullOrWhiteSpace(url) ? string.Empty : url.Trim();
+        if (string.IsNullOrWhiteSpace(url))
+            return string.Empty;
+
+        string trimmed = url.Trim();
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out Uri uri))
+            return string.Empty;
+
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            return string.Empty;
+
+        return uri.AbsoluteUri;
+    }
+
+    private static void LogAvatarDownloadFailure(string userName, string url, string reason)
+    {
+        string displayName = string.IsNullOrWhiteSpace(userName) ? "未知用户" : userName.Trim();
+        string displayUrl = string.IsNullOrWhiteSpace(url) ? "(空)" : url.Trim();
+        string suffix = string.IsNullOrWhiteSpace(reason) ? string.Empty : $"，原因：{reason}";
+        Debug.LogWarning($"下载用户{displayName} 失败，图片地址是{displayUrl}{suffix}");
     }
 
     private static string NormalizeRemoteAvatarKey(string key)
@@ -472,6 +553,19 @@ public static class FriendAvatarImageUtility
                 return FacebookUserInfoHelper.LocalAvatarPath;
             default:
                 return GoogleUserInfoHelper.LocalAvatarPath;
+        }
+    }
+
+    private static bool TryLoadAccountCachedAvatar(LoginType loginType, string photoUrl, out Sprite sprite)
+    {
+        switch (loginType)
+        {
+            case LoginType.Apple:
+                return AppleUserInfoHelper.TryLoadCachedAvatarForUrl(photoUrl, out sprite);
+            case LoginType.Facebook:
+                return FacebookUserInfoHelper.TryLoadCachedAvatarForUrl(photoUrl, out sprite);
+            default:
+                return GoogleUserInfoHelper.TryLoadCachedAvatarForUrl(photoUrl, out sprite);
         }
     }
 

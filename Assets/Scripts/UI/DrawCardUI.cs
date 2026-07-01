@@ -189,9 +189,9 @@ public class DrawCardUI : WindowBase
 			return;
 		}
 
-		if (_isWaitingForExit) return;
-		if (_isAnimating || _suppressPointerClick) return;
-		CancelDraw(true);
+		// 背景点击只用于开始牌堆洗牌，选牌/翻牌过程中不要把空白点击当作取消。
+		if (_isWaitingForExit || _isChoosing || _isAnimating || _suppressPointerClick)
+			return;
 	}
 
 	private void OnExitButtonClicked()
@@ -913,7 +913,7 @@ public class DrawCardUI : WindowBase
 		FadeOutShuffleExtraCards(_flowSequence, 0.28f);
 		float centerDuration = Mathf.Max(0.12f, uiComponent.centerRevealDuration);
 		float flipHalfDuration = Mathf.Max(0.08f, uiComponent.flipDuration * 0.5f);
-		float reverseRotateDuration = Mathf.Max(0.08f, uiComponent.reverseRotateDuration);
+		float finalRevealRotationZ = targetRotationZ + (upright ? 0f : 180f);
 
 		for (int i = 0; i < _cardImages.Count; i++)
 		{
@@ -942,9 +942,7 @@ public class DrawCardUI : WindowBase
 		AppendCenterRevealShake(_flowSequence, selectedRect, targetPosition, centerScale, targetRotationZ);
 		_flowSequence.Append(selectedRect.DORotate(new Vector3(0f, 88f, targetRotationZ), flipHalfDuration).SetEase(Ease.InCubic));
 		_flowSequence.AppendCallback(() => RevealFrontCard(selectedImage, card, upright, targetRotationZ));
-		_flowSequence.Append(selectedRect.DORotate(new Vector3(0f, 0f, targetRotationZ), flipHalfDuration).SetEase(Ease.OutCubic));
-		if (!upright)
-			_flowSequence.Append(selectedRect.DORotate(new Vector3(0f, 0f, targetRotationZ + 180f), reverseRotateDuration).SetEase(Ease.InOutCubic));
+		_flowSequence.Append(selectedRect.DORotate(new Vector3(0f, 0f, finalRevealRotationZ), flipHalfDuration).SetEase(Ease.OutCubic));
 		_flowSequence.AppendCallback(() => CommitTargetCardResult(selectedImage, card, upright));
 		RectTransform punchRect = ResolveTargetCardPoseRect();
 		if (punchRect != null)
@@ -1017,7 +1015,7 @@ public class DrawCardUI : WindowBase
 		selectedImage.sprite = frontSprite != null ? frontSprite : ResolveCardBackSprite();
 		selectedImage.color = Color.white;
 		selectedImage.preserveAspect = true;
-		selectedImage.rectTransform.localRotation = Quaternion.Euler(0f, 88f, targetRotationZ);
+		selectedImage.rectTransform.localRotation = Quaternion.Euler(0f, 88f, targetRotationZ + (upright ? 0f : 180f));
 
 		if (_desText != null && card != null)
 		{

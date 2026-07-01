@@ -202,7 +202,7 @@ public class CreateFriendInfoUI : WindowBase
 		}
 
 		int requestId = requestVersion;
-		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadSpriteFromUrlCoroutine(currentFriend.photoUrl, sprite =>
+		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadUserSpriteFromUrlCoroutine(currentFriend.name, currentFriend.photoUrl, sprite =>
 		{
 			if (requestId != requestVersion || currentFriend == null || sprite == null) return;
 			currentFriend.headSprite = sprite;
@@ -488,7 +488,7 @@ public class CreateFriendInfoUI : WindowBase
 	public void OnEditProfileButtonClick()
 	{
 		if (currentFriend == null) return;
-		EditFriendUI.Show(currentFriend, updatedFriend =>
+		CreateFriendUI.ShowEdit(currentFriend, updatedFriend =>
 		{
 			currentFriend = updatedFriend;
 			RefreshProfile();

@@ -196,7 +196,7 @@ public class TwoPersonDivinationWaitingFriendFlowUI : WindowBase
 			return;
 
 		FriendDataManager.FriendData friend = currentFriend;
-		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadSpriteFromUrlCoroutine(currentFriend.photoUrl, sprite =>
+		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadUserSpriteFromUrlCoroutine(currentFriend.name, currentFriend.photoUrl, sprite =>
 		{
 			if (currentFriend != friend || sprite == null) return;
 			currentFriend.headSprite = sprite;
@@ -207,6 +207,9 @@ public class TwoPersonDivinationWaitingFriendFlowUI : WindowBase
 	private void LoadUserAvatar()
 	{
 		if (uiComponent?.YouStateAvatarImage == null || uiComponent == null) return;
+		ApplyAvatar(
+			uiComponent.YouStateAvatarImage,
+			FriendAvatarImageUtility.ResolveCurrentUserAvatar(uiComponent.YouStateAvatarImage));
 		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadCurrentUserAvatarCoroutine((sprite, _) =>
 		{
 			ApplyAvatar(uiComponent.YouStateAvatarImage, sprite);

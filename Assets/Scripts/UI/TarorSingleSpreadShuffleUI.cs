@@ -28,6 +28,8 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     private const float DeckCardSpacing = 12f;
     private const int VisualDeckCardCount = 12;
     private const float DefaultRevealMaskAlpha = 0.8f;
+    private const float DefaultShuffleScatterDuration = 1.6f;
+    private const float DefaultShuffleGatherDuration = 0.83f;
 
     public TarorSingleSpreadShuffleUIComponent uiComponent;
 
@@ -54,6 +56,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
     private Image _cardTemplateImage;
     private Tween _deckInertiaTween;
     private Sequence _drawSequence;
+    private Sequence _deckShuffleSequence;
     private readonly List<int> _deckSiblingOrder = new List<int>();
     private Coroutine _singleClickCoroutine;
     private Coroutine _longPressCoroutine;
@@ -688,6 +691,8 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         uiComponent.maxDeckCardScale = Mathf.Max(uiComponent.maxDeckCardScale, 0.64f);
         uiComponent.drawnFanLowerOffset = 0f;
         uiComponent.drawnFanScaleMultiplier = Mathf.Clamp(uiComponent.drawnFanScaleMultiplier <= 0f ? 0.88f : uiComponent.drawnFanScaleMultiplier, 0.68f, 1f);
+        uiComponent.flipRevealScaleMultiplier = Mathf.Max(uiComponent.flipRevealScaleMultiplier, 1.16f);
+        uiComponent.cardRevealGap = Mathf.Max(uiComponent.cardRevealGap, 0.85f);
     }
 
     private void PrepareInteractiveDeck()
@@ -698,9 +703,9 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         _drawnCards = TarotDeck.DrawMultiple(_cardCount);
         SyncToDivinationEngine();
 
-        _cardsReadyToDraw = true;
-        _isChoosingCard = true;
-        _isAnimatingCard = false;
+        _cardsReadyToDraw = false;
+        _isChoosingCard = false;
+        _isAnimatingCard = true;
         _nextDrawIndex = 0;
         _deckOffsetX = 0f;
         _scrollVelocityX = 0f;
@@ -709,8 +714,9 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         BuildDeckFan();
 
         SetSpreadTitle();
-        SetOperationStepText(GetDrawInstructionText());
+        SetOperationStepText("正在洗牌", false);
         SetDetailEntryVisible(false);
+        PlayDeckShuffleIntro();
     }
 
     private string GetDrawInstructionText()
@@ -770,8 +776,249 @@ public class TarorSingleSpreadShuffleUI : WindowBase
             _deckImages.Add(image);
         }
 
-        ApplyDeckLayout(false);
+        PlaceDeckAtStackPose();
+        SetDeckCardsInteractable(false);
+    }
+
+    private void PlayDeckShuffleIntro()
+    {
+        StopDeckShuffleSequence();
+        StopDeckInertia();
+        StopLongPressSelection();
+        StopPendingSingleClick();
+
+        if (_deckImages.Count == 0)
+        {
+            FinishDeckShuffleIntro();
+            return;
+        }
+
+        _deckOffsetX = 0f;
+        _isChoosingCard = false;
+        _isAnimatingCard = true;
+        SetDeckCardsInteractable(false);
+        SetOperationStepText("正在洗牌", false);
+        PlayDeckScatterAnimation(() => PlayDeckGatherAnimation(PlayDeckFanOutFromStack));
+    }
+
+    private void PlayDeckScatterAnimation(Action onComplete)
+    {
+        StopDeckShuffleSequence();
+        ResolveDeckLayoutMetrics();
+
+        _deckShuffleSequence = DOTween.Sequence();
+        float scatterDuration = Mathf.Max(0.58f, uiComponent.shuffleScatterDuration > 0f
+            ? uiComponent.shuffleScatterDuration
+            : DefaultShuffleScatterDuration);
+
+        for (int i = 0; i < _deckImages.Count; i++)
+        {
+            Image image = _deckImages[i];
+            if (image == null) continue;
+
+            RectTransform rect = image.rectTransform;
+            DOTween.Kill(image);
+            DOTween.Kill(rect);
+
+            float delay = Mathf.Lerp(0f, 0.18f, Hash01(i * 23 + 5));
+            float duration = Mathf.Max(0.58f, scatterDuration - delay - Mathf.Lerp(0.04f, 0.16f, Hash01(i * 19 + 7)));
+
+            _deckShuffleSequence.Insert(delay, rect.DOAnchorPos(GetDeckChaosPose(i, _deckImages.Count), duration)
+                .SetEase(Ease.InOutCubic));
+            _deckShuffleSequence.Insert(delay, rect.DORotate(new Vector3(0f, 0f, GetDeckChaosRotation(i)), duration)
+                .SetEase(Ease.InOutCubic));
+            _deckShuffleSequence.Insert(delay, rect.DOScale(Vector3.one * _deckCardScale, duration)
+                .SetEase(Ease.InOutCubic));
+        }
+
+        _deckShuffleSequence.AppendInterval(Mathf.Max(0f, scatterDuration - _deckShuffleSequence.Duration()));
+        _deckShuffleSequence.OnComplete(() =>
+        {
+            _deckShuffleSequence = null;
+            onComplete?.Invoke();
+        });
+    }
+
+    private void PlayDeckGatherAnimation(Action onComplete)
+    {
+        StopDeckShuffleSequence();
+        ResolveDeckLayoutMetrics();
+
+        _deckShuffleSequence = DOTween.Sequence();
+        float gatherDuration = Mathf.Max(0.28f, uiComponent.shuffleGatherDuration > 0f
+            ? uiComponent.shuffleGatherDuration
+            : DefaultShuffleGatherDuration);
+
+        for (int i = 0; i < _deckImages.Count; i++)
+        {
+            Image image = _deckImages[i];
+            if (image == null) continue;
+
+            RectTransform rect = image.rectTransform;
+            DOTween.Kill(rect);
+            _deckShuffleSequence.Insert(0f, rect.DOAnchorPos(GetDeckShuffleStackPose(i, _deckImages.Count), gatherDuration)
+                .SetEase(Ease.OutBack, 0.95f));
+            _deckShuffleSequence.Insert(0f, rect.DORotate(new Vector3(0f, 0f, GetDeckShuffleStackRotation(i)), gatherDuration)
+                .SetEase(Ease.OutBack, 0.95f));
+            _deckShuffleSequence.Insert(0f, rect.DOScale(Vector3.one * _deckCardScale, gatherDuration)
+                .SetEase(Ease.OutBack, 0.95f));
+        }
+
+        _deckShuffleSequence.OnComplete(() =>
+        {
+            _deckShuffleSequence = null;
+            onComplete?.Invoke();
+        });
+    }
+
+    private void PlayDeckFanOutFromStack()
+    {
+        StopDeckShuffleSequence();
+        ResolveDeckLayoutMetrics();
+
+        _deckShuffleSequence = DOTween.Sequence();
+        float fanOutDuration = Mathf.Max(0.32f, uiComponent.shuffleFanOutDuration);
+        float fanOutGap = Mathf.Max(0.035f, uiComponent.shuffleFanOutGap);
+        List<int> fanOutOrder = BuildLeftToRightDeckFanOutOrder();
+
+        for (int orderIndex = 0; orderIndex < fanOutOrder.Count; orderIndex++)
+        {
+            int deckIndex = fanOutOrder[orderIndex];
+            Image image = _deckImages[deckIndex];
+            if (image == null) continue;
+
+            RectTransform rect = image.rectTransform;
+            DOTween.Kill(image);
+            DOTween.Kill(rect);
+
+            Vector2 sourcePosition = rect.anchoredPosition;
+            Vector2 targetPosition = GetDeckFanPosition(deckIndex);
+            float targetRotation = GetDeckFanRotation(deckIndex);
+            float lift = Mathf.Clamp(_viewportHeight * 0.03f, 28f, 58f);
+            Vector2 stagingPosition = Vector2.Lerp(sourcePosition, targetPosition, 0.54f) + new Vector2(0f, lift);
+            Vector3 targetScale = Vector3.one * (_deckCardScale * GetSettledDeckScaleMultiplier());
+
+            float startTime = orderIndex * fanOutGap;
+            float liftDuration = fanOutDuration * 0.42f;
+            float settleDuration = fanOutDuration - liftDuration;
+            Image capturedImage = image;
+            int capturedOrderIndex = orderIndex;
+            Sequence cardSequence = DOTween.Sequence();
+            cardSequence.Append(rect.DOAnchorPos(stagingPosition, liftDuration).SetEase(Ease.OutCubic));
+            cardSequence.Append(rect.DOAnchorPos(targetPosition, settleDuration).SetEase(Ease.OutQuart));
+
+            _deckShuffleSequence.InsertCallback(startTime, () => BringDeckFanOutCardToTop(capturedImage, capturedOrderIndex));
+            _deckShuffleSequence.Insert(startTime, image.DOFade(1f, fanOutDuration * 0.45f));
+            _deckShuffleSequence.Insert(startTime, cardSequence);
+            _deckShuffleSequence.Insert(startTime, rect.DORotate(new Vector3(0f, 0f, targetRotation), fanOutDuration)
+                .SetEase(Ease.InOutCubic));
+            _deckShuffleSequence.Insert(startTime, rect.DOScale(targetScale * 1.025f, liftDuration).SetEase(Ease.OutSine));
+            _deckShuffleSequence.Insert(startTime + liftDuration, rect.DOScale(targetScale, settleDuration).SetEase(Ease.OutCubic));
+        }
+
+        _deckShuffleSequence.OnComplete(FinishDeckShuffleIntro);
+    }
+
+    private void FinishDeckShuffleIntro()
+    {
+        _deckShuffleSequence = null;
+        _cardsReadyToDraw = true;
+        _isChoosingCard = true;
+        _isAnimatingCard = false;
+        RefreshDeckSiblingOrder();
         SetDeckCardsInteractable(true);
+        SetOperationStepText(GetDrawInstructionText());
+    }
+
+    private void PlaceDeckAtStackPose()
+    {
+        ResolveDeckLayoutMetrics();
+
+        for (int i = 0; i < _deckImages.Count; i++)
+        {
+            Image image = _deckImages[i];
+            if (image == null) continue;
+
+            RectTransform rect = image.rectTransform;
+            DOTween.Kill(image);
+            DOTween.Kill(rect);
+            image.enabled = true;
+            image.color = Color.white;
+            image.raycastTarget = false;
+            rect.anchoredPosition = GetDeckShuffleStackPose(i, _deckImages.Count);
+            rect.localRotation = Quaternion.Euler(0f, 0f, GetDeckShuffleStackRotation(i));
+            rect.localScale = Vector3.one * _deckCardScale;
+        }
+
+        RefreshDeckSiblingOrder();
+    }
+
+    private List<int> BuildLeftToRightDeckFanOutOrder()
+    {
+        List<int> order = new List<int>(_deckImages.Count);
+        for (int i = 0; i < _deckImages.Count; i++)
+        {
+            if (_deckImages[i] != null)
+                order.Add(i);
+        }
+
+        order.Sort((left, right) =>
+        {
+            float leftX = GetDeckFanPosition(left).x;
+            float rightX = GetDeckFanPosition(right).x;
+            int xCompare = leftX.CompareTo(rightX);
+            return xCompare != 0 ? xCompare : left.CompareTo(right);
+        });
+
+        return order;
+    }
+
+    private void BringDeckFanOutCardToTop(Image image, int orderIndex)
+    {
+        if (image == null) return;
+
+        image.rectTransform.SetAsLastSibling();
+        SetDeckCardSortingOrder(image, _deckImages.Count + 30 + orderIndex);
+    }
+
+    private Vector2 GetDeckShuffleAnchor()
+    {
+        return new Vector2(0f, Mathf.Clamp(_viewportHeight * 0.1f, 58f, 128f));
+    }
+
+    private Vector2 GetDeckShuffleStackPose(int index, int count)
+    {
+        Vector2 anchor = GetDeckShuffleAnchor();
+        float centeredIndex = index - (count - 1) * 0.5f;
+        float x = anchor.x + centeredIndex * 0.34f + Mathf.Sin(index * 0.61f) * 2.2f;
+        float y = anchor.y - centeredIndex * 0.5f + (index % 7) * 0.55f;
+        return new Vector2(x, y);
+    }
+
+    private float GetDeckShuffleStackRotation(int index)
+    {
+        return Mathf.Sin(index * 0.7f) * 1.05f;
+    }
+
+    private Vector2 GetDeckChaosPose(int index, int count)
+    {
+        Vector2 anchor = GetDeckShuffleAnchor();
+        float maxRadius = Mathf.Clamp(_viewportWidth * 0.23f, 132f, 220f);
+        float radius = Mathf.Lerp(44f, maxRadius, Hash01(index * 17 + 3));
+        float angle = (index * 137.507f + Hash01(index * 31 + 9) * 48f) * Mathf.Deg2Rad;
+        float x = Mathf.Cos(angle) * radius;
+        float y = Mathf.Sin(angle) * radius * 0.68f + Mathf.Sin(index * 0.33f) * 18f;
+        return anchor + new Vector2(x, y);
+    }
+
+    private float GetDeckChaosRotation(int index)
+    {
+        return Mathf.Lerp(-34f, 34f, Hash01(index * 29 + 11));
+    }
+
+    private static float Hash01(int seed)
+    {
+        return Mathf.Repeat(Mathf.Sin(seed * 12.9898f) * 43758.5453f, 1f);
     }
 
     private float ResolveDeckCardScale()
@@ -1130,9 +1377,11 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         float centerDuration = Mathf.Max(0.12f, uiComponent.centerRevealDuration);
         float selectDuration = Mathf.Max(0.12f, uiComponent.selectDuration);
         float flipHalfDuration = Mathf.Max(0.08f, uiComponent.flipDuration * 0.5f);
-        float reverseRotateDuration = Mathf.Max(0.08f, uiComponent.reverseRotateDuration);
         Sprite frontSprite = LoadCardSprite(draw.card.cardId);
         float finalRotationZ = targetRotationZ + (draw.upright ? 0f : 180f);
+        float centerRevealRotationZ = draw.upright ? 0f : 180f;
+        float flipRevealScale = centerScale * Mathf.Max(1.16f, uiComponent.flipRevealScaleMultiplier);
+        float revealHoldDuration = Mathf.Max(0.85f, uiComponent.cardRevealGap);
 
         _drawSequence?.Kill(false);
         _drawSequence = DOTween.Sequence();
@@ -1148,17 +1397,17 @@ public class TarorSingleSpreadShuffleUI : WindowBase
             _drawSequence.AppendInterval(uiComponent.centerRevealMaskFadeDuration);
         AppendCenterRevealShake(_drawSequence, flyRect, centerPosition, centerScale, 0f);
         _drawSequence.Append(flyRect.DORotate(new Vector3(0f, 88f, 0f), flipHalfDuration).SetEase(Ease.InCubic));
+        _drawSequence.Join(flyRect.DOScale(Vector3.one * flipRevealScale, flipHalfDuration).SetEase(Ease.InOutSine));
         _drawSequence.AppendCallback(() =>
         {
             flyImage.sprite = frontSprite ?? ResolveCardBackSprite();
             flyImage.color = Color.white;
-            flyRect.localRotation = Quaternion.Euler(0f, 88f, 0f);
+            flyRect.localRotation = Quaternion.Euler(0f, 88f, centerRevealRotationZ);
         });
-        _drawSequence.Append(flyRect.DORotate(Vector3.zero, flipHalfDuration).SetEase(Ease.OutCubic));
-        if (!draw.upright)
-            _drawSequence.Append(flyRect.DORotate(new Vector3(0f, 0f, 180f), reverseRotateDuration).SetEase(Ease.InOutCubic));
-        if (uiComponent.cardRevealGap > 0f)
-            _drawSequence.AppendInterval(uiComponent.cardRevealGap);
+        _drawSequence.Append(flyRect.DORotate(new Vector3(0f, 0f, centerRevealRotationZ), flipHalfDuration).SetEase(Ease.OutCubic));
+        _drawSequence.Join(flyRect.DOScale(Vector3.one * flipRevealScale, flipHalfDuration).SetEase(Ease.OutCubic));
+        if (revealHoldDuration > 0f)
+            _drawSequence.AppendInterval(revealHoldDuration);
         _drawSequence.AppendCallback(() =>
         {
             slot.SetCardSlotVisible(false);
@@ -1686,6 +1935,12 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         _deckInertiaTween = null;
     }
 
+    private void StopDeckShuffleSequence()
+    {
+        _deckShuffleSequence?.Kill(false);
+        _deckShuffleSequence = null;
+    }
+
     private void SetDeckCardsInteractable(bool interactable)
     {
         for (int i = 0; i < _deckImages.Count; i++)
@@ -1708,6 +1963,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         StopPendingSingleClick();
         StopGroupReadingLoading();
         SetRevealMaskVisible(false, true);
+        StopDeckShuffleSequence();
         _drawSequence?.Kill(false);
         _drawSequence = null;
         ClearRuntimeFlyingCards();
@@ -2421,6 +2677,7 @@ public class TarorSingleSpreadShuffleUI : WindowBase
         StopPendingSingleClick();
         StopGroupReadingLoading();
         SetRevealMaskVisible(false, true);
+        StopDeckShuffleSequence();
 
         _drawSequence?.Kill(false);
         _drawSequence = null;

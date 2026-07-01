@@ -236,7 +236,7 @@ public class FriendPreviewUI : WindowBase
 		if (string.IsNullOrWhiteSpace(photoUrl))
 			return;
 
-		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadSpriteFromUrlCoroutine(photoUrl, sprite =>
+		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadUserSpriteFromUrlCoroutine(GetDisplayName(), photoUrl, sprite =>
 		{
 			if (requestId != requestVersion || sprite == null || uiComponent?.AvatarImage == null)
 				return;
@@ -413,7 +413,7 @@ public class FriendPreviewUI : WindowBase
 			? "正在整理这个好友的本地占卜记录..."
 			: "正在同步对方公开的占卜摘要...";
 
-		AllDivinationHistoryUI historyWindow = AllDivinationHistoryUI.ShowLoading(loadingDescription, GetDisplayName());
+		AllDivinationHistoryUI historyWindow = AllDivinationHistoryUI.ShowLoading(loadingDescription, GetDisplayName(), currentFriend);
 		if (historyWindow == null)
 			return;
 
@@ -684,7 +684,7 @@ public class FriendPreviewUI : WindowBase
 		if (entry?.detailRecord == null)
 			return;
 
-		TarotDetailedUI.Show(entry.detailRecord, GetDisplayName());
+		TarotDetailedUI.Show(entry.detailRecord, GetDisplayName(), false, true, currentFriend);
 	}
 
 	private void SetHistoryPanelVisible(bool visible)
@@ -1034,7 +1034,7 @@ public class FriendPreviewUI : WindowBase
 			: record.IsCancelled ? "已取消"
 			: expired ? "已过期"
 			: record.IsCompleted ? "查看结果"
-			: record.IsCurrentUserReceiver(currentUid) && record.receiverJoined && canReveal ? "抽牌"
+			: record.IsCurrentUserReceiver(currentUid) && HasReceiverAccepted(record) && canReveal ? "抽牌"
 			: canReveal && record.IsCurrentUserReceiver(currentUid) ? "接受"
 			: canReveal ? "翻开我的牌"
 			: "进入占卜";
@@ -1055,6 +1055,15 @@ public class FriendPreviewUI : WindowBase
 			&& (record.isLocalOnly
 				|| record.IsCurrentUserInitiator(currentUid)
 				|| record.IsCurrentUserReceiver(currentUid));
+	}
+
+	private bool HasReceiverAccepted(RelationshipDivinationRecord record)
+	{
+		return record != null
+			&& (record.IsCompleted
+				|| record.receiverJoined
+				|| record.receiverRevealed
+				|| record.status == RelationshipDivinationStatus.ReceiverJoined);
 	}
 
 	private bool CanSubmitAddRequest()
@@ -1357,7 +1366,7 @@ public class FriendPreviewUI : WindowBase
 			return;
 		}
 
-		if (record.IsCompleted || record.receiverJoined || !record.CanCurrentUserReveal(currentUid))
+		if (record.IsCompleted || HasReceiverAccepted(record) || !record.CanCurrentUserReveal(currentUid))
 		{
 			OpenRelationshipInvitation(record);
 			return;
@@ -1384,7 +1393,7 @@ public class FriendPreviewUI : WindowBase
 
 			currentRelationshipInvite = updated;
 			sPendingRelationshipInvite = updated;
-			if (!updated.receiverJoined && !updated.IsCompleted)
+			if (!HasReceiverAccepted(updated) && !updated.IsCompleted)
 			{
 				RefreshAddButton();
 				return;
@@ -1480,7 +1489,7 @@ public class FriendPreviewUI : WindowBase
 
 		FriendDataManager.FriendData editingFriend = currentFriend;
 		HideSettingPanel(false);
-		EditFriendUI.Show(editingFriend, updatedFriend =>
+		CreateFriendUI.ShowEdit(editingFriend, updatedFriend =>
 		{
 			currentFriend = updatedFriend;
 			RefreshSettingControls();
@@ -1759,7 +1768,7 @@ public class FriendPreviewUI : WindowBase
 			return new DivinationRecordData
 			{
 				readingId = FirstNonEmpty(summary.oracleId, $"daily_{summary.ownerUid}_{summary.date}"),
-				question = FirstNonEmpty(summary.title, "每日占卜"),
+				question = "每日占卜",
 				scene = "daily_oracle",
 				spreadKind = "daily_oracle",
 				lockedCards = new List<LockedCard>

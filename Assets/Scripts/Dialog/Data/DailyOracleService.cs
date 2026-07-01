@@ -29,6 +29,9 @@ public class DailyOracleService : MonoBehaviour
     /// <summary>当前缓存的完整预生成结果</summary>
     public TodayOraclePreparedReading CachedPreparedReading { get; private set; }
 
+    /// <summary>当前缓存的今日神谕完整阅读数据</summary>
+    public TodayOracleReadingData CachedReadingData => CachedPreparedReading;
+
     /// <summary>当前卡牌（最近一次请求的牌）</summary>
     public TarotCard CurrentCard { get; private set; }
 
@@ -129,6 +132,7 @@ public class DailyOracleService : MonoBehaviour
         DivinationEngine.Instance?.SetTodayCardFromCloud(card, upright, record.date);
 
         CachedPreparedReading = BuildPreparedReading(card, upright, payload, null);
+        ApplyCloudRecordMetadata(CachedPreparedReading, record);
         MarkPreparedCache(card, upright);
         preparedReading = CachedPreparedReading;
         DailyOracleHistoryBridge.SaveDailyRecord(record, true);
@@ -427,6 +431,7 @@ public class DailyOracleService : MonoBehaviour
 
         return new TodayOraclePreparedReading
         {
+            date = DateTime.Now.ToString("yyyy-MM-dd"),
             card = card,
             upright = upright,
             cardId = card.cardId,
@@ -437,8 +442,34 @@ public class DailyOracleService : MonoBehaviour
             cardPayload = cardPayload,
             oraclePayload = oraclePayload,
             interpretationPayload = interpretationPayload,
-            preparedAt = DateTime.Now.ToString("o")
+            locale = CurrentLocale,
+            oracleId = GetCurrentOracleId(),
+            preparedAt = DateTime.Now.ToString("o"),
+            createdAtLocal = DateTime.Now.ToString("o"),
+            syncEnabled = DailyDivinationSyncSettingsManager.Instance != null
+                && DailyDivinationSyncSettingsManager.Instance.Enabled,
+            visibility = DailyDivinationSyncSettingsManager.Instance != null
+                ? DailyDivinationSyncSettingsManager.Instance.GetSettings().VisibilityKey
+                : "only_me",
+            summaryOnly = false,
+            isCloudBacked = false,
+            isPendingSync = false
         };
+    }
+
+    private void ApplyCloudRecordMetadata(TodayOraclePreparedReading reading, DailyOracleCloudRecord record)
+    {
+        if (reading == null || record == null) return;
+
+        reading.date = record.date;
+        reading.locale = record.locale;
+        reading.oracleId = record.oracleId;
+        reading.createdAtLocal = record.createdAtLocal;
+        reading.syncEnabled = record.syncEnabled;
+        reading.visibility = record.visibility;
+        reading.summaryOnly = record.summaryOnly;
+        reading.isCloudBacked = true;
+        reading.isPendingSync = false;
     }
 
     private static string FirstNonEmpty(params string[] values)
@@ -459,14 +490,13 @@ public class DailyOracleService : MonoBehaviour
     {
         if (CurrentCard == null) return null;
 
+        if (IsCachedPreparedReadingFor(CurrentCard, CurrentUpright))
+            return CachedPreparedReading?.BuildCardPayload();
+
         TodayOraclePayload oraclePayload = null;
         if (IsCachedOracleFor(CurrentCard, CurrentUpright))
         {
             oraclePayload = CachedPayload;
-        }
-        else if (IsCachedPreparedReadingFor(CurrentCard, CurrentUpright))
-        {
-            oraclePayload = CachedPreparedReading?.oraclePayload;
         }
 
         return new TodayCardPayload
@@ -480,6 +510,17 @@ public class DailyOracleService : MonoBehaviour
             oracleText = oraclePayload?.oracle,
             title = FirstNonEmpty(oraclePayload?.title, "今日塔罗")
         };
+    }
+
+    public TodayOracleReadingData GetTodayReadingData()
+    {
+        if (CachedPreparedReading != null)
+            return CachedPreparedReading;
+
+        if (CurrentCard != null)
+            return BuildPreparedReading(CurrentCard, CurrentUpright, CachedPayload, CachedInterpretation);
+
+        return TodayOracleReadingData.FromCloudRecord(DailyOracleFirestore.LoadTodayLocal());
     }
 
     // ================================================================
@@ -529,6 +570,17 @@ public class DailyOracleService : MonoBehaviour
                 preferredTone = "tarot_reader",
                 locale = locale
             }
+        };
+    }
+
+    private static string GetCurrentOracleId()
+    {
+        if (RoleManager.Instance == null) return "tarot";
+        return RoleManager.Instance.characterType switch
+        {
+            CharacterType.Astrologer => "astrology",
+            CharacterType.Meditator => "sage",
+            _ => "tarot",
         };
     }
 

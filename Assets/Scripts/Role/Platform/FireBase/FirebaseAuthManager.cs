@@ -1418,6 +1418,7 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
     /// </summary>
     private IEnumerator DownloadAvatarCoroutine(string photoUrl, AuthProvider provider)
     {
+        string userName = GetAvatarDownloadUserName();
         switch (provider)
         {
             case AuthProvider.Apple:
@@ -1431,7 +1432,8 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
                             OnUserInfoUpdated?.Invoke(CurrentUser);
                         }
                     },
-                    true
+                    true,
+                    userName
                 );
                 break;
             case AuthProvider.Facebook:
@@ -1445,7 +1447,8 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
                             OnUserInfoUpdated?.Invoke(CurrentUser);
                         }
                     },
-                    true
+                    true,
+                    userName
                 );
                 break;
             default:
@@ -1460,10 +1463,22 @@ public class FirebaseAuthManager : MonoSingleton<FirebaseAuthManager>
                             OnUserInfoUpdated?.Invoke(CurrentUser);
                         }
                     },
-                    true
+                    true,
+                    userName
                 );
                 break;
         }
+    }
+
+    private string GetAvatarDownloadUserName()
+    {
+        if (!string.IsNullOrWhiteSpace(UserDataManager.Instance?.UserName))
+            return UserDataManager.Instance.UserName.Trim();
+        if (!string.IsNullOrWhiteSpace(CurrentUser?.DisplayName))
+            return CurrentUser.DisplayName.Trim();
+        if (!string.IsNullOrWhiteSpace(CurrentUser?.Email))
+            return CurrentUser.Email.Trim();
+        return string.IsNullOrWhiteSpace(CurrentUser?.UserId) ? "当前用户" : CurrentUser.UserId;
     }
 
     /// <summary>

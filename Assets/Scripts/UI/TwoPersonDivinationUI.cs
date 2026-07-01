@@ -9,6 +9,7 @@ using UnityEngine.UI;
 using UnityEngine;
 using GamerFrameWork.UIFrameWork;
 using System;
+using System.Collections;
 using TMPro;
 
 public class TwoPersonDivinationUI : WindowBase
@@ -20,6 +21,8 @@ public class TwoPersonDivinationUI : WindowBase
 	private RelationshipDivinationRecord currentRecord;
 	private FriendDataManager.FriendData currentFriend;
 	private bool isProcessing;
+	private bool isRefreshingRemote;
+	private Coroutine pollCoroutine;
 	private int avatarRequestVersion;
 
 	#region 生命周期函数
@@ -45,17 +48,21 @@ public class TwoPersonDivinationUI : WindowBase
 		isProcessing = false;
 		avatarRequestVersion++;
 		Render();
+		StartPolling();
 	}
 	// 物体隐藏时执行
 	public override void OnHide()
 	{
+		StopPolling();
 		avatarRequestVersion++;
 		isProcessing = false;
+		isRefreshingRemote = false;
 		base.OnHide();
 	}
 	// 物体销毁时执行
 	public override void OnDestroy()
 	{
+		StopPolling();
 		base.OnDestroy();
 	}
 	#endregion
@@ -86,9 +93,13 @@ public class TwoPersonDivinationUI : WindowBase
 		currentRecord = record;
 		currentFriend = friend ?? currentFriend ?? RelationshipDivinationFlow.CurrentFriend;
 		isProcessing = false;
+		RelationshipDivinationFlow.UpdateCurrentRecordState(record, currentFriend);
 
 		if (gameObject != null && gameObject.activeInHierarchy)
+		{
 			Render();
+			StartPolling();
+		}
 	}
 
 	#endregion
@@ -153,6 +164,71 @@ public class TwoPersonDivinationUI : WindowBase
 		RenderMeta();
 		RenderCards();
 		UpdateFlipButton();
+	}
+
+	private void StartPolling()
+	{
+		StopPolling();
+		if (!ShouldPollRemote())
+			return;
+
+		pollCoroutine = uiComponent.StartCoroutine(PollRoutine());
+		RefreshRemoteRecord();
+	}
+
+	private void StopPolling()
+	{
+		if (pollCoroutine != null && uiComponent != null)
+			uiComponent.StopCoroutine(pollCoroutine);
+		pollCoroutine = null;
+	}
+
+	private IEnumerator PollRoutine()
+	{
+		while (gameObject != null && gameObject.activeInHierarchy && ShouldPollRemote())
+		{
+			yield return new WaitForSeconds(6f);
+			RefreshRemoteRecord();
+		}
+
+		pollCoroutine = null;
+	}
+
+	private bool ShouldPollRemote()
+	{
+		return uiComponent != null
+			&& currentRecord != null
+			&& !currentRecord.isLocalOnly
+			&& !currentRecord.IsCancelled
+			&& !currentRecord.IsCompleted;
+	}
+
+	private void RefreshRemoteRecord()
+	{
+		if (isRefreshingRemote || currentRecord == null || currentRecord.isLocalOnly)
+			return;
+
+		isRefreshingRemote = true;
+		string readingId = currentRecord.readingId;
+		RelationshipDivinationFlow.RefreshCurrentRecord(updated =>
+		{
+			isRefreshingRemote = false;
+			if (updated == null || gameObject == null || !gameObject.activeInHierarchy)
+				return;
+
+			if (!string.IsNullOrWhiteSpace(readingId)
+				&& !string.Equals(readingId, updated.readingId, StringComparison.Ordinal))
+			{
+				return;
+			}
+
+			currentRecord = updated;
+			sPendingRecord = updated;
+			RelationshipDivinationFlow.UpdateCurrentRecordState(updated, currentFriend);
+			Render();
+			if (!ShouldPollRemote())
+				StopPolling();
+		});
 	}
 
 	private void RenderFriendInfo()
@@ -302,7 +378,7 @@ public class TwoPersonDivinationUI : WindowBase
 
 		int requestId = ++avatarRequestVersion;
 		FriendDataManager.FriendData friend = currentFriend;
-		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadSpriteFromUrlCoroutine(currentFriend.photoUrl, sprite =>
+		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadUserSpriteFromUrlCoroutine(currentFriend.name, currentFriend.photoUrl, sprite =>
 		{
 			if (requestId != avatarRequestVersion || currentFriend != friend || sprite == null)
 				return;

@@ -190,6 +190,13 @@ public class MyInviationUI : WindowBase
 				return;
 			}
 
+			if (currentTab == InvitationTab.Received)
+			{
+				RelationshipInviteUnreadTracker.MarkSeen(currentRecords);
+				service.MarkIncomingInvitesSeen(currentRecords);
+				AppNotificationScheduler.Instance.NotifyRelationshipInviteCount(0);
+			}
+
 			RenderRecords();
 		};
 
@@ -279,7 +286,9 @@ public class MyInviationUI : WindowBase
 		if (invitationItem == null)
 			invitationItem = item.GetComponentInChildren<UserInvitationItem>(true);
 
-		BindItem(invitationItem, currentRecords[index]);
+		RelationshipDivinationRecord record = ResolveDisplayRecord(currentRecords[index]);
+		currentRecords[index] = record;
+		BindItem(invitationItem, record);
 		return item;
 	}
 
@@ -287,6 +296,7 @@ public class MyInviationUI : WindowBase
 	{
 		if (item == null || record == null) return;
 
+		record = ResolveDisplayRecord(record);
 		bool showingInitiated = currentTab == InvitationTab.Initiate;
 		string otherUid = showingInitiated ? record.receiverUid : record.initiatorUid;
 		FriendDataManager.FriendData friend = FindFriend(otherUid);
@@ -311,7 +321,7 @@ public class MyInviationUI : WindowBase
 		bool accepted = IsAccepted(record);
 		ApplyButtonState(
 			item,
-			accepted ? "Accepted" : "Pending approval",
+			accepted ? "已接受" : "待同意",
 			accepted ? AcceptedTextColor : PendingTextColor,
 			false,
 			false,
@@ -322,19 +332,19 @@ public class MyInviationUI : WindowBase
 	{
 		if (record != null && record.IsCompleted)
 		{
-			ApplyButtonState(item, "View result", AcceptedTextColor, true, true, () => OpenRelationshipRecord(record));
+			ApplyButtonState(item, "查看结果", ActionTextColor, true, true, () => OpenRelationshipRecord(record));
 			return;
 		}
 
-		if (record != null && record.receiverJoined && !record.receiverRevealed)
+		if (HasReceiverAccepted(record) && !record.receiverRevealed)
 		{
-			ApplyButtonState(item, "Continue", ActionTextColor, true, true, () => OpenRelationshipRecord(record));
+			ApplyButtonState(item, "继续", ActionTextColor, true, true, () => OpenRelationshipRecord(record));
 			return;
 		}
 
 		if (record != null && record.receiverRevealed)
 		{
-			ApplyButtonState(item, "Waiting", PendingTextColor, false, false, null);
+			ApplyButtonState(item, "等待结果", PendingTextColor, false, false, null);
 			return;
 		}
 
@@ -342,7 +352,7 @@ public class MyInviationUI : WindowBase
 		bool accepting = acceptingReadingIds.Contains(readingId);
 		ApplyButtonState(
 			item,
-			accepting ? "Accepting" : "Accept",
+			accepting ? "接受中" : "接受",
 			ActionTextColor,
 			true,
 			!accepting,
@@ -394,6 +404,7 @@ public class MyInviationUI : WindowBase
 	private void OnAcceptInviteClick(RelationshipDivinationRecord record)
 	{
 		if (record == null) return;
+		string currentUid = RelationshipDivinationFlow.GetCurrentUid();
 
 		if (record.IsCancelled)
 		{
@@ -413,7 +424,7 @@ public class MyInviationUI : WindowBase
 		if (acceptingReadingIds.Contains(readingId))
 			return;
 
-		if (record.IsCompleted || record.receiverJoined || !record.CanCurrentUserReveal(RelationshipDivinationFlow.GetCurrentUid()))
+		if (record.IsCompleted || HasReceiverAccepted(record) || !record.CanCurrentUserReveal(currentUid))
 		{
 			OpenRelationshipRecord(record);
 			return;
@@ -428,26 +439,64 @@ public class MyInviationUI : WindowBase
 
 		acceptingReadingIds.Add(readingId);
 		RefreshInvitationList(false);
-		service.JoinInvite(record, updated =>
+
+		Action<RelationshipDivinationRecord> joinLatest = targetRecord =>
 		{
-			acceptingReadingIds.Remove(readingId);
-			if (updated == null)
+			targetRecord ??= record;
+			if (targetRecord.IsCancelled)
 			{
-				ToastManager.ShowToast("接受邀请失败，请稍后再试");
-				RefreshInvitationList(false);
+				acceptingReadingIds.Remove(readingId);
+				ToastManager.ShowToast("这次双人占卜邀请已取消");
+				LoadCurrentTab();
 				return;
 			}
 
-			ReplaceRecord(record, updated);
-			if (!updated.receiverJoined && !updated.IsCompleted)
+			if (RelationshipDivinationFlow.IsInviteExpired(targetRecord))
 			{
-				RefreshInvitationList(false);
+				acceptingReadingIds.Remove(readingId);
+				ToastManager.ShowToast("这次双人占卜邀请已过期");
+				LoadCurrentTab();
 				return;
 			}
 
-			ToastManager.ShowToast("已接受邀请");
-			OpenRelationshipRecord(updated);
-		}, false);
+			if (targetRecord.IsCompleted
+				|| HasReceiverAccepted(targetRecord)
+				|| !targetRecord.CanCurrentUserReveal(currentUid))
+			{
+				acceptingReadingIds.Remove(readingId);
+				ReplaceRecord(record, targetRecord);
+				RelationshipDivinationFlow.UpdateCurrentRecordState(targetRecord, ResolveOtherFriend(targetRecord, false));
+				RefreshInvitationList(false);
+				OpenRelationshipRecord(targetRecord);
+				return;
+			}
+
+			service.JoinInvite(targetRecord, updated =>
+			{
+				acceptingReadingIds.Remove(readingId);
+				if (updated == null)
+				{
+					ToastManager.ShowToast("接受邀请失败，请稍后再试");
+					RefreshInvitationList(false);
+					return;
+				}
+
+				ReplaceRecord(record, updated);
+				RelationshipDivinationFlow.UpdateCurrentRecordState(updated, ResolveOtherFriend(updated, false));
+				if (!HasReceiverAccepted(updated) && !updated.IsCompleted)
+				{
+					RefreshInvitationList(false);
+					return;
+				}
+
+				OpenRelationshipRecord(updated);
+			}, false);
+		};
+
+		if (!string.IsNullOrWhiteSpace(readingId))
+			service.LoadReading(readingId, latest => joinLatest(latest ?? record));
+		else
+			joinLatest(record);
 	}
 
 	private void BindInfoButton(UserInvitationItem item, RelationshipDivinationRecord record, FriendDataManager.FriendData friend, bool showingInitiated)
@@ -509,9 +558,66 @@ public class MyInviationUI : WindowBase
 		currentRecords.Insert(0, updated);
 	}
 
+	private RelationshipDivinationRecord ResolveDisplayRecord(RelationshipDivinationRecord record)
+	{
+		RelationshipDivinationRecord current = RelationshipDivinationFlow.CurrentRecord;
+		if (record == null || current == null)
+			return record;
+
+		if (string.IsNullOrWhiteSpace(record.readingId)
+			|| !string.Equals(record.readingId, current.readingId, StringComparison.Ordinal))
+		{
+			return record;
+		}
+
+		return IsRecordProgressAhead(current, record) ? current : record;
+	}
+
+	private static bool IsRecordProgressAhead(RelationshipDivinationRecord candidate, RelationshipDivinationRecord current)
+	{
+		int candidateRank = GetRecordProgressRank(candidate);
+		int currentRank = GetRecordProgressRank(current);
+		if (candidateRank != currentRank)
+			return candidateRank > currentRank;
+
+		DateTime candidateTime = ParseRecordTime(candidate);
+		DateTime currentTime = ParseRecordTime(current);
+		return candidateTime != DateTime.MinValue && candidateTime > currentTime;
+	}
+
+	private static int GetRecordProgressRank(RelationshipDivinationRecord record)
+	{
+		if (record == null) return 0;
+		if (record.IsCancelled) return 100;
+		if (record.IsCompleted) return 90;
+		if (record.initiatorRevealed && record.receiverRevealed) return 80;
+		if (record.receiverRevealed) return 70;
+		if (record.receiverJoined) return 60;
+		if (record.initiatorRevealed) return 50;
+		return 10;
+	}
+
+	private static DateTime ParseRecordTime(RelationshipDivinationRecord record)
+	{
+		if (record == null) return DateTime.MinValue;
+		if (DateTime.TryParse(record.completedAt, out DateTime completed)) return completed;
+		if (DateTime.TryParse(record.updatedAt, out DateTime updated)) return updated;
+		if (DateTime.TryParse(record.createdAt, out DateTime created)) return created;
+		return DateTime.MinValue;
+	}
+
 	private bool IsAccepted(RelationshipDivinationRecord record)
 	{
-		return record != null && (record.IsCompleted || record.receiverJoined || record.receiverRevealed);
+		return HasReceiverAccepted(record);
+	}
+
+	private bool HasReceiverAccepted(RelationshipDivinationRecord record)
+	{
+		return record != null
+			&& (record.IsCompleted
+				|| record.receiverJoined
+				|| record.receiverRevealed
+				|| record.status == RelationshipDivinationStatus.ReceiverJoined);
 	}
 
 	private FriendDataManager.FriendData FindFriend(string firebaseUid)

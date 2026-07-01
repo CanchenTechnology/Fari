@@ -458,7 +458,7 @@ public class UserSearchUI : WindowBase
 			return;
 		}
 
-		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadSpriteFromUrlCoroutine(result.photoUrl, sprite =>
+		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadUserSpriteFromUrlCoroutine(GetDisplayName(result), result.photoUrl, sprite =>
 		{
 			if (sprite == null || !FriendAvatarImageUtility.IsAvatarTargetTokenValid(target, token))
 			{
@@ -723,14 +723,37 @@ public class UserSearchUI : WindowBase
 				refreshRecommendationsButton = uiComponent.refreshBtn != null
 					? uiComponent.refreshBtn
 					: FindButtonByName(gameObject.transform, "[Button]refreshBtn", "refreshBtn");
+
+			if (uiComponent.refreshBtn == null)
+				uiComponent.refreshBtn = refreshRecommendationsButton;
+
+			EnsureButtonReceivesRaycasts(refreshRecommendationsButton);
 		}
 
 		private void BindRefreshRecommendationsButton()
 		{
 			if (refreshRecommendationsButton == null) return;
 
+			EnsureButtonReceivesRaycasts(refreshRecommendationsButton);
 			refreshRecommendationsButton.onClick.RemoveListener(OnRefreshRecommendationsButtonClick);
 			refreshRecommendationsButton.onClick.AddListener(OnRefreshRecommendationsButtonClick);
+		}
+
+		private void EnsureButtonReceivesRaycasts(Button button)
+		{
+			if (button == null)
+				return;
+
+			Graphic targetGraphic = button.targetGraphic;
+			if (targetGraphic == null)
+				targetGraphic = button.GetComponent<Graphic>();
+
+			if (targetGraphic != null)
+			{
+				targetGraphic.raycastTarget = true;
+				if (button.targetGraphic == null)
+					button.targetGraphic = targetGraphic;
+			}
 		}
 
 		private void LoadFriendRecommendations()

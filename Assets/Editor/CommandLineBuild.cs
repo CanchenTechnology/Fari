@@ -29,6 +29,7 @@ public static class CommandLineBuild
         bool oldUseCustomKeystore = PlayerSettings.Android.useCustomKeystore;
         AndroidArchitecture oldTargetArchitectures = PlayerSettings.Android.targetArchitectures;
 
+        GameStartPlayModeSnapshot playModeSnapshot = null;
         try
         {
             EditorUserBuildSettings.buildAppBundle = false;
@@ -43,7 +44,7 @@ public static class CommandLineBuild
 
             GenerateHybridClrFiles();
             BuildYooAssetPackage(BuildTarget.Android);
-            SetGameStartPlayMode(EPlayMode.OfflinePlayMode);
+            playModeSnapshot = SetGameStartPlayMode(GetBuildYooPlayMode());
             ApplySigningPasswords();
             ClearBuildOutputPath(outputPath);
 
@@ -62,6 +63,7 @@ public static class CommandLineBuild
         }
         finally
         {
+            playModeSnapshot?.Restore();
             EditorUserBuildSettings.buildAppBundle = oldBuildAppBundle;
             EditorUserBuildSettings.exportAsGoogleAndroidProject = oldExportAndroidProject;
             PlayerSettings.Android.useCustomKeystore = oldUseCustomKeystore;
@@ -80,6 +82,7 @@ public static class CommandLineBuild
         bool oldExportAndroidProject = EditorUserBuildSettings.exportAsGoogleAndroidProject;
         AndroidArchitecture oldTargetArchitectures = PlayerSettings.Android.targetArchitectures;
 
+        GameStartPlayModeSnapshot playModeSnapshot = null;
         try
         {
             EditorUserBuildSettings.buildAppBundle = true;
@@ -88,7 +91,7 @@ public static class CommandLineBuild
 
             GenerateHybridClrFiles();
             BuildYooAssetPackage(BuildTarget.Android);
-            SetGameStartPlayMode(EPlayMode.OfflinePlayMode);
+            playModeSnapshot = SetGameStartPlayMode(GetBuildYooPlayMode());
             ApplySigningPasswords();
             ClearBuildOutputPath(outputPath);
 
@@ -107,6 +110,7 @@ public static class CommandLineBuild
         }
         finally
         {
+            playModeSnapshot?.Restore();
             EditorUserBuildSettings.buildAppBundle = oldBuildAppBundle;
             EditorUserBuildSettings.exportAsGoogleAndroidProject = oldExportAndroidProject;
             PlayerSettings.Android.targetArchitectures = oldTargetArchitectures;
@@ -247,8 +251,18 @@ public static class CommandLineBuild
         return serviceType == null ? null : Activator.CreateInstance(serviceType) as T;
     }
 
-    private static void SetGameStartPlayMode(EPlayMode playMode)
+    private static EPlayMode GetBuildYooPlayMode()
     {
+        string argValue = GetArg("-yooPlayMode", EPlayMode.OfflinePlayMode.ToString());
+        if (Enum.TryParse(argValue, true, out EPlayMode playMode))
+            return playMode;
+
+        throw new ArgumentException($"Invalid -yooPlayMode value: {argValue}");
+    }
+
+    private static GameStartPlayModeSnapshot SetGameStartPlayMode(EPlayMode playMode)
+    {
+        var snapshot = new GameStartPlayModeSnapshot();
         foreach (string scenePath in GetEnabledScenes())
         {
             var scene = EditorSceneManager.OpenScene(scenePath);
@@ -258,6 +272,7 @@ public static class CommandLineBuild
             {
                 foreach (GameStart gameStart in root.GetComponentsInChildren<GameStart>(true))
                 {
+                    snapshot.Record(scenePath, gameStart, gameStart.PlayMode);
                     if (gameStart.PlayMode == playMode)
                         continue;
 
@@ -270,6 +285,75 @@ public static class CommandLineBuild
 
             if (changed)
                 EditorSceneManager.SaveScene(scene);
+        }
+
+        return snapshot;
+    }
+
+    private sealed class GameStartPlayModeSnapshot
+    {
+        private readonly System.Collections.Generic.List<Entry> _entries = new System.Collections.Generic.List<Entry>();
+
+        public void Record(string scenePath, GameStart gameStart, EPlayMode playMode)
+        {
+            _entries.Add(new Entry(scenePath, GetHierarchyPath(gameStart.transform), playMode));
+        }
+
+        public void Restore()
+        {
+            foreach (IGrouping<string, Entry> sceneGroup in _entries.GroupBy(entry => entry.ScenePath))
+            {
+                var scene = EditorSceneManager.OpenScene(sceneGroup.Key);
+                bool changed = false;
+
+                foreach (GameObject root in scene.GetRootGameObjects())
+                {
+                    foreach (GameStart gameStart in root.GetComponentsInChildren<GameStart>(true))
+                    {
+                        string hierarchyPath = GetHierarchyPath(gameStart.transform);
+                        Entry entry = sceneGroup.FirstOrDefault(item => item.HierarchyPath == hierarchyPath);
+                        if (entry == null || gameStart.PlayMode == entry.PlayMode)
+                            continue;
+
+                        gameStart.PlayMode = entry.PlayMode;
+                        EditorUtility.SetDirty(gameStart);
+                        changed = true;
+                    }
+                }
+
+                if (changed)
+                {
+                    EditorSceneManager.SaveScene(scene);
+                    Debug.Log($"Restored GameStart PlayMode in scene {sceneGroup.Key}");
+                }
+            }
+        }
+
+        private static string GetHierarchyPath(Transform transform)
+        {
+            var parts = new System.Collections.Generic.List<string>();
+            while (transform != null)
+            {
+                parts.Add($"{transform.GetSiblingIndex()}:{transform.name}");
+                transform = transform.parent;
+            }
+
+            parts.Reverse();
+            return string.Join("/", parts);
+        }
+
+        private sealed class Entry
+        {
+            public readonly string ScenePath;
+            public readonly string HierarchyPath;
+            public readonly EPlayMode PlayMode;
+
+            public Entry(string scenePath, string hierarchyPath, EPlayMode playMode)
+            {
+                ScenePath = scenePath;
+                HierarchyPath = hierarchyPath;
+                PlayMode = playMode;
+            }
         }
     }
 

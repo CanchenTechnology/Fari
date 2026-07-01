@@ -323,25 +323,21 @@ public class DailyOracleFirestore : MonoSingleton<DailyOracleFirestore>
         if (string.IsNullOrWhiteSpace(date))
             date = DateTime.Now.ToString("yyyy-MM-dd");
 
-        SaveRecordLocal(new DailyOracleCloudRecord
+        SaveRecordLocal(DailyOracleCloudRecord.FromReadingData(new TodayOracleReadingData
         {
             date = date,
-            cardId = card.cardId ?? "",
-            cardName = card.nameZh ?? "",
-            orientation = upright ? "upright" : "reversed",
-            title = payload.title ?? "",
-            oracle = payload.oracle ?? "",
-            detail = payload.detail ?? "",
-            dos = payload.dos ?? new List<string>(),
-            donts = payload.donts ?? new List<string>(),
-            microAction = payload.microAction ?? "",
+            card = card,
+            upright = upright,
+            cardId = card.cardId,
+            cardDisplayName = card.DisplayName(upright),
+            oraclePayload = payload,
             locale = string.IsNullOrEmpty(locale) ? "zh-CN" : locale,
             oracleId = GetCurrentOracleId(),
             createdAtLocal = DateTime.Now.ToString("o"),
             syncEnabled = DailyDivinationSyncSettingsManager.Instance.Enabled,
             visibility = DailyDivinationSyncSettingsManager.Instance.GetSettings().VisibilityKey,
             summaryOnly = false,
-        });
+        }, date, locale));
     }
 
     private static void SaveRecordLocal(DailyOracleCloudRecord record)
@@ -1066,6 +1062,46 @@ public class DailyOracleCloudRecord
         };
     }
 
+    public TodayOracleReadingData ToReadingData()
+    {
+        return TodayOracleReadingData.FromCloudRecord(this);
+    }
+
+    public static DailyOracleCloudRecord FromReadingData(TodayOracleReadingData reading, string date = "", string locale = "")
+    {
+        if (reading == null || reading.oraclePayload == null)
+            return null;
+
+        TarotCard card = reading.card ?? TarotDeck.GetById(reading.cardId);
+        TodayOraclePayload payload = reading.oraclePayload;
+        string resolvedDate = string.IsNullOrWhiteSpace(date)
+            ? FirstNonEmpty(reading.date, DateTime.Now.ToString("yyyy-MM-dd"))
+            : date;
+        string resolvedLocale = string.IsNullOrWhiteSpace(locale)
+            ? FirstNonEmpty(reading.locale, "zh-CN")
+            : locale;
+
+        return new DailyOracleCloudRecord
+        {
+            date = resolvedDate,
+            cardId = FirstNonEmpty(reading.cardId, card?.cardId),
+            cardName = FirstNonEmpty(card?.nameZh, reading.cardDisplayName),
+            orientation = reading.upright ? "upright" : "reversed",
+            title = payload.title ?? "",
+            oracle = payload.oracle ?? "",
+            detail = payload.detail ?? "",
+            dos = payload.dos ?? new List<string>(),
+            donts = payload.donts ?? new List<string>(),
+            microAction = payload.microAction ?? "",
+            locale = resolvedLocale,
+            oracleId = FirstNonEmpty(reading.oracleId, GetCurrentOracleId()),
+            createdAtLocal = FirstNonEmpty(reading.createdAtLocal, reading.preparedAt, DateTime.Now.ToString("o")),
+            syncEnabled = reading.syncEnabled,
+            visibility = FirstNonEmpty(reading.visibility, "only_me"),
+            summaryOnly = reading.summaryOnly,
+        };
+    }
+
     public static DailyOracleCloudRecord FromSnapshot(DocumentSnapshot doc)
     {
         if (doc == null || !doc.Exists) return null;
@@ -1124,6 +1160,28 @@ public class DailyOracleCloudRecord
             return fallback;
         if (value is bool boolValue) return boolValue;
         return bool.TryParse(value.ToString(), out bool parsed) ? parsed : fallback;
+    }
+
+    private static string FirstNonEmpty(params string[] values)
+    {
+        if (values == null) return "";
+        foreach (string value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+        return "";
+    }
+
+    private static string GetCurrentOracleId()
+    {
+        if (RoleManager.Instance == null) return "tarot";
+        return RoleManager.Instance.characterType switch
+        {
+            CharacterType.Astrologer => "astrology",
+            CharacterType.Meditator => "sage",
+            _ => "tarot",
+        };
     }
 }
 

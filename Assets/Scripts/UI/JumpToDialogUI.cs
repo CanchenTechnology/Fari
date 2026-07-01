@@ -117,7 +117,7 @@ public class JumpToDialogUI : WindowBase
 			return;
 
 		FriendDataManager.FriendData friend = currentFriend;
-		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadSpriteFromUrlCoroutine(currentFriend.photoUrl, sprite =>
+		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadUserSpriteFromUrlCoroutine(currentFriend.name, currentFriend.photoUrl, sprite =>
 		{
 			if (currentFriend != friend || sprite == null) return;
 			currentFriend.headSprite = sprite;

@@ -24,6 +24,8 @@ public class CreateFriendUI : WindowBase
 	private const float SuccessHideDelaySeconds = 1f;
 	private static readonly Color CreateSuccessColor = new Color32(74, 214, 124, 255);
 	private static readonly Color CreateFailColor = new Color32(255, 92, 92, 255);
+	private static FriendDataManager.FriendData sPendingEditFriend;
+	private static Action<FriendDataManager.FriendData> sPendingEditSaved;
 
 	private int selectedAvatarIndex = 0;
 	private Sprite selectedAvatarSprite;
@@ -44,6 +46,11 @@ public class CreateFriendUI : WindowBase
 	private string birthday = string.Empty;
 	private string birthTime = string.Empty;
 	private string city = string.Empty;
+	private string defaultTitleText;
+	private string defaultSubmitButtonText;
+	private FriendDataManager.FriendData editingFriend;
+	private Action<FriendDataManager.FriendData> onEditSaved;
+	private bool isEditMode;
 
 	#region 生命周期函数
 	public override void OnAwake()
@@ -60,10 +67,33 @@ public class CreateFriendUI : WindowBase
 		base.OnShow();
 		CapturePrefabFallbackAvatar();
 		CapturePrivacyTextDefaults();
+		CaptureDefaultModeTexts();
 		CancelHideAfterSuccess();
 		SetSubmitInteractable(true);
 		RestorePrivacyText();
 		HideChooseHeadPanel();
+		ConsumePendingEditMode();
+		RefreshModeTexts();
+
+		if (isEditMode)
+		{
+			if (editingFriend == null || !editingFriend.isVirtual)
+			{
+				ToastManager.ShowToast("只有自己创建的好友可以编辑");
+				formInitialized = false;
+				HideWindow();
+				return;
+			}
+
+			formInitialized = true;
+			accountAvatarSprite = null;
+			accountAvatarImagePath = string.Empty;
+			PopulateEditForm();
+			RefreshAvatarPreview();
+			RefreshNameCounter();
+			LoadEditAvatarIfNeeded();
+			return;
+		}
 
 		if (!formInitialized)
 		{
@@ -90,6 +120,11 @@ public class CreateFriendUI : WindowBase
 		CancelHideAfterSuccess();
 		avatarLoadVersion++;
 		HideChooseHeadPanel();
+		if (isEditMode)
+			formInitialized = false;
+		editingFriend = null;
+		onEditSaved = null;
+		isEditMode = false;
 		base.OnHide();
 	}
 
@@ -100,6 +135,18 @@ public class CreateFriendUI : WindowBase
 	#endregion
 
 	#region API Function
+	public static void ShowEdit(FriendDataManager.FriendData friend, Action<FriendDataManager.FriendData> onSaved = null)
+	{
+		if (friend == null || !friend.isVirtual)
+		{
+			ToastManager.ShowToast("只有自己创建的好友可以编辑");
+			return;
+		}
+
+		sPendingEditFriend = friend;
+		sPendingEditSaved = onSaved;
+		UIModule.Instance.PopUpWindow<CreateFriendUI>();
+	}
 
 	#endregion
 
@@ -209,12 +256,21 @@ public class CreateFriendUI : WindowBase
 		username = TrimName(username);
 		if (string.IsNullOrWhiteSpace(username))
 		{
-			ShowCreateFailure("请先填写好友名字");
+			if (isEditMode)
+				ShowEditFailure("请先填写好友名字");
+			else
+				ShowCreateFailure("请先填写好友名字");
 			FocusInput(uiComponent.InputInputField);
 			return;
 		}
 
 		SetSubmitInteractable(false);
+		if (isEditMode)
+		{
+			ConfirmEditFriend(BuildFriendDraft());
+			return;
+		}
+
 		ConfirmCreateFriend(BuildFriendDraft());
 	}
 
@@ -269,6 +325,53 @@ public class CreateFriendUI : WindowBase
 		}
 	}
 
+	private void ConfirmEditFriend(ConfirmFriendInfoUI.FriendDraft draft)
+	{
+		if (editingFriend == null || !editingFriend.isVirtual)
+		{
+			ShowEditFailure("好友资料不完整");
+			return;
+		}
+
+		if (draft == null || string.IsNullOrWhiteSpace(draft.name))
+		{
+			ShowEditFailure("好友信息缺失，请返回重试");
+			return;
+		}
+
+		try
+		{
+			string previousAvatarPath = editingFriend.avatarImagePath ?? string.Empty;
+			bool updated = FriendDataManager.Instance.UpdateVirtualFriend(
+				editingFriend,
+				draft.name.Trim(),
+				string.IsNullOrWhiteSpace(editingFriend.relationship) ? "好友" : editingFriend.relationship,
+				draft.birthday.Trim(),
+				draft.birthTime.Trim(),
+				draft.city.Trim(),
+				draft.notes,
+				draft.avatarSprite,
+				draft.avatarImagePath);
+
+			if (!updated)
+			{
+				ShowEditFailure("好友资料保存失败");
+				return;
+			}
+
+			SyncEditedFriendToCloud(previousAvatarPath);
+			ToastManager.ShowToast("好友资料已保存");
+			onEditSaved?.Invoke(editingFriend);
+			formInitialized = false;
+			HideWindow();
+		}
+		catch (Exception ex)
+		{
+			Debug.LogError("[CreateFriendUI] 编辑好友失败: " + ex);
+			ShowEditFailure(string.IsNullOrWhiteSpace(ex.Message) ? "保存好友资料时出错" : ex.Message);
+		}
+	}
+
 	private void SaveCreatedFriendToCloud(FriendDataManager.FriendData createdFriend)
 	{
 		if (createdFriend == null)
@@ -307,12 +410,56 @@ public class CreateFriendUI : WindowBase
 		SaveVirtualFriendDocument(createdFriend);
 	}
 
+	private void SyncEditedFriendToCloud(string previousAvatarPath)
+	{
+		FriendDataManager.FriendData friend = editingFriend;
+		if (friend == null)
+			return;
+
+		if (FirestoreManager.Instance == null)
+		{
+			FirestoreManager.QueueVirtualFriendSaveLocal(friend);
+			return;
+		}
+
+		if (ShouldUploadEditedVirtualFriendAvatar(friend, previousAvatarPath))
+		{
+			AvatarUploadManager.Instance.UploadVirtualFriendAvatarFromFile(
+				friend.virtualFriendId,
+				friend.avatarImagePath,
+				result =>
+				{
+					FriendDataManager.Instance.SetVirtualFriendCloudAvatar(
+						friend,
+						result.photoUrl,
+						result.storagePath,
+						result.previewSprite);
+					SaveVirtualFriendDocument(friend);
+				},
+				error =>
+				{
+					Debug.LogWarning("[CreateFriendUI] 编辑好友头像上传失败: " + error);
+					SaveVirtualFriendDocument(friend);
+				});
+			return;
+		}
+
+		SaveVirtualFriendDocument(friend);
+	}
+
 	private bool ShouldUploadVirtualFriendAvatar(FriendDataManager.FriendData friend)
 	{
 		return friend != null
 			&& !string.IsNullOrWhiteSpace(friend.avatarImagePath)
 			&& File.Exists(friend.avatarImagePath)
 			&& AvatarUploadManager.Instance != null;
+	}
+
+	private bool ShouldUploadEditedVirtualFriendAvatar(FriendDataManager.FriendData friend, string previousAvatarPath)
+	{
+		return ShouldUploadVirtualFriendAvatar(friend)
+			&& (string.IsNullOrWhiteSpace(friend.photoUrl)
+				|| !string.Equals(previousAvatarPath, friend.avatarImagePath, StringComparison.Ordinal));
 	}
 
 	private void SaveVirtualFriendDocument(FriendDataManager.FriendData friend)
@@ -448,6 +595,51 @@ public class CreateFriendUI : WindowBase
 		city = ReadSelectedInput(birthdayCountryInputField, uiComponent.birthdayCountryText, CityPlaceholder, city);
 	}
 
+	private void ConsumePendingEditMode()
+	{
+		editingFriend = sPendingEditFriend;
+		onEditSaved = sPendingEditSaved;
+		isEditMode = editingFriend != null && editingFriend.isVirtual;
+		sPendingEditFriend = null;
+		sPendingEditSaved = null;
+	}
+
+	private void CaptureDefaultModeTexts()
+	{
+		if (uiComponent?.titleText != null && defaultTitleText == null)
+			defaultTitleText = uiComponent.titleText.text;
+		if (uiComponent?.SubmitButtonText != null && defaultSubmitButtonText == null)
+			defaultSubmitButtonText = uiComponent.SubmitButtonText.text;
+	}
+
+	private void RefreshModeTexts()
+	{
+		SetText(uiComponent?.titleText, isEditMode ? "编辑好友" : FirstNonEmpty(defaultTitleText, "创建好友"));
+		SetText(uiComponent?.SubmitButtonText, isEditMode ? "保存修改" : FirstNonEmpty(defaultSubmitButtonText, "创建好友"));
+	}
+
+	private void PopulateEditForm()
+	{
+		if (editingFriend == null)
+			return;
+
+		hasUserSelectedAvatar = true;
+		selectedAvatarIndex = 0;
+		selectedAvatarSprite = FriendAvatarImageUtility.ResolveFriendAvatar(editingFriend, uiComponent.AvatarPreviewImage, prefabFallbackAvatarSprite);
+		selectedAvatarImagePath = editingFriend.avatarImagePath ?? string.Empty;
+		username = TrimName(editingFriend.name);
+		birthday = editingFriend.birthday ?? string.Empty;
+		birthTime = editingFriend.birthTime ?? string.Empty;
+		city = editingFriend.city ?? string.Empty;
+
+		if (uiComponent.InputInputField != null)
+		{
+			uiComponent.InputInputField.characterLimit = MaxNameLength;
+			uiComponent.InputInputField.text = username;
+		}
+		RefreshSelectionTexts();
+	}
+
 	private void ResetForm()
 	{
 		selectedAvatarIndex = accountAvatarSprite != null ? 0 : 1;
@@ -473,6 +665,28 @@ public class CreateFriendUI : WindowBase
 		SetSelectionValue(birthdayDateInputField, uiComponent.birthdayDateText, birthday, BirthdayPlaceholder);
 		SetSelectionValue(birthdayTimeInputField, uiComponent.birthdayTimeText, birthTime, BirthTimePlaceholder);
 		SetSelectionValue(birthdayCountryInputField, uiComponent.birthdayCountryText, city, CityPlaceholder);
+	}
+
+	private void LoadEditAvatarIfNeeded()
+	{
+		if (editingFriend == null
+			|| editingFriend.headSprite != null
+			|| string.IsNullOrWhiteSpace(editingFriend.photoUrl)
+			|| uiComponent == null)
+		{
+			return;
+		}
+
+		int loadVersion = ++avatarLoadVersion;
+		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadUserSpriteFromUrlCoroutine(editingFriend.name, editingFriend.photoUrl, sprite =>
+		{
+			if (loadVersion != avatarLoadVersion || editingFriend == null || sprite == null)
+				return;
+
+			editingFriend.headSprite = sprite;
+			selectedAvatarSprite = sprite;
+			RefreshAvatarPreview();
+		}));
 	}
 
 	private void SelectAvatar(int index)
@@ -644,6 +858,16 @@ public class CreateFriendUI : WindowBase
 		ShowCreateStatus(message, CreateFailColor);
 	}
 
+	private void ShowEditFailure(string reason)
+	{
+		CancelHideAfterSuccess();
+		SetSubmitInteractable(true);
+		string message = string.IsNullOrWhiteSpace(reason)
+			? "保存失败"
+			: $"保存失败：{reason}";
+		ShowCreateStatus(message, CreateFailColor);
+	}
+
 	private void ShowCreateStatus(string message, Color color)
 	{
 		if (uiComponent?.privacyText == null)
@@ -717,6 +941,17 @@ public class CreateFriendUI : WindowBase
 		if (string.IsNullOrEmpty(value)) return string.Empty;
 		value = value.Trim();
 		return value.Length <= MaxNameLength ? value : value.Substring(0, MaxNameLength);
+	}
+
+	private string FirstNonEmpty(params string[] values)
+	{
+		if (values == null) return string.Empty;
+		foreach (string value in values)
+		{
+			if (!string.IsNullOrWhiteSpace(value))
+				return value.Trim();
+		}
+		return string.Empty;
 	}
 
 	private void BindSelectionInputFields()

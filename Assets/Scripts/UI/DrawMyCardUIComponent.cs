@@ -29,6 +29,8 @@ public class DrawMyCardUIComponent:MonoBehaviour
 
 	public Button openBtn;//翻牌，执行翻牌动画
 
+	public Button nextBtn;  //当翻完牌之后再显示这个按钮，然后点击这个按钮，就会跳转到占卜结果界面
+
 	public GameObject cardSlot;
 
 	public GameObject cardBack; 
@@ -42,6 +44,16 @@ public class DrawMyCardUIComponent:MonoBehaviour
 	[Header("视觉资源")]
 	[Tooltip("牌背图。未配置时会使用模板 Card 或 cardBack 上当前的图片。")]
 	public Sprite cardBackSprite;
+
+	[Header("洗牌入场")]
+	[Tooltip("牌组打散到桌面上的时长。")]
+	public float shuffleScatterDuration = 1.6f;
+	[Tooltip("打散后收拢成牌堆的时长。")]
+	public float shuffleGatherDuration = 0.83f;
+	[Tooltip("收拢后从左到右展开成扇形的单张牌时长。")]
+	public float shuffleFanOutDuration = 0.45f;
+	[Tooltip("扇形展开时每张牌之间的延迟。")]
+	public float shuffleFanOutGap = 0.055f;
 
 	[Header("牌扇布局")]
 	[Tooltip("牌扇里显示的可选牌数量。")]
@@ -124,5 +136,6 @@ public class DrawMyCardUIComponent:MonoBehaviour
 	    if (backButton != null) target.AddButtonClickListener(backButton,mWindow.OnbackButtonClick);
 	    if (cancelBtn != null) target.AddButtonClickListener(cancelBtn,mWindow.OnCancelBtnClick);
 	    if (openBtn != null) target.AddButtonClickListener(openBtn,mWindow.OnOpenBtnClick);
+	    if (nextBtn != null) target.AddButtonClickListener(nextBtn,mWindow.OnNextBtnClick);
 	}
 }

@@ -31,6 +31,14 @@ public class TarorSingleSpreadShuffleUIComponent:MonoBehaviour
 	public GameObject cardImageGo;
 	public float shuffleCycleDuration = 0.08f;
 	public int shuffleCycles = 3;
+	[Tooltip("牌组打散到桌面上的时长。")]
+	public float shuffleScatterDuration = 1.6f;
+	[Tooltip("打散后收拢成牌堆的时长。")]
+	public float shuffleGatherDuration = 0.83f;
+	[Tooltip("收拢后从左到右展开成扇形的单张牌时长。")]
+	public float shuffleFanOutDuration = 0.45f;
+	[Tooltip("扇形展开时每张牌之间的延迟。")]
+	public float shuffleFanOutGap = 0.055f;
 	public float flipDuration = 0.62f;
 	[Tooltip("选中牌飞到屏幕中心并放大的时长。")]
 	public float centerRevealDuration = 0.68f;
@@ -44,9 +52,10 @@ public class TarorSingleSpreadShuffleUIComponent:MonoBehaviour
 	public float centerRevealShakePosition = 10f;
 	[Tooltip("牌背翻开前，中心展示牌轻微旋转抖动的角度。")]
 	public float centerRevealShakeRotation = 5f;
-	[Tooltip("逆位牌翻到正面后额外反转的时长。")]
-	public float reverseRotateDuration = 0.36f;
-	public float cardRevealGap = 0.45f;
+	[Tooltip("翻牌过程中正面出现时额外放大的倍率。")]
+	public float flipRevealScaleMultiplier = 1.16f;
+	[Tooltip("正面显示后，飞回卡槽前停顿的时长。")]
+	public float cardRevealGap = 0.85f;
 	public Sprite cardBackSprite;
 
 

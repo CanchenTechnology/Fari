@@ -607,7 +607,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
   m_Color: {r: 0, g: 0, b: 0, a: 0.6666667}
-  m_RaycastTarget: 0
+  m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
   m_OnCullStateChanged:
@@ -3230,6 +3230,10 @@ MonoBehaviour:
   cardImageGo: {fileID: 5086201868549197327}
   shuffleCycleDuration: 0.08
   shuffleCycles: 3
+  shuffleScatterDuration: 1.6
+  shuffleGatherDuration: 0.83
+  shuffleFanOutDuration: 0.45
+  shuffleFanOutGap: 0.055
   flipDuration: 0.62
   centerRevealDuration: 0.68
   centerRevealMaxScale: 1.15
@@ -3238,7 +3242,8 @@ MonoBehaviour:
   centerRevealShakePosition: 10
   centerRevealShakeRotation: 5
   reverseRotateDuration: 0.36
-  cardRevealGap: 0.45
+  flipRevealScaleMultiplier: 2
+  cardRevealGap: 1
   cardBackSprite: {fileID: 21300000, guid: 2843c8ef5f9cb4bbe93e2e7f4b91b925, type: 3}
   selectableCardCount: 12
   fanWidth: 0

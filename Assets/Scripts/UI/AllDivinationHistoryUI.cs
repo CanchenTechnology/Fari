@@ -7,15 +7,20 @@
 ---------------------------------*/
 using UnityEngine.UI;
 using UnityEngine;
+using GamerFrameWork.OracleRuntime;
 using GamerFrameWork.UIFrameWork;
 using SuperScrollView;
 using System;
 using System.Collections.Generic;
 using TMPro;
+using XFGameFrameWork;
 
 public class AllDivinationHistoryUI : WindowBase
 {
 	private const string HistoryItemPrefabName = "divinationItem";
+	private const string MyHistoryOwnerName = "我";
+	private const string MyHistoryEmptyTitle = "暂无占卜记录";
+	private const string MyHistoryEmptyDescription = "完成一次占卜后会自动保存到这里。";
 
 	public AllDivinationHistoryUIComponent uiComponent;
 
@@ -23,6 +28,7 @@ public class AllDivinationHistoryUI : WindowBase
 	private static string sPendingEmptyTitle = "暂无占卜记录";
 	private static string sPendingEmptyDescription = "还没有可以展示的占卜记录。";
 	private static string sPendingOwnerName = "好友";
+	private static FriendDataManager.FriendData sPendingRelationshipFriend;
 	private static readonly Dictionary<string, List<AllDivinationHistoryEntry>> sBestEntriesByOwner =
 		new Dictionary<string, List<AllDivinationHistoryEntry>>();
 
@@ -65,7 +71,10 @@ public class AllDivinationHistoryUI : WindowBase
 	#endregion
 
 	#region API Function
-	public static AllDivinationHistoryUI ShowLoading(string description = "正在同步好友公开的占卜摘要...", string ownerName = null)
+	public static AllDivinationHistoryUI ShowLoading(
+		string description = "正在同步好友公开的占卜摘要...",
+		string ownerName = null,
+		FriendDataManager.FriendData relationshipFriend = null)
 	{
 		sPendingEntries = new List<AllDivinationHistoryEntry>
 		{
@@ -74,6 +83,7 @@ public class AllDivinationHistoryUI : WindowBase
 		sPendingEmptyTitle = "暂无占卜记录";
 		sPendingEmptyDescription = "还没有可以展示的占卜记录。";
 		sPendingOwnerName = ResolveOwnerName(ownerName);
+		sPendingRelationshipFriend = relationshipFriend;
 
 		AllDivinationHistoryUI window = UIModule.Instance.PopUpWindow<AllDivinationHistoryUI>();
 		window?.ApplyPendingEntries();
@@ -84,15 +94,47 @@ public class AllDivinationHistoryUI : WindowBase
 		List<AllDivinationHistoryEntry> entries,
 		string emptyTitle = "暂无占卜记录",
 		string emptyDescription = "还没有可以展示的占卜记录。",
-		string ownerName = null)
+		string ownerName = null,
+		FriendDataManager.FriendData relationshipFriend = null)
 	{
 		sPendingEntries = CloneEntries(entries);
 		sPendingEmptyTitle = emptyTitle;
 		sPendingEmptyDescription = emptyDescription;
 		sPendingOwnerName = ResolveOwnerName(ownerName);
+		sPendingRelationshipFriend = relationshipFriend;
 
 		AllDivinationHistoryUI window = UIModule.Instance.PopUpWindow<AllDivinationHistoryUI>();
 		window?.ApplyPendingEntries();
+		return window;
+	}
+
+	public static AllDivinationHistoryUI ShowMyHistory()
+	{
+		DivinationHistoryCacheService cache = DivinationHistoryCacheService.Instance;
+		List<DivinationRecordData> cachedRecords = cache.GetSnapshot();
+		bool hasInitialRecords = cache.HasLoadedOnce || cachedRecords.Count > 0;
+		AllDivinationHistoryUI window = hasInitialRecords
+			? Show(
+				ToEntries(cachedRecords, MyHistoryOwnerName),
+				MyHistoryEmptyTitle,
+				MyHistoryEmptyDescription,
+				MyHistoryOwnerName)
+			: ShowLoading("正在同步你的占卜历史...", MyHistoryOwnerName);
+
+		cache.Refresh(false, (records, success) =>
+		{
+			if (window == null) return;
+
+			window.SetEntries(
+				ToEntries(records, MyHistoryOwnerName),
+				MyHistoryEmptyTitle,
+				MyHistoryEmptyDescription,
+				MyHistoryOwnerName);
+
+			if (!success && (records == null || records.Count == 0))
+				ToastManager.ShowToast("历史服务暂不可用");
+		});
+
 		return window;
 	}
 
@@ -100,13 +142,16 @@ public class AllDivinationHistoryUI : WindowBase
 		List<AllDivinationHistoryEntry> entries,
 		string emptyTitle = "暂无占卜记录",
 		string emptyDescription = "还没有可以展示的占卜记录。",
-		string ownerName = null)
+		string ownerName = null,
+		FriendDataManager.FriendData relationshipFriend = null)
 	{
 		sPendingEntries = CloneEntries(entries);
 		sPendingEmptyTitle = emptyTitle;
 		sPendingEmptyDescription = emptyDescription;
 		if (!string.IsNullOrWhiteSpace(ownerName))
 			sPendingOwnerName = ResolveOwnerName(ownerName);
+		if (relationshipFriend != null)
+			sPendingRelationshipFriend = relationshipFriend;
 		ApplyPendingEntries();
 	}
 
@@ -392,6 +437,96 @@ public class AllDivinationHistoryUI : WindowBase
 		return result;
 	}
 
+	private static List<AllDivinationHistoryEntry> ToEntries(List<DivinationRecordData> records, string ownerName)
+	{
+		List<AllDivinationHistoryEntry> entries = new List<AllDivinationHistoryEntry>();
+		if (records == null) return entries;
+
+		foreach (DivinationRecordData record in records)
+		{
+			AllDivinationHistoryEntry entry = ToEntry(record, ownerName);
+			if (entry != null)
+				entries.Add(entry);
+		}
+
+		return entries;
+	}
+
+	private static AllDivinationHistoryEntry ToEntry(DivinationRecordData record, string ownerName)
+	{
+		if (record == null) return null;
+
+		List<Sprite> sprites = new List<Sprite>();
+		List<string> cardNames = new List<string>();
+		if (record.lockedCards != null)
+		{
+			foreach (LockedCard card in record.lockedCards)
+			{
+				if (card == null) continue;
+
+				cardNames.Add(TarotDeck.FormatDisplayName(FirstNonEmpty(card.cardName, card.cardId, "未知牌"), card.orientation));
+				Sprite sprite = LoadCardSprite(card);
+				if (sprite != null)
+					sprites.Add(sprite);
+			}
+		}
+
+		return new AllDivinationHistoryEntry
+		{
+			cardSprites = sprites,
+			cardNames = cardNames.Count > 0 ? string.Join(" & ", cardNames) : FirstNonEmpty(record.CardsSummary, record.SpreadLabel, "占卜记录"),
+			description = FirstNonEmpty(record.shortVerdict, record.judgeContent, record.adviceContent, record.question, "已完成一次占卜。"),
+			source = FirstNonEmpty(record.SpreadLabel, "占卜历史"),
+			time = FormatHistoryDate(record.createdAt),
+			ownerName = ownerName,
+			detailRecord = record
+		};
+	}
+
+	private static Sprite LoadCardSprite(LockedCard card)
+	{
+		string cardId = FirstNonEmpty(card?.cardId, FindTarotCardIdByName(card?.cardName));
+		return string.IsNullOrWhiteSpace(cardId) ? null : TarotSpriteLoader.Load(cardId);
+	}
+
+	private static string FindTarotCardIdByName(string cardName)
+	{
+		string normalizedName = TarotDeck.StripOrientationSuffix(cardName);
+		if (string.IsNullOrWhiteSpace(normalizedName))
+			return string.Empty;
+
+		foreach (TarotCard card in TarotDeck.FullDeck)
+		{
+			if (card == null) continue;
+			if (string.Equals(card.nameZh, normalizedName, StringComparison.OrdinalIgnoreCase)
+				|| string.Equals(card.nameEn, normalizedName, StringComparison.OrdinalIgnoreCase)
+				|| string.Equals(card.cardId, normalizedName, StringComparison.OrdinalIgnoreCase))
+				return card.cardId;
+		}
+
+		return string.Empty;
+	}
+
+	private static string FormatHistoryDate(string value)
+	{
+		if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+		if (DateTime.TryParse(value.Trim(), out DateTime parsed))
+			return $"{parsed.Year}.{parsed.Month}.{parsed.Day}";
+		return value.Trim();
+	}
+
+	private static string FirstNonEmpty(params string[] values)
+	{
+		if (values == null) return string.Empty;
+		foreach (string value in values)
+		{
+			if (!string.IsNullOrWhiteSpace(value))
+				return value.Trim();
+		}
+
+		return string.Empty;
+	}
+
 	private void InitHistoryListView()
 	{
 		if (historyListInitialized)
@@ -450,7 +585,7 @@ public class AllDivinationHistoryUI : WindowBase
 		bool showSource = !IsPlaceholderEntry(entry);
 		item.SetData(entry.cardSprites, entry.cardNames, entry.description, entry.source, entry.time, showSource);
 		item.SetClickAction(entry.detailRecord != null
-			? () => TarotDetailedUI.Show(entry.detailRecord, ResolveOwnerName(entry.ownerName ?? sPendingOwnerName))
+			? () => TarotDetailedUI.Show(entry.detailRecord, ResolveOwnerName(entry.ownerName ?? sPendingOwnerName), false, true, sPendingRelationshipFriend)
 			: null);
 	}
 

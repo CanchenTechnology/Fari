@@ -21,6 +21,29 @@ public static class TarotSpriteLoader
     private static readonly Dictionary<string, AssetHandle> SpriteHandles = new Dictionary<string, AssetHandle>();
     private static readonly Dictionary<string, Sprite> SpriteCache = new Dictionary<string, Sprite>();
 
+#if UNITY_EDITOR
+    private static readonly string[] EditorSpriteFolders =
+    {
+        "Assets/GameData/Arts/Sprites/MajorArcana",
+        "Assets/GameData/Arts/Sprites/Cups",
+        "Assets/GameData/Arts/Sprites/Wands",
+        "Assets/GameData/Arts/Sprites/Swords",
+        "Assets/GameData/Arts/Sprites/Pentacles",
+        "Assets/GameData/Arts/Sprites/Tarot/Cups_Pack",
+        "Assets/GameData/Arts/Sprites/Tarot/Swords_Pack",
+        "Assets/GameData/Arts/Sprites/Tarot/Pentacles_Selected_and_Pending_Collection/approved_selected",
+        "Assets/GameData/Arts/Sprites/Tarot/Pentacles_Selected_and_Pending_Collection/pending_review"
+    };
+
+    private static readonly string[] EditorSpriteExtensions =
+    {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".psd"
+    };
+#endif
+
     /// <summary>图集是否已成功加载</summary>
     public static bool IsReady => _atlas != null;
 
@@ -44,17 +67,71 @@ public static class TarotSpriteLoader
             map[$"major_{i:D2}"] = $"RWS_Tarot_{i:D2}_{majorNames[i]}";
 
         // --- 小阿卡纳 (1-14) ---
-        // 圣杯 cups → CupsXX.jpg
-        for (int i = 1; i <= 14; i++) map[$"cups_{i:D2}"] = $"Cups{i:D2}";
+        // 圣杯 cups → 新版 PNG 资源
+        string[] cupsNames =
+        {
+            "Ace_of_Cups_圣杯一",
+            "Two_of_Cups_圣杯二",
+            "Three_of_Cups_圣杯三",
+            "Four_of_Cups_圣杯四",
+            "Five_of_Cups_圣杯五",
+            "Six_of_Cups_圣杯六",
+            "Seven_of_Cups_圣杯七",
+            "Eight_of_Cups_圣杯八",
+            "Nine_of_Cups_圣杯九",
+            "Ten_of_Cups_圣杯十",
+            "Page_of_Cups_圣杯侍从",
+            "Knight_of_Cups_圣杯骑士",
+            "Queen_of_Cups_圣杯王后",
+            "King_of_Cups_圣杯国王"
+        };
+        for (int i = 0; i < cupsNames.Length; i++)
+            map[$"cups_{i + 1:D2}"] = cupsNames[i];
 
         // 权杖 wands → WandsXX.jpg
         for (int i = 1; i <= 14; i++) map[$"wands_{i:D2}"] = $"Wands{i:D2}";
 
-        // 宝剑 swords → SwordsXX.jpg
-        for (int i = 1; i <= 14; i++) map[$"swords_{i:D2}"] = $"Swords{i:D2}";
+        // 宝剑 swords → 新版 PNG 资源
+        string[] swordsNames =
+        {
+            "Ace_of_Swords_宝剑一",
+            "Two_of_Swords_宝剑二",
+            "Three_of_Swords_宝剑三",
+            "Four_of_Swords_宝剑四",
+            "Five_of_Swords_宝剑五",
+            "Six_of_Swords_宝剑六",
+            "Seven_of_Swords_宝剑七",
+            "Eight_of_Swords_宝剑八",
+            "Nine_of_Swords_宝剑九",
+            "Ten_of_Swords_宝剑十",
+            "Page_of_Swords_宝剑侍从",
+            "Knight_of_Swords_宝剑骑士",
+            "Queen_of_Swords_宝剑王后",
+            "King_of_Swords_宝剑国王"
+        };
+        for (int i = 0; i < swordsNames.Length; i++)
+            map[$"swords_{i + 1:D2}"] = swordsNames[i];
 
-        // 星币 pentacles → PentsXX.jpg（文件前缀是 Pents 不是 Pentacles）
-        for (int i = 1; i <= 14; i++) map[$"pentacles_{i:D2}"] = $"Pents{i:D2}";
+        // 星币 pentacles → 新版 PNG 资源
+        string[] pentaclesNames =
+        {
+            "Ace_of_Pentacles_星币一",
+            "Two_of_Pentacles_星币二",
+            "Three_of_Pentacles_星币三",
+            "Four_of_Pentacles_星币四",
+            "Five_of_Pentacles_星币五",
+            "Six_of_Pentacles_星币六",
+            "Seven_of_Pentacles_星币七",
+            "Eight_of_Pentacles_星币八",
+            "Nine_of_Pentacles_星币九",
+            "Ten_of_Pentacles_星币十",
+            "Page_of_Pentacles_星币侍从",
+            "Knight_of_Pentacles_星币骑士",
+            "Queen_of_Pentacles_星币王后",
+            "King_of_Pentacles_星币国王"
+        };
+        for (int i = 0; i < pentaclesNames.Length; i++)
+            map[$"pentacles_{i + 1:D2}"] = pentaclesNames[i];
 
         return map;
     }
@@ -82,8 +159,10 @@ public static class TarotSpriteLoader
         }
         else
         {
-            Debug.LogError($"[TarotSpriteLoader] 图集加载失败: {ATLAS_PATH}，" +
-                           $"Status={_atlasHandle?.Status}, Error={_atlasHandle?.LastError}");
+            Debug.LogWarning($"[TarotSpriteLoader] 图集加载失败: {ATLAS_PATH}，将尝试单图资源兜底。" +
+                             $"Status={_atlasHandle?.Status}, Error={_atlasHandle?.LastError}");
+            _atlasHandle?.Release();
+            _atlasHandle = null;
         }
     }
 
@@ -143,8 +222,19 @@ public static class TarotSpriteLoader
         AssetHandle handle = YooAssets.LoadAssetSync<Sprite>(spriteName);
         if (handle == null || handle.Status != EOperationStatus.Succeed)
         {
-            Debug.LogWarning($"[TarotSpriteLoader] 加载 YooAsset Sprite 失败: {spriteName}，Status={handle?.Status}, Error={handle?.LastError}");
+            string status = $"Status={handle?.Status}, Error={handle?.LastError}";
             handle?.Release();
+
+#if UNITY_EDITOR
+            Sprite editorSprite = LoadEditorSpriteAsset(spriteName);
+            if (editorSprite != null)
+            {
+                SpriteCache[spriteName] = editorSprite;
+                return editorSprite;
+            }
+#endif
+
+            Debug.LogWarning($"[TarotSpriteLoader] 加载 YooAsset Sprite 失败: {spriteName}，{status}");
             return null;
         }
 
@@ -160,6 +250,24 @@ public static class TarotSpriteLoader
         SpriteCache[spriteName] = sprite;
         return sprite;
     }
+
+#if UNITY_EDITOR
+    private static Sprite LoadEditorSpriteAsset(string spriteName)
+    {
+        foreach (string folder in EditorSpriteFolders)
+        {
+            foreach (string extension in EditorSpriteExtensions)
+            {
+                string path = $"{folder}/{spriteName}{extension}";
+                Sprite sprite = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(path);
+                if (sprite != null)
+                    return sprite;
+            }
+        }
+
+        return null;
+    }
+#endif
 
     /// <summary>
     /// 释放图集资源

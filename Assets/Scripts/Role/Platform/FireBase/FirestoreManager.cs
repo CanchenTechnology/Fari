@@ -31,20 +31,7 @@ using GamerFrameWork.OracleRuntime;
 /// </summary>
 public class FirestoreManager : MonoSingleton<FirestoreManager>
 {
-    public class UserSearchResult
-    {
-        public string uid;
-        public string displayName;
-        public string email;
-        public string photoUrl;
-        public string birthday;
-        public string birthTime;
-        public string city;
-        public bool isSelf;
-
-        public string Handle => string.IsNullOrEmpty(email) ? $"@{uid}" : $"@{email.Split('@')[0]}";
-        public string Info => string.IsNullOrEmpty(email) ? "Firebase 注册用户" : email;
-    }
+    public class UserSearchResult : UserSearchProfileData { }
 
     #region 状态
 
@@ -170,28 +157,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         DocumentReference docRef = _db.Collection("users").Document(ud.FirebaseUid);
 
         // 将本地内存中的数据打包成字典（Firestore 接收键值对形式的数据）
-        var data = new Dictionary<string, object>
-        {
-            { "displayName",     ud.UserName },
-            { "displayNameLower", NormalizeSearchText(ud.UserName) },
-            { "searchKeywords", BuildSearchKeywords(ud.UserName, ud.Email) },
-            { "email",           ud.Email },
-            { "emailLower",       NormalizeSearchText(ud.Email) },
-            { "photoUrl",        ud.PhotoUrl },
-            { "avatarStoragePath", ud.AvatarStoragePath },
-            { "facebookProviderId", facebookProviderId },
-            { "birthday",        ud.Birthday },
-            { "birthTime",       ud.BirthTime },
-            { "city",            ud.City },
-            { "bio",             ud.ProfileBio },
-            { "avatarType",      (int)ud.CurrentAvatar },
-            { "loginType",       ud.CurrentLoginType.ToString() },
-            { "isEmailVerified", ud.IsEmailVerified },
-            { "selectedOracle",  GetCurrentOracleId() },
-            { "timezone",        GetLocalTimezoneId() },
-            { "profileUpdatedAt", FieldValue.ServerTimestamp },
-            { "lastSignInAt",    FieldValue.ServerTimestamp }, // 这里使用服务器时间，防止玩家本地设备时间不准
-        };
+        var data = BuildUserDocumentData(ud.CreateProfileSnapshot(), facebookProviderId);
 
         // SetOptions.MergeAll 是关键：它是“合并”操作而不是“覆盖”操作。
         // 这意味着云端有、但 data 字典里没有的字段，依然会保留在云端，不会被删掉。
@@ -222,30 +188,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         string facebookProviderId = GetFacebookProviderIdForCurrentUser(ud);
         DocumentReference docRef = _db.Collection("users").Document(ud.FirebaseUid);
 
-        var data = new Dictionary<string, object>
-        {
-            { "displayName",     ud.UserName },
-            { "displayNameLower", NormalizeSearchText(ud.UserName) },
-            { "searchKeywords", BuildSearchKeywords(ud.UserName, ud.Email) },
-            { "email",           ud.Email },
-            { "emailLower",       NormalizeSearchText(ud.Email) },
-            { "photoUrl",        ud.PhotoUrl },
-            { "avatarStoragePath", ud.AvatarStoragePath },
-            { "facebookProviderId", facebookProviderId },
-            { "birthday",        ud.Birthday },
-            { "birthTime",       ud.BirthTime },
-            { "city",            ud.City },
-            { "bio",             ud.ProfileBio },
-            { "avatarType",      (int)ud.CurrentAvatar },
-            { "loginType",       ud.CurrentLoginType.ToString() },
-            { "isEmailVerified", ud.IsEmailVerified },
-            { "selectedOracle",  GetCurrentOracleId() },
-            { "timezone",        GetLocalTimezoneId() },
-            { "membershipStatus", "free" },
-            { "profileUpdatedAt", FieldValue.ServerTimestamp },
-            { "createdAt",       FieldValue.ServerTimestamp }, // 唯一和 Save 的区别：写入账号创建的服务器时间
-            { "lastSignInAt",    FieldValue.ServerTimestamp },
-        };
+        var data = BuildUserDocumentData(ud.CreateProfileSnapshot(), facebookProviderId, includeCreateFields: true);
 
         // 首次创建直接 SetAsync，不需要合并模式
         docRef.SetAsync(data).ContinueWithOnMainThread(task =>
@@ -873,12 +816,12 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             return;
         }
 
+        QueuePendingRealFriendDelete(friendUid);
+        FriendDataManager.Instance?.RemoveRealFriendByFirebaseUid(friendUid);
         CommitRemoveRealFriend(currentUid, friendUid, success =>
         {
             if (!success)
             {
-                QueuePendingRealFriendDelete(friendUid);
-                FriendDataManager.Instance?.RemoveRealFriendByFirebaseUid(friendUid);
                 Debug.LogWarning($"[FirestoreManager] 真实好友云端删除失败，已加入待同步删除队列: {friendUid}");
                 onComplete?.Invoke(true);
                 return;
@@ -886,7 +829,6 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
 
             if (success)
             {
-                FriendDataManager.Instance?.RemoveRealFriendByFirebaseUid(friendUid);
                 RemovePendingRealFriendDelete(friendUid);
                 Debug.Log($"[FirestoreManager] 已删除真实好友: {friendUid}");
             }
@@ -1556,6 +1498,11 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         return false;
     }
 
+    private static bool IsRealFriendPendingRemoval(string friendUid)
+    {
+        return IsRealFriendPendingDelete(friendUid) || IsRealFriendPendingBlock(friendUid);
+    }
+
     private static bool IsRealFriendPendingBlock(string friendUid)
     {
         if (string.IsNullOrWhiteSpace(friendUid)) return false;
@@ -1824,6 +1771,12 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 {
                     if (!doc.Exists) continue;
 
+                    if (IsRealFriendPendingRemoval(doc.Id))
+                    {
+                        FriendDataManager.Instance.RemoveRealFriendByFirebaseUid(doc.Id);
+                        continue;
+                    }
+
                     Dictionary<string, object> data = doc.ToDictionary();
                     string status = GetString(data, "status", "friend");
                     if (status != "friend")
@@ -1879,6 +1832,13 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
             .ContinueWithOnMainThread(task =>
             {
                 if (task.IsFaulted || task.IsCanceled || task.Result == null || !task.Result.Exists)
+                    return;
+
+                if (IsRealFriendPendingRemoval(friendUid))
+                    return;
+
+                if (FriendDataManager.Instance == null
+                    || FriendDataManager.Instance.FindRealFriendByFirebaseUid(friendUid) == null)
                     return;
 
                 Dictionary<string, object> data = task.Result.ToDictionary();
@@ -1954,11 +1914,68 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                         email,
                         GetString(data, "photoUrl", string.Empty),
                         status,
-                        "请求添加你为好友");
+                        "请求添加你为好友",
+                        null,
+                        GetString(data, "seenAt", string.Empty));
                 }
 
                 onComplete?.Invoke(true);
             });
+    }
+
+    public void MarkFriendRequestsSeen(IReadOnlyList<FriendDataManager.InviteData> invites, Action<bool> onComplete = null)
+    {
+        if (invites == null || invites.Count == 0)
+        {
+            onComplete?.Invoke(true);
+            return;
+        }
+
+        if (!CheckReady(onComplete))
+            return;
+
+        string currentUid = UserDataManager.Instance.FirebaseUid;
+        if (string.IsNullOrEmpty(currentUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        WriteBatch batch = _db.StartBatch();
+        int writeCount = 0;
+        string seenAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        for (int i = 0; i < invites.Count; i++)
+        {
+            FriendDataManager.InviteData invite = invites[i];
+            if (invite == null || string.IsNullOrWhiteSpace(invite.firebaseUid))
+                continue;
+
+            invite.seenAt = seenAt;
+            DocumentReference requestRef = _db.Collection("users")
+                .Document(currentUid)
+                .Collection("friend_requests")
+                .Document(invite.firebaseUid);
+            batch.Set(requestRef, new Dictionary<string, object>
+            {
+                { "seenAt", FieldValue.ServerTimestamp },
+                { "updatedAt", FieldValue.ServerTimestamp }
+            }, SetOptions.MergeAll);
+            writeCount++;
+        }
+
+        if (writeCount == 0)
+        {
+            onComplete?.Invoke(true);
+            return;
+        }
+
+        batch.CommitAsync().ContinueWithOnMainThread(task =>
+        {
+            bool success = !(task.IsFaulted || task.IsCanceled);
+            if (!success)
+                Debug.LogWarning($"[FirestoreManager] 标记好友请求已读失败: {task.Exception?.InnerException?.Message}");
+            onComplete?.Invoke(success);
+        });
     }
 
     /// <summary>
@@ -3371,6 +3388,73 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         };
     }
 
+    private static Dictionary<string, object> BuildUserDocumentData(
+        UserProfileData profile,
+        string facebookProviderId,
+        bool includeCreateFields = false)
+    {
+        profile ??= new UserProfileData();
+
+        var data = new Dictionary<string, object>
+        {
+            { "displayName", profile.userName ?? string.Empty },
+            { "displayNameLower", NormalizeSearchText(profile.userName) },
+            { "searchKeywords", BuildSearchKeywords(profile.userName, profile.email) },
+            { "email", profile.email ?? string.Empty },
+            { "emailLower", NormalizeSearchText(profile.email) },
+            { "photoUrl", profile.photoUrl ?? string.Empty },
+            { "avatarStoragePath", profile.avatarStoragePath ?? string.Empty },
+            { "facebookProviderId", facebookProviderId ?? string.Empty },
+            { "birthday", profile.birthday ?? string.Empty },
+            { "birthTime", profile.birthTime ?? string.Empty },
+            { "city", profile.city ?? string.Empty },
+            { "bio", profile.profileBio ?? string.Empty },
+            { "avatarType", (int)profile.avatarType },
+            { "loginType", profile.loginType.ToString() },
+            { "isEmailVerified", profile.isEmailVerified },
+            { "selectedOracle", GetCurrentOracleId() },
+            { "timezone", GetLocalTimezoneId() },
+            { "profileUpdatedAt", FieldValue.ServerTimestamp },
+            { "lastSignInAt", FieldValue.ServerTimestamp },
+        };
+
+        if (includeCreateFields)
+        {
+            data["membershipStatus"] = "free";
+            data["createdAt"] = FieldValue.ServerTimestamp;
+        }
+
+        return data;
+    }
+
+    private static Dictionary<string, object> BuildPublicProfileData(
+        UserProfileData profile,
+        string facebookProviderId,
+        long nowUnixMs)
+    {
+        profile ??= new UserProfileData();
+
+        return new Dictionary<string, object>
+        {
+            { "uid", profile.firebaseUid ?? string.Empty },
+            { "displayName", profile.userName ?? string.Empty },
+            { "displayNameLower", NormalizeSearchText(profile.userName) },
+            { "searchKeywords", BuildSearchKeywords(profile.userName, profile.email) },
+            { "email", profile.email ?? string.Empty },
+            { "emailLower", NormalizeSearchText(profile.email) },
+            { "photoUrl", profile.photoUrl ?? string.Empty },
+            { "avatarStoragePath", profile.avatarStoragePath ?? string.Empty },
+            { "bio", profile.profileBio ?? string.Empty },
+            { "facebookProviderId", facebookProviderId ?? string.Empty },
+            { "isOnline", true },
+            { "lastActiveUnixMs", nowUnixMs },
+            { "lastActiveAt", FieldValue.ServerTimestamp },
+            { "lastSignInUnixMs", profile.lastSignInTimestamp },
+            { "lastSignInAt", FieldValue.ServerTimestamp },
+            { "updatedAt", FieldValue.ServerTimestamp },
+        };
+    }
+
     private void SavePublicProfile()
     {
         if (!_isInitialized || _db == null || UserDataManager.Instance == null) return;
@@ -3380,25 +3464,10 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         string facebookProviderId = GetFacebookProviderIdForCurrentUser(ud);
         long nowUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-        Dictionary<string, object> data = new Dictionary<string, object>
-        {
-            { "uid", ud.FirebaseUid },
-            { "displayName", ud.UserName },
-            { "displayNameLower", NormalizeSearchText(ud.UserName) },
-            { "searchKeywords", BuildSearchKeywords(ud.UserName, ud.Email) },
-            { "email", ud.Email },
-            { "emailLower", NormalizeSearchText(ud.Email) },
-            { "photoUrl", ud.PhotoUrl },
-            { "avatarStoragePath", ud.AvatarStoragePath },
-            { "bio", ud.ProfileBio },
-            { "facebookProviderId", facebookProviderId },
-            { "isOnline", true },
-            { "lastActiveUnixMs", nowUnixMs },
-            { "lastActiveAt", FieldValue.ServerTimestamp },
-            { "lastSignInUnixMs", ud.LastSignInTimestamp },
-            { "lastSignInAt", FieldValue.ServerTimestamp },
-            { "updatedAt", FieldValue.ServerTimestamp },
-        };
+        Dictionary<string, object> data = BuildPublicProfileData(
+            ud.CreateProfileSnapshot(),
+            facebookProviderId,
+            nowUnixMs);
 
         _db.Collection("public_profiles")
             .Document(ud.FirebaseUid)
@@ -3620,6 +3689,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
         public string email = string.Empty;
         public string photoUrl = string.Empty;
         public string status = string.Empty;
+        public string seenAt = string.Empty;
     }
 
     private class EditorRestVirtualFriendRecord
@@ -3694,6 +3764,12 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 foreach (EditorRestFriendRecord record in result.records)
                 {
                     if (record == null || string.IsNullOrEmpty(record.uid)) continue;
+                    if (IsRealFriendPendingRemoval(record.uid))
+                    {
+                        FriendDataManager.Instance.RemoveRealFriendByFirebaseUid(record.uid);
+                        continue;
+                    }
+
                     if (record.status != "friend")
                     {
                         FriendDataManager.Instance.RemoveRealFriendByFirebaseUid(record.uid);
@@ -3751,7 +3827,9 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                         record.email,
                         record.photoUrl,
                         record.status,
-                        "请求添加你为好友");
+                        "请求添加你为好友",
+                        null,
+                        record.seenAt);
                 }
 
                 Debug.Log($"[FirestoreManager] Editor REST 好友请求读取成功，来源={result.proxyLabel}，数量={result.records.Count}");
@@ -4324,6 +4402,7 @@ public class FirestoreManager : MonoSingleton<FirestoreManager>
                 email = GetRestString(fields, "email", string.Empty),
                 photoUrl = GetRestString(fields, "photoUrl", string.Empty),
                 status = GetRestString(fields, "status", "pendingReceived"),
+                seenAt = GetRestString(fields, "seenAt", string.Empty),
             });
         }
     }

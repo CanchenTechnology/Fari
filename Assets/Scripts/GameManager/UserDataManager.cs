@@ -514,6 +514,11 @@ public class UserDataManager : MonoSingleton<UserDataManager>
 
     #region 便捷方法
 
+    public UserProfileData CreateProfileSnapshot()
+    {
+        return UserProfileData.FromManager(this);
+    }
+
     /// <summary>
     /// 获取登录类型的显示文本
     /// </summary>

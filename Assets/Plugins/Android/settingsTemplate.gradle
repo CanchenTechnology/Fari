@@ -14,6 +14,10 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
         **ARTIFACTORYREPOSITORY**
+        def unityProjectPathForAndroidX = $/file:///**DIR_UNITYPROJECT**/$.replace("\\", "/")
+        maven {
+            url (unityProjectPathForAndroidX + "/Assets/GeneratedLocalRepo/AndroidX/m2repository")
+        }
         google()
         mavenCentral()
 // Android Resolver Repos Start

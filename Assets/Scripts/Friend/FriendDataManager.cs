@@ -53,65 +53,18 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         public string status;
         public string name;
         public string info;
+        public string seenAt;
     }
 
     /// <summary>
     /// 好友数据模型
     /// </summary>
-    public class FriendData
-    {
-        public int id;
-        public string firebaseUid;
-        public string virtualFriendId;
-        public string name;
-        public string handle;
-        public string info;
-        public string relationship;
-        public string birthday;
-        public string birthTime;
-        public string city;
-        public string notes;
-        public string source;
-        public string photoUrl;
-        public string avatarImagePath;
-        public string avatarStoragePath;
-        public Sprite headSprite;
-        public bool isOnline;
-        public long lastLoginUnixMs;
-        public long virtualFriendLastOperatedUnixMs;
-        public bool isVirtual; // true=虚拟好友, false=真实好友
-
-        public string BuildOracleContext()
-        {
-            var parts = new List<string>();
-            parts.Add($"姓名：{name}");
-            if (!string.IsNullOrWhiteSpace(firebaseUid)) parts.Add($"Firebase UID：{firebaseUid}");
-            if (!string.IsNullOrWhiteSpace(virtualFriendId)) parts.Add($"虚拟好友ID：{virtualFriendId}");
-            if (!string.IsNullOrWhiteSpace(handle)) parts.Add($"用户名：{handle}");
-            if (!string.IsNullOrWhiteSpace(relationship)) parts.Add($"关系：{relationship}");
-            if (!string.IsNullOrWhiteSpace(birthday)) parts.Add($"生日：{birthday}");
-            if (!string.IsNullOrWhiteSpace(birthTime)) parts.Add($"出生时间：{birthTime}");
-            if (!string.IsNullOrWhiteSpace(city)) parts.Add($"城市：{city}");
-            if (!string.IsNullOrWhiteSpace(notes)) parts.Add($"背景：{notes}");
-            parts.Add(isVirtual ? "类型：创建的好友档案" : "类型：真实好友");
-            return string.Join("\n", parts);
-        }
-    }
+    public class FriendData : FriendProfileData { }
 
     /// <summary>
     /// 邀请数据模型
     /// </summary>
-    public class InviteData
-    {
-        public int id;
-        public string firebaseUid;
-        public string email;
-        public string photoUrl;
-        public string status;
-        public string name;
-        public string info;
-        public Sprite headSprite;
-    }
+    public class InviteData : FriendInviteData { }
 
     // 对象池
     private SimpleObjectPool friendPool;
@@ -401,7 +354,8 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
         string photoUrl,
         string status,
         string info,
-        Sprite headSprite = null)
+        Sprite headSprite = null,
+        string seenAt = "")
     {
         InviteData existing = FindInviteByFirebaseUid(firebaseUid);
         if (existing != null)
@@ -411,6 +365,7 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
             existing.photoUrl = photoUrl;
             existing.status = status;
             existing.info = info;
+            existing.seenAt = seenAt ?? string.Empty;
             if (headSprite != null) existing.headSprite = headSprite;
             SaveAndNotify();
             return existing;
@@ -425,6 +380,7 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
             status = status,
             name = name,
             info = info,
+            seenAt = seenAt ?? string.Empty,
             headSprite = headSprite
         };
         inviteList.Add(data);
@@ -1040,7 +996,8 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
                 photoUrl = invite.photoUrl,
                 status = invite.status,
                 name = invite.name,
-                info = invite.info
+                info = invite.info,
+                seenAt = invite.seenAt
             });
         }
 
@@ -1098,6 +1055,7 @@ public class FriendDataManager : MonoSingleton<FriendDataManager>
                 status = record.status,
                 name = record.name,
                 info = record.info,
+                seenAt = record.seenAt,
                 headSprite = null
             });
         }

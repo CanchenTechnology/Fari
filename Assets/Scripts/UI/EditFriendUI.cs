@@ -148,7 +148,7 @@ public class EditFriendUI : WindowBase
 		}
 
 		int requestId = requestVersion;
-		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadSpriteFromUrlCoroutine(currentFriend.photoUrl, sprite =>
+		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadUserSpriteFromUrlCoroutine(currentFriend.name, currentFriend.photoUrl, sprite =>
 		{
 			if (requestId != requestVersion || currentFriend == null || sprite == null) return;
 			currentFriend.headSprite = sprite;

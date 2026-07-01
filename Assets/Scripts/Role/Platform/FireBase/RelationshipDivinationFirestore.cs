@@ -8,94 +8,6 @@ using GamerFrameWork.OracleRuntime;
 using UnityEngine;
 using XFGameFrameWork;
 
-public static class RelationshipDivinationStatus
-{
-    public const string Invited = "invited";
-    public const string InitiatorRevealed = "initiator_revealed";
-    public const string ReceiverJoined = "receiver_joined";
-    public const string Completed = "completed";
-    public const string Cancelled = "cancelled";
-}
-
-[Serializable]
-public class RelationshipDivinationCard
-{
-    public string positionKey;
-    public string position;
-    public string cardId;
-    public string cardName;
-    public string orientation;
-    public string visibleTo;
-
-    public bool IsUpright => orientation == "upright";
-    public string OrientationText => IsUpright ? "正位" : "逆位";
-    public string DisplayName => TarotDeck.FormatDisplayName(cardName, IsUpright);
-}
-
-[Serializable]
-public class RelationshipDivinationRecord
-{
-    public string readingId;
-    public string initiatorUid;
-    public string receiverUid;
-    public string initiatorName;
-    public string receiverName;
-    public string question;
-    public string status;
-    public bool initiatorRevealed;
-    public bool receiverJoined;
-    public bool receiverRevealed;
-    public List<RelationshipDivinationCard> cards = new List<RelationshipDivinationCard>();
-    public string createdAt;
-    public string updatedAt;
-    public string completedAt;
-    public string oracleId;
-    public bool isLocalOnly;
-
-    public bool IsCompleted => status == RelationshipDivinationStatus.Completed;
-    public bool IsCancelled => status == RelationshipDivinationStatus.Cancelled;
-
-    public RelationshipDivinationCard InitiatorCard => FindCard("initiator_private");
-    public RelationshipDivinationCard SharedCard => FindCard("shared");
-    public RelationshipDivinationCard ReceiverCard => FindCard("receiver_private");
-
-    public bool IsCurrentUserInitiator(string uid) => !string.IsNullOrEmpty(uid) && uid == initiatorUid;
-    public bool IsCurrentUserReceiver(string uid) => !string.IsNullOrEmpty(uid) && uid == receiverUid;
-    public bool CanCurrentUserReveal(string uid)
-    {
-        if (IsCancelled || IsCompleted) return false;
-        if (IsCurrentUserInitiator(uid)) return !initiatorRevealed;
-        if (IsCurrentUserReceiver(uid)) return !receiverRevealed;
-        return isLocalOnly && !initiatorRevealed;
-    }
-
-	    public string GetStatusText(string currentUid)
-	    {
-	        if (isLocalOnly) return "创建好友档案占卜，结果仅保存在本机和你的占卜上下文中";
-	        if (IsCancelled) return "邀请已取消";
-	        if (IsCompleted) return "双方已完成翻牌，可以一起查看共同指引";
-	        if (IsCurrentUserInitiator(currentUid))
-	        {
-	            if (receiverRevealed) return $"已收到 {receiverName} 的牌，正在同步共同结果";
-	            if (receiverJoined) return $"{receiverName} 已接受邀请，等待对方抽牌";
-	            return initiatorRevealed ? $"已翻开你的牌，正在等待 {receiverName} 加入" : "邀请已创建，你可以先翻开自己的牌";
-	        }
-	        if (IsCurrentUserReceiver(currentUid))
-	        {
-	            if (receiverRevealed) return "你已抽牌，等待共同结果同步";
-	            if (receiverJoined) return "你已接受邀请，请抽取你的牌";
-	            return $"{initiatorName} 邀请你进行双人关系占卜";
-	        }
-	        return "双人关系占卜进行中";
-	    }
-
-    private RelationshipDivinationCard FindCard(string positionKey)
-    {
-        if (cards == null) return null;
-        return cards.Find(card => card != null && card.positionKey == positionKey);
-    }
-}
-
 public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinationFirestore>
 {
     private const string CollectionName = "relationship_divinations";
@@ -108,6 +20,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
     private bool hasSubscribedFirebaseInit;
     private bool initRetryScheduled;
     private readonly Dictionary<string, RelationshipDivinationRecord> debugRecords = new Dictionary<string, RelationshipDivinationRecord>();
+    private readonly Dictionary<string, RelationshipDivinationRecord> runtimeRecordStates = new Dictionary<string, RelationshipDivinationRecord>();
     private readonly HashSet<string> debugAutoRevealStarted = new HashSet<string>();
 
     public bool IsReady => initialized && db != null;
@@ -235,6 +148,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
 
             if (showSuccessToast)
                 ToastManager.ShowToast($"已向 {record.receiverName} 发起关系占卜邀请");
+            RememberRecordState(record);
             onComplete?.Invoke(record);
         });
     }
@@ -257,6 +171,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
             record.completedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
             record.updatedAt = record.completedAt;
             SavePersonalHistory(record);
+            RememberRecordState(record);
             onComplete?.Invoke(record);
             return;
         }
@@ -292,15 +207,21 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
         }
         else
         {
-            record.initiatorRevealed = true;
             record.receiverJoined = true;
             record.receiverRevealed = true;
-            record.status = RelationshipDivinationStatus.Completed;
+            // 当前产品流是“发起邀请时已带着发起者翻开的牌”。
+            // 兼容旧数据：旧邀请如果发起方状态还没标记，接收方翻牌时一并补齐。
+            if (!record.initiatorRevealed)
+                record.initiatorRevealed = true;
+            record.status = record.initiatorRevealed
+                ? RelationshipDivinationStatus.Completed
+                : RelationshipDivinationStatus.ReceiverJoined;
         }
 
         if (record.status == RelationshipDivinationStatus.Completed)
             record.completedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         record.updatedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        RememberRecordState(record);
 
         if (IsDebugReading(record))
         {
@@ -325,16 +246,9 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
             { "updatedAt", FieldValue.ServerTimestamp }
         };
 
-        if (isInitiator)
-        {
-            updates["initiatorRevealed"] = true;
-        }
-        else
-        {
-            updates["initiatorRevealed"] = true;
-            updates["receiverJoined"] = true;
-            updates["receiverRevealed"] = true;
-        }
+        updates["initiatorRevealed"] = record.initiatorRevealed;
+        updates["receiverJoined"] = record.receiverJoined;
+        updates["receiverRevealed"] = record.receiverRevealed;
 
         if (record.status == RelationshipDivinationStatus.Completed)
         {
@@ -359,6 +273,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
                     record.status = originalStatus;
                     record.completedAt = originalCompletedAt;
                     record.updatedAt = originalUpdatedAt;
+                    RememberRecordState(record);
                     ToastManager.ShowToast("翻牌同步失败，请稍后再试");
                     onComplete?.Invoke(record);
                     return;
@@ -402,7 +317,8 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
         string originalStatus = record.status;
         string originalUpdatedAt = record.updatedAt;
 
-        record.initiatorRevealed = true;
+        if (!record.initiatorRevealed)
+            record.initiatorRevealed = true;
         record.receiverJoined = true;
         if (string.IsNullOrWhiteSpace(record.status)
             || record.status == RelationshipDivinationStatus.Invited
@@ -411,6 +327,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
             record.status = RelationshipDivinationStatus.ReceiverJoined;
         }
         record.updatedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        RememberRecordState(record);
 
         if (IsDebugReading(record))
         {
@@ -424,7 +341,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
         DocumentReference docRef = db.Collection(CollectionName).Document(record.readingId);
         docRef.SetAsync(new Dictionary<string, object>
         {
-            { "initiatorRevealed", true },
+            { "initiatorRevealed", record.initiatorRevealed },
             { "receiverJoined", true },
             { "status", record.status },
             { "updatedAt", FieldValue.ServerTimestamp }
@@ -438,6 +355,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
                 record.receiverJoined = originalReceiverJoined;
                 record.status = originalStatus;
                 record.updatedAt = originalUpdatedAt;
+                RememberRecordState(record);
                 onComplete?.Invoke(record);
                 return;
             }
@@ -448,11 +366,15 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
                 {
                     RelationshipDivinationRecord latest = DeserializeRecord(snapshotTask.Result);
                     if (latest != null)
+                    {
+                        MergeRuntimeRecordState(latest);
                         CopyRecordState(record, latest);
+                    }
                 }
 
                 if (showSuccessToast)
                     ToastManager.ShowToast("已接受双人占卜邀请");
+                RememberRecordState(record);
                 onComplete?.Invoke(record);
             });
         });
@@ -466,7 +388,10 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
             {
                 RelationshipDivinationRecord latest = DeserializeRecord(task.Result);
 	                if (latest != null)
+	                {
+	                    MergeRuntimeRecordState(latest);
 	                    CopyRecordState(record, latest);
+	                }
 	            }
 
 	            PromoteLegacyReceiverCompleted(record);
@@ -490,6 +415,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
         record.status = RelationshipDivinationStatus.Completed;
         record.completedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         record.updatedAt = record.completedAt;
+        RememberRecordState(record);
 
 	        docRef.SetAsync(new Dictionary<string, object>
 	        {
@@ -507,6 +433,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
                 record.status = previousStatus;
                 record.completedAt = previousCompletedAt;
                 record.updatedAt = previousUpdatedAt;
+                RememberRecordState(record);
                 ToastManager.ShowToast("已翻开你的牌，等待结果同步");
                 onComplete?.Invoke(record);
                 return;
@@ -521,6 +448,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
         if (record.status == RelationshipDivinationStatus.Completed)
             SavePersonalHistory(record);
 
+        RememberRecordState(record);
         if (showSuccessToast)
             ToastManager.ShowToast(record.status == RelationshipDivinationStatus.Completed ? "双方关系占卜已完成" : "已翻开你的牌");
         onComplete?.Invoke(record);
@@ -544,6 +472,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
         target.createdAt = source.createdAt;
         target.updatedAt = source.updatedAt;
         target.completedAt = source.completedAt;
+        target.receiverSeenAt = source.receiverSeenAt;
         target.oracleId = source.oracleId;
         target.isLocalOnly = source.isLocalOnly;
     }
@@ -635,7 +564,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
 
 	                foreach (DocumentSnapshot doc in task.Result.Documents)
 	                {
-	                    RelationshipDivinationRecord record = DeserializeRecord(doc);
+	                    RelationshipDivinationRecord record = MergeRuntimeRecordState(DeserializeRecord(doc));
 	                    PromoteLegacyReceiverCompleted(record);
 	                    if (ShouldAutoComplete(record))
 	                    {
@@ -652,6 +581,75 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
                     records.RemoveRange(IncomingLimit, records.Count - IncomingLimit);
                 onComplete?.Invoke(records, true);
             });
+    }
+
+    public void MarkIncomingInvitesSeen(IReadOnlyList<RelationshipDivinationRecord> records, Action<bool> onComplete = null)
+    {
+        if (records == null || records.Count == 0)
+        {
+            onComplete?.Invoke(true);
+            return;
+        }
+
+        string currentUid = GetCurrentUid();
+        string seenTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        List<RelationshipDivinationRecord> writableRecords = new List<RelationshipDivinationRecord>();
+
+        for (int i = 0; i < records.Count; i++)
+        {
+            RelationshipDivinationRecord record = records[i];
+            if (record == null || string.IsNullOrWhiteSpace(record.readingId))
+                continue;
+
+            record.receiverSeenAt = seenTime;
+            RememberRecordState(record);
+
+            if (record.isLocalOnly || IsDebugReading(record))
+            {
+                StoreDebugRecord(record);
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(currentUid)
+                && !string.IsNullOrWhiteSpace(record.receiverUid)
+                && record.receiverUid != currentUid)
+            {
+                continue;
+            }
+
+            writableRecords.Add(record);
+        }
+
+        if (writableRecords.Count == 0)
+        {
+            onComplete?.Invoke(true);
+            return;
+        }
+
+        if (!IsReady || string.IsNullOrWhiteSpace(currentUid))
+        {
+            onComplete?.Invoke(false);
+            return;
+        }
+
+        WriteBatch batch = db.StartBatch();
+        for (int i = 0; i < writableRecords.Count; i++)
+        {
+            RelationshipDivinationRecord record = writableRecords[i];
+            DocumentReference docRef = db.Collection(CollectionName).Document(record.readingId);
+            batch.Set(docRef, new Dictionary<string, object>
+            {
+                { "receiverSeenAt", FieldValue.ServerTimestamp }
+            }, SetOptions.MergeAll);
+        }
+
+        batch.CommitAsync().ContinueWithOnMainThread(task =>
+        {
+            bool succeeded = !(task.IsFaulted || task.IsCanceled);
+            if (!succeeded)
+                Debug.LogWarning("[RelationshipDivinationFirestore] 同步关系占卜邀请已读状态失败: " + task.Exception?.InnerException?.Message);
+            onComplete?.Invoke(succeeded);
+        });
     }
 
     public void LoadOutgoingInvitationList(Action<List<RelationshipDivinationRecord>, bool> onComplete)
@@ -694,7 +692,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
 
 	                foreach (DocumentSnapshot doc in task.Result.Documents)
 	                {
-	                    RelationshipDivinationRecord record = DeserializeRecord(doc);
+	                    RelationshipDivinationRecord record = MergeRuntimeRecordState(DeserializeRecord(doc));
 	                    if (record == null) continue;
 
 	                    PromoteLegacyReceiverCompleted(record);
@@ -842,7 +840,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
 
 	                foreach (DocumentSnapshot doc in task.Result.Documents)
 	                {
-	                    RelationshipDivinationRecord record = DeserializeRecord(doc);
+	                    RelationshipDivinationRecord record = MergeRuntimeRecordState(DeserializeRecord(doc));
 	                    PromoteLegacyReceiverCompleted(record);
 	                    if (ShouldAutoComplete(record))
 	                        PromoteCompletedIfNeeded(record);
@@ -880,7 +878,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
                     return;
                 }
 
-	                RelationshipDivinationRecord record = DeserializeRecord(task.Result);
+	                RelationshipDivinationRecord record = MergeRuntimeRecordState(DeserializeRecord(task.Result));
 	                PromoteLegacyReceiverCompleted(record);
 	                PromoteCompletedIfNeeded(record);
 	                onComplete?.Invoke(record);
@@ -894,7 +892,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
 
 	        foreach (DocumentSnapshot doc in snapshot.Documents)
 	        {
-	            RelationshipDivinationRecord record = DeserializeRecord(doc);
+	            RelationshipDivinationRecord record = MergeRuntimeRecordState(DeserializeRecord(doc));
 	            if (record == null || record.IsCancelled || IsInviteExpired(record)) continue;
 	            PromoteLegacyReceiverCompleted(record);
 	            if (ShouldAutoComplete(record))
@@ -931,6 +929,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
             record.completedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         record.updatedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 
+        RememberRecordState(record);
         SyncCompletedStatus(record);
 	        SavePersonalHistory(record);
 	        return true;
@@ -938,18 +937,32 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
 
 	    private bool PromoteLegacyReceiverCompleted(RelationshipDivinationRecord record)
 	    {
-	        if (record == null
-	            || record.IsCancelled
-	            || record.IsCompleted
-	            || !record.receiverRevealed
-	            || record.initiatorRevealed)
-	        {
+	        if (record == null || record.IsCancelled)
 	            return false;
+
+	        bool changed = false;
+	        if (record.receiverRevealed && !record.initiatorRevealed)
+	        {
+	            record.initiatorRevealed = true;
+	            changed = true;
 	        }
 
-	        record.initiatorRevealed = true;
-	        record.receiverJoined = true;
-	        return true;
+	        if (record.receiverRevealed && !record.receiverJoined)
+	        {
+	            record.receiverJoined = true;
+	            changed = true;
+	        }
+
+	        if (record.IsCompleted && !record.initiatorRevealed)
+	        {
+	            record.initiatorRevealed = true;
+	            changed = true;
+	        }
+
+	        if (changed)
+	            RememberRecordState(record);
+
+	        return changed;
 	    }
 
     private static bool ShouldAutoComplete(RelationshipDivinationRecord record)
@@ -972,6 +985,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
         }
 
         if (!IsReady) return;
+        RememberRecordState(record);
 
 	        db.Collection(CollectionName)
 	            .Document(record.readingId)
@@ -1022,7 +1036,6 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
 	        record.createdAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 	        record.updatedAt = record.createdAt;
 	        StoreDebugRecord(record);
-	        StartDebugAutoReveal(record.readingId);
 	        return record;
 	    }
 
@@ -1030,6 +1043,78 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
     {
         if (record == null || string.IsNullOrWhiteSpace(record.readingId)) return;
         debugRecords[record.readingId] = record;
+        RememberRecordState(record);
+    }
+
+    private void RememberRecordState(RelationshipDivinationRecord record)
+    {
+        if (record == null || string.IsNullOrWhiteSpace(record.readingId)) return;
+        runtimeRecordStates[record.readingId] = CloneRecordState(record);
+    }
+
+    private RelationshipDivinationRecord MergeRuntimeRecordState(RelationshipDivinationRecord record)
+    {
+        if (record == null || string.IsNullOrWhiteSpace(record.readingId))
+            return record;
+
+        if (runtimeRecordStates.TryGetValue(record.readingId, out RelationshipDivinationRecord cached)
+            && IsRecordProgressAhead(cached, record))
+        {
+            CopyRecordState(record, cached);
+        }
+
+        RememberRecordState(record);
+        return record;
+    }
+
+    private static bool IsRecordProgressAhead(RelationshipDivinationRecord candidate, RelationshipDivinationRecord current)
+    {
+        int candidateRank = GetRecordProgressRank(candidate);
+        int currentRank = GetRecordProgressRank(current);
+        if (candidateRank != currentRank)
+            return candidateRank > currentRank;
+
+        DateTime candidateTime = GetRecordRelevantTime(candidate);
+        DateTime currentTime = GetRecordRelevantTime(current);
+        return candidateTime != DateTime.MinValue && candidateTime > currentTime;
+    }
+
+    private static int GetRecordProgressRank(RelationshipDivinationRecord record)
+    {
+        if (record == null) return 0;
+        if (record.IsCancelled) return 100;
+        if (record.IsCompleted) return 90;
+        if (record.initiatorRevealed && record.receiverRevealed) return 80;
+        if (record.receiverRevealed) return 70;
+        if (record.receiverJoined) return 60;
+        if (record.initiatorRevealed) return 50;
+        return 10;
+    }
+
+    private static RelationshipDivinationRecord CloneRecordState(RelationshipDivinationRecord source)
+    {
+        if (source == null) return null;
+
+        RelationshipDivinationRecord clone = new RelationshipDivinationRecord();
+        CopyRecordState(clone, source);
+        if (source.cards != null)
+        {
+            clone.cards = new List<RelationshipDivinationCard>();
+            foreach (RelationshipDivinationCard card in source.cards)
+            {
+                if (card == null) continue;
+                clone.cards.Add(new RelationshipDivinationCard
+                {
+                    positionKey = card.positionKey,
+                    position = card.position,
+                    cardId = card.cardId,
+                    cardName = card.cardName,
+                    orientation = card.orientation,
+                    visibleTo = card.visibleTo
+                });
+            }
+        }
+        return clone;
     }
 
     private RelationshipDivinationRecord FindLatestDebugActive(string friendUid)
@@ -1222,6 +1307,7 @@ public class RelationshipDivinationFirestore : MonoSingleton<RelationshipDivinat
             createdAt = GetTimeString(doc, data, "createdAt"),
             updatedAt = GetTimeString(doc, data, "updatedAt"),
             completedAt = GetTimeString(doc, data, "completedAt"),
+            receiverSeenAt = GetTimeString(doc, data, "receiverSeenAt"),
             oracleId = GetStr(data, "oracleId", "tarot"),
             isLocalOnly = false
         };

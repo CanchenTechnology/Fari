@@ -710,6 +710,52 @@
       border-bottom-right-radius: 8px;
     }
 
+    .batch-delete-list {
+      max-height: 360px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-soft);
+      padding: 8px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .batch-delete-row {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 10px;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .batch-delete-row:hover {
+      border-color: var(--line-strong);
+      background: #fdfbf6;
+    }
+
+    .batch-delete-row.selected {
+      border-color: rgba(179, 38, 30, 0.35);
+      background: var(--red-soft);
+    }
+
+    .batch-delete-row.disabled {
+      opacity: 0.58;
+      cursor: not-allowed;
+    }
+
+    .batch-delete-row input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--red);
+    }
+
     .clickable-row {
       cursor: pointer;
     }
@@ -1552,6 +1598,8 @@
               <p class="module-subtitle">搜索用户、手动注册、查看出生资料和会员状态。</p>
             </div>
             <div class="module-actions">
+              <button id="openBatchCreateUsersButton" type="button" class="ghost">批量添加真实用户</button>
+              <button id="openBatchDeleteUsersButton" type="button" class="danger">批量删除用户</button>
               <button id="openCreateUserButton" type="button">手动注册用户</button>
               <button id="refreshUsersButton" type="button" class="secondary">刷新</button>
             </div>
@@ -1962,6 +2010,38 @@
     </form>
   </dialog>
 
+  <dialog id="userPermissionsDialog">
+    <form id="userPermissionsForm" class="dialog-body" method="dialog">
+      <div class="dialog-head">
+        <h2>用户权限设置</h2>
+        <button type="button" class="ghost icon" data-close-dialog="userPermissionsDialog">×</button>
+      </div>
+      <input name="uid" type="hidden">
+      <div id="userPermissionsTarget" class="status"></div>
+      <div class="form-grid">
+        <label class="inline-check full">
+          <input name="dailySyncEnabled" type="checkbox">
+          允许同步每日占卜摘要
+        </label>
+        <label class="full">占卜数据可见范围<select name="dailyVisibility">
+          <option value="all_friends">所有好友</option>
+          <option value="real_friends">仅真实好友</option>
+          <option value="only_me">仅自己</option>
+        </select></label>
+        <label class="inline-check full">
+          <input name="applyPublishedSummaries" type="checkbox" checked>
+          同步更新最近已发布的每日占卜摘要
+        </label>
+        <div id="userPermissionsRuleCheck" class="status full"></div>
+        <div id="userPermissionsStatus" class="status full" aria-live="polite"></div>
+      </div>
+      <div class="row">
+        <button type="submit" id="userPermissionsSubmitButton">保存权限</button>
+        <button type="button" class="secondary" data-close-dialog="userPermissionsDialog">取消</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="addRealFriendDialog">
     <form id="addRealFriendForm" class="dialog-body" method="dialog">
       <div class="dialog-head">
@@ -1987,6 +2067,56 @@
     </form>
   </dialog>
 
+  <dialog id="batchCreateUsersDialog">
+    <form id="batchCreateUsersForm" class="dialog-body" method="dialog">
+      <div class="dialog-head">
+        <h2>批量添加真实用户</h2>
+        <button type="button" class="ghost icon" data-close-dialog="batchCreateUsersDialog">×</button>
+      </div>
+      <div class="form-grid">
+        <label class="full">用户列表<textarea name="usersText" style="min-height: 190px;" placeholder="每行一个真实用户，格式：邮箱,密码,昵称,头像URL,生日,出生时间,地址&#10;例如：&#10;alice@example.com,12345678,Alice,https://example.com/a.png,2001-02-04,13:01,美国 · 华盛顿州&#10;bob@example.com,12345678,Bob" required></textarea></label>
+        <label>统一默认密码<input name="defaultPassword" type="password" minlength="6" placeholder="某行没写密码时使用"></label>
+        <label class="inline-check"><input name="skipExisting" type="checkbox" checked> 邮箱已存在时跳过</label>
+        <div class="status full">一次最多创建 100 个真实用户。每行也可以填 JSON：{"email":"a@example.com","password":"12345678","displayName":"Alice"}。</div>
+        <div id="batchCreateUsersStatus" class="status full" aria-live="polite"></div>
+      </div>
+      <div class="row">
+        <button type="submit" id="batchCreateUsersSubmitButton">开始批量添加</button>
+        <button type="button" class="secondary" data-close-dialog="batchCreateUsersDialog">取消</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="batchDeleteUsersDialog">
+    <form id="batchDeleteUsersForm" class="dialog-body" method="dialog">
+      <div class="dialog-head">
+        <h2>批量删除用户</h2>
+        <button type="button" class="ghost icon" data-close-dialog="batchDeleteUsersDialog">×</button>
+      </div>
+      <div class="form-grid">
+        <label class="full">筛选当前用户列表<input id="batchDeleteUsersFilterInput" placeholder="输入用户名 / 邮箱 / UID 过滤"></label>
+        <div class="row full">
+          <button type="button" id="batchDeleteSelectVisibleButton" class="secondary">全选当前筛选</button>
+          <button type="button" id="batchDeleteClearSelectionButton" class="ghost">清空选择</button>
+        </div>
+        <div id="batchDeleteUsersSelectionSummary" class="status full"></div>
+        <div id="batchDeleteUsersList" class="batch-delete-list full"></div>
+        <details class="full">
+          <summary>高级补充：手动输入 UID / 邮箱 / 用户名</summary>
+          <label class="full">手动补充列表<textarea name="manualTargetsText" style="min-height: 110px;" placeholder="每行一个 UID / 邮箱 / 用户名，例如：&#10;test@example.com&#10;wPlMQH0mF6cLXBjbcPsI2WclB902"></textarea></label>
+        </details>
+        <input name="targetsText" type="hidden">
+        <label class="full">删除原因<input name="reason" value="管理员批量删除用户账号"></label>
+        <div class="status warn full">一次最多删除 50 个用户。会删除 Firebase Auth 登录账号和线上用户资料，并归档到删除账号回收站，90 天内可恢复。</div>
+        <div id="batchDeleteUsersStatus" class="status full" aria-live="polite"></div>
+      </div>
+      <div class="row">
+        <button type="submit" id="batchDeleteUsersSubmitButton" class="danger">确认批量删除</button>
+        <button type="button" class="secondary" data-close-dialog="batchDeleteUsersDialog">取消</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="sendRelationshipInviteDialog">
     <form id="sendRelationshipInviteForm" class="dialog-body" method="dialog">
       <div class="dialog-head">
@@ -2001,7 +2131,7 @@
         <label class="full">占卜问题<textarea name="question" style="min-height: 90px;" placeholder="默认：我和对方的关系接下来会如何发展？"></textarea></label>
         <label class="inline-check full">
           <input name="ensureFriends" type="checkbox" checked>
-          发送前确保双方是真实好友
+          发送时自动确保双方是真实好友
         </label>
         <label class="inline-check full">
           <input name="allowDuplicate" type="checkbox">
@@ -2009,7 +2139,7 @@
         </label>
         <label class="full">备注<input name="note" value="管理员发送双人占卜邀请"></label>
         <div class="status full">
-          会写入 relationship_divinations，并触发接收方的双人占卜邀请推送。
+          会创建真实好友双人占卜，发起方默认已翻开一张牌，并触发接收方邀请推送。
         </div>
         <div id="sendRelationshipInviteStatus" class="status full" aria-live="polite"></div>
       </div>
@@ -2077,6 +2207,29 @@
       <div class="row">
         <button type="submit">生成测试数据</button>
         <button type="button" class="secondary" data-close-dialog="seedTestFriendDialog">取消</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="seedRandomDivinationDialog">
+    <form id="seedRandomDivinationForm" class="dialog-body" method="dialog">
+      <div class="dialog-head">
+        <h2>添加随机占卜信息</h2>
+        <button type="button" class="ghost icon" data-close-dialog="seedRandomDivinationDialog">×</button>
+      </div>
+      <input name="uid" type="hidden">
+      <div id="seedRandomDivinationTarget" class="status"></div>
+      <div class="form-grid">
+        <label>随机数量<input name="count" type="number" min="1" max="20" value="3"></label>
+        <label class="inline-check"><input name="includeDaily" type="checkbox" checked> 每日占卜</label>
+        <label class="inline-check"><input name="includeThreeCard" type="checkbox" checked> 三牌占卜</label>
+        <label class="inline-check"><input name="includeRelationship" type="checkbox" checked> 双人占卜</label>
+        <div class="status full">会从已勾选类型里随机生成记录。双人占卜会优先使用已有真实好友；没有真实好友时会自动创建一个测试真实好友。</div>
+        <div id="seedRandomDivinationStatus" class="status full" aria-live="polite"></div>
+      </div>
+      <div class="row">
+        <button type="submit" id="seedRandomDivinationSubmitButton">添加随机占卜</button>
+        <button type="button" class="secondary" data-close-dialog="seedRandomDivinationDialog">取消</button>
       </div>
     </form>
   </dialog>
@@ -2192,6 +2345,7 @@
       users: [],
       userListMeta: null,
       userDetail: null,
+      batchDeleteSelected: new Set(),
       authReconcile: {
         items: [],
         loaded: false,
@@ -2510,6 +2664,24 @@
       loadUsers("");
     });
     $("openCreateUserButton").addEventListener("click", () => $("createUserDialog").showModal());
+    $("openBatchCreateUsersButton").addEventListener("click", openBatchCreateUsersDialog);
+    $("openBatchDeleteUsersButton").addEventListener("click", openBatchDeleteUsersDialog);
+    $("batchDeleteUsersFilterInput").addEventListener("input", () => renderBatchDeleteUserPicker());
+    $("batchDeleteSelectVisibleButton").addEventListener("click", selectVisibleBatchDeleteUsers);
+    $("batchDeleteClearSelectionButton").addEventListener("click", () => {
+      state.batchDeleteSelected.clear();
+      renderBatchDeleteUserPicker();
+    });
+    $("batchDeleteUsersForm").elements.manualTargetsText.addEventListener("input", updateBatchDeleteSelectionSummary);
+    $("batchDeleteUsersList").addEventListener("click", (event) => {
+      const row = event.target.closest("[data-batch-delete-uid]");
+      if (!row || row.classList.contains("disabled")) return;
+      const checkbox = row.querySelector("input[type='checkbox']");
+      const nextChecked = event.target === checkbox ? checkbox.checked : !checkbox.checked;
+      if (nextChecked) state.batchDeleteSelected.add(row.dataset.batchDeleteUid);
+      else state.batchDeleteSelected.delete(row.dataset.batchDeleteUid);
+      renderBatchDeleteUserPicker();
+    });
     $("scanAuthUsersButton").addEventListener("click", () => loadAuthReconcile({ reset: true }));
     $("scanNextAuthUsersButton").addEventListener("click", () => loadAuthReconcile({
       pageToken: state.authReconcile.nextPageToken,
@@ -2617,13 +2789,14 @@
         submitButton.textContent = "保存中...";
         statusElement.className = "status full";
         statusElement.textContent = "正在保存玩家资料，请稍等。";
-        await callFunction("/adminUpdateUserProfile", {
+        const result = await callFunction("/adminUpdateUserProfile", {
           method: "POST",
           body: JSON.stringify(payload),
         });
         $("editUserDialog").close();
         await refreshCurrentDetail(payload.uid);
-        showMessage("玩家资料已保存", "ok");
+        const syncedCount = Number(result.syncedFriendReferenceCount || 0);
+        showMessage(syncedCount ? `玩家资料已保存，已同步 ${syncedCount} 个好友引用` : "玩家资料已保存", "ok");
       } catch (error) {
         statusElement.className = "status warn full";
         statusElement.textContent = error.message || "保存失败，请检查资料格式。";
@@ -2690,6 +2863,46 @@
       }
     });
 
+    $("userPermissionsForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formElement = event.currentTarget;
+      const form = new FormData(formElement);
+      const payload = {
+        uid: form.get("uid"),
+        dailySyncEnabled: form.get("dailySyncEnabled") === "on",
+        visibility: form.get("dailyVisibility") || "only_me",
+        applyPublishedSummaries: form.get("applyPublishedSummaries") === "on",
+      };
+      const submitButton = $("userPermissionsSubmitButton");
+      const statusElement = $("userPermissionsStatus");
+      try {
+        submitButton.disabled = true;
+        submitButton.textContent = "保存中...";
+        statusElement.className = "status full";
+        statusElement.textContent = "正在同步客户端权限设置和已发布摘要。";
+        const result = await callFunction("/adminUpdateUserPermissions", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        $("userPermissionsDialog").close();
+        if (result.bundle) {
+          state.userDetail = result.bundle;
+          renderUserDetail(state.userDetail);
+          await loadUsers($("userSearchInput").value.trim());
+        } else {
+          await refreshCurrentDetail(payload.uid);
+        }
+        showMessage(`权限已保存，更新摘要 ${result.summaryCount || 0} 条`, "ok");
+      } catch (error) {
+        statusElement.className = "status warn full";
+        statusElement.textContent = error.message || "权限保存失败。";
+        showMessage(error.message, "warn");
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = "保存权限";
+      }
+    });
+
     $("addRealFriendForm").addEventListener("submit", async (event) => {
       event.preventDefault();
       const formElement = event.currentTarget;
@@ -2711,12 +2924,120 @@
     });
     $("addRealFriendMode").addEventListener("change", updateAddRealFriendModeHint);
 
+    $("batchCreateUsersForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formElement = event.currentTarget;
+      const form = new FormData(formElement);
+      const payload = Object.fromEntries(form.entries());
+      payload.skipExisting = form.get("skipExisting") === "on";
+      const rowCount = countBatchUserRows(payload.usersText);
+      if (!rowCount) {
+        showMessage("请至少填写一个真实用户", "warn");
+        return;
+      }
+      if (rowCount > 100) {
+        showMessage("一次最多批量添加 100 个真实用户，请分批处理。", "warn");
+        return;
+      }
+      if (!confirmSensitiveAction(
+        "批量添加真实用户",
+        `用户数量：${rowCount}\n邮箱已存在：${payload.skipExisting ? "跳过" : "报错"}\n会创建 Firebase Auth 账号并写入 users/public_profiles。`,
+      )) return;
+
+      const submitButton = $("batchCreateUsersSubmitButton");
+      const statusElement = $("batchCreateUsersStatus");
+      try {
+        submitButton.disabled = true;
+        submitButton.textContent = "处理中...";
+        statusElement.className = "status full";
+        statusElement.textContent = `正在创建 ${rowCount} 个真实用户，请稍等。`;
+        const result = await callFunction("/adminBatchCreateRegisteredUsers", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        await loadUsers($("userSearchInput").value.trim());
+        const summary = formatBatchCreateUsersSummary(result);
+        statusElement.className = result.errorCount ? "status warn full" : "status ok full";
+        statusElement.innerHTML = summary;
+        showMessage(`批量添加真实用户完成：成功 ${result.successCount || 0}，跳过 ${result.skippedCount || 0}，失败 ${result.errorCount || 0}`, result.errorCount ? "warn" : "ok");
+      } catch (error) {
+        statusElement.className = "status warn full";
+        statusElement.textContent = error.message || "批量添加失败，请检查输入。";
+        showMessage(error.message, "warn");
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = "开始批量添加";
+      }
+    });
+
+    $("batchDeleteUsersForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formElement = event.currentTarget;
+      const form = new FormData(formElement);
+      const payload = Object.fromEntries(form.entries());
+      const targets = collectBatchDeleteTargets(formElement);
+      if (!targets.length) {
+        showMessage("请至少填写一个要删除的用户", "warn");
+        return;
+      }
+      if (targets.length > 50) {
+        showMessage("一次最多批量删除 50 个用户，请分批处理。", "warn");
+        return;
+      }
+      if (!confirmSensitiveAction(
+        "批量删除用户",
+        [
+          `用户数量：${targets.length}`,
+          `原因：${payload.reason || "无"}`,
+          "会删除 Auth 登录账号和线上用户资料。",
+          "数据会进入删除账号回收站，90 天内可以恢复。",
+        ].join("\n"),
+      )) return;
+
+      const submitButton = $("batchDeleteUsersSubmitButton");
+      const statusElement = $("batchDeleteUsersStatus");
+      try {
+        payload.targets = targets;
+        payload.targetsText = targets.join("\n");
+        submitButton.disabled = true;
+        submitButton.textContent = "删除中...";
+        statusElement.className = "status full";
+        statusElement.textContent = `正在删除 ${targets.length} 个用户并归档数据，请稍等。`;
+        const result = await callFunction("/adminBatchDeleteUserAccounts", {
+          method: "POST",
+          body: JSON.stringify({ targets, reason: payload.reason }),
+        });
+        const deletedUids = new Set((result.results || []).map((item) => item.uid).filter(Boolean));
+        if (state.userDetail?.uid && deletedUids.has(state.userDetail.uid)) {
+          state.userDetail = null;
+          renderUserDetail(null);
+        }
+        await loadUsers($("userSearchInput").value.trim());
+        if (state.deletedAccounts.loaded) {
+          await loadDeletedAccounts($("deletedAccountSearchInput").value.trim());
+        }
+        if (state.authReconcile.loaded) {
+          await loadAuthReconcile({ reset: true });
+        }
+        statusElement.className = result.errorCount ? "status warn full" : "status ok full";
+        statusElement.innerHTML = formatBatchDeleteUsersSummary(result);
+        showMessage(`批量删除完成：成功 ${result.successCount || 0}，跳过 ${result.skippedCount || 0}，失败 ${result.errorCount || 0}`, result.errorCount ? "warn" : "ok");
+      } catch (error) {
+        statusElement.className = "status warn full";
+        statusElement.textContent = error.message || "批量删除失败，请检查输入。";
+        showMessage(error.message, "warn");
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = "确认批量删除";
+      }
+    });
+
     $("sendRelationshipInviteForm").addEventListener("submit", async (event) => {
       event.preventDefault();
       const formElement = event.currentTarget;
       const form = new FormData(formElement);
       const payload = Object.fromEntries(form.entries());
-      payload.ensureFriends = form.get("ensureFriends") === "on";
+      payload.ensureFriends = true;
       payload.allowDuplicate = form.get("allowDuplicate") === "on";
       const submitButton = $("sendRelationshipInviteSubmitButton");
       const statusElement = $("sendRelationshipInviteStatus");
@@ -2725,20 +3046,22 @@
         submitButton.disabled = true;
         submitButton.textContent = "发送中...";
         statusElement.className = "status full";
-        statusElement.textContent = "正在发送邀请，请稍等。";
+        statusElement.textContent = "正在创建真实好友双人占卜，并翻开发起方的一张牌。";
         const result = await callFunction("/adminSendRelationshipInvite", {
           method: "POST",
           body: JSON.stringify(payload),
         });
+        const revealedText = formatAdminRelationshipCard(result.revealedCard);
         state.lastRelationshipInvite = {
           uid: payload.uid,
           receiverUid: result.receiverUid || payload.friendSearch || "",
           receiverName: result.receiverName || "",
           readingId: result.readingId || "",
+          revealedCard: result.revealedCard || null,
           sentAt: new Date().toISOString(),
         };
         statusElement.className = "status ok full";
-        statusElement.textContent = `已发送给 ${result.receiverName || result.receiverUid || payload.friendSearch}，正在关闭窗口。`;
+        statusElement.textContent = `已发送给 ${result.receiverName || result.receiverUid || payload.friendSearch}${revealedText ? `，已翻开 ${revealedText}` : ""}，正在关闭窗口。`;
         $("sendRelationshipInviteDialog").close();
         formElement.reset();
         if (result.bundle) {
@@ -2748,7 +3071,7 @@
         } else {
           await refreshCurrentDetail(payload.uid);
         }
-        showMessage(`已发送双人占卜邀请：${result.receiverName || result.receiverUid}`, "ok");
+        showMessage(`已发送真实双人占卜邀请${revealedText ? `，已翻开 ${revealedText}` : ""}：${result.receiverName || result.receiverUid}`, "ok");
       } catch (error) {
         statusElement.className = "status warn full";
         statusElement.textContent = error.message || "发送失败，请检查接收好友是否正确。";
@@ -2824,6 +3147,59 @@
         showMessage(message, "ok");
       } catch (error) {
         showMessage(error.message, "warn");
+      }
+    });
+
+    $("seedRandomDivinationForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formElement = event.currentTarget;
+      const form = new FormData(formElement);
+      const payload = Object.fromEntries(form.entries());
+      payload.count = Number(payload.count || 3);
+      payload.includeDaily = form.get("includeDaily") === "on";
+      payload.includeThreeCard = form.get("includeThreeCard") === "on";
+      payload.includeRelationship = form.get("includeRelationship") === "on";
+      const selectedTypes = [
+        payload.includeDaily ? "每日占卜" : "",
+        payload.includeThreeCard ? "三牌占卜" : "",
+        payload.includeRelationship ? "双人占卜" : "",
+      ].filter(Boolean);
+      if (!selectedTypes.length) {
+        showMessage("至少选择一种占卜类型", "warn");
+        return;
+      }
+      if (!confirmSensitiveAction(
+        "添加随机占卜信息",
+        `当前用户：${payload.uid}\n数量：${payload.count}\n类型：${selectedTypes.join("、")}`,
+      )) return;
+
+      const submitButton = $("seedRandomDivinationSubmitButton");
+      const statusElement = $("seedRandomDivinationStatus");
+      try {
+        submitButton.disabled = true;
+        submitButton.textContent = "生成中...";
+        statusElement.className = "status full";
+        statusElement.textContent = "正在写入随机占卜记录，请稍等。";
+        const result = await callFunction("/adminSeedRandomDivinationData", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        $("seedRandomDivinationDialog").close();
+        if (result.bundle) {
+          state.userDetail = result.bundle;
+          renderUserDetail(state.userDetail);
+          await loadUsers($("userSearchInput").value.trim());
+        } else {
+          await refreshCurrentDetail(payload.uid);
+        }
+        showMessage(`已添加 ${result.count || 0} 条随机占卜信息：${formatRandomDivinationTypes(result.created)}`, "ok");
+      } catch (error) {
+        statusElement.className = "status warn full";
+        statusElement.textContent = error.message || "随机占卜写入失败。";
+        showMessage(error.message, "warn");
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = "添加随机占卜";
       }
     });
 
@@ -4938,6 +5314,7 @@
           };
         }
         renderUsers();
+        if ($("batchDeleteUsersDialog")?.open) renderBatchDeleteUserPicker();
         if (!state.userDetail) renderUserDetail(null);
       } catch (error) {
         setInlineError($("usersTable"), error.message || "加载用户失败");
@@ -5126,12 +5503,20 @@
       });
     }
 
+    function deletedAccountSourceLabel(source) {
+      return ({
+        admin: "管理员删除",
+        self_service: "用户自助删除",
+      })[source] || source || "未知";
+    }
+
     function renderDeletedAccountRow(item) {
       const title = item.displayName || item.email || item.uid;
       const tone = item.canRestore ? "warn" : "danger";
       const status = item.canRestore
         ? `剩余 ${Number(item.daysRemaining || 0)} 天`
         : item.status === "restored" ? "已恢复" : "已过期";
+      const deletedBy = item.deletedByEmail || item.deletedByUid || "";
       return `
         <div class="list-row">
           <div class="section-title-row">
@@ -5144,6 +5529,8 @@
           <div class="compact-fields">
             <div class="compact-line"><span class="compact-label">邮箱</span><span class="compact-value">${escapeHtml(item.email || "未绑定")}</span></div>
             <div class="compact-line"><span class="compact-label">删除时间</span><span class="compact-value">${escapeHtml(formatDate(item.deletedAt) || "无")}</span></div>
+            <div class="compact-line"><span class="compact-label">删除来源</span><span class="compact-value">${escapeHtml([deletedAccountSourceLabel(item.deleteSource), deletedBy].filter(Boolean).join(" · "))}</span></div>
+            <div class="compact-line"><span class="compact-label">删除原因</span><span class="compact-value">${escapeHtml(item.deleteReason || "无")}</span></div>
             <div class="compact-line"><span class="compact-label">过期时间</span><span class="compact-value">${escapeHtml(formatDate(item.expiresAt) || "无")}</span></div>
             <div class="compact-line"><span class="compact-label">归档文档</span><span class="compact-value">${escapeHtml(`${item.snapshotCount || 0} 个`)}</span></div>
           </div>
@@ -5202,6 +5589,56 @@
         }
       } catch (error) {
         showMessage(error.message, "warn");
+      }
+    }
+
+    async function deleteUserAccount(detail) {
+      const uid = detail?.uid;
+      if (!uid) return;
+      const data = detail.user?.data || {};
+      const title = pick(data, ["displayName", "name", "nickname", "email"]) || detail.auth?.email || uid;
+      const email = data.email || detail.auth?.email || "";
+      const reason = prompt("删除用户原因", "管理员删除用户账号");
+      if (reason === null) return;
+      if (!confirmSensitiveAction(
+        "删除用户账号",
+        [
+          `用户：${title}`,
+          email ? `邮箱：${email}` : "",
+          `UID：${uid}`,
+          "会删除 Auth 登录账号和线上用户资料。",
+          "数据会进入删除账号回收站，90 天内可以恢复。",
+          `原因：${reason || "无"}`,
+        ].filter(Boolean).join("\n"),
+      )) return;
+
+      const button = $("detailDeleteUserButton");
+      if (button) button.disabled = true;
+      try {
+        const result = await callFunction("/adminDeleteUserAccount", {
+          method: "POST",
+          body: JSON.stringify({ uid, reason }),
+        });
+        state.userDetail = null;
+        renderUserDetail(null);
+        await loadUsers($("userSearchInput").value.trim());
+        if (state.deletedAccounts.loaded) {
+          await loadDeletedAccounts($("deletedAccountSearchInput").value.trim());
+        }
+        if (state.authReconcile.loaded) {
+          await loadAuthReconcile({ reset: true });
+        }
+        const externalReferenceText = result.externalReferenceDocs
+          ? `，已清理 ${result.externalReferenceDocs} 个外部好友引用`
+          : "";
+        showMessage(
+          `已删除用户，归档 ${result.archivedDocs || 0} 个文档${externalReferenceText}，${result.restoreWindowDays || 90} 天内可恢复。`,
+          "ok",
+        );
+      } catch (error) {
+        showMessage(error.message || "删除用户失败", "warn");
+      } finally {
+        if (button) button.disabled = false;
       }
     }
 
@@ -5276,12 +5713,15 @@
           ${kv("最近登录", formatDate(data.lastSignInAt || detail.auth?.lastSignInAt) || "无")}
           ${kv("今日神谕重置", formatDailyOracleResetText(data, membership))}
         </div>
+        ${renderUserPermissionSummary(detail.permissions)}
         <div class="row">
           <button type="button" id="detailEditButton" class="ghost">编辑资料</button>
+          <button type="button" id="detailPermissionsButton" class="ghost">权限设置</button>
           <button type="button" id="detailGrantButton">赋予 Pro</button>
           <button type="button" id="detailRevokeButton" class="secondary">取消人工 Pro</button>
           <button type="button" id="detailResetDailyOracleButton" class="secondary">重置今日神谕</button>
           <button type="button" id="detailPaymentButton" class="ghost">查看支付</button>
+          <button type="button" id="detailDeleteUserButton" class="danger">删除用户</button>
         </div>
         ${renderFriendChatSection(detail.social)}
         <div class="stack">
@@ -5292,10 +5732,12 @@
         </div>
       `;
       $("detailEditButton").addEventListener("click", () => openEditUserDialog(detail));
+      $("detailPermissionsButton").addEventListener("click", () => openUserPermissionsDialog(detail));
       $("detailGrantButton").addEventListener("click", () => openGrantDialog(detail.uid, pick(data, ["displayName", "email"]) || detail.uid));
       $("detailRevokeButton").addEventListener("click", () => revokePro(detail.uid));
       $("detailResetDailyOracleButton").addEventListener("click", () => openResetDailyOracleDialog(detail));
       $("detailRepairAuthButton")?.addEventListener("click", () => repairAuthUserProfile(detail.uid));
+      $("detailDeleteUserButton").addEventListener("click", () => deleteUserAccount(detail));
       $("detailPaymentButton").addEventListener("click", async () => {
         await loadModule("membership");
         $("membershipSearchInput").value = detail.uid;
@@ -5306,8 +5748,15 @@
       $("sendRelationshipInviteButton")?.addEventListener("click", () => openSendRelationshipInviteDialog(detail));
       $("seedTestFriendButton")?.addEventListener("click", () => openSeedTestFriendDialog(detail, "single"));
       $("seedTestFriendPackButton")?.addEventListener("click", () => openSeedTestFriendDialog(detail, "pack"));
+      $("seedRandomDivinationButton")?.addEventListener("click", () => openSeedRandomDivinationDialog(detail));
       $("userDetail").querySelectorAll("[data-restore-deleted-friend]").forEach((button) => {
         button.addEventListener("click", () => restoreDeletedFriend(detail.uid, button.dataset.restoreDeletedFriend, button.dataset.restoreDeletedFriendName));
+      });
+      $("userDetail").querySelectorAll("[data-force-delete-friend]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          forceDeleteFriend(detail.uid, button.dataset.forceDeleteFriend, button.dataset.forceDeleteFriendName);
+        });
       });
       const friends = getSocialFriends(detail.social);
       $("userDetail").querySelectorAll("[data-friend-index]").forEach((button) => {
@@ -5343,6 +5792,45 @@
       `;
     }
 
+    function dailyVisibilityLabel(value) {
+      return ({
+        all_friends: "所有好友",
+        real_friends: "仅真实好友",
+        only_me: "仅自己",
+      })[value] || "仅自己";
+    }
+
+    function renderUserPermissionSummary(permissions = {}) {
+      const daily = permissions.dailyDivination || {};
+      const profile = permissions.publicProfile || {};
+      const summaries = permissions.summaries || {};
+      const isPublished = daily.shouldPublish === true;
+      const tone = isPublished ? "ok" : "warn";
+      const publicTone = profile.exists ? "ok" : "warn";
+      return `
+        <div class="list-row">
+          <div class="section-title-row">
+            <div>
+              <div class="strong">用户权限</div>
+              <div class="muted">与客户端“占卜数据设置”使用同一套字段：enabled / visibility。</div>
+            </div>
+            <span class="pill ${tone}">${escapeHtml(daily.label || dailyVisibilityLabel(daily.visibility))}</span>
+          </div>
+          <div class="detail-grid">
+            ${kv("每日占卜同步", daily.enabled ? "已开启" : "已关闭")}
+            ${kv("可见范围", daily.label || dailyVisibilityLabel(daily.visibility))}
+            ${kv("实际效果", daily.effectiveText || "未读取到设置")}
+            ${kv("已检查摘要", `${summaries.total || 0} 条 / 可发布 ${summaries.publishable || 0} 条`)}
+            ${kv("公开资料", profile.exists ? "已存在" : "缺失")}
+            ${kv("公开读取", profile.exists ? "公开可读" : "不可搜索")}
+          </div>
+          <div class="status ${publicTone}">
+            ${escapeHtml(profile.effectiveText || "公开资料状态未读取。")}
+          </div>
+        </div>
+      `;
+    }
+
     function getSocialFriends(social = {}) {
       return [
         ...(social.realFriends || []),
@@ -5362,6 +5850,7 @@
           <button type="button" id="addVirtualFriendButton" class="ghost">添加虚拟好友</button>
           <button type="button" id="sendRelationshipInviteButton">发送双人占卜邀请</button>
           <button type="button" id="seedTestFriendPackButton">生成完整测试好友包</button>
+          <button type="button" id="seedRandomDivinationButton">添加随机占卜</button>
           <button type="button" id="seedTestFriendButton" class="secondary">生成单个测试好友</button>
         </div>
       `;
@@ -5402,7 +5891,212 @@
       if (!invite || invite.uid !== state.userDetail?.uid) return "";
       const receiver = invite.receiverName || invite.receiverUid || "接收方";
       const readingId = invite.readingId ? ` · 邀请 ID ${invite.readingId}` : "";
-      return `<div class="status ok">已发送双人占卜邀请给 ${escapeHtml(receiver)}${escapeHtml(readingId)}</div>`;
+      const revealedText = formatAdminRelationshipCard(invite.revealedCard);
+      const revealed = revealedText ? ` · 发起方已翻开 ${revealedText}` : "";
+      return `<div class="status ok">已发送真实双人占卜邀请给 ${escapeHtml(receiver)}${escapeHtml(revealed)}${escapeHtml(readingId)}</div>`;
+    }
+
+    function formatAdminRelationshipCard(card) {
+      if (!card) return "";
+      const name = card.cardName || card.cardId || "";
+      if (!name) return "";
+      const orientation = card.orientation === "reversed" ? "逆位" : "正位";
+      return `${name}（${orientation}）`;
+    }
+
+    function openBatchCreateUsersDialog() {
+      const form = $("batchCreateUsersForm");
+      form.reset();
+      form.elements.skipExisting.checked = true;
+      $("batchCreateUsersStatus").className = "status full";
+      $("batchCreateUsersStatus").textContent = "粘贴真实用户列表后提交。邮箱、密码、昵称为前三列；头像、生日、时间、地址可选。";
+      $("batchCreateUsersSubmitButton").disabled = false;
+      $("batchCreateUsersSubmitButton").textContent = "开始批量添加";
+      $("batchCreateUsersDialog").showModal();
+    }
+
+    function openBatchDeleteUsersDialog() {
+      const form = $("batchDeleteUsersForm");
+      form.reset();
+      form.elements.reason.value = "管理员批量删除用户账号";
+      state.batchDeleteSelected = new Set();
+      $("batchDeleteUsersFilterInput").value = "";
+      if (state.userDetail?.uid && state.userDetail.uid !== state.currentUser?.uid) {
+        state.batchDeleteSelected.add(state.userDetail.uid);
+      }
+      $("batchDeleteUsersStatus").className = "status full";
+      $("batchDeleteUsersStatus").textContent = state.userDetail?.uid
+        ? "已默认选中右侧详情里的用户；也可以在列表里继续勾选。"
+        : "从当前用户列表勾选要删除的用户；可先在用户管理页搜索后再打开。";
+      $("batchDeleteUsersSubmitButton").disabled = false;
+      $("batchDeleteUsersSubmitButton").textContent = "确认批量删除";
+      renderBatchDeleteUserPicker();
+      $("batchDeleteUsersDialog").showModal();
+    }
+
+    function getBatchDeleteUserSearchText(item) {
+      const data = item.data || {};
+      return [
+        item.id,
+        data.displayName,
+        data.name,
+        data.nickname,
+        data.email,
+        data.emailLower,
+      ].filter(Boolean).join(" ").toLowerCase();
+    }
+
+    function getBatchDeleteVisibleUsers() {
+      const keyword = $("batchDeleteUsersFilterInput").value.trim().toLowerCase();
+      return state.users.filter((item) => !keyword || getBatchDeleteUserSearchText(item).includes(keyword));
+    }
+
+    function renderBatchDeleteUserPicker() {
+      const container = $("batchDeleteUsersList");
+      const visibleUsers = getBatchDeleteVisibleUsers();
+      updateBatchDeleteSelectionSummary();
+      if (!state.users.length) {
+        container.innerHTML = `<div class="empty">当前没有加载用户。请先在用户管理页搜索或刷新用户列表。</div>`;
+        return;
+      }
+      if (!visibleUsers.length) {
+        container.innerHTML = `<div class="empty">当前筛选条件下没有用户</div>`;
+        return;
+      }
+      container.innerHTML = visibleUsers.map(renderBatchDeleteUserRow).join("");
+    }
+
+    function renderBatchDeleteUserRow(item) {
+      const data = item.data || {};
+      const uid = item.id;
+      const name = pick(data, ["displayName", "name", "nickname", "email"]) || uid;
+      const email = data.email || "";
+      const disabled = uid === state.currentUser?.uid;
+      const selected = state.batchDeleteSelected.has(uid);
+      const membership = getMembership(data);
+      return `
+        <div class="batch-delete-row ${selected ? "selected" : ""} ${disabled ? "disabled" : ""}" data-batch-delete-uid="${escapeAttr(uid)}">
+          <input type="checkbox" ${selected ? "checked" : ""} ${disabled ? "disabled" : ""} aria-label="选择 ${escapeAttr(name)}">
+          <div class="identity-list">
+            <div class="strong">${escapeHtml(name)}</div>
+            <div class="muted">${escapeHtml(email || "未绑定邮箱")}</div>
+            <div class="mono muted">${escapeHtml(uid)}</div>
+          </div>
+          <div class="row">
+            ${disabled ? `<span class="pill warn">当前管理员</span>` : ""}
+            ${data.isAdmin === true || data.role === "admin" ? `<span class="pill warn">admin</span>` : ""}
+            <span class="pill ${membership.tone}">${escapeHtml(membership.label)}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function selectVisibleBatchDeleteUsers() {
+      const visibleUsers = getBatchDeleteVisibleUsers();
+      for (const item of visibleUsers) {
+        if (!item?.id || item.id === state.currentUser?.uid) continue;
+        if (state.batchDeleteSelected.size >= 50) break;
+        state.batchDeleteSelected.add(item.id);
+      }
+      renderBatchDeleteUserPicker();
+    }
+
+    function updateBatchDeleteSelectionSummary() {
+      const selectedCount = state.batchDeleteSelected.size;
+      const manualCount = parseBatchUserTargets($("batchDeleteUsersForm")?.elements.manualTargetsText?.value || "").length;
+      const totalCount = selectedCount + manualCount;
+      $("batchDeleteUsersSelectionSummary").textContent = [
+        `已选择 ${selectedCount} 个列表用户`,
+        manualCount ? `手动补充 ${manualCount} 个` : "",
+        `合计 ${totalCount} / 50`,
+      ].filter(Boolean).join(" · ");
+      $("batchDeleteUsersSelectionSummary").className = totalCount > 50 ? "status warn full" : "status full";
+    }
+
+    function collectBatchDeleteTargets(formElement) {
+      const manualTargets = parseBatchUserTargets(formElement.elements.manualTargetsText?.value || "");
+      const seen = new Set();
+      const targets = [];
+      for (const value of [...state.batchDeleteSelected, ...manualTargets]) {
+        const item = String(value || "").trim();
+        if (!item) continue;
+        const key = item.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        targets.push(item);
+      }
+      formElement.elements.targetsText.value = targets.join("\n");
+      return targets;
+    }
+
+    function countBatchUserRows(text = "") {
+      return String(text || "")
+        .split(/\n+/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .length;
+    }
+
+    function parseBatchUserTargets(text = "") {
+      const seen = new Set();
+      const items = [];
+      for (const value of String(text || "").split(/[\n,，;；]+/)) {
+        const item = value.trim();
+        if (!item) continue;
+        const key = item.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        items.push(item);
+      }
+      return items;
+    }
+
+    function formatBatchCreateUsersSummary(result = {}) {
+      const errors = Array.isArray(result.errors) ? result.errors : [];
+      const skipped = Array.isArray(result.skipped) ? result.skipped : [];
+      const rows = [
+        `请求 ${result.requestedCount || 0} 个`,
+        `成功 ${result.successCount || 0} 个`,
+        `跳过 ${result.skippedCount || 0} 个`,
+        `失败 ${result.errorCount || 0} 个`,
+      ].join(" · ");
+      const errorRows = errors.slice(0, 8).map((item) => (
+        `<div class="compact-line"><span class="compact-label">${escapeHtml(item.email || item.raw || `第 ${Number(item.index || 0) + 1} 行`)}</span><span class="compact-value">${escapeHtml(item.error || "失败")}</span></div>`
+      )).join("");
+      const skippedRows = skipped.slice(0, 5).map((item) => (
+        `<div class="compact-line"><span class="compact-label">${escapeHtml(item.email || item.uid || `第 ${Number(item.index || 0) + 1} 行`)}</span><span class="compact-value">${escapeHtml(item.reason || "已跳过")}</span></div>`
+      )).join("");
+      return `
+        <div>${escapeHtml(rows)}</div>
+        ${errorRows ? `<div class="stack"><div class="strong">失败项</div>${errorRows}</div>` : ""}
+        ${skippedRows ? `<div class="stack"><div class="strong">跳过项</div>${skippedRows}</div>` : ""}
+      `;
+    }
+
+    function formatBatchDeleteUsersSummary(result = {}) {
+      const errors = Array.isArray(result.errors) ? result.errors : [];
+      const skipped = Array.isArray(result.skipped) ? result.skipped : [];
+      const results = Array.isArray(result.results) ? result.results : [];
+      const externalReferenceCount = results.reduce((sum, item) => sum + Number(item.externalReferenceDocs || 0), 0);
+      const rows = [
+        `请求 ${result.requestedCount || 0} 个`,
+        `成功 ${result.successCount || 0} 个`,
+        `跳过 ${result.skippedCount || 0} 个`,
+        `失败 ${result.errorCount || 0} 个`,
+        `外部引用 ${externalReferenceCount} 个`,
+        `恢复窗口 ${result.restoreWindowDays || 90} 天`,
+      ].join(" · ");
+      const errorRows = errors.slice(0, 8).map((item) => (
+        `<div class="compact-line"><span class="compact-label">${escapeHtml(item.input || item.uid || "未知")}</span><span class="compact-value">${escapeHtml(item.error || "删除失败")}</span></div>`
+      )).join("");
+      const skippedRows = skipped.slice(0, 5).map((item) => (
+        `<div class="compact-line"><span class="compact-label">${escapeHtml(item.input || item.uid || "未知")}</span><span class="compact-value">${escapeHtml(item.reason || "已跳过")}</span></div>`
+      )).join("");
+      return `
+        <div>${escapeHtml(rows)}</div>
+        ${errorRows ? `<div class="stack"><div class="strong">失败项</div>${errorRows}</div>` : ""}
+        ${skippedRows ? `<div class="stack"><div class="strong">跳过项</div>${skippedRows}</div>` : ""}
+      `;
     }
 
     function openAddRealFriendDialog(detail) {
@@ -5483,6 +6177,40 @@
       form.elements.note.value = "后台生成测试真实好友：包含公开资料、聊天、每日神谕和占卜记录。";
       $("seedTestFriendTarget").textContent = `${name} · ${detail.uid}`;
       $("seedTestFriendDialog").showModal();
+    }
+
+    function openSeedRandomDivinationDialog(detail) {
+      const data = detail.user?.data || {};
+      const name = pick(data, ["displayName", "email"]) || detail.uid;
+      const form = $("seedRandomDivinationForm");
+      form.reset();
+      form.elements.uid.value = detail.uid;
+      form.elements.count.value = "3";
+      form.elements.includeDaily.checked = true;
+      form.elements.includeThreeCard.checked = true;
+      form.elements.includeRelationship.checked = true;
+      $("seedRandomDivinationStatus").className = "status full";
+      $("seedRandomDivinationStatus").textContent = "";
+      $("seedRandomDivinationSubmitButton").disabled = false;
+      $("seedRandomDivinationSubmitButton").textContent = "添加随机占卜";
+      $("seedRandomDivinationTarget").textContent = `${name} · ${detail.uid}`;
+      $("seedRandomDivinationDialog").showModal();
+    }
+
+    function formatRandomDivinationTypes(items = []) {
+      const labels = {
+        daily: "每日占卜",
+        three_card: "三牌占卜",
+        relationship: "双人占卜",
+      };
+      const counts = {};
+      for (const item of items || []) {
+        const type = item.type || "unknown";
+        counts[type] = (counts[type] || 0) + 1;
+      }
+      return Object.entries(counts)
+        .map(([type, count]) => `${labels[type] || type} ${count}`)
+        .join("、") || "无";
     }
 
     function renderRealFriendUserOptions(currentUid = "") {
@@ -5583,6 +6311,11 @@
       const chatCount = friend.chat?.matchedCount || 0;
       const title = friend.displayName || friend.name || friend.email || friend.id || "未命名好友";
       const identifier = isVirtual ? (friend.virtualFriendId || friend.id) : (friend.uid || friend.id);
+      const actions = isVirtual ? "" : `
+        <div class="row">
+          <button type="button" class="danger" data-force-delete-friend="${escapeAttr(identifier || "")}" data-force-delete-friend-name="${escapeAttr(title)}">强制删除好友</button>
+        </div>
+      `;
       const metaRows = isVirtual
         ? [
             ["类型", "虚拟好友"],
@@ -5597,7 +6330,7 @@
             ["UID", identifier || "无"],
           ];
       return `
-        <button type="button" class="friend-card" data-friend-index="${escapeAttr(index)}">
+        <div class="friend-card" role="button" tabindex="0" data-friend-index="${escapeAttr(index)}">
           <div class="friend-card-head">
             <span class="strong">${escapeHtml(title)}</span>
             <span class="pill ${isVirtual ? "warn" : "ok"}">${escapeHtml(isVirtual ? "虚拟" : "真实")}</span>
@@ -5610,7 +6343,8 @@
             <span>聊天</span>
             <span>${escapeHtml(chatCount ? `${chatCount} 条匹配` : "未匹配到")}</span>
           </div>
-        </button>
+          ${actions}
+        </div>
       `;
     }
 
@@ -7043,15 +7777,21 @@
         "public_config.update": "更新公开配置",
         "feedback.update": "更新反馈状态",
         "user.create": "手动注册用户",
+        "user.batch_create": "批量添加真实用户",
+        "user.batch_delete": "批量删除用户",
         "user.profile_update": "编辑玩家资料",
+        "user.permission_update": "更新用户权限",
         "user.auth_repair": "补建 Auth 用户资料",
+        "user.account_delete": "删除用户账号",
         "user.account_restore": "恢复删除账号",
         "friend.real_add": "添加真实好友",
         "friend.virtual_add": "添加虚拟好友",
+        "friend.force_delete": "强制删除好友",
         "friend.restore_deleted": "恢复删除好友",
         "friend.test_seed": "生成测试好友数据",
         "friend.test_seed_pack": "生成完整测试好友包",
         "relationship.invite_send": "发送双人占卜邀请",
+        "divination.random_seed": "添加随机占卜信息",
         "data.upsert": "保存 Firestore 数据",
         "data.delete": "删除 Firestore 数据",
         "membership.grant_pro": "赋予 Pro",
@@ -7268,6 +8008,32 @@
       $("resetDailyOracleDialog").showModal();
     }
 
+    function openUserPermissionsDialog(detail) {
+      const data = detail.user?.data || {};
+      const permissions = detail.permissions || {};
+      const daily = permissions.dailyDivination || {};
+      const profile = permissions.publicProfile || {};
+      const summaries = permissions.summaries || {};
+      const form = $("userPermissionsForm");
+      form.reset();
+      form.elements.uid.value = detail.uid;
+      form.elements.dailySyncEnabled.checked = daily.enabled !== false;
+      form.elements.dailyVisibility.value = daily.visibility || "only_me";
+      form.elements.applyPublishedSummaries.checked = true;
+      $("userPermissionsTarget").textContent = `${pick(data, ["displayName", "email"]) || detail.uid} · ${detail.uid}`;
+      $("userPermissionsRuleCheck").innerHTML = [
+        `客户端字段：users/${detail.uid}/settings/daily_divination_sync`,
+        `当前规则：${daily.effectiveText || "未读取到设置"}`,
+        `已检查摘要：${summaries.total || 0} 条，其中可发布 ${summaries.publishable || 0} 条`,
+        profile.exists ? "公开资料：public_profiles 存在，当前规则下公开可读" : "公开资料：缺少 public_profiles，通常不会被搜索到",
+      ].map((line) => `<div>${escapeHtml(line)}</div>`).join("");
+      $("userPermissionsStatus").className = "status full";
+      $("userPermissionsStatus").textContent = "";
+      $("userPermissionsSubmitButton").disabled = false;
+      $("userPermissionsSubmitButton").textContent = "保存权限";
+      $("userPermissionsDialog").showModal();
+    }
+
     async function revokePro(uid) {
       const reason = prompt("取消人工 Pro 的原因", "客服调整");
       if (reason === null) return;
@@ -7305,6 +8071,32 @@
           await refreshCurrentDetail(uid);
         }
         showMessage("已恢复好友关系", "ok");
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
+    }
+
+    async function forceDeleteFriend(uid, friendUid, name = "") {
+      if (!uid || !friendUid) return;
+      const reason = prompt("强制删除好友的原因", "管理员强制删除好友关系");
+      if (reason === null) return;
+      if (!confirmSensitiveAction(
+        "强制删除好友",
+        `当前用户：${uid}\n好友：${name || friendUid}\n好友 UID：${friendUid}\n会删除双方 friends 文档，并保留 90 天恢复归档。\n原因：${reason || "无"}`,
+      )) return;
+      try {
+        const result = await callFunction("/adminForceDeleteFriendRelationship", {
+          method: "POST",
+          body: JSON.stringify({ uid, friendUid, reason }),
+        });
+        if (result.bundle) {
+          state.userDetail = result.bundle;
+          renderUserDetail(state.userDetail);
+          await loadUsers($("userSearchInput").value.trim());
+        } else {
+          await refreshCurrentDetail(uid);
+        }
+        showMessage(`已强制删除好友，${result.restoreWindowDays || 90} 天内可恢复`, "ok");
       } catch (error) {
         showMessage(error.message, "warn");
       }

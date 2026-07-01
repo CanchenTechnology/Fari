@@ -203,12 +203,19 @@ public class InviteItem : MonoBehaviour
         }
 
         int requestId = ++avatarRequestVersion;
-        StartCoroutine(FriendAvatarImageUtility.LoadSpriteFromUrlCoroutine(inviteData.photoUrl, sprite =>
+        StartCoroutine(FriendAvatarImageUtility.LoadUserSpriteFromUrlCoroutine(GetInviteAvatarName(inviteData), inviteData.photoUrl, sprite =>
         {
             if (requestId != avatarRequestVersion || data != inviteData || sprite == null) return;
             inviteData.headSprite = sprite;
             FriendAvatarImageUtility.ApplyAvatar(headImage, sprite, GetDefaultAvatarSprite());
         }));
+    }
+
+    private string GetInviteAvatarName(FriendDataManager.InviteData inviteData)
+    {
+        if (!string.IsNullOrWhiteSpace(inviteData?.name)) return inviteData.name.Trim();
+        if (!string.IsNullOrWhiteSpace(inviteData?.email)) return inviteData.email.Trim();
+        return "好友请求";
     }
 
     private Sprite GetDefaultAvatarSprite()

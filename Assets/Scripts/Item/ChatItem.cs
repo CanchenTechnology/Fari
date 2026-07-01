@@ -213,10 +213,14 @@ public class ChatItem : MonoBehaviour
 
     private void SetUserAvatarFromCurrentConfig(int requestVersion)
     {
-        FriendAvatarImageUtility.ApplyAvatar(headImage, null, FriendAvatarImageUtility.DefaultAvatarSprite);
+        bool hasCurrentAvatar = FriendAvatarImageUtility.TryResolveCurrentUserAvatar(out Sprite currentAvatar, out _);
+        FriendAvatarImageUtility.ApplyAvatar(
+            headImage,
+            hasCurrentAvatar ? currentAvatar : null,
+            FriendAvatarImageUtility.DefaultAvatarSprite);
 
         var iconName = DialogSystem.Instance != null ? DialogSystem.Instance.UserHeadIcon : "";
-        if (!string.IsNullOrEmpty(iconName))
+        if (!hasCurrentAvatar && !string.IsNullOrEmpty(iconName))
             SetAvatarByResourceName(iconName, false);
 
         if (isActiveAndEnabled)

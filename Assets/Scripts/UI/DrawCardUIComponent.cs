@@ -67,8 +67,6 @@ public class DrawCardUIComponent:MonoBehaviour
 	public float centerRevealShakeRotation = 5f;
 	[Tooltip("选中牌翻转到正面的总时长。")]
 	public float flipDuration = 0.46f;
-	[Tooltip("抽到逆位时，牌完整翻到正面后再旋转 180 度的时长。")]
-	public float reverseRotateDuration = 0.28f;
 	[Tooltip("当前流程不再自动关闭结果页；翻牌完成后会等待 exitBtn 点击返回。该值保留给旧流程或备用停留设置。")]
 	public float resultHoldDuration = 1.5f;
 

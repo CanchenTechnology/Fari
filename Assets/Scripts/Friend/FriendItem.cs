@@ -398,7 +398,7 @@ public class FriendItem : MonoBehaviour
         }
 
         int requestId = ++avatarRequestVersion;
-        StartCoroutine(FriendAvatarImageUtility.LoadSpriteFromUrlCoroutine(friendData.photoUrl, sprite =>
+        StartCoroutine(FriendAvatarImageUtility.LoadUserSpriteFromUrlCoroutine(GetFriendAvatarName(friendData), friendData.photoUrl, sprite =>
         {
             if (requestId != avatarRequestVersion || data != friendData || sprite == null) return;
             friendData.headSprite = sprite;
@@ -414,12 +414,26 @@ public class FriendItem : MonoBehaviour
         }
 
         int requestId = ++avatarRequestVersion;
-        StartCoroutine(FriendAvatarImageUtility.LoadSpriteFromUrlCoroutine(inviteData.photoUrl, sprite =>
+        StartCoroutine(FriendAvatarImageUtility.LoadUserSpriteFromUrlCoroutine(GetInviteAvatarName(inviteData), inviteData.photoUrl, sprite =>
         {
             if (requestId != avatarRequestVersion || requestData != inviteData || sprite == null) return;
             inviteData.headSprite = sprite;
             FriendAvatarImageUtility.ApplyAvatar(headImage, sprite, GetDefaultAvatarSprite());
         }));
+    }
+
+    private string GetFriendAvatarName(FriendDataManager.FriendData friendData)
+    {
+        if (!string.IsNullOrWhiteSpace(friendData?.name)) return friendData.name.Trim();
+        if (!string.IsNullOrWhiteSpace(friendData?.handle)) return friendData.handle.Trim();
+        return "好友";
+    }
+
+    private string GetInviteAvatarName(FriendDataManager.InviteData inviteData)
+    {
+        if (!string.IsNullOrWhiteSpace(inviteData?.name)) return inviteData.name.Trim();
+        if (!string.IsNullOrWhiteSpace(inviteData?.email)) return inviteData.email.Trim();
+        return "好友请求";
     }
 
     private Sprite GetDefaultAvatarSprite()

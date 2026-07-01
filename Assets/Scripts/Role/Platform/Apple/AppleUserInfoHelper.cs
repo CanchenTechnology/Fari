@@ -197,6 +197,11 @@ public static class AppleUserInfoHelper
     /// </summary>
     public static bool HasLocalAvatarCache => System.IO.File.Exists(LocalAvatarPath);
 
+    public static bool TryLoadCachedAvatarForUrl(string url, out Sprite sprite)
+    {
+        return TryLoadCachedAvatar(NormalizeAvatarUrl(url), out sprite);
+    }
+
     /// <summary>
     /// 下载头像并缓存到本地（persistentDataPath/user_avatar_apple.png）
     /// 优先读本地缓存，无缓存才走网络下载
@@ -208,7 +213,8 @@ public static class AppleUserInfoHelper
     public static IEnumerator LoadAndCacheAvatarCoroutine(
         string url,
         Action<Sprite> onComplete,
-        bool forceRefresh = false)
+        bool forceRefresh = false,
+        string userName = "")
     {
         string normalizedUrl = NormalizeAvatarUrl(url);
 
@@ -223,7 +229,7 @@ public static class AppleUserInfoHelper
         // 2. 网络下载
         if (string.IsNullOrEmpty(normalizedUrl))
         {
-            Debug.LogWarning("[AppleUserInfoHelper] 头像 URL 为空，跳过下载");
+            LogAvatarDownloadFailure(userName, url, "URL 非法");
             onComplete?.Invoke(null);
             yield break;
         }
@@ -245,7 +251,7 @@ public static class AppleUserInfoHelper
             }
             else
             {
-                Debug.LogWarning($"[AppleUserInfoHelper] 头像下载失败: {req.error}");
+                LogAvatarDownloadFailure(userName, url, req.error);
                 onComplete?.Invoke(null);
             }
         }
@@ -323,7 +329,25 @@ public static class AppleUserInfoHelper
 
     private static string NormalizeAvatarUrl(string url)
     {
-        return (url ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(url))
+            return string.Empty;
+
+        string trimmed = url.Trim();
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out Uri uri))
+            return string.Empty;
+
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            return string.Empty;
+
+        return uri.AbsoluteUri;
+    }
+
+    private static void LogAvatarDownloadFailure(string userName, string url, string reason)
+    {
+        string displayName = string.IsNullOrWhiteSpace(userName) ? "未知用户" : userName.Trim();
+        string displayUrl = string.IsNullOrWhiteSpace(url) ? "(空)" : url.Trim();
+        string suffix = string.IsNullOrWhiteSpace(reason) ? string.Empty : $"，原因：{reason}";
+        Debug.LogWarning($"下载用户{displayName} 失败，图片地址是{displayUrl}{suffix}");
     }
 
     private static Sprite TextureToSprite(Texture2D tex)

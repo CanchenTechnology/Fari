@@ -82,6 +82,9 @@ public class PersonalProfileUI : WindowBase
 
 		if (!string.IsNullOrWhiteSpace(manager.PhotoUrl))
 		{
+			if (FriendAvatarImageUtility.TryResolveCurrentUserAvatar(out Sprite cachedAvatar, out _))
+				ApplyAvatar(cachedAvatar);
+
 			if (uiComponent == null)
 			{
 				ApplyAvatarFallback();

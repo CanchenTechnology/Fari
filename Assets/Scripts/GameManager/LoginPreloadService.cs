@@ -90,6 +90,7 @@ public class LoginPreloadService : MonoSingleton<LoginPreloadService>
 
         StartCoroutine(FriendAvatarImageUtility.PreloadRemoteAvatarCoroutine(
             userData.FirebaseUid,
+            userData.UserName,
             userData.PhotoUrl));
 
         StartCoroutine(FriendAvatarImageUtility.LoadCurrentUserAvatarCoroutine((_, __) => { }));
@@ -209,6 +210,7 @@ public class LoginPreloadService : MonoSingleton<LoginPreloadService>
             Sprite loadedSprite = null;
             yield return FriendAvatarImageUtility.PreloadRemoteAvatarCoroutine(
                 entry.uid,
+                entry.displayName,
                 entry.photoUrl,
                 sprite => loadedSprite = sprite);
 
@@ -264,9 +266,19 @@ public class LoginPreloadService : MonoSingleton<LoginPreloadService>
         {
             uid = uid,
             photoUrl = photoUrl,
+            displayName = ResolveAvatarDisplayName(uid, friend, invite),
             friend = friend,
             invite = invite
         });
+    }
+
+    private static string ResolveAvatarDisplayName(string uid, FriendDataManager.FriendData friend, FriendDataManager.InviteData invite)
+    {
+        if (!string.IsNullOrWhiteSpace(friend?.name)) return friend.name.Trim();
+        if (!string.IsNullOrWhiteSpace(invite?.name)) return invite.name.Trim();
+        if (!string.IsNullOrWhiteSpace(invite?.email)) return invite.email.Trim();
+        if (!string.IsNullOrWhiteSpace(UserDataManager.Instance?.UserName)) return UserDataManager.Instance.UserName.Trim();
+        return string.IsNullOrWhiteSpace(uid) ? "未知用户" : uid.Trim();
     }
 
     private static void ApplyAvatarEntry(AvatarPreloadEntry entry, Sprite sprite)
@@ -309,6 +321,7 @@ public class LoginPreloadService : MonoSingleton<LoginPreloadService>
     private class AvatarPreloadEntry
     {
         public string uid;
+        public string displayName;
         public string photoUrl;
         public FriendDataManager.FriendData friend;
         public FriendDataManager.InviteData invite;

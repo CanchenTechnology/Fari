@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const admin = require("firebase-admin");
 const { onRequest } = require("firebase-functions/v2/https");
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
 
@@ -1679,7 +1679,78 @@ async function archiveAndDeleteQuerySnapshots(archiveRef, query, kind) {
   }
 }
 
-async function archiveAndDeleteUserOwnedData(uid, decoded = {}) {
+async function archiveAndDeleteDocumentRefs(archiveRef, refs, kind) {
+  const refsByPath = new Map();
+  for (const ref of refs || []) {
+    if (ref?.path) refsByPath.set(ref.path, ref);
+  }
+  const uniqueRefs = [...refsByPath.values()];
+  let archived = 0;
+
+  for (let index = 0; index < uniqueRefs.length; index += ACCOUNT_ARCHIVE_BATCH_LIMIT) {
+    const chunk = uniqueRefs.slice(index, index + ACCOUNT_ARCHIVE_BATCH_LIMIT);
+    const snaps = await db.getAll(...chunk);
+    const batch = db.batch();
+    let batchCount = 0;
+    for (const snap of snaps) {
+      if (!snap.exists) continue;
+      batch.set(
+        archiveRef.collection(DELETED_ACCOUNT_SNAPSHOT_COLLECTION).doc(getDeletedAccountSnapshotId(snap.ref.path)),
+        buildDeletedAccountSnapshotDoc(snap, kind),
+        { merge: true },
+      );
+      batch.delete(snap.ref);
+      batchCount += 1;
+    }
+    if (batchCount) {
+      await batch.commit();
+      archived += batchCount;
+    }
+  }
+
+  return archived;
+}
+
+async function collectDeletedAccountExternalReferenceRefs(uid) {
+  const cleanUid = validateDocumentId(uid);
+  const refsByPath = new Map();
+  const addRef = (ref) => {
+    const parentUid = ref?.parent?.parent?.id || "";
+    if (!ref?.path || parentUid === cleanUid) return;
+    refsByPath.set(ref.path, ref);
+  };
+
+  let lastFriendDoc = null;
+  while (true) {
+    let query = db.collection("users")
+      .doc(cleanUid)
+      .collection("friends")
+      .orderBy(admin.firestore.FieldPath.documentId())
+      .limit(ACCOUNT_ARCHIVE_BATCH_LIMIT);
+    if (lastFriendDoc) query = query.startAfter(lastFriendDoc);
+    const snap = await query.get().catch(() => null);
+    if (!snap || snap.empty) break;
+    for (const doc of snap.docs) {
+      if (!doc.id || doc.id === cleanUid) continue;
+      addRef(db.collection("users").doc(doc.id).collection("friends").doc(cleanUid));
+      addRef(db.collection("users").doc(doc.id).collection("friend_requests").doc(cleanUid));
+    }
+    lastFriendDoc = snap.docs[snap.docs.length - 1];
+    if (snap.size < ACCOUNT_ARCHIVE_BATCH_LIMIT) break;
+  }
+
+  const referenceQueries = await Promise.all([
+    db.collectionGroup("friends").where("uid", "==", cleanUid).limit(ACCOUNT_ARCHIVE_BATCH_LIMIT).get().catch(() => null),
+    db.collectionGroup("friend_requests").where("uid", "==", cleanUid).limit(ACCOUNT_ARCHIVE_BATCH_LIMIT).get().catch(() => null),
+  ]);
+  for (const snap of referenceQueries) {
+    for (const doc of snap?.docs || []) addRef(doc.ref);
+  }
+
+  return [...refsByPath.values()];
+}
+
+async function archiveAndDeleteUserOwnedData(uid, decoded = {}, options = {}) {
   const cleanUid = validateDocumentId(uid);
   const now = Date.now();
   const deletedAt = admin.firestore.Timestamp.fromMillis(now);
@@ -1704,6 +1775,10 @@ async function archiveAndDeleteUserOwnedData(uid, decoded = {}) {
     120,
   );
   const email = getAdminScalarText(userData.email || publicProfileData.email || authArchive.email, 160);
+  const deleteSource = getAdminScalarText(options.deleteSource || "self_service", 80);
+  const deleteReason = cleanString(options.deleteReason, "", 500);
+  const deletedByUid = getAdminScalarText(options.deletedByUid || decoded.uid || cleanUid, 160);
+  const deletedByEmail = getAdminScalarText(options.deletedByEmail || decoded.email || email, 160);
 
   await deleteQueryInBatches(archiveRef.collection(DELETED_ACCOUNT_SNAPSHOT_COLLECTION));
   await archiveRef.set({
@@ -1716,9 +1791,10 @@ async function archiveAndDeleteUserOwnedData(uid, decoded = {}) {
     deletedAt,
     expiresAt,
     restoreWindowDays: DELETED_ACCOUNT_RESTORE_WINDOW_DAYS,
-    deletedByUid: cleanUid,
-    deletedByEmail: email,
-    deleteSource: "self_service",
+    deletedByUid,
+    deletedByEmail,
+    deleteSource,
+    deleteReason,
     schemaVersion: 1,
     snapshotCount: 0,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1726,6 +1802,15 @@ async function archiveAndDeleteUserOwnedData(uid, decoded = {}) {
 
   let archivedDocs = 0;
   let deletedDocs = 0;
+  const externalReferenceRefs = await collectDeletedAccountExternalReferenceRefs(cleanUid);
+  const externalReferenceCount = await archiveAndDeleteDocumentRefs(
+    archiveRef,
+    externalReferenceRefs,
+    "external_user_references",
+  );
+  archivedDocs += externalReferenceCount;
+  deletedDocs += externalReferenceCount;
+
   for (const collectionName of USER_OWNED_SUBCOLLECTIONS) {
     const count = await archiveAndDeleteQuerySnapshots(
       archiveRef,
@@ -1770,6 +1855,10 @@ async function archiveAndDeleteUserOwnedData(uid, decoded = {}) {
     archivedDocs,
     deletedDocs,
     expiresAt: serializeTimestamp(expiresAt),
+    authArchived: Boolean(authRecord),
+    userDocArchived: Boolean(userSnap?.exists),
+    publicProfileArchived: Boolean(publicProfileSnap?.exists),
+    externalReferenceDocs: externalReferenceCount,
   };
 }
 
@@ -1792,6 +1881,10 @@ function serializeDeletedAccountArchive(doc) {
     restoredAt: serializeTimestamp(data.restoredAt),
     restoredBy: getAdminScalarText(data.restoredBy, 160),
     restoreReason: getAdminScalarText(data.restoreReason, 500),
+    deletedByUid: getAdminScalarText(data.deletedByUid, 160),
+    deletedByEmail: getAdminScalarText(data.deletedByEmail, 160),
+    deleteSource: getAdminScalarText(data.deleteSource, 80),
+    deleteReason: getAdminScalarText(data.deleteReason, 500),
     daysRemaining: Number.isFinite(expiresAtMillis)
       ? Math.max(0, Math.ceil((expiresAtMillis - Date.now()) / (24 * 60 * 60 * 1000)))
       : DELETED_ACCOUNT_RESTORE_WINDOW_DAYS,
@@ -1875,6 +1968,18 @@ async function restoreDeletedAccountAuth(uid, archive, options = {}) {
     email,
     temporaryPassword: generatedPassword,
   };
+}
+
+async function deleteAuthUserSafely(uid) {
+  try {
+    await admin.auth().deleteUser(uid);
+    return true;
+  } catch (error) {
+    if (error?.code === "auth/user-not-found") {
+      return false;
+    }
+    throw error;
+  }
 }
 
 async function purgeExpiredDeletedAccountArchives(limit = 50) {
@@ -2890,14 +2995,14 @@ async function getAdminUserSocialBundle(uid, options = {}) {
     .map((doc) => {
       const data = doc.data() || {};
       const profile = profilesByUid.get(doc.id) || {};
-      const displayName = getAdminFriendDisplayName(data, profile.displayName || doc.id);
+      const displayName = profile.displayName || getAdminFriendDisplayName(data, doc.id);
       const friend = {
         type: "real",
         id: doc.id,
         uid: doc.id,
         displayName,
-        email: getAdminScalarText(data.email || profile.email, 160),
-        photoUrl: getAdminScalarText(data.photoUrl, 1000),
+        email: getAdminScalarText(profile.email || data.email, 160),
+        photoUrl: getAdminScalarText(profile.photoUrl || data.photoUrl, 1000),
         status: getAdminScalarText(data.status, 40) || "friend",
         source: getAdminScalarText(data.source, 80),
         updatedAt: serializeTimestamp(data.updatedAt || data.createdAt),
@@ -2947,9 +3052,9 @@ async function getAdminUserSocialBundle(uid, options = {}) {
         direction: "sent",
         id: doc.id,
         uid: doc.id,
-        displayName: getAdminFriendDisplayName(data, profile.displayName || doc.id),
-        email: getAdminScalarText(data.email || profile.email, 160),
-        photoUrl: getAdminScalarText(data.photoUrl || profile.photoUrl, 1000),
+        displayName: profile.displayName || getAdminFriendDisplayName(data, doc.id),
+        email: getAdminScalarText(profile.email || data.email, 160),
+        photoUrl: getAdminScalarText(profile.photoUrl || data.photoUrl, 1000),
         status: getAdminScalarText(data.status, 40),
         source: getAdminScalarText(data.source, 80),
         note: getAdminScalarText(data.adminNote || data.message, 500),
@@ -2969,9 +3074,9 @@ async function getAdminUserSocialBundle(uid, options = {}) {
         direction: "received",
         id: doc.id,
         uid: doc.id,
-        displayName: getAdminFriendDisplayName(data, profile.displayName || doc.id),
-        email: getAdminScalarText(data.email || profile.email, 160),
-        photoUrl: getAdminScalarText(data.photoUrl || profile.photoUrl, 1000),
+        displayName: profile.displayName || getAdminFriendDisplayName(data, doc.id),
+        email: getAdminScalarText(profile.email || data.email, 160),
+        photoUrl: getAdminScalarText(profile.photoUrl || data.photoUrl, 1000),
         status: getAdminScalarText(data.status, 40) || "pendingReceived",
         source: getAdminScalarText(data.source, 80),
         note: getAdminScalarText(data.adminNote || data.message, 500),
@@ -3522,6 +3627,112 @@ function buildAdminMembershipSummary(userData) {
   };
 }
 
+const ADMIN_DAILY_DIVINATION_VISIBILITIES = Object.freeze([
+  "all_friends",
+  "real_friends",
+  "only_me",
+]);
+
+function normalizeAdminDailyDivinationVisibility(value, fallback = "only_me") {
+  const cleanValue = getAdminScalarText(value, 40);
+  if (ADMIN_DAILY_DIVINATION_VISIBILITIES.includes(cleanValue)) return cleanValue;
+  if (cleanValue === "private" || cleanValue === "self" || cleanValue === "me") return "only_me";
+  return fallback;
+}
+
+function getAdminDailyDivinationVisibilityLabel(visibility) {
+  return ({
+    all_friends: "所有好友",
+    real_friends: "仅真实好友",
+    only_me: "仅自己",
+  })[visibility] || "仅自己";
+}
+
+function buildAdminDailyDivinationEffectiveText(enabled, visibility) {
+  if (!enabled || visibility === "only_me") {
+    return "不会发布到 daily_oracle_summaries 好友动态；只有本人可读 users/{uid}/daily_oracles。";
+  }
+  if (visibility === "real_friends") {
+    return "已发布摘要只允许本人和 Firestore friends 中 status=friend 的真实用户读取；客户端好友动态也只读取真实好友。";
+  }
+  return "已发布摘要允许本人和 Firestore friends 中 status=friend 的好友读取；当前客户端好友动态只遍历真实好友，因此与“仅真实好友”效果接近。";
+}
+
+function buildAdminSummaryVisibilityStats(docs = []) {
+  const stats = {
+    total: docs.length,
+    publishable: 0,
+    allFriends: 0,
+    realFriends: 0,
+    onlyMe: 0,
+    disabled: 0,
+    other: 0,
+  };
+  for (const doc of docs) {
+    const data = typeof doc.data === "function" ? doc.data() || {} : doc.data || {};
+    const visibility = normalizeAdminDailyDivinationVisibility(data.visibility, "other");
+    const syncEnabled = data.syncEnabled === true;
+    if (!syncEnabled) stats.disabled += 1;
+    if (syncEnabled && visibility !== "only_me") stats.publishable += 1;
+    if (visibility === "all_friends") stats.allFriends += 1;
+    else if (visibility === "real_friends") stats.realFriends += 1;
+    else if (visibility === "only_me") stats.onlyMe += 1;
+    else stats.other += 1;
+  }
+  return stats;
+}
+
+async function buildAdminUserPermissions(uid, options = {}) {
+  const cleanUid = validateDocumentId(uid);
+  const limit = getAdminLimit(options.limit || options.summaryLimit, 30, 90);
+  const [settingsSnap, publicProfileSnap, summariesSnap] = await Promise.all([
+    db.collection("users").doc(cleanUid).collection("settings").doc("daily_divination_sync").get().catch(() => null),
+    db.collection("public_profiles").doc(cleanUid).get().catch(() => null),
+    db.collection("daily_oracle_summaries").where("ownerUid", "==", cleanUid).limit(limit).get().catch(() => null),
+  ]);
+
+  const settings = settingsSnap?.exists ? settingsSnap.data() || {} : {};
+  const visibility = normalizeAdminDailyDivinationVisibility(settings.visibility, "only_me");
+  const enabled = Object.prototype.hasOwnProperty.call(settings, "enabled")
+    ? settings.enabled === true
+    : true;
+  const shouldPublish = enabled && visibility !== "only_me";
+  const summaryDocs = summariesSnap?.docs || [];
+  const publicProfile = publicProfileSnap?.exists ? publicProfileSnap.data() || {} : {};
+  const publicProfileExists = publicProfileSnap?.exists === true;
+
+  return {
+    dailyDivination: {
+      path: `users/${cleanUid}/settings/daily_divination_sync`,
+      enabled,
+      visibility,
+      label: getAdminDailyDivinationVisibilityLabel(visibility),
+      shouldPublish,
+      summaryOnly: true,
+      updatedAt: serializeTimestamp(settings.updatedAt),
+      effectiveText: buildAdminDailyDivinationEffectiveText(enabled, visibility),
+      rules: {
+        ownerCanRead: true,
+        requiresSignedInFriend: shouldPublish,
+        allowedSummaryVisibilities: ["all_friends", "real_friends"],
+        blockedWhenOnlyMe: visibility === "only_me" || !enabled,
+      },
+    },
+    publicProfile: {
+      path: `public_profiles/${cleanUid}`,
+      exists: publicProfileExists,
+      profileVisible: publicProfileExists,
+      profileVisibleField: publicProfile.profileVisible !== false,
+      displayName: getAdminScalarText(publicProfile.displayName, 120),
+      email: getAdminScalarText(publicProfile.email, 160),
+      effectiveText: publicProfileExists
+        ? "public_profiles 当前 Firestore 规则为公开读取；存在该文档即代表公开资料可被读取和搜索。"
+        : "缺少 public_profiles 文档，公开资料搜索通常不会显示该用户。",
+    },
+    summaries: buildAdminSummaryVisibilityStats(summaryDocs),
+  };
+}
+
 async function buildAdminUserBundle(uid, options = {}) {
   const cleanUid = validateDocumentId(uid);
   const limit = getAdminLimit(options.limit, 10, 50);
@@ -3535,6 +3746,7 @@ async function buildAdminUserBundle(uid, options = {}) {
     paymentEvents,
     usage,
     social,
+    permissions,
   ] = await Promise.all([
     getAuthRecordSafely(cleanUid),
     db.collection("users").doc(cleanUid).get(),
@@ -3545,6 +3757,7 @@ async function buildAdminUserBundle(uid, options = {}) {
     getAdminDocsByUid("payment_events", cleanUid, { orderBy: "createdAt", limit }),
     getAdminDocsByUid("usage_limits", cleanUid, { orderBy: "updatedAt", limit: Math.min(limit * 2, 50) }),
     getAdminUserSocialBundle(cleanUid, { limit }),
+    buildAdminUserPermissions(cleanUid, { limit }),
   ]);
 
   if (!userSnap.exists && !authRecord) {
@@ -3581,6 +3794,7 @@ async function buildAdminUserBundle(uid, options = {}) {
     paymentEvents,
     usage,
     social,
+    permissions,
   };
 }
 
@@ -9287,6 +9501,148 @@ exports.adminMembershipOverview = onRequest(runtime, async (req, res) => {
   }
 });
 
+function parseAdminBatchUserRows(body = {}) {
+  if (Array.isArray(body.users)) {
+    if (body.users.length > 100) {
+      throw createHttpError(400, "一次最多批量添加 100 个真实用户");
+    }
+    return body.users.map((item) => (item && typeof item === "object" ? item : {}));
+  }
+
+  const text = cleanString(body.usersText || body.usersRaw || body.userList || "", "", 50000);
+  if (!text) return [];
+
+  const rows = text.split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      if (line.startsWith("{")) {
+        try {
+          return JSON.parse(line);
+        } catch (error) {
+          return { parseError: `JSON 解析失败：${error.message}`, raw: line };
+        }
+      }
+      const parts = line.split(/[,，\t]/).map((part) => part.trim());
+      return {
+        email: parts[0] || "",
+        password: parts[1] || body.defaultPassword || "",
+        displayName: parts[2] || "",
+        photoUrl: parts[3] || "",
+        birthday: parts[4] || "",
+        birthTime: parts[5] || "",
+        city: parts.slice(6).join("，"),
+        raw: line,
+      };
+    });
+  if (rows.length > 100) {
+    throw createHttpError(400, "一次最多批量添加 100 个真实用户");
+  }
+  return rows;
+}
+
+function parseAdminBatchDeleteUserTargets(body = {}) {
+  const rawItems = [];
+  const addItem = (value) => {
+    const item = cleanString(value, "", 300);
+    if (item) rawItems.push(item);
+  };
+
+  if (Array.isArray(body.targets)) {
+    for (const value of body.targets) addItem(value);
+  }
+  if (Array.isArray(body.uids)) {
+    for (const value of body.uids) addItem(value);
+  }
+  if (Array.isArray(body.emails)) {
+    for (const value of body.emails) addItem(value);
+  }
+  const text = cleanString(
+    body.targetsText || body.usersText || body.userTargets || body.uidList || "",
+    "",
+    20000,
+  );
+  for (const value of text.split(/[\n,，;；]+/)) addItem(value);
+
+  const seen = new Set();
+  const unique = [];
+  for (const item of rawItems) {
+    const key = item.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(item);
+  }
+
+  if (unique.length > 50) {
+    throw createHttpError(400, "一次最多批量删除 50 个用户，请分批处理");
+  }
+  return unique;
+}
+
+function buildAdminRegisteredUserDocs(uid, source, decoded) {
+  const email = cleanString(source.email, "", 160).toLowerCase();
+  const displayName = cleanString(
+    source.displayName || source.name || source.nickname,
+    email.includes("@") ? email.split("@")[0] : "Fari User",
+    120,
+  );
+  const photoUrl = cleanOptionalUrl(source.photoUrl || source.photoURL, 1000);
+  const birthday = normalizeOptionalBirthday(source.birthday);
+  const birthTime = normalizeOptionalBirthTime(source.birthTime);
+  const city = cleanString(source.city || source.address, "", 160);
+  const displayNameLower = normalizeSearchText(displayName);
+  const emailLower = normalizeSearchText(email);
+  const searchKeywords = buildSearchKeywords(displayName, email);
+  const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
+  const userData = {
+    uid,
+    displayName,
+    displayNameLower,
+    searchKeywords,
+    email,
+    emailLower,
+    photoUrl,
+    avatarStoragePath: "",
+    birthday,
+    birthTime,
+    city,
+    bio: cleanString(source.bio, "", 500),
+    loginType: "Email",
+    isEmailVerified: false,
+    membershipStatus: "free",
+    timezone: cleanString(source.timezone, "", 80),
+    profileUpdatedAt: serverTimestamp,
+    createdAt: serverTimestamp,
+    adminCreated: true,
+    adminCreatedBy: decoded.uid,
+    adminCreatedAt: serverTimestamp,
+  };
+  const publicProfileData = {
+    uid,
+    displayName,
+    displayNameLower,
+    searchKeywords,
+    email,
+    emailLower,
+    photoUrl,
+    avatarStoragePath: "",
+    bio: userData.bio,
+    updatedAt: serverTimestamp,
+  };
+  return {
+    email,
+    displayName,
+    password: String(source.password || ""),
+    photoUrl,
+    birthday,
+    birthTime,
+    city,
+    disabled: source.disabled === true,
+    userData,
+    publicProfileData,
+  };
+}
+
 exports.adminCreateRegisteredUser = onRequest(runtime, async (req, res) => {
   if (!requireMethod(req, res, "POST")) return;
   const decoded = await requireAdmin(req, res);
@@ -9295,17 +9651,8 @@ exports.adminCreateRegisteredUser = onRequest(runtime, async (req, res) => {
   let authRecord = null;
   let firestoreCommitted = false;
   try {
-    const email = cleanString(req.body?.email, "", 160).toLowerCase();
-    const password = String(req.body?.password || "");
-    const displayName = cleanString(
-      req.body?.displayName,
-      email.includes("@") ? email.split("@")[0] : "Fari User",
-      120,
-    );
-    const photoUrl = cleanOptionalUrl(req.body?.photoUrl || req.body?.photoURL, 1000);
-    const birthday = normalizeOptionalBirthday(req.body?.birthday);
-    const birthTime = normalizeOptionalBirthTime(req.body?.birthTime);
-    const city = cleanString(req.body?.city || req.body?.address, "", 160);
+    const docs = buildAdminRegisteredUserDocs("", req.body || {}, decoded);
+    const { email, password, displayName, photoUrl, birthday, birthTime, city } = docs;
 
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
       throw createHttpError(400, "Valid email is required");
@@ -9324,45 +9671,7 @@ exports.adminCreateRegisteredUser = onRequest(runtime, async (req, res) => {
     });
 
     const uid = authRecord.uid;
-    const displayNameLower = normalizeSearchText(displayName);
-    const emailLower = normalizeSearchText(email);
-    const searchKeywords = buildSearchKeywords(displayName, email);
-    const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
-    const userData = {
-      uid,
-      displayName,
-      displayNameLower,
-      searchKeywords,
-      email,
-      emailLower,
-      photoUrl,
-      avatarStoragePath: "",
-      birthday,
-      birthTime,
-      city,
-      bio: "",
-      loginType: "Email",
-      isEmailVerified: false,
-      membershipStatus: "free",
-      timezone: "",
-      profileUpdatedAt: serverTimestamp,
-      createdAt: serverTimestamp,
-      adminCreated: true,
-      adminCreatedBy: decoded.uid,
-      adminCreatedAt: serverTimestamp,
-    };
-    const publicProfileData = {
-      uid,
-      displayName,
-      displayNameLower,
-      searchKeywords,
-      email,
-      emailLower,
-      photoUrl,
-      avatarStoragePath: "",
-      bio: "",
-      updatedAt: serverTimestamp,
-    };
+    const { userData, publicProfileData } = buildAdminRegisteredUserDocs(uid, req.body || {}, decoded);
 
     const batch = db.batch();
     batch.set(db.collection("users").doc(uid), userData, { merge: true });
@@ -9401,6 +9710,138 @@ exports.adminCreateRegisteredUser = onRequest(runtime, async (req, res) => {
     json(res, error.status || (isDuplicateEmail ? 409 : 500), {
       error: isDuplicateEmail ? "Email already exists" : error.message || "Create registered user failed",
       code: isDuplicateEmail ? "email-already-exists" : "create-user-error",
+    });
+  }
+});
+
+exports.adminBatchCreateRegisteredUsers = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  const createdAuthUids = [];
+  let firestoreCommitted = false;
+  try {
+    const rows = parseAdminBatchUserRows(req.body || {});
+    if (!rows.length) {
+      throw createHttpError(400, "请至少填写一个真实用户");
+    }
+    const defaultPassword = String(req.body?.defaultPassword || "");
+    const skipExisting = parseAdminBoolean(req.body?.skipExisting, true);
+    const disabled = req.body?.disabled === true;
+    const batch = db.batch();
+    const results = [];
+    const skipped = [];
+    const errors = [];
+    const seenEmails = new Set();
+
+    for (const [index, rawRow] of rows.entries()) {
+      const row = {
+        ...rawRow,
+        password: rawRow.password || defaultPassword,
+        disabled: rawRow.disabled === true || disabled,
+      };
+      try {
+        if (row.parseError) {
+          throw createHttpError(400, row.parseError);
+        }
+        const docs = buildAdminRegisteredUserDocs("", row, decoded);
+        const { email, password, displayName, photoUrl, birthday, birthTime, city } = docs;
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+          throw createHttpError(400, "邮箱格式不正确");
+        }
+        if (seenEmails.has(email)) {
+          skipped.push({ index, email, reason: "列表内重复邮箱，已跳过" });
+          continue;
+        }
+        seenEmails.add(email);
+        if (password.length < 6 || password.length > 128) {
+          throw createHttpError(400, "密码必须是 6 到 128 个字符");
+        }
+
+        const existingAuth = await admin.auth().getUserByEmail(email).catch((error) => {
+          if (error?.code === "auth/user-not-found") return null;
+          throw error;
+        });
+        if (existingAuth?.uid) {
+          if (skipExisting) {
+            skipped.push({ index, email, uid: existingAuth.uid, reason: "邮箱已存在，已跳过" });
+            continue;
+          }
+          throw createHttpError(409, "邮箱已存在");
+        }
+
+        const authRecord = await admin.auth().createUser({
+          email,
+          password,
+          displayName,
+          photoURL: photoUrl || undefined,
+          emailVerified: false,
+          disabled: row.disabled === true,
+        });
+        createdAuthUids.push(authRecord.uid);
+        const { userData, publicProfileData } = buildAdminRegisteredUserDocs(authRecord.uid, row, decoded);
+        batch.set(db.collection("users").doc(authRecord.uid), userData, { merge: true });
+        batch.set(db.collection("public_profiles").doc(authRecord.uid), publicProfileData, { merge: true });
+        results.push({
+          index,
+          uid: authRecord.uid,
+          email,
+          displayName,
+          hasPhotoUrl: Boolean(photoUrl),
+          hasBirthData: Boolean(birthday || birthTime || city),
+        });
+      } catch (error) {
+        errors.push({
+          index,
+          email: cleanString(rawRow.email, "", 160).toLowerCase(),
+          raw: cleanString(rawRow.raw, "", 300),
+          error: error.message || "创建失败",
+          code: error?.code || "",
+        });
+      }
+    }
+
+    if (results.length) {
+      await batch.commit();
+      firestoreCommitted = true;
+    }
+
+    await writeAdminAuditLog(decoded, "user.batch_create", {
+      type: "user_batch",
+      id: "registered_users",
+      path: "users",
+    }, {
+      requestedCount: rows.length,
+      successCount: results.length,
+      skippedCount: skipped.length,
+      errorCount: errors.length,
+      createdUids: results.map((item) => item.uid).slice(0, 100),
+      skipExisting,
+    }, req);
+
+    json(res, 200, {
+      ok: true,
+      requestedCount: rows.length,
+      successCount: results.length,
+      skippedCount: skipped.length,
+      errorCount: errors.length,
+      results,
+      skipped,
+      errors,
+    });
+  } catch (error) {
+    if (createdAuthUids.length && !firestoreCommitted) {
+      await Promise.all(createdAuthUids.map((uid) => (
+        admin.auth().deleteUser(uid).catch((deleteError) => {
+          console.error("[adminBatchCreateRegisteredUsers] rollback failed", uid, deleteError);
+        })
+      )));
+    }
+    console.error("[adminBatchCreateRegisteredUsers]", error);
+    json(res, error.status || 500, {
+      error: error.message || "Batch create registered users failed",
+      code: "batch-create-users-error",
     });
   }
 });
@@ -9514,6 +9955,25 @@ exports.adminUpdateUserProfile = onRequest(runtime, async (req, res) => {
     batch.set(userRef, userData, { merge: true });
     batch.set(publicProfileRef, publicProfileData, { merge: true });
     await batch.commit();
+    const friendReferencePatch = {
+      uid,
+      displayName,
+      displayNameLower,
+      searchKeywords,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      profileSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
+      profileSyncedByAdmin: decoded.uid,
+    };
+    if (existingEmail) {
+      friendReferencePatch.email = existingEmail;
+      friendReferencePatch.emailLower = emailLower;
+    }
+    if (isHttpImageUrl(photoUrl)) {
+      friendReferencePatch.photoUrl = photoUrl;
+    } else if (hasBodyField("photoUrl", "photoURL") && !photoUrl) {
+      friendReferencePatch.photoUrl = "";
+    }
+    const syncedFriendReferencePaths = await syncAdminProfileToFriendReferences(uid, friendReferencePatch, { limit: 450 });
 
     await writeAdminAuditLog(decoded, "user.profile_update", {
       type: "user",
@@ -9531,6 +9991,7 @@ exports.adminUpdateUserProfile = onRequest(runtime, async (req, res) => {
       ].filter(Boolean),
       displayName,
       hasPhotoUrl: Boolean(photoUrl),
+      syncedFriendReferenceCount: syncedFriendReferencePaths.length,
     }, req);
     const bundle = await buildAdminUserBundle(uid, { limit: 12 });
     json(res, 200, {
@@ -9539,10 +10000,121 @@ exports.adminUpdateUserProfile = onRequest(runtime, async (req, res) => {
       user: bundle.user,
       membership: bundle.membership,
       publicProfile: bundle.publicProfile,
+      syncedFriendReferenceCount: syncedFriendReferencePaths.length,
     });
   } catch (error) {
     console.error("[adminUpdateUserProfile]", error);
     json(res, error.status || 500, { error: error.message || "Update user profile failed" });
+  }
+});
+
+exports.adminUpdateUserPermissions = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const body = req.body || {};
+    const uid = validateDocumentId(body.uid);
+    const userRef = db.collection("users").doc(uid);
+    const [userSnap, authRecord] = await Promise.all([
+      userRef.get(),
+      getAuthRecordSafely(uid),
+    ]);
+    if (!userSnap.exists && !authRecord) {
+      throw createHttpError(404, "User not found");
+    }
+
+    const visibility = normalizeAdminDailyDivinationVisibility(body.visibility || body.dailyVisibility, "only_me");
+    const enabled = body.enabled === true
+      || body.enabled === "true"
+      || body.dailySyncEnabled === true
+      || body.dailySyncEnabled === "true"
+      || body.dailySyncEnabled === "on";
+    const shouldPublish = enabled && visibility !== "only_me";
+    const applyPublishedSummaries = body.applyPublishedSummaries !== false
+      && body.applyPublishedSummaries !== "false";
+    const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
+
+    const settingsRef = userRef.collection("settings").doc("daily_divination_sync");
+    const batch = db.batch();
+    batch.set(settingsRef, {
+      enabled,
+      visibility,
+      summaryOnly: true,
+      updatedAt: serverTimestamp,
+      adminUpdatedBy: decoded.uid,
+      adminUpdatedAt: serverTimestamp,
+    }, { merge: true });
+    batch.set(userRef, {
+      dailyDivinationSyncEnabled: enabled,
+      dailyDivinationVisibility: visibility,
+      dailyDivinationPermissionUpdatedAt: serverTimestamp,
+      updatedAt: serverTimestamp,
+    }, { merge: true });
+
+    let summaryCount = 0;
+    let dailyOracleCount = 0;
+    if (applyPublishedSummaries) {
+      const limit = getAdminLimit(body.summaryLimit, 90, 180);
+      const [summarySnap, dailyOracleSnap] = await Promise.all([
+        db.collection("daily_oracle_summaries").where("ownerUid", "==", uid).limit(limit).get().catch(() => null),
+        userRef.collection("daily_oracles").limit(limit).get().catch(() => null),
+      ]);
+      for (const doc of summarySnap?.docs || []) {
+        summaryCount += 1;
+        batch.set(doc.ref, {
+          ownerUid: uid,
+          syncEnabled: shouldPublish,
+          visibility,
+          summaryOnly: true,
+          updatedAt: serverTimestamp,
+          adminPermissionUpdatedBy: decoded.uid,
+          adminPermissionUpdatedAt: serverTimestamp,
+        }, { merge: true });
+      }
+      for (const doc of dailyOracleSnap?.docs || []) {
+        dailyOracleCount += 1;
+        batch.set(doc.ref, {
+          syncEnabled: shouldPublish,
+          visibility,
+          summaryOnly: false,
+          updatedAt: serverTimestamp,
+          adminPermissionUpdatedBy: decoded.uid,
+          adminPermissionUpdatedAt: serverTimestamp,
+        }, { merge: true });
+      }
+    }
+
+    await batch.commit();
+
+    await writeAdminAuditLog(decoded, "user.permission_update", {
+      type: "user",
+      id: uid,
+      uid,
+      path: `users/${uid}/settings/daily_divination_sync`,
+    }, {
+      enabled,
+      visibility,
+      shouldPublish,
+      applyPublishedSummaries,
+      summaryCount,
+      dailyOracleCount,
+    }, req);
+
+    json(res, 200, {
+      ok: true,
+      uid,
+      enabled,
+      visibility,
+      shouldPublish,
+      summaryCount,
+      dailyOracleCount,
+      bundle: await buildAdminUserBundle(uid, { limit: 12 }),
+    });
+  } catch (error) {
+    console.error("[adminUpdateUserPermissions]", error);
+    json(res, error.status || 500, { error: error.message || "Update user permissions failed" });
   }
 });
 
@@ -9589,6 +10161,60 @@ function buildManualRealFriendDoc(targetProfile, decoded, note = "") {
   };
 }
 
+async function syncAdminProfileToFriendReferences(uid, profilePatch, options = {}) {
+  const cleanUid = validateDocumentId(uid);
+  const safeLimit = getAdminLimit(options.limit, 300, 450);
+  const refsByPath = new Map();
+  const addRef = (ref) => {
+    if (!ref?.path) return;
+    refsByPath.set(ref.path, ref);
+  };
+
+  const ownFriendsSnap = await db.collection("users")
+    .doc(cleanUid)
+    .collection("friends")
+    .limit(safeLimit)
+    .get()
+    .catch((error) => {
+      console.warn("[adminUpdateUserProfile] load own friends failed", error.message);
+      return null;
+    });
+  for (const doc of ownFriendsSnap?.docs || []) {
+    if (!doc.id || doc.id === cleanUid) continue;
+    addRef(db.collection("users").doc(doc.id).collection("friends").doc(cleanUid));
+  }
+
+  const friendRefsSnap = await db.collectionGroup("friends")
+    .where("uid", "==", cleanUid)
+    .limit(safeLimit)
+    .get()
+    .catch((error) => {
+      console.warn("[adminUpdateUserProfile] collectionGroup friends sync failed", error.message);
+      return null;
+    });
+  for (const doc of friendRefsSnap?.docs || []) addRef(doc.ref);
+
+  const requestRefsSnap = await db.collectionGroup("friend_requests")
+    .where("uid", "==", cleanUid)
+    .limit(Math.min(safeLimit, 200))
+    .get()
+    .catch((error) => {
+      console.warn("[adminUpdateUserProfile] collectionGroup friend_requests sync failed", error.message);
+      return null;
+    });
+  for (const doc of requestRefsSnap?.docs || []) addRef(doc.ref);
+
+  const refs = [...refsByPath.values()];
+  for (let index = 0; index < refs.length; index += 400) {
+    const batch = db.batch();
+    for (const ref of refs.slice(index, index + 400)) {
+      batch.set(ref, profilePatch, { merge: true });
+    }
+    await batch.commit();
+  }
+  return refs.map((ref) => ref.path);
+}
+
 function buildManualFriendInviteOutgoingDoc(targetProfile, decoded, note = "") {
   return {
     uid: targetProfile.uid,
@@ -9620,6 +10246,41 @@ function buildManualFriendInviteIncomingDoc(requesterProfile, decoded, note = ""
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   };
+}
+
+function parseAdminBatchFriendSearches(body = {}) {
+  const rawItems = [];
+  const addItem = (value) => {
+    const cleanValue = cleanString(value, "", 300);
+    if (cleanValue) rawItems.push(cleanValue);
+  };
+
+  if (Array.isArray(body.friendSearches)) {
+    for (const value of body.friendSearches) addItem(value);
+  }
+  if (Array.isArray(body.friends)) {
+    for (const value of body.friends) addItem(value);
+  }
+  const text = cleanString(
+    body.friendSearchesText || body.friendSearchesRaw || body.friendList || body.friendSearch || "",
+    "",
+    15000,
+  );
+  for (const value of text.split(/[\n,，;；]+/)) addItem(value);
+
+  const seen = new Set();
+  const unique = [];
+  for (const item of rawItems) {
+    const key = item.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(item);
+  }
+
+  if (unique.length > 100) {
+    throw createHttpError(400, "一次最多批量添加 100 个真实好友");
+  }
+  return unique;
 }
 
 const ADMIN_TEST_REAL_FRIEND_PREFIX = "test_real_friend_";
@@ -9750,6 +10411,23 @@ const ADMIN_TEST_REAL_FRIEND_PACK = Object.freeze([
     microAction: "把一个担心写成问题，而不是结论。",
   },
 ]);
+const ADMIN_RANDOM_DIVINATION_CARDS = Object.freeze([
+  { cardId: "major_00", cardName: "愚者" },
+  { cardId: "major_01", cardName: "魔术师" },
+  { cardId: "major_02", cardName: "女祭司" },
+  { cardId: "major_03", cardName: "女皇" },
+  { cardId: "major_06", cardName: "恋人" },
+  { cardId: "major_08", cardName: "力量" },
+  { cardId: "major_14", cardName: "节制" },
+  { cardId: "major_17", cardName: "星星" },
+  { cardId: "major_18", cardName: "月亮" },
+  { cardId: "cups_02", cardName: "圣杯二" },
+  { cardId: "cups_06", cardName: "圣杯六" },
+  { cardId: "swords_page", cardName: "宝剑侍从" },
+  { cardId: "wands_03", cardName: "权杖三" },
+  { cardId: "pentacles_06", cardName: "星币六" },
+]);
+const ADMIN_RANDOM_DIVINATION_TYPES = Object.freeze(["daily", "three_card", "relationship"]);
 
 function parseAdminBoolean(value, fallback = false) {
   if (value === undefined || value === null || value === "") return fallback;
@@ -10119,13 +10797,14 @@ function buildAdminRelationshipInviteDoc({
     initiatorName,
     receiverName,
     question: cleanQuestion,
-    status: "invited",
-    initiatorRevealed: false,
+    status: "initiator_revealed",
+    initiatorRevealed: true,
     receiverJoined: false,
     receiverRevealed: false,
     cards: buildAdminRelationshipInviteCards(),
     oracleId: "tarot",
     source: "adminRelationshipInvite",
+    adminPreRevealed: "initiator",
     adminNote: note,
     adminCreatedBy: decoded.uid,
     adminCreatedByEmail: decoded.email || "",
@@ -10376,6 +11055,216 @@ function buildAdminSeedRelationshipDivination(ownerProfile, friendProfile, relat
   };
 }
 
+function pickAdminRandomDivinationCard(excludeIds = new Set()) {
+  const deck = ADMIN_RANDOM_DIVINATION_CARDS.filter((card) => !excludeIds.has(card.cardId));
+  const card = deck[crypto.randomInt(deck.length || ADMIN_RANDOM_DIVINATION_CARDS.length)] || ADMIN_RANDOM_DIVINATION_CARDS[0];
+  return {
+    ...card,
+    orientation: crypto.randomInt(2) === 0 ? "upright" : "reversed",
+  };
+}
+
+function getAdminRandomDivinationTypes(body = {}) {
+  if (Array.isArray(body.types)) {
+    const types = body.types
+      .map((item) => cleanString(item, "", 40))
+      .filter((item) => ADMIN_RANDOM_DIVINATION_TYPES.includes(item));
+    if (types.length) return [...new Set(types)];
+  }
+  const types = [];
+  if (parseAdminBoolean(body.includeDaily, false)) types.push("daily");
+  if (parseAdminBoolean(body.includeThreeCard, false) || parseAdminBoolean(body.includeThree, false)) types.push("three_card");
+  if (parseAdminBoolean(body.includeRelationship, false)) types.push("relationship");
+  return types.length ? types : [...ADMIN_RANDOM_DIVINATION_TYPES];
+}
+
+function buildAdminRandomDailyOracle(profile, date, seedId, card) {
+  const orientationText = card.orientation === "reversed" ? "逆位" : "正位";
+  return {
+    date,
+    cardId: card.cardId,
+    cardName: card.cardName,
+    orientation: card.orientation,
+    title: `${profile.displayName} 的随机每日占卜`,
+    oracle: `${card.cardName}${orientationText}提醒你今天先观察真实情绪，再决定行动。`,
+    detail: "后台随机生成的每日占卜测试记录，用于验证客户端今日神谕、历史记录和公开摘要展示。",
+    dos: ["把感受说清楚", "完成一个小行动", "给自己留一点缓冲"],
+    donts: ["不要急着下结论", "不要把猜测当事实"],
+    microAction: "写下一句今天最想确认的问题，并给出一个可执行的小答案。",
+    locale: "zh-CN",
+    oracleId: "tarot",
+    syncEnabled: true,
+    visibility: "real_friends",
+    summaryOnly: false,
+    isTestData: true,
+    source: "adminRandomDivination",
+    testSeedId: seedId,
+    createdAtLocal: buildAdminSeedIso(-crypto.randomInt(10, 180)),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+function buildAdminRandomDailySummary(profile, date, seedId, card) {
+  const oracle = buildAdminRandomDailyOracle(profile, date, seedId, card);
+  return {
+    ownerUid: profile.uid,
+    date,
+    cardId: oracle.cardId,
+    cardName: oracle.cardName,
+    orientation: oracle.orientation,
+    title: oracle.title,
+    oracle: oracle.oracle,
+    microAction: oracle.microAction,
+    locale: oracle.locale,
+    oracleId: oracle.oracleId,
+    syncEnabled: true,
+    visibility: "real_friends",
+    summaryOnly: true,
+    isTestData: true,
+    source: "adminRandomDivination",
+    testSeedId: seedId,
+    createdAtLocal: oracle.createdAtLocal,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+function buildAdminRandomThreeCardRecord(ownerProfile, readingId, seedId, index = 0) {
+  const used = new Set();
+  const cards = [
+    { positionKey: "past", position: "过去 / 背景" },
+    { positionKey: "present", position: "现在 / 课题" },
+    { positionKey: "future", position: "下一步 / 可能" },
+  ].map((position) => {
+    const card = pickAdminRandomDivinationCard(used);
+    used.add(card.cardId);
+    return { ...position, ...card };
+  });
+  const ownerName = ownerProfile.displayName || ownerProfile.email || "当前用户";
+  return {
+    readingId,
+    question: [
+      `${ownerName} 近期最值得关注的方向是什么？`,
+      "这件事现在最需要怎样推进？",
+      "我应该如何理解当前关系和选择？",
+    ][index % 3],
+    scene: "three_card_reading",
+    spreadKind: "three_card",
+    lockedCards: cards,
+    shortVerdict: `随机三牌测试：${cards.map((card) => card.cardName).join("、")} 共同提示先看清现状，再选择一个小行动。`,
+    judgeContent: [
+      "这是后台随机生成的三牌占卜历史，用于验证客户端历史列表和详情页。",
+      ...cards.map((card) => `${card.position}：${formatRelationshipHistoryCard(card)}`),
+    ].join("\n"),
+    adviceContent: "建议把注意力放在可以马上执行的小动作上，不需要一次解决全部问题。",
+    topics: [
+      "我现在最该澄清的是什么？",
+      "下一步最小行动是什么？",
+      "这件事里我需要照顾哪个边界？",
+    ],
+    oracleId: "tarot",
+    isTestData: true,
+    source: "adminRandomDivination",
+    testSeedId: seedId,
+    createdAt: buildAdminSeedTimestamp(-30 - index * 45),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+function buildAdminRandomRelationshipFriendProfile(ownerUid, seedId) {
+  const shortSeed = seedId.replace(/[^A-Za-z0-9]/g, "").slice(-8);
+  const displayName = ["随机测试好友", "随机占卜好友", "关系测试好友"][crypto.randomInt(3)];
+  const uid = `${ADMIN_TEST_REAL_FRIEND_PREFIX}random_${shortSeed}`;
+  const email = `fari.random.${shortSeed.toLowerCase()}@example.com`;
+  return {
+    uid,
+    email,
+    emailLower: normalizeSearchText(email),
+    displayName,
+    displayNameLower: normalizeSearchText(displayName),
+    photoUrl: `https://api.dicebear.com/9.x/notionists-neutral/png?seed=${encodeURIComponent(uid)}`,
+    birthday: "1998-08-18",
+    birthTime: "12:08",
+    city: "中国 · 上海",
+    relationship: "真实好友",
+    bio: "后台随机占卜功能自动创建的测试真实好友，用于生成双人占卜记录。",
+    ownerUid,
+    seedId,
+    variantKey: "random_divination",
+    variant: {
+      cardId: "major_06",
+      cardName: "恋人",
+      orientation: "upright",
+      scene: "friend_relationship_divination",
+      spreadKind: "relationship_tension",
+    },
+  };
+}
+
+function buildAdminRandomRelationshipDivination(ownerProfile, friendProfile, readingId, seedId) {
+  const ownerName = ownerProfile.displayName || ownerProfile.email || "当前用户";
+  const friendName = friendProfile.displayName || friendProfile.email || "好友";
+  return {
+    readingId,
+    initiatorUid: ownerProfile.uid,
+    receiverUid: friendProfile.uid,
+    initiatorName: ownerName,
+    receiverName: friendName,
+    question: `我和 ${friendName} 接下来适合如何相处？`,
+    status: "completed",
+    initiatorRevealed: true,
+    receiverJoined: true,
+    receiverRevealed: true,
+    cards: buildAdminRelationshipInviteCards(),
+    oracleId: "tarot",
+    isTestData: true,
+    source: "adminRandomDivination",
+    testSeedId: seedId,
+    createdAt: buildAdminSeedTimestamp(-18),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    completedAt: buildAdminSeedTimestamp(-16),
+  };
+}
+
+async function pickAdminRandomRelationshipFriend(ownerUid, ownerProfile, decoded, batch, writtenPaths, seedId) {
+  const friendsSnap = await db.collection("users").doc(ownerUid).collection("friends")
+    .limit(50)
+    .get()
+    .catch(() => null);
+  const candidates = (friendsSnap?.docs || [])
+    .map((doc) => ({ id: doc.id, data: doc.data() || {} }))
+    .filter((item) => {
+      const uid = item.data.uid || item.id;
+      const status = cleanString(item.data.status, "friend", 40);
+      return uid && uid !== ownerUid && !uid.startsWith("virtual:") && status === "friend";
+    });
+  if (candidates.length) {
+    const picked = candidates[crypto.randomInt(candidates.length)];
+    return {
+      profile: await getAdminUserFriendProfile(picked.data.uid || picked.id),
+      created: false,
+    };
+  }
+
+  const friendProfile = buildAdminRandomRelationshipFriendProfile(ownerUid, seedId);
+  const ownerContextProfile = {
+    uid: ownerProfile.uid,
+    displayName: ownerProfile.displayName || ownerProfile.email || ownerUid,
+    email: ownerProfile.email || "",
+    photoUrl: ownerProfile.photoUrl || "",
+    relationship: "真实好友",
+    seedId,
+    variantKey: "random_divination",
+  };
+  const ownerRef = db.collection("users").doc(ownerUid);
+  const friendRef = db.collection("users").doc(friendProfile.uid);
+  batch.set(friendRef, buildAdminSeedUserData(friendProfile, decoded), { merge: true });
+  batch.set(db.collection("public_profiles").doc(friendProfile.uid), buildAdminSeedPublicProfileData(friendProfile, decoded), { merge: true });
+  batch.set(ownerRef.collection("friends").doc(friendProfile.uid), buildAdminSeedFriendDoc(friendProfile, decoded, "随机双人占卜自动创建测试真实好友"), { merge: true });
+  batch.set(friendRef.collection("friends").doc(ownerUid), buildAdminSeedFriendDoc(ownerContextProfile, decoded, "随机双人占卜反向真实好友关系"), { merge: true });
+  writtenPaths.push(`users/${friendProfile.uid}`, `public_profiles/${friendProfile.uid}`, `users/${ownerUid}/friends/${friendProfile.uid}`);
+  return { profile: friendProfile, created: true };
+}
+
 function buildAdminSeedDialogMessages(friendProfile, readingId, relationshipId, variant) {
   const friendContext = buildAdminSeedFriendContext(friendProfile);
   const userQuestion = `我想测试一下和 ${friendProfile.displayName} 的关系占卜。`;
@@ -10605,6 +11494,134 @@ exports.adminAddRealFriend = onRequest(runtime, async (req, res) => {
   }
 });
 
+exports.adminBatchAddRealFriends = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const ownerUid = await resolveAdminUserUid({
+      uid: req.body?.uid || req.body?.ownerUid,
+      email: req.body?.email || req.body?.ownerEmail,
+      search: req.body?.ownerSearch || req.body?.targetSearch,
+    });
+    if (!ownerUid) {
+      throw createHttpError(400, "目标用户不能为空");
+    }
+
+    const friendSearches = parseAdminBatchFriendSearches(req.body || {});
+    if (!friendSearches.length) {
+      throw createHttpError(400, "请至少填写一个好友 UID、邮箱或用户名");
+    }
+
+    const rawMode = cleanString(req.body?.mode || req.body?.action, "force", 40).toLowerCase();
+    const mode = ["invite", "request", "pending"].includes(rawMode) ? "invite" : "force";
+    const note = cleanString(req.body?.note || req.body?.reason, "管理员批量添加真实好友", 500);
+    const ownerProfile = await getAdminUserFriendProfile(ownerUid);
+    const batch = db.batch();
+    const results = [];
+    const skipped = [];
+    const errors = [];
+    const resolvedFriendUids = new Set();
+
+    for (const input of friendSearches) {
+      let friendUid = "";
+      try {
+        friendUid = await resolveAdminUserUid({ search: input });
+        if (!friendUid) {
+          errors.push({ input, error: "未找到对应用户" });
+          continue;
+        }
+        if (friendUid === ownerUid) {
+          skipped.push({ input, friendUid, reason: "不能把用户自己添加为好友" });
+          continue;
+        }
+        if (resolvedFriendUids.has(friendUid)) {
+          skipped.push({ input, friendUid, reason: "重复好友，已跳过" });
+          continue;
+        }
+        resolvedFriendUids.add(friendUid);
+
+        const friendProfile = await getAdminUserFriendProfile(friendUid);
+        if (mode === "invite") {
+          batch.set(
+            db.collection("users").doc(friendUid).collection("friends").doc(ownerUid),
+            buildManualFriendInviteOutgoingDoc(ownerProfile, decoded, note),
+            { merge: true },
+          );
+          batch.set(
+            db.collection("users").doc(ownerUid).collection("friend_requests").doc(friendUid),
+            buildManualFriendInviteIncomingDoc(friendProfile, decoded, note),
+            { merge: true },
+          );
+        } else {
+          batch.set(
+            db.collection("users").doc(ownerUid).collection("friends").doc(friendUid),
+            buildManualRealFriendDoc(friendProfile, decoded, note),
+            { merge: true },
+          );
+          batch.set(
+            db.collection("users").doc(friendUid).collection("friends").doc(ownerUid),
+            buildManualRealFriendDoc(ownerProfile, decoded, note),
+            { merge: true },
+          );
+          batch.delete(db.collection("users").doc(ownerUid).collection("friend_requests").doc(friendUid));
+          batch.delete(db.collection("users").doc(friendUid).collection("friend_requests").doc(ownerUid));
+        }
+        results.push({
+          input,
+          friendUid,
+          displayName: friendProfile.displayName,
+          email: friendProfile.email,
+          status: mode === "invite" ? "invited" : "friend",
+        });
+      } catch (error) {
+        errors.push({
+          input,
+          friendUid,
+          error: error.message || "处理失败",
+        });
+      }
+    }
+
+    if (results.length) await batch.commit();
+
+    await writeAdminAuditLog(decoded, "friend.real_batch_add", {
+      type: "friend_batch",
+      id: ownerUid,
+      uid: ownerUid,
+      path: `users/${ownerUid}/friends`,
+    }, {
+      mode,
+      ownerUid,
+      requestedCount: friendSearches.length,
+      successCount: results.length,
+      skippedCount: skipped.length,
+      errorCount: errors.length,
+      friendUids: results.map((item) => item.friendUid).slice(0, 100),
+      note,
+    }, req);
+
+    json(res, 200, {
+      ok: true,
+      mode,
+      uid: ownerUid,
+      owner: ownerProfile,
+      requestedCount: friendSearches.length,
+      successCount: results.length,
+      skippedCount: skipped.length,
+      errorCount: errors.length,
+      results,
+      skipped,
+      errors,
+      bundle: await buildAdminUserBundle(ownerUid, { limit: 12 }),
+    });
+  } catch (error) {
+    console.error("[adminBatchAddRealFriends]", error);
+    json(res, error.status || 500, { error: error.message || "Batch add real friends failed" });
+  }
+});
+
 exports.adminSendRelationshipInvite = onRequest(runtime, async (req, res) => {
   if (!requireMethod(req, res, "POST")) return;
   const decoded = await requireAdmin(req, res);
@@ -10629,7 +11646,7 @@ exports.adminSendRelationshipInvite = onRequest(runtime, async (req, res) => {
     }
 
     const allowDuplicate = parseAdminBoolean(req.body?.allowDuplicate, false);
-    const ensureFriends = parseAdminBoolean(req.body?.ensureFriends, true);
+    const ensureFriends = true;
     const note = cleanString(req.body?.note || req.body?.reason, "管理员发送双人占卜邀请", 500);
 
     const active = allowDuplicate ? null : await findAdminActiveRelationshipInvite(ownerUid, receiverUid);
@@ -10679,6 +11696,9 @@ exports.adminSendRelationshipInvite = onRequest(runtime, async (req, res) => {
       initiatorUid: ownerUid,
       receiverUid,
       question: inviteDoc.question,
+      status: inviteDoc.status,
+      initiatorRevealed: inviteDoc.initiatorRevealed,
+      revealedCard: findRelationshipCard(inviteDoc, "initiator_private"),
       ensureFriends,
       allowDuplicate,
       note,
@@ -10693,6 +11713,8 @@ exports.adminSendRelationshipInvite = onRequest(runtime, async (req, res) => {
       receiverName: inviteDoc.receiverName,
       question: inviteDoc.question,
       status: inviteDoc.status,
+      initiatorRevealed: inviteDoc.initiatorRevealed,
+      revealedCard: findRelationshipCard(inviteDoc, "initiator_private"),
       ensureFriends,
       path: inviteRef.path,
       bundle: await buildAdminUserBundle(ownerUid, { limit: 12 }),
@@ -10702,6 +11724,110 @@ exports.adminSendRelationshipInvite = onRequest(runtime, async (req, res) => {
     json(res, error.status || 500, {
       error: error.message || "发送双人占卜邀请失败",
       code: error.status === 409 ? "relationship-invite-active-exists" : "relationship-invite-error",
+    });
+  }
+});
+
+exports.adminForceDeleteFriendRelationship = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const ownerUid = await resolveAdminUserUid({
+      uid: req.body?.uid || req.body?.ownerUid,
+      email: req.body?.email || req.body?.ownerEmail,
+      search: req.body?.ownerSearch,
+    });
+    const friendUid = await resolveAdminUserUid({
+      uid: req.body?.friendUid,
+      email: req.body?.friendEmail,
+      search: req.body?.friendSearch || req.body?.friend || req.body?.q,
+    });
+    if (!ownerUid || !friendUid) {
+      throw createHttpError(400, "当前用户和好友不能为空");
+    }
+    if (ownerUid === friendUid) {
+      throw createHttpError(400, "不能删除用户自己的好友关系");
+    }
+
+    const pairId = getFriendRelationshipPairId(ownerUid, friendUid);
+    const [uidA, uidB] = [ownerUid, friendUid].sort();
+    const ownerFriendRef = db.collection("users").doc(ownerUid).collection("friends").doc(friendUid);
+    const friendOwnerRef = db.collection("users").doc(friendUid).collection("friends").doc(ownerUid);
+    const archiveRef = db.collection(DELETED_FRIEND_RELATIONSHIP_COLLECTION).doc(pairId);
+    const [ownerFriendSnap, friendOwnerSnap] = await Promise.all([
+      ownerFriendRef.get(),
+      friendOwnerRef.get(),
+    ]);
+    if (!ownerFriendSnap.exists && !friendOwnerSnap.exists) {
+      throw createHttpError(404, "这两个用户当前不是好友，或好友关系已被删除");
+    }
+
+    const ownerSnapshot = ownerFriendSnap.exists ? ownerFriendSnap.data() || {} : {};
+    const friendSnapshot = friendOwnerSnap.exists ? friendOwnerSnap.data() || {} : {};
+    const snapshotA = uidA === ownerUid ? ownerSnapshot : friendSnapshot;
+    const snapshotB = uidB === ownerUid ? ownerSnapshot : friendSnapshot;
+    const reason = cleanString(req.body?.reason, "管理员强制删除好友关系", 500);
+    const now = Date.now();
+    const batch = db.batch();
+    batch.set(archiveRef, {
+      pairId,
+      uidA,
+      uidB,
+      memberUids: [ownerUid, friendUid],
+      deletedByUid: decoded.uid,
+      deletedByEmail: decoded.email || "",
+      deletedBySide: "admin",
+      deleteReason: reason,
+      status: "deleted",
+      snapshots: {
+        [ownerUid]: ownerSnapshot,
+        [friendUid]: friendSnapshot,
+      },
+      snapshotA,
+      snapshotB,
+      deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiresAt: admin.firestore.Timestamp.fromMillis(
+        now + DELETED_FRIEND_RESTORE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+      ),
+      restoreWindowDays: DELETED_FRIEND_RESTORE_WINDOW_DAYS,
+    }, { merge: true });
+    batch.delete(ownerFriendRef);
+    batch.delete(friendOwnerRef);
+    batch.delete(db.collection("users").doc(ownerUid).collection("friend_requests").doc(friendUid));
+    batch.delete(db.collection("users").doc(friendUid).collection("friend_requests").doc(ownerUid));
+    await batch.commit();
+
+    await writeAdminAuditLog(decoded, "friend.force_delete", {
+      type: "friend",
+      id: pairId,
+      uid: ownerUid,
+      path: `${DELETED_FRIEND_RELATIONSHIP_COLLECTION}/${pairId}`,
+    }, {
+      ownerUid,
+      friendUid,
+      pairId,
+      reason,
+      archivedOwnerSnapshot: ownerFriendSnap.exists,
+      archivedFriendSnapshot: friendOwnerSnap.exists,
+    }, req);
+
+    json(res, 200, {
+      ok: true,
+      uid: ownerUid,
+      friendUid,
+      pairId,
+      restoreWindowDays: DELETED_FRIEND_RESTORE_WINDOW_DAYS,
+      archivePath: archiveRef.path,
+      bundle: await buildAdminUserBundle(ownerUid, { limit: 12 }),
+    });
+  } catch (error) {
+    console.error("[adminForceDeleteFriendRelationship]", error);
+    json(res, error.status || 500, {
+      error: error.message || "Force delete friend failed",
+      code: error.status === 404 ? "friend-not-found" : "force-delete-friend-error",
     });
   }
 });
@@ -10900,6 +12026,139 @@ exports.adminAddVirtualFriend = onRequest(runtime, async (req, res) => {
   } catch (error) {
     console.error("[adminAddVirtualFriend]", error);
     json(res, error.status || 500, { error: error.message || "Add virtual friend failed" });
+  }
+});
+
+exports.adminSeedRandomDivinationData = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const uid = await resolveAdminUserUid({
+      uid: req.body?.uid || req.body?.ownerUid,
+      email: req.body?.email || req.body?.ownerEmail,
+      search: req.body?.ownerSearch,
+    });
+    if (!uid) {
+      throw createHttpError(400, "目标用户不能为空");
+    }
+
+    const count = Math.max(1, Math.min(Number(req.body?.count || 3), 20));
+    const types = getAdminRandomDivinationTypes(req.body || {});
+    const seedId = `random_${buildAdminTestSeedId()}`;
+    const ownerProfile = await getAdminUserFriendProfile(uid);
+    const ownerRef = db.collection("users").doc(uid);
+    const batch = db.batch();
+    const writtenPaths = [];
+    const created = [];
+    const dailyOffsets = new Set();
+    let cachedRelationshipFriend = null;
+
+    for (let index = 0; index < count; index += 1) {
+      const type = types[crypto.randomInt(types.length)];
+      if (type === "daily") {
+        let offset = index;
+        for (let guard = 0; guard < 30; guard += 1) {
+          const candidate = crypto.randomInt(0, 28);
+          if (!dailyOffsets.has(candidate)) {
+            offset = candidate;
+            break;
+          }
+        }
+        dailyOffsets.add(offset);
+        const date = getAdminSeedDate(-offset);
+        const card = pickAdminRandomDivinationCard();
+        batch.set(
+          ownerRef.collection("daily_oracles").doc(date),
+          buildAdminRandomDailyOracle(ownerProfile, date, seedId, card),
+          { merge: true },
+        );
+        batch.set(
+          db.collection("daily_oracle_summaries").doc(`${uid}_${date}`),
+          buildAdminRandomDailySummary(ownerProfile, date, seedId, card),
+          { merge: true },
+        );
+        writtenPaths.push(`users/${uid}/daily_oracles/${date}`, `daily_oracle_summaries/${uid}_${date}`);
+        created.push({ type, date, cardName: card.cardName });
+        continue;
+      }
+
+      if (type === "relationship") {
+        if (!cachedRelationshipFriend) {
+          cachedRelationshipFriend = await pickAdminRandomRelationshipFriend(
+            uid,
+            ownerProfile,
+            decoded,
+            batch,
+            writtenPaths,
+            seedId,
+          );
+        }
+        const friendProfile = cachedRelationshipFriend.profile;
+        const readingId = `admin_random_rel_${Date.now().toString(36)}_${index}_${crypto.randomUUID().replace(/-/g, "").slice(0, 6)}`;
+        const relationshipDoc = buildAdminRandomRelationshipDivination(ownerProfile, friendProfile, readingId, seedId);
+        batch.set(
+          db.collection(RELATIONSHIP_DIVINATION_COLLECTION).doc(readingId),
+          relationshipDoc,
+          { merge: true },
+        );
+        batch.set(
+          ownerRef.collection("divination_records").doc(readingId),
+          buildRelationshipDivinationHistoryRecord(relationshipDoc, readingId, friendProfile.uid, friendProfile.displayName),
+          { merge: true },
+        );
+        batch.set(
+          db.collection("users").doc(friendProfile.uid).collection("divination_records").doc(readingId),
+          buildRelationshipDivinationHistoryRecord(relationshipDoc, readingId, ownerProfile.uid, ownerProfile.displayName),
+          { merge: true },
+        );
+        writtenPaths.push(
+          `${RELATIONSHIP_DIVINATION_COLLECTION}/${readingId}`,
+          `users/${uid}/divination_records/${readingId}`,
+          `users/${friendProfile.uid}/divination_records/${readingId}`,
+        );
+        created.push({ type, readingId, friendUid: friendProfile.uid, friendName: friendProfile.displayName });
+        continue;
+      }
+
+      const readingId = `admin_random_three_${Date.now().toString(36)}_${index}_${crypto.randomUUID().replace(/-/g, "").slice(0, 6)}`;
+      const record = buildAdminRandomThreeCardRecord(ownerProfile, readingId, seedId, index);
+      batch.set(ownerRef.collection("divination_records").doc(readingId), record, { merge: true });
+      writtenPaths.push(`users/${uid}/divination_records/${readingId}`);
+      created.push({ type: "three_card", readingId, cardNames: record.lockedCards.map((card) => card.cardName) });
+    }
+
+    await batch.commit();
+
+    await writeAdminAuditLog(decoded, "divination.random_seed", {
+      type: "user",
+      id: uid,
+      uid,
+      path: `users/${uid}`,
+    }, {
+      uid,
+      count,
+      types,
+      seedId,
+      createdCount: created.length,
+      createdRelationshipFriend: cachedRelationshipFriend?.created === true,
+      writtenPaths,
+    }, req);
+
+    json(res, 200, {
+      ok: true,
+      uid,
+      count: created.length,
+      types,
+      seedId,
+      created,
+      writtenPaths,
+      bundle: await buildAdminUserBundle(uid, { limit: 12 }),
+    });
+  } catch (error) {
+    console.error("[adminSeedRandomDivinationData]", error);
+    json(res, error.status || 500, { error: error.message || "Seed random divination data failed" });
   }
 });
 
@@ -11467,6 +12726,164 @@ exports.adminDeletedAccounts = onRequest(runtime, async (req, res) => {
   }
 });
 
+exports.adminDeleteUserAccount = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const uid = await resolveAdminUserUid({
+      uid: req.body?.uid || req.body?.id,
+      email: req.body?.email,
+      search: req.body?.search || req.body?.q,
+    });
+    if (!uid) {
+      throw createHttpError(400, "请选择要删除的用户");
+    }
+    if (uid === decoded.uid) {
+      throw createHttpError(400, "不能删除当前登录的管理员账号");
+    }
+
+    const reason = cleanString(req.body?.reason, "管理员删除用户账号", 500);
+    const archive = await archiveAndDeleteUserOwnedData(uid, decoded, {
+      deleteSource: "admin",
+      deletedByUid: decoded.uid,
+      deletedByEmail: decoded.email || "",
+      deleteReason: reason,
+    });
+    const authDeleted = await deleteAuthUserSafely(uid);
+
+    await writeAdminAuditLog(decoded, "user.account_delete", {
+      type: "user",
+      id: uid,
+      uid,
+      path: `users/${uid}`,
+    }, {
+      reason,
+      archivedDocs: archive.archivedDocs,
+      deletedDocs: archive.deletedDocs,
+      externalReferenceDocs: archive.externalReferenceDocs,
+      authDeleted,
+      restoreWindowDays: DELETED_ACCOUNT_RESTORE_WINDOW_DAYS,
+      archivePath: archive.archivePath,
+    }, req);
+
+    json(res, 200, {
+      ok: true,
+      uid,
+      deletedDocs: archive.deletedDocs,
+      archivedDocs: archive.archivedDocs,
+      externalReferenceDocs: archive.externalReferenceDocs,
+      archivePath: archive.archivePath,
+      restoreWindowDays: DELETED_ACCOUNT_RESTORE_WINDOW_DAYS,
+      expiresAt: archive.expiresAt,
+      authDeleted,
+    });
+  } catch (error) {
+    console.error("[adminDeleteUserAccount]", error);
+    json(res, error.status || 500, {
+      error: error.message || "Delete user account failed",
+      code: "admin-delete-user-account-failed",
+    });
+  }
+});
+
+exports.adminBatchDeleteUserAccounts = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const targets = parseAdminBatchDeleteUserTargets(req.body || {});
+    if (!targets.length) {
+      throw createHttpError(400, "请至少填写一个要删除的用户");
+    }
+
+    const reason = cleanString(req.body?.reason, "管理员批量删除用户账号", 500);
+    const results = [];
+    const skipped = [];
+    const errors = [];
+    const seenUids = new Set();
+
+    for (const input of targets) {
+      let uid = "";
+      try {
+        uid = await resolveAdminUserUid({ search: input });
+        if (!uid) {
+          errors.push({ input, error: "未找到对应用户" });
+          continue;
+        }
+        if (uid === decoded.uid) {
+          skipped.push({ input, uid, reason: "不能删除当前登录的管理员账号" });
+          continue;
+        }
+        if (seenUids.has(uid)) {
+          skipped.push({ input, uid, reason: "重复用户，已跳过" });
+          continue;
+        }
+        seenUids.add(uid);
+
+        const archive = await archiveAndDeleteUserOwnedData(uid, decoded, {
+          deleteSource: "admin_batch",
+          deletedByUid: decoded.uid,
+          deletedByEmail: decoded.email || "",
+          deleteReason: reason,
+        });
+        const authDeleted = await deleteAuthUserSafely(uid);
+        results.push({
+          input,
+          uid,
+          archivedDocs: archive.archivedDocs,
+          deletedDocs: archive.deletedDocs,
+          externalReferenceDocs: archive.externalReferenceDocs,
+          archivePath: archive.archivePath,
+          expiresAt: archive.expiresAt,
+          authDeleted,
+        });
+      } catch (error) {
+        errors.push({
+          input,
+          uid,
+          error: error.message || "删除失败",
+          code: error?.code || "",
+        });
+      }
+    }
+
+    await writeAdminAuditLog(decoded, "user.batch_delete", {
+      type: "user_batch",
+      id: "delete_users",
+      path: DELETED_ACCOUNT_COLLECTION,
+    }, {
+      reason,
+      requestedCount: targets.length,
+      successCount: results.length,
+      skippedCount: skipped.length,
+      errorCount: errors.length,
+      deletedUids: results.map((item) => item.uid).slice(0, 50),
+      restoreWindowDays: DELETED_ACCOUNT_RESTORE_WINDOW_DAYS,
+    }, req);
+
+    json(res, 200, {
+      ok: true,
+      requestedCount: targets.length,
+      successCount: results.length,
+      skippedCount: skipped.length,
+      errorCount: errors.length,
+      restoreWindowDays: DELETED_ACCOUNT_RESTORE_WINDOW_DAYS,
+      results,
+      skipped,
+      errors,
+    });
+  } catch (error) {
+    console.error("[adminBatchDeleteUserAccounts]", error);
+    json(res, error.status || 500, {
+      error: error.message || "Batch delete user accounts failed",
+      code: "batch-delete-users-error",
+    });
+  }
+});
+
 exports.adminRestoreDeletedAccount = onRequest(runtime, async (req, res) => {
   if (!requireMethod(req, res, "POST")) return;
   const decoded = await requireAdmin(req, res);
@@ -11544,17 +12961,7 @@ exports.deleteMyAccountData = onRequest(runtime, async (req, res) => {
 
   try {
     const archive = await archiveAndDeleteUserOwnedData(decoded.uid, decoded);
-    let authDeleted = true;
-
-    try {
-      await admin.auth().deleteUser(decoded.uid);
-    } catch (error) {
-      if (error?.code === "auth/user-not-found") {
-        authDeleted = false;
-      } else {
-        throw error;
-      }
-    }
+    const authDeleted = await deleteAuthUserSafely(decoded.uid);
 
     json(res, 200, {
       ok: true,
@@ -12403,14 +13810,17 @@ exports.relationshipInviteRemotePush = onDocumentCreated({
   const initiatorUid = String(data.initiatorUid || "");
   if (!receiverUid || receiverUid === initiatorUid) return;
   if (receiverUid.startsWith("virtual:") || receiverUid.startsWith("debug_")) return;
-  if (data.status && data.status !== "invited") return;
+  if (data.status && !["invited", "initiator_revealed"].includes(data.status)) return;
 
   const initiatorName = truncatePushText(data.initiatorName, "好友", 32);
+  const body = data.status === "initiator_revealed"
+    ? `${initiatorName} 已先翻开一张牌，邀请你一起完成双人占卜`
+    : `${initiatorName} 邀请你一起抽牌`;
   const result = await sendRemotePushToUser(receiverUid, {
     preferenceKey: "friendInteractionEnabled",
     type: "relationship_invite",
     title: "新的双人占卜邀请",
-    body: `${initiatorName} 邀请你一起抽牌`,
+    body,
     data: {
       readingId,
       initiatorUid,
@@ -12419,6 +13829,132 @@ exports.relationshipInviteRemotePush = onDocumentCreated({
   });
 
   console.log("[relationshipInviteRemotePush]", { receiverUid, readingId, ...result });
+});
+
+function getRelationshipCards(data = {}) {
+  return Array.isArray(data.cards) ? data.cards : [];
+}
+
+function normalizeRelationshipHistoryCard(card = {}) {
+  return {
+    positionKey: cleanString(card.positionKey, "", 80),
+    position: cleanString(card.position, "", 120),
+    cardId: cleanString(card.cardId, "", 120),
+    cardName: cleanString(card.cardName, "", 120),
+    orientation: cleanString(card.orientation, "upright", 40) === "reversed" ? "reversed" : "upright",
+  };
+}
+
+function formatRelationshipHistoryCard(card = {}) {
+  const cleanCard = normalizeRelationshipHistoryCard(card);
+  const name = cleanCard.cardName || cleanCard.cardId || "关系牌";
+  const orientation = cleanCard.orientation === "reversed" ? "逆位" : "正位";
+  return `${name}（${orientation}）`;
+}
+
+function findRelationshipCard(data = {}, positionKey) {
+  return getRelationshipCards(data).find((card) => cleanString(card?.positionKey, "", 80) === positionKey) || null;
+}
+
+function buildRelationshipDivinationHistoryRecord(data = {}, readingId, friendUid, friendName) {
+  const initiatorName = cleanString(data.initiatorName, "好友", 120);
+  const receiverName = cleanString(data.receiverName, "好友", 120);
+  const relationshipFriendUid = cleanString(friendUid, "", 200);
+  const relationshipFriendName = cleanString(friendName, "好友", 120);
+  const sharedCard = findRelationshipCard(data, "shared");
+  const sharedText = sharedCard ? formatRelationshipHistoryCard(sharedCard) : "共同牌";
+  const lockedCards = getRelationshipCards(data).map(normalizeRelationshipHistoryCard);
+
+  return {
+    readingId,
+    question: cleanString(data.question, "", 600),
+    scene: "friend_relationship_divination",
+    spreadKind: "relationship_tension",
+    lockedCards,
+    shortVerdict: `双人关系占卜已完成：${initiatorName} 与 ${receiverName} 的共同揭示为 ${sharedText}。`,
+    judgeContent: [
+      "你们一起完成了这组三张关系牌。它更适合当作一次真诚沟通的入口，而不是替彼此下定论。",
+      ...lockedCards.map((card) => `${card.position || "关系牌"}：${formatRelationshipHistoryCard(card)}`),
+    ].join("\n"),
+    adviceContent: `建议先围绕“${sharedText}”讨论你们现在共同感受到的关系状态，再分别表达自己的期待与边界。把这次占卜当作温柔的开场，而不是要求对方立刻给出答案。`,
+    topics: [
+      "我们现在最需要坦诚沟通的部分是什么？",
+      "我可以怎样更温柔地表达自己的期待？",
+      "这段关系下一步最适合的小行动是什么？",
+    ],
+    oracleId: cleanString(data.oracleId, "tarot", 80) || "tarot",
+    friendUid: relationshipFriendUid,
+    friendName: relationshipFriendName,
+    relationshipFriendUid,
+    relationshipFriendName,
+    relationshipFriendAvatarUrl: "",
+    activeRelationshipId: readingId,
+    relationshipStatus: "completed",
+    source: "relationshipDivinationCompletion",
+    relationshipCreatedAt: data.createdAt || "",
+    completedAt: data.completedAt || admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: data.completedAt || data.updatedAt || data.createdAt || admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+async function syncRelationshipDivinationHistories(data = {}, readingId) {
+  const cleanReadingId = cleanString(data.readingId || readingId, readingId, 180);
+  const initiatorUid = cleanString(data.initiatorUid, "", 200);
+  const receiverUid = cleanString(data.receiverUid, "", 200);
+  if (!cleanReadingId || !initiatorUid || !receiverUid || initiatorUid === receiverUid) return;
+
+  const batch = db.batch();
+  batch.set(
+    db.collection("users").doc(initiatorUid).collection("divination_records").doc(cleanReadingId),
+    buildRelationshipDivinationHistoryRecord(data, cleanReadingId, receiverUid, data.receiverName),
+    { merge: true },
+  );
+  batch.set(
+    db.collection("users").doc(receiverUid).collection("divination_records").doc(cleanReadingId),
+    buildRelationshipDivinationHistoryRecord(data, cleanReadingId, initiatorUid, data.initiatorName),
+    { merge: true },
+  );
+  await batch.commit();
+}
+
+exports.relationshipDivinationCompletionSync = onDocumentUpdated({
+  region: FIRESTORE_TRIGGER_REGION,
+  document: "relationship_divinations/{readingId}",
+}, async (event) => {
+  const readingId = event.params.readingId;
+  const afterRef = event.data?.after?.ref;
+  const data = event.data?.after?.data() || {};
+  if (!afterRef || !readingId) return;
+  if (data.status === "cancelled") return;
+
+  const bothRevealed = data.initiatorRevealed === true && data.receiverRevealed === true;
+  if (!bothRevealed) return;
+
+  if (data.status !== "completed") {
+    const completedAt = data.completedAt || admin.firestore.FieldValue.serverTimestamp();
+    await afterRef.set({
+      receiverJoined: true,
+      status: "completed",
+      completedAt,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    await syncRelationshipDivinationHistories({
+      ...data,
+      status: "completed",
+      receiverJoined: true,
+      completedAt,
+    }, readingId);
+    console.log("[relationshipDivinationCompletionSync] promoted completed", { readingId });
+    return;
+  }
+
+  await syncRelationshipDivinationHistories(data, readingId);
+  console.log("[relationshipDivinationCompletionSync] histories synced", {
+    readingId,
+    initiatorUid: data.initiatorUid,
+    receiverUid: data.receiverUid,
+  });
 });
 
 exports.remoteNotificationOutboxPush = onDocumentCreated({

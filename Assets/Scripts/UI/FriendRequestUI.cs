@@ -59,6 +59,7 @@ public class FriendRequestUI : WindowBase
 		InitFriendLoopListView();
 		isLoadingRequests = FirestoreManager.Instance != null && FirestoreManager.Instance.IsInitialized;
 		RefreshRequestList();
+		MarkCurrentRequestsSeen();
 		LoadCloudFriendRequests();
 	}
 	// 物体隐藏时执行
@@ -163,6 +164,7 @@ public class FriendRequestUI : WindowBase
 			if (!success)
 				Debug.LogWarning("[FriendRequestUI] 拉取好友请求失败，保留本地缓存");
 			RefreshRequestList();
+			MarkCurrentRequestsSeen();
 		});
 	}
 
@@ -224,6 +226,20 @@ public class FriendRequestUI : WindowBase
 		SetRootActive(GetFriendScrollRoot(), hasRequests);
 		RefreshEmptyStateText();
 		RefreshFriendLoopListView();
+	}
+
+	private void MarkCurrentRequestsSeen()
+	{
+		if (requestInvites.Count == 0)
+			return;
+
+		List<FriendDataManager.InviteData> cachedInvites = new List<FriendDataManager.InviteData>(requestInvites);
+		FriendRequestUnreadTracker.MarkSeen(cachedInvites);
+		AppNotificationScheduler.Instance.NotifyFriendRequestCount(0);
+
+		FirestoreManager firestore = FirestoreManager.Instance;
+		if (firestore != null && firestore.IsInitialized)
+			firestore.MarkFriendRequestsSeen(cachedInvites);
 	}
 
 	private void ResolveFriendLoopListView()

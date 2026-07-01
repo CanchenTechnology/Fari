@@ -22,6 +22,7 @@ public class FriendUI : WindowBase, IPointerClickHandler
 	public FriendUIComponent uiComponent;
 
 	private readonly List<FriendDataManager.FriendData> sortedFriends = new List<FriendDataManager.FriendData>();
+	private readonly List<RelationshipDivinationRecord> latestIncomingInvites = new List<RelationshipDivinationRecord>();
 	private LoopListView2 friendListView;
 	private bool friendListViewInited;
 	private int cloudFriendSyncRequestId;
@@ -56,6 +57,7 @@ public class FriendUI : WindowBase, IPointerClickHandler
 		SetDeleteFriendConfirmVisible(false);
 		RefreshUserHeader();
 		RefreshFriendRequestCountText();
+		latestIncomingInvites.Clear();
 		SetCountText(uiComponent.friendInvitationNum, 0);
 
 		FriendDataManager.Instance.ReloadLocalDataForCurrentUser();
@@ -198,9 +200,7 @@ public class FriendUI : WindowBase, IPointerClickHandler
 
 	private void NotifyFriendRequestCount()
 	{
-		int count = FriendDataManager.Instance != null && FriendDataManager.Instance.InviteList != null
-			? FriendDataManager.Instance.InviteList.Count
-			: 0;
+		int count = GetUnreadFriendRequestCount();
 		AppNotificationScheduler.Instance.NotifyFriendRequestCount(count);
 		SetCountText(uiComponent != null ? uiComponent.friendRequestText : null, count);
 	}
@@ -210,24 +210,35 @@ public class FriendUI : WindowBase, IPointerClickHandler
 		RelationshipDivinationFirestore service = RelationshipDivinationFlow.GetOrCreateService();
 		if (service == null || !service.IsReady)
 		{
+			latestIncomingInvites.Clear();
 			SetCountText(uiComponent != null ? uiComponent.friendInvitationNum : null, 0);
 			return;
 		}
 
 		service.LoadIncomingInvites((records, succeeded) =>
 		{
-			int count = succeeded && records != null ? records.Count : 0;
-			AppNotificationScheduler.Instance.NotifyRelationshipInviteCount(count);
-			SetCountText(uiComponent != null ? uiComponent.friendInvitationNum : null, count);
+			latestIncomingInvites.Clear();
+			if (succeeded && records != null)
+				latestIncomingInvites.AddRange(records);
+
+			int unreadCount = succeeded && records != null
+				? RelationshipInviteUnreadTracker.CountUnread(records)
+				: 0;
+			AppNotificationScheduler.Instance.NotifyRelationshipInviteCount(unreadCount);
+			SetCountText(uiComponent != null ? uiComponent.friendInvitationNum : null, unreadCount);
 		});
 	}
 
 	private void RefreshFriendRequestCountText()
 	{
-		int count = FriendDataManager.Instance != null && FriendDataManager.Instance.InviteList != null
-			? FriendDataManager.Instance.InviteList.Count
+		SetCountText(uiComponent != null ? uiComponent.friendRequestText : null, GetUnreadFriendRequestCount());
+	}
+
+	private int GetUnreadFriendRequestCount()
+	{
+		return FriendDataManager.Instance != null && FriendDataManager.Instance.InviteList != null
+			? FriendRequestUnreadTracker.CountUnread(FriendDataManager.Instance.InviteList)
 			: 0;
-		SetCountText(uiComponent != null ? uiComponent.friendRequestText : null, count);
 	}
 
 	private void SetCountText(TMP_Text text, int count)
@@ -299,7 +310,9 @@ public class FriendUI : WindowBase, IPointerClickHandler
 	{
 		if (uiComponent.headImage == null) return;
 
-		FriendAvatarImageUtility.ApplyAvatar(uiComponent.headImage, null);
+		FriendAvatarImageUtility.ApplyAvatar(
+			uiComponent.headImage,
+			FriendAvatarImageUtility.ResolveCurrentUserAvatar(uiComponent.headImage));
 		int requestId = ++avatarRequestVersion;
 		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadCurrentUserAvatarCoroutine((sprite, _) =>
 		{
@@ -325,11 +338,14 @@ public class FriendUI : WindowBase, IPointerClickHandler
 
 		if (uiComponent.friendListView == null)
 			uiComponent.friendListView = friendListView;
+
+		EnsureFriendListScrollbarReady();
 	}
 
 	private bool InitFriendListView()
 	{
 		if (friendListView == null) return false;
+		EnsureFriendListScrollbarReady();
 		if (friendListViewInited || friendListView.ListViewInited)
 		{
 			friendListViewInited = true;
@@ -390,7 +406,43 @@ public class FriendUI : WindowBase, IPointerClickHandler
 		if (!InitFriendListView()) return;
 
 		friendListView.SetListItemCount(sortedFriends.Count, resetPos);
+		EnsureFriendListScrollbarReady();
 		friendListView.RefreshAllShownItem();
+	}
+
+	private void EnsureFriendListScrollbarReady()
+	{
+		if (friendListView == null)
+			return;
+
+		ScrollRect scrollRect = friendListView.GetComponent<ScrollRect>();
+		if (scrollRect == null || scrollRect.verticalScrollbar == null)
+			return;
+
+		Scrollbar scrollbar = scrollRect.verticalScrollbar;
+		scrollbar.gameObject.SetActive(true);
+		scrollbar.interactable = true;
+
+		CanvasGroup canvasGroup = scrollbar.GetComponent<CanvasGroup>();
+		if (canvasGroup != null)
+		{
+			canvasGroup.alpha = 1f;
+			canvasGroup.interactable = true;
+			canvasGroup.blocksRaycasts = true;
+		}
+
+		Graphic trackGraphic = scrollbar.targetGraphic != null
+			? scrollbar.targetGraphic
+			: scrollbar.GetComponent<Graphic>();
+		if (trackGraphic != null)
+			trackGraphic.enabled = true;
+
+		if (scrollbar.handleRect != null)
+		{
+			Graphic handleGraphic = scrollbar.handleRect.GetComponent<Graphic>();
+			if (handleGraphic != null)
+				handleGraphic.enabled = true;
+		}
 	}
 
 	private void RefreshFriendPresenceWatchers()
@@ -778,12 +830,14 @@ public class FriendUI : WindowBase, IPointerClickHandler
 	public void OnFriendRequestButtonClick()
 	{
 		CloseOpenFriendSwipe();
+		MarkFriendRequestsSeen();
 		UIModule.Instance.PopUpWindow<FriendRequestUI>();
 	}
 
 	public void OnAlreadyReceiveInviteButtonClick()
 	{
 		CloseOpenFriendSwipe();
+		MarkRelationshipInvitesSeen();
 		UIModule.Instance.PopUpWindow<MyInviationUI>();
 	}
 
@@ -791,6 +845,57 @@ public class FriendUI : WindowBase, IPointerClickHandler
 	{
 		CloseOpenFriendSwipe();
 		UIModule.Instance.PopUpWindow<NotionUI>();
+	}
+
+	private void MarkRelationshipInvitesSeen()
+	{
+		List<RelationshipDivinationRecord> cachedInvites = new List<RelationshipDivinationRecord>(latestIncomingInvites);
+		if (latestIncomingInvites.Count > 0)
+			RelationshipInviteUnreadTracker.MarkSeen(latestIncomingInvites);
+
+		AppNotificationScheduler.Instance.NotifyRelationshipInviteCount(0);
+		SetCountText(uiComponent != null ? uiComponent.friendInvitationNum : null, 0);
+
+		RelationshipDivinationFirestore service = RelationshipDivinationFlow.GetOrCreateService();
+		if (service == null || !service.IsReady)
+			return;
+
+		if (cachedInvites.Count > 0)
+			service.MarkIncomingInvitesSeen(cachedInvites);
+
+		service.LoadIncomingInvites((records, succeeded) =>
+		{
+			if (!succeeded || records == null)
+				return;
+
+			latestIncomingInvites.Clear();
+			latestIncomingInvites.AddRange(records);
+			RelationshipInviteUnreadTracker.MarkSeen(records);
+			service.MarkIncomingInvitesSeen(records);
+			AppNotificationScheduler.Instance.NotifyRelationshipInviteCount(0);
+			SetCountText(uiComponent != null ? uiComponent.friendInvitationNum : null, 0);
+		});
+	}
+
+	private void MarkFriendRequestsSeen()
+	{
+		IReadOnlyList<FriendDataManager.InviteData> invites = FriendDataManager.Instance != null
+			? FriendDataManager.Instance.InviteList
+			: null;
+		if (invites == null || invites.Count == 0)
+		{
+			SetCountText(uiComponent != null ? uiComponent.friendRequestText : null, 0);
+			return;
+		}
+
+		List<FriendDataManager.InviteData> cachedInvites = new List<FriendDataManager.InviteData>(invites);
+		FriendRequestUnreadTracker.MarkSeen(cachedInvites);
+		AppNotificationScheduler.Instance.NotifyFriendRequestCount(0);
+		SetCountText(uiComponent != null ? uiComponent.friendRequestText : null, 0);
+
+		FirestoreManager firestore = FirestoreManager.Instance;
+		if (firestore != null && firestore.IsInitialized)
+			firestore.MarkFriendRequestsSeen(cachedInvites);
 	}
 
 	private IEnumerator OpenLatestIncomingRelationshipInviteRoutine()

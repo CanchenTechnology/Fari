@@ -106,8 +106,9 @@ public class FriendMoveUI : WindowBase
 
         if (currentFriend.isVirtual)
         {
+            FriendDataManager.FriendData editingFriend = currentFriend;
             HideWindow();
-            CreateFriendInfoUI.Show(currentFriend);
+            CreateFriendUI.ShowEdit(editingFriend);
             return;
         }
 

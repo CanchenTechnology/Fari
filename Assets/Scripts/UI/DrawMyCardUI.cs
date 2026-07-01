@@ -19,6 +19,8 @@ public class DrawMyCardUI : WindowBase
 {
 	private const string DeckCardNamePrefix = "DrawMyCardDeck_";
 	private const string FlyingCardName = "DrawMyCardFlyingCard";
+	private const float DefaultShuffleScatterDuration = 1.6f;
+	private const float DefaultShuffleGatherDuration = 0.83f;
 	private static RelationshipDivinationRecord sPendingRecord;
 	private static FriendDataManager.FriendData sPendingFriend;
 
@@ -36,6 +38,7 @@ public class DrawMyCardUI : WindowBase
 	private CanvasGroup _openPanelGroup;
 	private Image _flyingCard;
 	private Sequence _flowSequence;
+	private Sequence _deckShuffleSequence;
 	private Tween _deckInertiaTween;
 	private Tween _clickSuppressTween;
 	private Coroutine _singleClickCoroutine;
@@ -181,6 +184,7 @@ public class DrawMyCardUI : WindowBase
 		_revealSubmitted = false;
 		_hasOpenedCard = false;
 		_isPanelShown = false;
+		SetNextButtonState(false, false);
 		SetOpenPanelVisible(false, true);
 		PrepareSlotBack();
 		RestoreDeckAfterCancel();
@@ -193,6 +197,31 @@ public class DrawMyCardUI : WindowBase
 
 		EnsureDrawResult();
 		PlayOpenCardAnimation();
+	}
+
+	public void OnNextBtnClick()
+	{
+		if (_isAnimatingCard || _revealSubmitted || currentRecord == null)
+			return;
+
+		if (!_hasOpenedCard)
+			return;
+
+		if (currentRecord.IsCompleted || currentRecord.isLocalOnly)
+		{
+			HideWindow();
+			RelationshipDivinationFlow.OpenResult(currentRecord);
+			return;
+		}
+
+		if (RelationshipDivinationFlow.IsMyCardRevealed(currentRecord))
+		{
+			HideWindow();
+			TwoPersonDivinationUI.Show(currentRecord, currentFriend);
+			return;
+		}
+
+		SubmitRelationshipRevealIfNeeded();
 	}
 	#endregion
 
@@ -213,14 +242,14 @@ public class DrawMyCardUI : WindowBase
 		_lastDeckViewportSize = Vector2.zero;
 
 		SetOpenPanelVisible(false, true);
+		SetNextButtonState(false, false);
 		PrepareSlotBack();
 
 		if (_cardContainer != null)
 			_cardContainer.gameObject.SetActive(true);
 
 		BuildDeckFan();
-		_isChoosingCard = _deckImages.Count > 0;
-		SetDeckCardsInteractable(_isChoosingCard);
+		PlayDeckShuffleIntro();
 	}
 
 	private void ResolveReferences()
@@ -444,7 +473,244 @@ public class DrawMyCardUI : WindowBase
 			_deckImages.Add(image);
 		}
 
-		ApplyDeckLayout(false);
+		PlaceDeckAtStackPose();
+		SetDeckCardsInteractable(false);
+	}
+
+	private void PlayDeckShuffleIntro()
+	{
+		StopDeckShuffleSequence();
+		StopDeckInertia();
+		StopLongPressSelection();
+		StopPendingSingleClick();
+
+		if (_deckImages.Count == 0)
+		{
+			FinishDeckShuffleIntro();
+			return;
+		}
+
+		_deckOffsetX = 0f;
+		_isChoosingCard = false;
+		_isAnimatingCard = true;
+		SetDeckCardsInteractable(false);
+		PlayDeckScatterAnimation(() => PlayDeckGatherAnimation(PlayDeckFanOutFromStack));
+	}
+
+	private void PlayDeckScatterAnimation(Action onComplete)
+	{
+		StopDeckShuffleSequence();
+		ResolveDeckLayoutMetrics();
+
+		_deckShuffleSequence = DOTween.Sequence();
+		float scatterDuration = Mathf.Max(0.58f, uiComponent.shuffleScatterDuration > 0f
+			? uiComponent.shuffleScatterDuration
+			: DefaultShuffleScatterDuration);
+
+		for (int i = 0; i < _deckImages.Count; i++)
+		{
+			Image image = _deckImages[i];
+			if (image == null) continue;
+
+			RectTransform rect = image.rectTransform;
+			DOTween.Kill(image);
+			DOTween.Kill(rect);
+
+			float delay = Mathf.Lerp(0f, 0.18f, Hash01(i * 23 + 5));
+			float duration = Mathf.Max(0.58f, scatterDuration - delay - Mathf.Lerp(0.04f, 0.16f, Hash01(i * 19 + 7)));
+
+			_deckShuffleSequence.Insert(delay, rect.DOAnchorPos(GetDeckChaosPose(i, _deckImages.Count), duration)
+				.SetEase(Ease.InOutCubic));
+			_deckShuffleSequence.Insert(delay, rect.DORotate(new Vector3(0f, 0f, GetDeckChaosRotation(i)), duration)
+				.SetEase(Ease.InOutCubic));
+			_deckShuffleSequence.Insert(delay, rect.DOScale(Vector3.one * _deckCardScale, duration)
+				.SetEase(Ease.InOutCubic));
+		}
+
+		_deckShuffleSequence.AppendInterval(Mathf.Max(0f, scatterDuration - _deckShuffleSequence.Duration()));
+		_deckShuffleSequence.OnComplete(() =>
+		{
+			_deckShuffleSequence = null;
+			onComplete?.Invoke();
+		});
+	}
+
+	private void PlayDeckGatherAnimation(Action onComplete)
+	{
+		StopDeckShuffleSequence();
+		ResolveDeckLayoutMetrics();
+
+		_deckShuffleSequence = DOTween.Sequence();
+		float gatherDuration = Mathf.Max(0.28f, uiComponent.shuffleGatherDuration > 0f
+			? uiComponent.shuffleGatherDuration
+			: DefaultShuffleGatherDuration);
+
+		for (int i = 0; i < _deckImages.Count; i++)
+		{
+			Image image = _deckImages[i];
+			if (image == null) continue;
+
+			RectTransform rect = image.rectTransform;
+			DOTween.Kill(rect);
+			_deckShuffleSequence.Insert(0f, rect.DOAnchorPos(GetDeckShuffleStackPose(i, _deckImages.Count), gatherDuration)
+				.SetEase(Ease.OutBack, 0.95f));
+			_deckShuffleSequence.Insert(0f, rect.DORotate(new Vector3(0f, 0f, GetDeckShuffleStackRotation(i)), gatherDuration)
+				.SetEase(Ease.OutBack, 0.95f));
+			_deckShuffleSequence.Insert(0f, rect.DOScale(Vector3.one * _deckCardScale, gatherDuration)
+				.SetEase(Ease.OutBack, 0.95f));
+		}
+
+		_deckShuffleSequence.OnComplete(() =>
+		{
+			_deckShuffleSequence = null;
+			onComplete?.Invoke();
+		});
+	}
+
+	private void PlayDeckFanOutFromStack()
+	{
+		StopDeckShuffleSequence();
+		ResolveDeckLayoutMetrics();
+
+		_deckShuffleSequence = DOTween.Sequence();
+		float fanOutDuration = Mathf.Max(0.32f, uiComponent.shuffleFanOutDuration);
+		float fanOutGap = Mathf.Max(0.035f, uiComponent.shuffleFanOutGap);
+		List<int> fanOutOrder = BuildLeftToRightDeckFanOutOrder();
+
+		for (int orderIndex = 0; orderIndex < fanOutOrder.Count; orderIndex++)
+		{
+			int deckIndex = fanOutOrder[orderIndex];
+			Image image = _deckImages[deckIndex];
+			if (image == null) continue;
+
+			RectTransform rect = image.rectTransform;
+			DOTween.Kill(image);
+			DOTween.Kill(rect);
+
+			Vector2 sourcePosition = rect.anchoredPosition;
+			Vector2 targetPosition = GetDeckFanPosition(deckIndex);
+			float targetRotation = GetDeckFanRotation(deckIndex);
+			float lift = Mathf.Clamp(_viewportHeight * 0.03f, 28f, 58f);
+			Vector2 stagingPosition = Vector2.Lerp(sourcePosition, targetPosition, 0.54f) + new Vector2(0f, lift);
+			Vector3 targetScale = Vector3.one * _deckCardScale;
+
+			float startTime = orderIndex * fanOutGap;
+			float liftDuration = fanOutDuration * 0.42f;
+			float settleDuration = fanOutDuration - liftDuration;
+			Image capturedImage = image;
+			Sequence cardSequence = DOTween.Sequence();
+			cardSequence.Append(rect.DOAnchorPos(stagingPosition, liftDuration).SetEase(Ease.OutCubic));
+			cardSequence.Append(rect.DOAnchorPos(targetPosition, settleDuration).SetEase(Ease.OutQuart));
+
+			_deckShuffleSequence.InsertCallback(startTime, () => BringDeckFanOutCardToTop(capturedImage));
+			_deckShuffleSequence.Insert(startTime, image.DOFade(1f, fanOutDuration * 0.45f));
+			_deckShuffleSequence.Insert(startTime, cardSequence);
+			_deckShuffleSequence.Insert(startTime, rect.DORotate(new Vector3(0f, 0f, targetRotation), fanOutDuration)
+				.SetEase(Ease.InOutCubic));
+			_deckShuffleSequence.Insert(startTime, rect.DOScale(targetScale * 1.025f, liftDuration).SetEase(Ease.OutSine));
+			_deckShuffleSequence.Insert(startTime + liftDuration, rect.DOScale(targetScale, settleDuration).SetEase(Ease.OutCubic));
+		}
+
+		_deckShuffleSequence.OnComplete(FinishDeckShuffleIntro);
+	}
+
+	private void FinishDeckShuffleIntro()
+	{
+		_deckShuffleSequence = null;
+		_isChoosingCard = _deckImages.Count > 0;
+		_isAnimatingCard = false;
+		_lastDeckViewportSize = GetDeckViewportSize();
+		RefreshDeckSiblingOrder();
+		SetDeckCardsInteractable(_isChoosingCard);
+	}
+
+	private void PlaceDeckAtStackPose()
+	{
+		ResolveDeckLayoutMetrics();
+
+		for (int i = 0; i < _deckImages.Count; i++)
+		{
+			Image image = _deckImages[i];
+			if (image == null) continue;
+
+			RectTransform rect = image.rectTransform;
+			DOTween.Kill(image);
+			DOTween.Kill(rect);
+			image.enabled = true;
+			image.color = Color.white;
+			image.raycastTarget = false;
+			rect.anchoredPosition = GetDeckShuffleStackPose(i, _deckImages.Count);
+			rect.localRotation = Quaternion.Euler(0f, 0f, GetDeckShuffleStackRotation(i));
+			rect.localScale = Vector3.one * _deckCardScale;
+		}
+
+		RefreshDeckSiblingOrder();
+	}
+
+	private List<int> BuildLeftToRightDeckFanOutOrder()
+	{
+		List<int> order = new List<int>(_deckImages.Count);
+		for (int i = 0; i < _deckImages.Count; i++)
+		{
+			if (_deckImages[i] != null)
+				order.Add(i);
+		}
+
+		order.Sort((left, right) =>
+		{
+			float leftX = GetDeckFanPosition(left).x;
+			float rightX = GetDeckFanPosition(right).x;
+			int xCompare = leftX.CompareTo(rightX);
+			return xCompare != 0 ? xCompare : left.CompareTo(right);
+		});
+
+		return order;
+	}
+
+	private void BringDeckFanOutCardToTop(Image image)
+	{
+		if (image == null) return;
+		image.rectTransform.SetAsLastSibling();
+	}
+
+	private Vector2 GetDeckShuffleAnchor()
+	{
+		return new Vector2(0f, Mathf.Clamp(_viewportHeight * 0.1f, 58f, 128f));
+	}
+
+	private Vector2 GetDeckShuffleStackPose(int index, int count)
+	{
+		Vector2 anchor = GetDeckShuffleAnchor();
+		float centeredIndex = index - (count - 1) * 0.5f;
+		float x = anchor.x + centeredIndex * 0.34f + Mathf.Sin(index * 0.61f) * 2.2f;
+		float y = anchor.y - centeredIndex * 0.5f + (index % 7) * 0.55f;
+		return new Vector2(x, y);
+	}
+
+	private float GetDeckShuffleStackRotation(int index)
+	{
+		return Mathf.Sin(index * 0.7f) * 1.05f;
+	}
+
+	private Vector2 GetDeckChaosPose(int index, int count)
+	{
+		Vector2 anchor = GetDeckShuffleAnchor();
+		float maxRadius = Mathf.Clamp(_viewportWidth * 0.23f, 132f, 220f);
+		float radius = Mathf.Lerp(44f, maxRadius, Hash01(index * 17 + 3));
+		float angle = (index * 137.507f + Hash01(index * 31 + 9) * 48f) * Mathf.Deg2Rad;
+		float x = Mathf.Cos(angle) * radius;
+		float y = Mathf.Sin(angle) * radius * 0.68f + Mathf.Sin(index * 0.33f) * 18f;
+		return anchor + new Vector2(x, y);
+	}
+
+	private float GetDeckChaosRotation(int index)
+	{
+		return Mathf.Lerp(-34f, 34f, Hash01(index * 29 + 11));
+	}
+
+	private static float Hash01(int seed)
+	{
+		return Mathf.Repeat(Mathf.Sin(seed * 12.9898f) * 43758.5453f, 1f);
 	}
 
 	private void BindDeckCardInteractions(GameObject cardObject, int index)
@@ -723,6 +989,7 @@ public class DrawMyCardUI : WindowBase
 	{
 		PrepareSlotBack();
 		SetOpenButtonsInteractable(false, false);
+		SetNextButtonState(false, false);
 		SetOpenPanelVisible(true, false);
 
 		if (flyingCard != null)
@@ -766,6 +1033,7 @@ public class DrawMyCardUI : WindowBase
 			_isAnimatingCard = false;
 			SetOpenButtonsInteractable(false, true);
 			_flowSequence = null;
+			SetNextButtonState(true, false, "同步中...");
 			SubmitRelationshipRevealIfNeeded();
 		});
 	}
@@ -1147,6 +1415,12 @@ public class DrawMyCardUI : WindowBase
 		_deckInertiaTween = null;
 	}
 
+	private void StopDeckShuffleSequence()
+	{
+		_deckShuffleSequence?.Kill(false);
+		_deckShuffleSequence = null;
+	}
+
 	private void SetDeckCardsInteractable(bool interactable)
 	{
 		for (int i = 0; i < _deckImages.Count; i++)
@@ -1174,6 +1448,7 @@ public class DrawMyCardUI : WindowBase
 
 	private void ClearRuntimeDeckCards()
 	{
+		StopDeckShuffleSequence();
 		StopDeckInertia();
 		StopLongPressSelection();
 		StopPendingSingleClick();
@@ -1190,6 +1465,7 @@ public class DrawMyCardUI : WindowBase
 				DestroyDeckObject(image.gameObject);
 		}
 		_deckImages.Clear();
+		_deckSiblingOrder.Clear();
 		ClearGeneratedDeckChildrenUnder(_cardContainer);
 
 		if (uiComponent != null && uiComponent.cardGO != null)
@@ -1297,6 +1573,61 @@ public class DrawMyCardUI : WindowBase
 		if (uiComponent.cancelBtn != null) uiComponent.cancelBtn.interactable = cancelInteractable;
 	}
 
+	private void SetNextButtonState(bool visible, bool interactable, string label = "下一步")
+	{
+		if (uiComponent == null)
+			return;
+
+		bool hasNextButton = uiComponent.nextBtn != null;
+		SetOpenButtonsVisible(!visible || !hasNextButton);
+		if (!hasNextButton)
+			return;
+
+		uiComponent.nextBtn.gameObject.SetActive(visible);
+		uiComponent.nextBtn.interactable = visible && interactable;
+		RelationshipDivinationFlow.SetButtonText(uiComponent.nextBtn, label);
+	}
+
+	private void SetOpenButtonsVisible(bool visible)
+	{
+		if (uiComponent == null)
+			return;
+
+		if (uiComponent.openBtn != null)
+			uiComponent.openBtn.gameObject.SetActive(visible);
+		if (uiComponent.cancelBtn != null)
+			uiComponent.cancelBtn.gameObject.SetActive(visible);
+	}
+
+	private void RefreshNextButtonForRecord()
+	{
+		if (!_hasOpenedCard || currentRecord == null)
+		{
+			SetNextButtonState(false, false);
+			return;
+		}
+
+		if (_revealSubmitted)
+		{
+			SetNextButtonState(true, false, "同步中...");
+			return;
+		}
+
+		if (currentRecord.IsCompleted || currentRecord.isLocalOnly)
+		{
+			SetNextButtonState(true, true, "查看占卜结果");
+			return;
+		}
+
+		if (RelationshipDivinationFlow.IsMyCardRevealed(currentRecord))
+		{
+			SetNextButtonState(true, true, "返回双人占卜");
+			return;
+		}
+
+		SetNextButtonState(true, true, "重试同步");
+	}
+
 	private void EnsureDrawResult()
 	{
 		if (_hasDrawResult) return;
@@ -1325,15 +1656,13 @@ public class DrawMyCardUI : WindowBase
 
 		if (currentRecord.isLocalOnly || currentRecord.IsCompleted)
 		{
-			HideWindow();
-			RelationshipDivinationFlow.ShowRecord(currentRecord, currentFriend);
+			RefreshNextButtonForRecord();
 			return;
 		}
 
 		if (!currentRecord.CanCurrentUserReveal(RelationshipDivinationFlow.GetCurrentUid()))
 		{
-			HideWindow();
-			TwoPersonDivinationUI.Show(currentRecord, currentFriend);
+			RefreshNextButtonForRecord();
 			return;
 		}
 
@@ -1342,30 +1671,28 @@ public class DrawMyCardUI : WindowBase
 		{
 			ToastManager.ShowToast("关系占卜服务初始化中，请稍后再试");
 			SetOpenButtonsInteractable(false, true);
+			RefreshNextButtonForRecord();
 			return;
 		}
 
 		_revealSubmitted = true;
 		SetOpenButtonsInteractable(false, false);
+		RefreshNextButtonForRecord();
 		service.RevealMyCard(currentRecord, updated =>
 		{
 			_revealSubmitted = false;
 			if (updated == null)
 			{
 				SetOpenButtonsInteractable(false, true);
+				RefreshNextButtonForRecord();
 				return;
 			}
 
 			currentRecord = updated;
 			sPendingRecord = updated;
-			HideWindow();
-			if (updated.IsCompleted || updated.isLocalOnly)
-			{
-				TwoPersonDivinationUI.Show(updated, currentFriend);
-				return;
-			}
-
-			TwoPersonDivinationUI.Show(updated, currentFriend);
+			RelationshipDivinationFlow.UpdateCurrentRecordState(updated, currentFriend);
+			SetOpenButtonsInteractable(false, false);
+			RefreshNextButtonForRecord();
 		}, false);
 	}
 
@@ -1430,6 +1757,7 @@ public class DrawMyCardUI : WindowBase
 	{
 		_flowSequence?.Kill(false);
 		_flowSequence = null;
+		StopDeckShuffleSequence();
 		StopDeckInertia();
 		StopPendingSingleClick();
 		StopLongPressSelection();

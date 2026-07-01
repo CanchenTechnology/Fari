@@ -14,6 +14,7 @@ public class CreateFriendUIComponent:MonoBehaviour
 {
 	public WindowLayer windowLayer = WindowLayer.MainUI;
 	public Button BackButton;
+	public TMP_Text titleText; 
 	public Button UploadAvatarButton;
 	public Image AvatarPreviewImage;
 	public TMP_InputField InputInputField;
@@ -25,6 +26,7 @@ public class CreateFriendUIComponent:MonoBehaviour
 	public Button Field_birthdayCountryButton;
 	public TMP_Text birthdayCountryText;
 	public Button SubmitButton;
+	public TMP_Text SubmitButtonText;
 	public TMP_Text privacyText;
 
 	[Header("选择头像")]

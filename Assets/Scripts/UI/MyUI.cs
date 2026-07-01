@@ -72,7 +72,10 @@ public class MyUI : WindowBase
 			ApplyMembershipSubtitle();
 		}
 
-		FriendAvatarImageUtility.ApplyAvatar(uiComponent?.AvatarImage, null, FriendAvatarImageUtility.DefaultAvatarSprite);
+		FriendAvatarImageUtility.ApplyAvatar(
+			uiComponent?.AvatarImage,
+			FriendAvatarImageUtility.ResolveCurrentUserAvatar(uiComponent?.AvatarImage, FriendAvatarImageUtility.DefaultAvatarSprite),
+			FriendAvatarImageUtility.DefaultAvatarSprite);
 
 		if (userData != null && !string.IsNullOrEmpty(userData.PhotoUrl) && GameManager.Instance != null)
 		{
@@ -243,8 +246,8 @@ public class MyUI : WindowBase
 
 	public void Onbtn_divinationButtonClick()
 	{
-		HistoryUI.SelectedRecord = _latestRecord;
-		UIModule.Instance.PopUpWindow<HistoryUI>();
+		HistoryUI.SelectedRecord = null;
+		AllDivinationHistoryUI.ShowMyHistory();
 	}
 	public void OnLatestRecordEntryClick()
 	{

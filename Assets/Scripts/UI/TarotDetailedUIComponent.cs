@@ -50,7 +50,9 @@ public class TarotDetailedUIComponent:MonoBehaviour
 
 	public Button BackButton;
 	public Button ContinueChatButton;
+	[Header("其他")]
 	public TMP_Text OverallJudgmentText;  //综合评价
+	public TMP_Text actionAdviceText; //行动建议
 
 	public void InitComponent(WindowBase target)
 	{

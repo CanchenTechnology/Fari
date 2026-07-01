@@ -205,6 +205,24 @@ public static class RelationshipDivinationFlow
         });
     }
 
+    public static void UpdateCurrentRecordState(RelationshipDivinationRecord record, FriendDataManager.FriendData friend = null)
+    {
+        if (record == null)
+            return;
+
+        CurrentRecord = record;
+        if (friend != null && IsFriendForRecord(friend, record))
+            CurrentFriend = friend;
+        else if (CurrentFriend == null || !IsFriendForRecord(CurrentFriend, record))
+            CurrentFriend = FindFriendForRecord(record) ?? BuildFallbackFriend(record);
+
+        if (record.IsCompleted || record.isLocalOnly)
+        {
+            MarkDailyCompleted(record);
+            SaveResultToHistory(record);
+        }
+    }
+
     public static void TryOpenActiveOrCreate(FriendDataManager.FriendData friend, Action onCanCreate)
     {
         if (friend == null)
@@ -470,9 +488,12 @@ public static class RelationshipDivinationFlow
         if (record.isLocalOnly)
             return string.IsNullOrWhiteSpace(record.receiverName) ? "创建好友" : record.receiverName;
 
-        return record.IsCurrentUserInitiator(currentUid)
-            ? FirstNonEmpty(record.receiverName, "好友")
-            : FirstNonEmpty(record.initiatorName, "好友");
+        if (record.IsCurrentUserInitiator(currentUid))
+            return FirstNonEmpty(record.receiverName, "好友");
+        if (record.IsCurrentUserReceiver(currentUid))
+            return FirstNonEmpty(record.initiatorName, "好友");
+
+        return FirstNonSelfName(record.receiverName, record.initiatorName, "好友");
     }
 
     public static string GetOtherUid(RelationshipDivinationRecord record, string currentUid)
@@ -504,6 +525,11 @@ public static class RelationshipDivinationFlow
 
     public static DivinationRecordData BuildDivinationRecord(RelationshipDivinationRecord record)
     {
+        string currentUid = GetCurrentUid();
+        FriendDataManager.FriendData friend = IsFriendForRecord(CurrentFriend, record)
+            ? CurrentFriend
+            : null;
+        friend = friend ?? FindFriendForRecord(record) ?? BuildFallbackFriend(record);
         return new DivinationRecordData
         {
             readingId = record.readingId,
@@ -516,7 +542,10 @@ public static class RelationshipDivinationFlow
             adviceContent = BuildAdviceContent(record),
             topics = BuildTopics(record),
             oracleId = string.IsNullOrWhiteSpace(record.oracleId) ? "tarot" : record.oracleId,
-            createdAt = string.IsNullOrWhiteSpace(record.createdAt) ? DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") : record.createdAt
+            createdAt = string.IsNullOrWhiteSpace(record.createdAt) ? DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") : record.createdAt,
+            relationshipFriendUid = FirstNonEmpty(friend?.firebaseUid, GetOtherUid(record, currentUid)),
+            relationshipFriendName = FirstNonEmpty(friend?.name, GetOtherName(record, currentUid)),
+            relationshipFriendAvatarUrl = FirstNonEmpty(friend?.photoUrl)
         };
     }
 
@@ -612,6 +641,41 @@ public static class RelationshipDivinationFlow
             info = "双人关系占卜对象",
             isVirtual = record != null && record.isLocalOnly
         };
+    }
+
+    private static bool IsFriendForRecord(FriendDataManager.FriendData friend, RelationshipDivinationRecord record)
+    {
+        if (friend == null || record == null)
+            return false;
+
+        string currentUid = GetCurrentUid();
+        string otherUid = GetOtherUid(record, currentUid);
+        if (!string.IsNullOrWhiteSpace(friend.firebaseUid)
+            && !string.IsNullOrWhiteSpace(otherUid)
+            && string.Equals(friend.firebaseUid, otherUid, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        string otherName = GetOtherName(record, currentUid);
+        return !string.IsNullOrWhiteSpace(friend.name)
+            && !string.IsNullOrWhiteSpace(otherName)
+            && string.Equals(friend.name.Trim(), otherName.Trim(), StringComparison.Ordinal);
+    }
+
+    private static string FirstNonSelfName(params string[] names)
+    {
+        if (names != null)
+        {
+            foreach (string name in names)
+            {
+                string value = FirstNonEmpty(name);
+                if (!string.IsNullOrWhiteSpace(value) && value != "我" && value != "当前用户" && value != "好友")
+                    return value;
+            }
+        }
+
+        return "好友";
     }
 
     private static bool IsDebugTestFriend(FriendDataManager.FriendData friend)

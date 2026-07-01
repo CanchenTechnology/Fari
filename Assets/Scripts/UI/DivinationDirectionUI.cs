@@ -350,7 +350,7 @@ public class DivinationDirectionUI : WindowBase
 
 		int requestId = ++avatarRequestVersion;
 		FriendDataManager.FriendData friend = currentFriend;
-		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadSpriteFromUrlCoroutine(currentFriend.photoUrl, sprite =>
+		uiComponent.StartCoroutine(FriendAvatarImageUtility.LoadUserSpriteFromUrlCoroutine(currentFriend.name, currentFriend.photoUrl, sprite =>
 		{
 			if (requestId != avatarRequestVersion || currentFriend != friend || sprite == null)
 				return;

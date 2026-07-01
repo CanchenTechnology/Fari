@@ -1,5 +1,6 @@
 using DG.Tweening;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -10,7 +11,7 @@ namespace GamerFrameWork.UIFrameWork
         public CanvasGroup canvasGroup;
         public Transform ContentRootTrans;
         public Canvas canvas;
-        public Text ContentTextPro;
+        public TMP_Text ContentTextPro;
 
         private float mShowTime = 2.0f;
 
@@ -66,7 +67,8 @@ namespace GamerFrameWork.UIFrameWork
             float maxTextWidth = 480f;
 
             // 让文本在超出宽度时自动换行
-            ContentTextPro.horizontalOverflow = HorizontalWrapMode.Wrap;
+            ContentTextPro.enableWordWrapping = true;
+            ContentTextPro.overflowMode = TextOverflowModes.Overflow;
 
             // 通过 LayoutElement 给文本一个固定首选宽度，这样 HorizontalLayoutGroup +
             // ContentSizeFitter 才能正确计算出 ContentRoot 应有的宽高
