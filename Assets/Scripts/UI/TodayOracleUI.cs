@@ -36,6 +36,7 @@ public class TodayOracleUI : WindowBase
 	private int _idleVideoPlayRequestId;
 	private bool _isRestoringToday;
 	private bool _idleVideoHasStarted;
+	private bool _isCheckingRemoteDailyOracleReset;
 
 	[SerializeField] private float flipRevealDelaySeconds = 1.2f;
 
@@ -101,17 +102,22 @@ public class TodayOracleUI : WindowBase
 
 	private void RefreshRemoteDailyOracleResetSignal()
 	{
-		var client = BackendMembershipClient.Instance;
-		if (client == null)
-		{
-			var go = new GameObject("BackendMembershipClient");
-			client = go.AddComponent<BackendMembershipClient>();
-		}
+		var client = EnsureBackendMembershipClient();
 
 		client.GetMembershipStatus(
 			_ => RefreshTodayOracleState(),
 			error => Debug.LogWarning("[TodayOracleUI] 今日神谕重置信号同步失败: " + error),
 			forceRefresh: true);
+	}
+
+	private BackendMembershipClient EnsureBackendMembershipClient()
+	{
+		var client = BackendMembershipClient.Instance;
+		if (client != null)
+			return client;
+
+		var go = new GameObject("BackendMembershipClient");
+		return go.AddComponent<BackendMembershipClient>();
 	}
 
 	private TodayOracleUIComponent ResolveUiComponent()
@@ -380,20 +386,72 @@ public class TodayOracleUI : WindowBase
 
 		public void OnflipCardButtonClick()
 		{
-			if (_isPreparingFlip || _isRestoringToday) return;
-			if (TryRestoreSavedToday(DailyOracleFirestore.LoadTodayLocal()))
-				return;
-			if (TryRevealConsumedTodayFallback(false))
-				return;
-
-			if (_divinationEngine != null && !_divinationEngine.TodayCard.HasValue
-				&& !MembershipGate.CanUse(MembershipFeature.DailyOracle))
+			if (_isPreparingFlip || _isRestoringToday || _isCheckingRemoteDailyOracleReset) return;
+			if (ShouldCheckRemoteDailyOracleResetBeforeFlip())
 			{
+				uiComponent.StartCoroutine(CheckRemoteDailyOracleResetThenFlipRoutine());
 				return;
 			}
 
-			StartDrawCardAnimation();
+			HandleFlipCardButtonClickAfterResetCheck();
 		}
+
+	private bool ShouldCheckRemoteDailyOracleResetBeforeFlip()
+	{
+		return HasUsedDailyOracleToday()
+			|| DailyOracleFirestore.LoadTodayLocal() != null
+			|| _divinationEngine?.TodayCard.HasValue == true;
+	}
+
+	private IEnumerator CheckRemoteDailyOracleResetThenFlipRoutine()
+	{
+		_isCheckingRemoteDailyOracleReset = true;
+		ApplyPreparingState();
+
+		bool completed = false;
+		var client = EnsureBackendMembershipClient();
+		client.GetMembershipStatus(
+			_ => completed = true,
+			error =>
+			{
+				Debug.LogWarning("[TodayOracleUI] 抽卡前同步今日神谕重置信号失败: " + error);
+				completed = true;
+			},
+			forceRefresh: true);
+
+		float elapsed = 0f;
+		while (!completed && elapsed < 5f)
+		{
+			if (!gameObject.activeInHierarchy)
+			{
+				_isCheckingRemoteDailyOracleReset = false;
+				yield break;
+			}
+
+			elapsed += Time.deltaTime;
+			yield return null;
+		}
+
+		_isCheckingRemoteDailyOracleReset = false;
+		if (!gameObject.activeInHierarchy) yield break;
+		HandleFlipCardButtonClickAfterResetCheck();
+	}
+
+	private void HandleFlipCardButtonClickAfterResetCheck()
+	{
+		if (TryRestoreSavedToday(DailyOracleFirestore.LoadTodayLocal()))
+			return;
+		if (TryRevealConsumedTodayFallback(false))
+			return;
+
+		if (_divinationEngine != null && !_divinationEngine.TodayCard.HasValue
+			&& !MembershipGate.CanUse(MembershipFeature.DailyOracle))
+		{
+			return;
+		}
+
+		StartDrawCardAnimation();
+	}
 
 	private IEnumerator PrepareAndRevealTodayCardRoutine()
 	{

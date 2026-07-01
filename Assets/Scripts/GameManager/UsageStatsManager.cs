@@ -92,7 +92,16 @@ public class UsageStatsManager : MonoSingleton<UsageStatsManager>
 
         string resetKey = BuildDailyOracleResetAppliedKey(uid);
         if (UnityEngine.PlayerPrefs.GetString(resetKey, "") == resetVersion)
+        {
+            LoadToday();
+            if (DailyOracleCount <= 0 && DivinationEngine.Instance?.TodayCard.HasValue == true)
+            {
+                ClearDailyOracleRuntimeState();
+                Debug.Log($"[UsageStatsManager] 已补清后台今日神谕重置后的内存牌 uid={uid} version={resetVersion}");
+                return true;
+            }
             return false;
+        }
 
         LoadToday();
         bool hadDailyOracle = DailyOracleCount > 0;
@@ -107,10 +116,16 @@ public class UsageStatsManager : MonoSingleton<UsageStatsManager>
         UnityEngine.PlayerPrefs.SetString(resetKey, resetVersion);
         UnityEngine.PlayerPrefs.Save();
 
-        DailyOracleFirestore.ClearTodayLocalCacheForCurrentUser();
-        DailyOracleService.Instance?.ClearCache();
+        ClearDailyOracleRuntimeState();
         Debug.Log($"[UsageStatsManager] 已应用后台今日神谕重置 uid={uid} version={resetVersion} at={resetAt}");
         return true;
+    }
+
+    private static void ClearDailyOracleRuntimeState()
+    {
+        DailyOracleFirestore.ClearTodayLocalCacheForCurrentUser();
+        DailyOracleService.Instance?.ClearCache();
+        DivinationEngine.Instance?.ClearTodayCard();
     }
 
     private static string BuildDailyOracleResetAppliedKey(string uid)

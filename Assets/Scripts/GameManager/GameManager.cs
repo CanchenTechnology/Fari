@@ -7,13 +7,10 @@ using XFGameFrameWork;
 public class GameManager : MonoSingleton<GameManager>
 {
     public bool isRegister;
+    public Sprite defaultHeadSprite;
 
-    private void Update() {
-        if(Input.GetKeyDown(KeyCode.T))
-        {
-            UIModule.Instance.GetWindow<TodayOracleUI>().StartDrawCardAnimation();
-        }
-        
-    }
+    public Sprite DefaultHeadSprite => defaultHeadSprite;
+
+
     
 }

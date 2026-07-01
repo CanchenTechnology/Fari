@@ -11,6 +11,7 @@ public class DivinationItem : MonoBehaviour
 
     public Transform cardContainer;
 
+    public GameObject cardGO;
     public Image cardImage;
 
     public TMP_Text cardName;
@@ -24,21 +25,22 @@ public class DivinationItem : MonoBehaviour
 
     [SerializeField] private bool showDivinationSource;
 
-    private readonly List<Image> runtimeCardImages = new List<Image>();
+    private readonly List<GameObject> runtimeCardObjects = new List<GameObject>();
 
     public void SetData(
         IReadOnlyList<Sprite> cardSprites,
         string cardsName,
         string description,
         string source,
-        string time)
+        string time,
+        bool? showSourceOverride = null)
     {
         ResolveReferences();
         SetCardSprites(cardSprites);
 
         if (cardName != null) cardName.text = cardsName ?? string.Empty;
         if (divinationDesText != null) divinationDesText.text = description ?? string.Empty;
-        SetDivinationSource(source);
+        SetDivinationSource(source, showSourceOverride);
         if (divinationTimeText != null) divinationTimeText.text = time ?? string.Empty;
 
         RebuildLayout();
@@ -64,8 +66,12 @@ public class DivinationItem : MonoBehaviour
 
     private void SetCardSprites(IReadOnlyList<Sprite> cardSprites)
     {
-        ClearRuntimeCardImages();
-        if (cardImage == null) return;
+        ClearRuntimeCardObjects();
+
+        GameObject template = ResolveCardTemplate();
+        if (template == null) return;
+
+        Image templateImage = ResolveCardImage(template);
 
         int count = cardSprites == null ? 0 : cardSprites.Count;
         int firstSpriteIndex = -1;
@@ -79,18 +85,20 @@ public class DivinationItem : MonoBehaviour
         }
 
         bool hasFirstSprite = firstSpriteIndex >= 0;
-        cardImage.gameObject.SetActive(hasFirstSprite);
+        template.SetActive(hasFirstSprite);
         if (hasFirstSprite)
         {
-            cardImage.sprite = cardSprites[firstSpriteIndex];
-            EnsureCardImageLayout(cardImage);
+            if (templateImage != null)
+                templateImage.sprite = cardSprites[firstSpriteIndex];
+            EnsureCardLayout(template, templateImage);
         }
         else
         {
-            cardImage.sprite = null;
+            if (templateImage != null)
+                templateImage.sprite = null;
         }
 
-        Transform parent = cardContainer != null ? cardContainer : cardImage.transform.parent;
+        Transform parent = cardContainer != null ? cardContainer : template.transform.parent;
         if (parent == null || !hasFirstSprite) return;
 
         int renderedCount = 1;
@@ -99,43 +107,79 @@ public class DivinationItem : MonoBehaviour
             Sprite sprite = cardSprites[i];
             if (sprite == null) continue;
 
-            Image clone = Instantiate(cardImage, parent);
-            clone.name = $"CardImage_{renderedCount + 1}";
-            clone.gameObject.SetActive(true);
-            clone.sprite = sprite;
-            EnsureCardImageLayout(clone);
-            runtimeCardImages.Add(clone);
+            GameObject clone = Instantiate(template, parent);
+            clone.name = $"{template.name}_{renderedCount + 1}";
+            clone.SetActive(true);
+
+            Image cloneImage = ResolveCardImage(clone);
+            if (cloneImage != null)
+                cloneImage.sprite = sprite;
+            EnsureCardLayout(clone, cloneImage);
+            runtimeCardObjects.Add(clone);
             renderedCount++;
         }
     }
 
-    private void ClearRuntimeCardImages()
+    private void ClearRuntimeCardObjects()
     {
-        for (int i = 0; i < runtimeCardImages.Count; i++)
+        for (int i = 0; i < runtimeCardObjects.Count; i++)
         {
-            Image image = runtimeCardImages[i];
-            if (image != null)
+            GameObject cardObject = runtimeCardObjects[i];
+            if (cardObject != null)
             {
-                image.gameObject.SetActive(false);
-                Destroy(image.gameObject);
+                cardObject.SetActive(false);
+                Destroy(cardObject);
             }
         }
 
-        runtimeCardImages.Clear();
+        runtimeCardObjects.Clear();
     }
 
-    private void EnsureCardImageLayout(Image image)
+    private GameObject ResolveCardTemplate()
     {
-        if (image == null) return;
+        if (cardGO != null)
+            return cardGO;
 
-        LayoutElement layoutElement = image.GetComponent<LayoutElement>();
+        if (cardImage != null)
+            return cardImage.gameObject;
+
+        Transform cardGoTransform = FindTransformByName(transform, "CardGo", "cardGO", "CardGO", "card", "Card");
+        if (cardGoTransform != null)
+        {
+            cardGO = cardGoTransform.gameObject;
+            return cardGO;
+        }
+
+        return null;
+    }
+
+    private Image ResolveCardImage(GameObject cardObject)
+    {
+        if (cardObject == null) return null;
+        if (cardImage != null && cardImage.transform.IsChildOf(cardObject.transform))
+            return cardImage;
+
+        Image image = FindImageByName(cardObject.transform, "CardImage", "cardImage");
+        if (image == null)
+            image = cardObject.GetComponentInChildren<Image>(true);
+        return image;
+    }
+
+    private void EnsureCardLayout(GameObject cardObject, Image image)
+    {
+        if (cardObject == null) return;
+
+        LayoutElement layoutElement = cardObject.GetComponent<LayoutElement>();
         if (layoutElement == null)
-            layoutElement = image.gameObject.AddComponent<LayoutElement>();
+            layoutElement = cardObject.AddComponent<LayoutElement>();
 
         if (layoutElement.preferredWidth <= 0f)
             layoutElement.preferredWidth = DefaultCardPreferredWidth;
         if (layoutElement.preferredHeight <= 0f)
             layoutElement.preferredHeight = DefaultCardPreferredHeight;
+
+        if (image != null)
+            image.preserveAspect = true;
     }
 
     private void RebuildLayout()
@@ -147,18 +191,22 @@ public class DivinationItem : MonoBehaviour
             LayoutRebuilder.ForceRebuildLayoutImmediate(selfRect);
     }
 
-    private void SetDivinationSource(string source)
+    private void SetDivinationSource(string source, bool? showSourceOverride)
     {
         if (divinationSourceText == null) return;
 
-        divinationSourceText.text = showDivinationSource ? source ?? string.Empty : string.Empty;
-        divinationSourceText.gameObject.SetActive(showDivinationSource);
+        bool shouldShow = showSourceOverride ?? showDivinationSource;
+        bool hasSource = !string.IsNullOrWhiteSpace(source);
+        divinationSourceText.text = shouldShow && hasSource ? source : string.Empty;
+        divinationSourceText.gameObject.SetActive(shouldShow && hasSource);
     }
 
     private void ResolveReferences()
     {
         if (cardContainer == null)
             cardContainer = transform.Find("CardContainer");
+        if (cardGO == null)
+            cardGO = ResolveCardTemplate();
         if (cardImage == null)
             cardImage = FindImageByName(transform, "CardImage", "cardImage");
         if (cardName == null)
@@ -205,6 +253,24 @@ public class DivinationItem : MonoBehaviour
         for (int i = 0; i < root.childCount; i++)
         {
             Image result = FindImageByName(root.GetChild(i), names);
+            if (result != null) return result;
+        }
+
+        return null;
+    }
+
+    private Transform FindTransformByName(Transform root, params string[] names)
+    {
+        if (root == null || names == null) return null;
+        for (int i = 0; i < names.Length; i++)
+        {
+            if (root.name == names[i])
+                return root;
+        }
+
+        for (int i = 0; i < root.childCount; i++)
+        {
+            Transform result = FindTransformByName(root.GetChild(i), names);
             if (result != null) return result;
         }
 

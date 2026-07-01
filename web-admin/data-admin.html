@@ -796,6 +796,9 @@
       font-size: 13px;
     }
 
+    .status.ok { color: var(--green); }
+    .status.warn { color: var(--red); }
+
     .mono {
       font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
       font-size: 12px;
@@ -1581,6 +1584,21 @@
             <div id="authReconcileSummary" class="status">尚未扫描 Auth 用户。</div>
             <div id="authReconcileList" class="section-list"></div>
           </div>
+          <div class="panel stack">
+            <div class="section-title-row">
+              <div>
+                <div class="strong">删除账号回收站</div>
+                <div class="muted">用户删除账号后保留 90 天，管理员可在过期前恢复。</div>
+              </div>
+              <div class="row">
+                <input id="deletedAccountSearchInput" placeholder="UID / 邮箱 / 用户名">
+                <button id="loadDeletedAccountsButton" type="button">查看删除账号</button>
+                <button id="clearDeletedAccountsButton" type="button" class="secondary">清空</button>
+              </div>
+            </div>
+            <div id="deletedAccountsSummary" class="status">尚未加载删除账号。</div>
+            <div id="deletedAccountsList" class="section-list"></div>
+          </div>
         </section>
 
         <section id="membershipModule" class="module">
@@ -1894,9 +1912,10 @@
         <label>出生时间<input name="birthTime" type="time"></label>
         <label class="full">出生地址/地区<input name="city" placeholder="城市 / 地区"></label>
         <label class="full">个人简介<textarea name="bio" style="min-height: 100px;" placeholder="可留空"></textarea></label>
+        <div id="editUserStatus" class="status full" aria-live="polite"></div>
       </div>
       <div class="row">
-        <button type="submit">保存资料</button>
+        <button type="submit" id="editUserSubmitButton">保存资料</button>
         <button type="button" class="secondary" data-close-dialog="editUserDialog">取消</button>
       </div>
     </form>
@@ -1917,6 +1936,28 @@
       <div class="row">
         <button type="submit">确认赋予</button>
         <button type="button" class="secondary" data-close-dialog="grantProDialog">取消</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="resetDailyOracleDialog">
+    <form id="resetDailyOracleForm" class="dialog-body" method="dialog">
+      <div class="dialog-head">
+        <h2>重置今日神谕次数</h2>
+        <button type="button" class="ghost icon" data-close-dialog="resetDailyOracleDialog">×</button>
+      </div>
+      <input name="uid" type="hidden">
+      <div id="resetDailyOracleTarget" class="status"></div>
+      <div class="form-grid">
+        <label class="full">原因<input name="reason" value="管理员重置今日神谕次数"></label>
+        <div class="status full">
+          提交后会清空该用户今天的神谕使用次数，并删除今天已保存的每日神谕记录。
+        </div>
+        <div id="resetDailyOracleStatus" class="status full" aria-live="polite"></div>
+      </div>
+      <div class="row">
+        <button type="submit" id="resetDailyOracleSubmitButton">确认重置</button>
+        <button type="button" class="secondary" data-close-dialog="resetDailyOracleDialog">取消</button>
       </div>
     </form>
   </dialog>
@@ -1970,9 +2011,10 @@
         <div class="status full">
           会写入 relationship_divinations，并触发接收方的双人占卜邀请推送。
         </div>
+        <div id="sendRelationshipInviteStatus" class="status full" aria-live="polite"></div>
       </div>
       <div class="row">
-        <button type="submit">发送邀请</button>
+        <button type="submit" id="sendRelationshipInviteSubmitButton">发送邀请</button>
         <button type="button" class="secondary" data-close-dialog="sendRelationshipInviteDialog">取消</button>
       </div>
     </form>
@@ -2146,6 +2188,7 @@
       modelUsageDays: 7,
       modelUsageAction: "",
       modelUsageOutcome: "",
+      lastRelationshipInvite: null,
       users: [],
       userListMeta: null,
       userDetail: null,
@@ -2156,6 +2199,12 @@
         scannedCount: 0,
         missingCount: 0,
         onlyMissing: true,
+      },
+      deletedAccounts: {
+        items: [],
+        loaded: false,
+        q: "",
+        restoreWindowDays: 90,
       },
       membership: null,
       feedbackStatus: "new",
@@ -2467,6 +2516,14 @@
       append: true,
     }));
     $("authOnlyMissingCheckbox").addEventListener("change", () => loadAuthReconcile({ reset: true }));
+    $("loadDeletedAccountsButton").addEventListener("click", () => loadDeletedAccounts($("deletedAccountSearchInput").value.trim()));
+    $("deletedAccountSearchInput").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") loadDeletedAccounts($("deletedAccountSearchInput").value.trim());
+    });
+    $("clearDeletedAccountsButton").addEventListener("click", () => {
+      $("deletedAccountSearchInput").value = "";
+      loadDeletedAccounts("");
+    });
     $("membershipSearchButton").addEventListener("click", () => loadMembership($("membershipSearchInput").value.trim()));
     $("membershipClearButton").addEventListener("click", clearMembership);
     $("refreshFeedbackButton").addEventListener("click", loadFeedback);
@@ -2548,7 +2605,18 @@
       const formElement = event.currentTarget;
       const form = new FormData(formElement);
       const payload = Object.fromEntries(form.entries());
+      const originalPhotoUrl = formElement.dataset.originalPhotoUrl || "";
+      const photoUrl = String(payload.photoUrl || "").trim();
+      const submitButton = $("editUserSubmitButton");
+      const statusElement = $("editUserStatus");
+      if (!photoUrl && originalPhotoUrl.startsWith("data:image/")) {
+        delete payload.photoUrl;
+      }
       try {
+        submitButton.disabled = true;
+        submitButton.textContent = "保存中...";
+        statusElement.className = "status full";
+        statusElement.textContent = "正在保存玩家资料，请稍等。";
         await callFunction("/adminUpdateUserProfile", {
           method: "POST",
           body: JSON.stringify(payload),
@@ -2557,7 +2625,12 @@
         await refreshCurrentDetail(payload.uid);
         showMessage("玩家资料已保存", "ok");
       } catch (error) {
+        statusElement.className = "status warn full";
+        statusElement.textContent = error.message || "保存失败，请检查资料格式。";
         showMessage(error.message, "warn");
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = "保存资料";
       }
     });
 
@@ -2577,6 +2650,43 @@
         showMessage("已赋予 Pro", "ok");
       } catch (error) {
         showMessage(error.message, "warn");
+      }
+    });
+
+    $("resetDailyOracleForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formElement = event.currentTarget;
+      const form = new FormData(formElement);
+      const payload = Object.fromEntries(form.entries());
+      const submitButton = $("resetDailyOracleSubmitButton");
+      const statusElement = $("resetDailyOracleStatus");
+      try {
+        submitButton.disabled = true;
+        submitButton.textContent = "重置中...";
+        statusElement.className = "status full";
+        statusElement.textContent = "正在重置今日神谕次数，请稍等。";
+        const result = await callFunction("/adminResetDailyOracleUsage", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        $("resetDailyOracleDialog").close();
+        formElement.reset();
+        if (result.bundle) {
+          state.userDetail = result.bundle;
+          renderUserDetail(state.userDetail);
+          await loadUsers($("userSearchInput").value.trim());
+        } else {
+          await refreshCurrentDetail(payload.uid);
+        }
+        const docCount = Array.isArray(result.resetDocs) ? result.resetDocs.length : 0;
+        showMessage(`已重置今日神谕次数，处理 ${docCount} 个用量文档`, "ok");
+      } catch (error) {
+        statusElement.className = "status warn full";
+        statusElement.textContent = error.message || "重置失败，请稍后再试。";
+        showMessage(error.message, "warn");
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = "确认重置";
       }
     });
 
@@ -2608,19 +2718,27 @@
       const payload = Object.fromEntries(form.entries());
       payload.ensureFriends = form.get("ensureFriends") === "on";
       payload.allowDuplicate = form.get("allowDuplicate") === "on";
-      const confirmLines = [
-        `发起用户：${payload.uid}`,
-        `接收好友：${payload.friendSearch || payload.friendUid || payload.receiverUid || ""}`,
-        `问题：${payload.question || "默认问题"}`,
-        `确保好友关系：${payload.ensureFriends ? "是" : "否"}`,
-        `允许重复：${payload.allowDuplicate ? "是" : "否"}`,
-      ];
-      if (!confirmSensitiveAction("发送双人占卜邀请", confirmLines.join("\n"))) return;
+      const submitButton = $("sendRelationshipInviteSubmitButton");
+      const statusElement = $("sendRelationshipInviteStatus");
+      if (payload.allowDuplicate && !confirm("你勾选了允许重复创建未完成邀请，确认继续发送吗？")) return;
       try {
+        submitButton.disabled = true;
+        submitButton.textContent = "发送中...";
+        statusElement.className = "status full";
+        statusElement.textContent = "正在发送邀请，请稍等。";
         const result = await callFunction("/adminSendRelationshipInvite", {
           method: "POST",
           body: JSON.stringify(payload),
         });
+        state.lastRelationshipInvite = {
+          uid: payload.uid,
+          receiverUid: result.receiverUid || payload.friendSearch || "",
+          receiverName: result.receiverName || "",
+          readingId: result.readingId || "",
+          sentAt: new Date().toISOString(),
+        };
+        statusElement.className = "status ok full";
+        statusElement.textContent = `已发送给 ${result.receiverName || result.receiverUid || payload.friendSearch}，正在关闭窗口。`;
         $("sendRelationshipInviteDialog").close();
         formElement.reset();
         if (result.bundle) {
@@ -2632,7 +2750,12 @@
         }
         showMessage(`已发送双人占卜邀请：${result.receiverName || result.receiverUid}`, "ok");
       } catch (error) {
+        statusElement.className = "status warn full";
+        statusElement.textContent = error.message || "发送失败，请检查接收好友是否正确。";
         showMessage(error.message, "warn");
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = "发送邀请";
       }
     });
 
@@ -4959,6 +5082,108 @@
       `;
     }
 
+    async function loadDeletedAccounts(term = "") {
+      setLoading($("deletedAccountsList"), "加载删除账号...");
+      $("loadDeletedAccountsButton").disabled = true;
+      try {
+        const params = new URLSearchParams({ limit: "50" });
+        if (term) params.set("q", term);
+        const data = await callFunction(`/adminDeletedAccounts?${params.toString()}`);
+        state.deletedAccounts = {
+          items: data.items || [],
+          loaded: true,
+          q: term,
+          restoreWindowDays: data.restoreWindowDays || 90,
+        };
+        renderDeletedAccounts();
+      } catch (error) {
+        setInlineError($("deletedAccountsList"), error.message || "加载删除账号失败");
+        showMessage(error.message, "warn");
+      } finally {
+        $("loadDeletedAccountsButton").disabled = false;
+      }
+    }
+
+    function renderDeletedAccounts() {
+      const data = state.deletedAccounts;
+      if (!data.loaded) {
+        $("deletedAccountsSummary").textContent = "尚未加载删除账号。";
+        $("deletedAccountsList").innerHTML = "";
+        return;
+      }
+      $("deletedAccountsSummary").textContent = [
+        `恢复窗口 ${data.restoreWindowDays || 90} 天`,
+        data.q ? `搜索：${data.q}` : "最近删除账号",
+        `当前 ${data.items.length} 条`,
+      ].join(" · ");
+      if (!data.items.length) {
+        $("deletedAccountsList").innerHTML = `<div class="empty">没有可恢复的删除账号</div>`;
+        return;
+      }
+      $("deletedAccountsList").innerHTML = data.items.map(renderDeletedAccountRow).join("");
+      $("deletedAccountsList").querySelectorAll("[data-restore-account-uid]").forEach((button) => {
+        button.addEventListener("click", () => restoreDeletedAccount(button.dataset.restoreAccountUid));
+      });
+    }
+
+    function renderDeletedAccountRow(item) {
+      const title = item.displayName || item.email || item.uid;
+      const tone = item.canRestore ? "warn" : "danger";
+      const status = item.canRestore
+        ? `剩余 ${Number(item.daysRemaining || 0)} 天`
+        : item.status === "restored" ? "已恢复" : "已过期";
+      return `
+        <div class="list-row">
+          <div class="section-title-row">
+            <div>
+              <div class="strong">${escapeHtml(title)}</div>
+              <div class="muted mono">${escapeHtml(item.uid)}</div>
+            </div>
+            <span class="pill ${tone}">${escapeHtml(status)}</span>
+          </div>
+          <div class="compact-fields">
+            <div class="compact-line"><span class="compact-label">邮箱</span><span class="compact-value">${escapeHtml(item.email || "未绑定")}</span></div>
+            <div class="compact-line"><span class="compact-label">删除时间</span><span class="compact-value">${escapeHtml(formatDate(item.deletedAt) || "无")}</span></div>
+            <div class="compact-line"><span class="compact-label">过期时间</span><span class="compact-value">${escapeHtml(formatDate(item.expiresAt) || "无")}</span></div>
+            <div class="compact-line"><span class="compact-label">归档文档</span><span class="compact-value">${escapeHtml(`${item.snapshotCount || 0} 个`)}</span></div>
+          </div>
+          <div class="row">
+            <button type="button" ${item.canRestore ? "" : "disabled"} data-restore-account-uid="${escapeAttr(item.uid)}">恢复账号</button>
+          </div>
+        </div>
+      `;
+    }
+
+    async function restoreDeletedAccount(uid) {
+      if (!uid) return;
+      const password = prompt("恢复后的邮箱登录密码（可留空自动生成临时密码）", "");
+      if (password === null) return;
+      const reason = prompt("恢复账号原因", "管理员恢复三个月内删除的账号");
+      if (reason === null) return;
+      if (!confirmSensitiveAction(
+        "恢复删除账号",
+        `UID：${uid}\n${password ? "将使用管理员填写的新密码" : "将自动生成临时密码"}\n原因：${reason || "无"}`,
+      )) return;
+      try {
+        const result = await callFunction("/adminRestoreDeletedAccount", {
+          method: "POST",
+          body: JSON.stringify({ uid, password, reason }),
+        });
+        await loadDeletedAccounts($("deletedAccountSearchInput").value.trim());
+        await loadUsers($("userSearchInput").value.trim());
+        if (result.bundle) {
+          state.userDetail = result.bundle;
+          renderUserDetail(state.userDetail);
+        }
+        const passwordText = result.temporaryPassword
+          ? `，临时密码：${result.temporaryPassword}`
+          : "";
+        showMessage(`账号已恢复，写回 ${result.restoredDocs || 0} 个文档${passwordText}`, "ok");
+      } catch (error) {
+        showMessage(error.message, "warn");
+      }
+    }
+
     async function repairAuthUserProfile(uid) {
       if (!uid) return;
       if (!confirmSensitiveAction("补建 Firestore 用户资料", `目标 UID：${uid}\n只会补建缺失的 users/public_profiles，不覆盖已有资料。`)) return;
@@ -5069,7 +5294,7 @@
       $("detailEditButton").addEventListener("click", () => openEditUserDialog(detail));
       $("detailGrantButton").addEventListener("click", () => openGrantDialog(detail.uid, pick(data, ["displayName", "email"]) || detail.uid));
       $("detailRevokeButton").addEventListener("click", () => revokePro(detail.uid));
-      $("detailResetDailyOracleButton").addEventListener("click", () => resetDailyOracleUsage(detail.uid));
+      $("detailResetDailyOracleButton").addEventListener("click", () => openResetDailyOracleDialog(detail));
       $("detailRepairAuthButton")?.addEventListener("click", () => repairAuthUserProfile(detail.uid));
       $("detailPaymentButton").addEventListener("click", async () => {
         await loadModule("membership");
@@ -5140,6 +5365,7 @@
           <button type="button" id="seedTestFriendButton" class="secondary">生成单个测试好友</button>
         </div>
       `;
+      const inviteNotice = renderRelationshipInviteNotice();
       if (!friends.length && !pendingRequests.length && !deletedFriends.length) {
         return `
           <div class="stack">
@@ -5148,6 +5374,7 @@
               <span class="pill">真实 0 / 虚拟 0 / 待处理 0</span>
             </div>
             ${actions}
+            ${inviteNotice}
             <div class="empty">暂无好友记录</div>
           </div>
         `;
@@ -5159,6 +5386,7 @@
             <span class="pill">真实 ${escapeHtml(realCount)} / 虚拟 ${escapeHtml(virtualCount)} / 待处理 ${escapeHtml(pendingRequests.length)}</span>
           </div>
           ${actions}
+          ${inviteNotice}
           ${pendingRequests.length ? renderPendingFriendRequests(pendingRequests) : ""}
           ${friends.length ? `<div class="friend-list">${friends.map((friend, index) => renderFriendCard(friend, index)).join("")}</div>` : `<div class="empty">暂无正式好友</div>`}
           ${deletedFriends.length ? renderDeletedFriendArchives(deletedFriends) : ""}
@@ -5167,6 +5395,14 @@
           </div>
         </div>
       `;
+    }
+
+    function renderRelationshipInviteNotice() {
+      const invite = state.lastRelationshipInvite;
+      if (!invite || invite.uid !== state.userDetail?.uid) return "";
+      const receiver = invite.receiverName || invite.receiverUid || "接收方";
+      const readingId = invite.readingId ? ` · 邀请 ID ${invite.readingId}` : "";
+      return `<div class="status ok">已发送双人占卜邀请给 ${escapeHtml(receiver)}${escapeHtml(readingId)}</div>`;
     }
 
     function openAddRealFriendDialog(detail) {
@@ -5196,6 +5432,10 @@
       const firstRealFriend = (detail.social?.realFriends || [])[0];
       form.elements.friendSearch.value = firstRealFriend?.uid || "";
       form.elements.question.value = "";
+      $("sendRelationshipInviteStatus").className = "status full";
+      $("sendRelationshipInviteStatus").textContent = "";
+      $("sendRelationshipInviteSubmitButton").disabled = false;
+      $("sendRelationshipInviteSubmitButton").textContent = "发送邀请";
       $("sendRelationshipInviteTarget").textContent = `${name} · ${detail.uid}`;
       $("sendRelationshipInviteDialog").showModal();
     }
@@ -6805,6 +7045,7 @@
         "user.create": "手动注册用户",
         "user.profile_update": "编辑玩家资料",
         "user.auth_repair": "补建 Auth 用户资料",
+        "user.account_restore": "恢复删除账号",
         "friend.real_add": "添加真实好友",
         "friend.virtual_add": "添加虚拟好友",
         "friend.restore_deleted": "恢复删除好友",
@@ -6979,11 +7220,25 @@
       form.reset();
       form.elements.uid.value = detail.uid;
       form.elements.displayName.value = pick(data, ["displayName", "name", "nickname"]) || detail.auth?.displayName || "";
-      form.elements.photoUrl.value = data.photoUrl || data.photoURL || detail.auth?.photoUrl || "";
+      const photoUrl = data.photoUrl || data.photoURL || detail.auth?.photoUrl || detail.auth?.photoURL || "";
+      form.dataset.originalPhotoUrl = photoUrl || "";
+      if (String(photoUrl).startsWith("data:image/")) {
+        form.elements.photoUrl.value = "";
+        form.elements.photoUrl.placeholder = "当前头像是内嵌图片；留空保留，输入 https://... 可替换";
+        $("editUserStatus").className = "status full";
+        $("editUserStatus").textContent = "当前头像是客户端上传的内嵌图片，留空会保留原头像。";
+      } else {
+        form.elements.photoUrl.value = photoUrl;
+        form.elements.photoUrl.placeholder = "https://...";
+        $("editUserStatus").className = "status full";
+        $("editUserStatus").textContent = "";
+      }
       form.elements.birthday.value = data.birthday || "";
       form.elements.birthTime.value = data.birthTime || "";
       form.elements.city.value = data.city || data.address || "";
       form.elements.bio.value = data.bio || "";
+      $("editUserSubmitButton").disabled = false;
+      $("editUserSubmitButton").textContent = "保存资料";
       const label = [
         pick(data, ["displayName", "email"]) || detail.auth?.email || "未命名用户",
         detail.uid,
@@ -6998,6 +7253,21 @@
       $("grantProDialog").showModal();
     }
 
+    function openResetDailyOracleDialog(detail) {
+      const data = detail.user?.data || {};
+      const name = pick(data, ["displayName", "email"]) || detail.uid;
+      const form = $("resetDailyOracleForm");
+      form.reset();
+      form.elements.uid.value = detail.uid;
+      form.elements.reason.value = "管理员重置今日神谕次数";
+      $("resetDailyOracleTarget").textContent = `${name} · ${detail.uid}`;
+      $("resetDailyOracleStatus").className = "status full";
+      $("resetDailyOracleStatus").textContent = "";
+      $("resetDailyOracleSubmitButton").disabled = false;
+      $("resetDailyOracleSubmitButton").textContent = "确认重置";
+      $("resetDailyOracleDialog").showModal();
+    }
+
     async function revokePro(uid) {
       const reason = prompt("取消人工 Pro 的原因", "客服调整");
       if (reason === null) return;
@@ -7009,32 +7279,6 @@
         });
         await refreshCurrentDetail(uid);
         showMessage("已取消人工 Pro", "ok");
-      } catch (error) {
-        showMessage(error.message, "warn");
-      }
-    }
-
-    async function resetDailyOracleUsage(uid) {
-      const reason = prompt("重置今日神谕次数的原因", "管理员重置今日神谕次数");
-      if (reason === null) return;
-      if (!confirmSensitiveAction(
-        "重置今日神谕次数",
-        `目标 UID：${uid}\n将清空今日神谕次数，并删除今天已保存的每日神谕记录。\n原因：${reason || "无"}`,
-      )) return;
-      try {
-        const result = await callFunction("/adminResetDailyOracleUsage", {
-          method: "POST",
-          body: JSON.stringify({ uid, reason }),
-        });
-        if (result.bundle) {
-          state.userDetail = result.bundle;
-          renderUserDetail(state.userDetail);
-          await loadUsers($("userSearchInput").value.trim());
-        } else {
-          await refreshCurrentDetail(uid);
-        }
-        const docCount = Array.isArray(result.resetDocs) ? result.resetDocs.length : 0;
-        showMessage(`已重置今日神谕次数，处理 ${docCount} 个用量文档`, "ok");
       } catch (error) {
         showMessage(error.message, "warn");
       }

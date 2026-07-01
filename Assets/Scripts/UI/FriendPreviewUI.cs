@@ -32,12 +32,18 @@ public class FriendPreviewUI : WindowBase
 
 	private static FriendDataManager.FriendData sPendingFriend;
 	private static FirestoreManager.UserSearchResult sPendingUser;
+	private static FriendDataManager.InviteData sPendingInvite;
+	private static RelationshipDivinationRecord sPendingRelationshipInvite;
 	private static bool sPendingFromAddFlow;
 
 	private FriendDataManager.FriendData currentFriend;
 	private FirestoreManager.UserSearchResult currentUser;
+	private FriendDataManager.InviteData currentInvite;
+	private RelationshipDivinationRecord currentRelationshipInvite;
 	private bool currentFromAddFlow;
+	private bool currentFromRequestFlow;
 	private bool isSendingRequest;
+	private bool isAcceptingRelationshipInvite;
 	private int requestVersion;
 	private int fullHistoryRequestVersion;
 	private Sprite defaultAvatarSprite;
@@ -82,7 +88,11 @@ public class FriendPreviewUI : WindowBase
 		currentFriend = sPendingFriend;
 		currentUser = sPendingUser;
 		currentFromAddFlow = sPendingFromAddFlow;
+		currentInvite = sPendingInvite;
+		currentRelationshipInvite = sPendingRelationshipInvite;
+		currentFromRequestFlow = currentInvite != null;
 		isSendingRequest = false;
+		isAcceptingRelationshipInvite = false;
 		isDeletingFriend = false;
 		requestVersion++;
 
@@ -101,6 +111,7 @@ public class FriendPreviewUI : WindowBase
 		requestVersion++;
 		fullHistoryRequestVersion++;
 		isSendingRequest = false;
+		isAcceptingRelationshipInvite = false;
 		isDeletingFriend = false;
 		StopRebuildHistoryLayoutCoroutine();
 		HideSettingPanel(true);
@@ -126,6 +137,31 @@ public class FriendPreviewUI : WindowBase
 
 		sPendingFriend = null;
 		sPendingUser = user;
+		sPendingInvite = null;
+		sPendingRelationshipInvite = null;
+		sPendingFromAddFlow = true;
+		UIModule.Instance.PopUpWindow<FriendPreviewUI>();
+	}
+
+	public static void Show(FriendDataManager.InviteData invite)
+	{
+		if (invite == null || string.IsNullOrWhiteSpace(invite.firebaseUid))
+		{
+			ToastManager.ShowToast("好友请求数据不完整");
+			return;
+		}
+
+		sPendingFriend = null;
+		sPendingInvite = invite;
+		sPendingRelationshipInvite = null;
+		sPendingUser = new FirestoreManager.UserSearchResult
+		{
+			uid = invite.firebaseUid,
+			displayName = invite.name,
+			email = invite.email,
+			photoUrl = invite.photoUrl,
+			isSelf = false
+		};
 		sPendingFromAddFlow = true;
 		UIModule.Instance.PopUpWindow<FriendPreviewUI>();
 	}
@@ -140,6 +176,24 @@ public class FriendPreviewUI : WindowBase
 
 		sPendingFriend = friend;
 		sPendingUser = null;
+		sPendingInvite = null;
+		sPendingRelationshipInvite = null;
+		sPendingFromAddFlow = false;
+		UIModule.Instance.PopUpWindow<FriendPreviewUI>();
+	}
+
+	public static void Show(FriendDataManager.FriendData friend, RelationshipDivinationRecord relationshipInvite)
+	{
+		if (friend == null)
+		{
+			ToastManager.ShowToast("好友资料不完整");
+			return;
+		}
+
+		sPendingFriend = friend;
+		sPendingUser = null;
+		sPendingInvite = null;
+		sPendingRelationshipInvite = relationshipInvite;
 		sPendingFromAddFlow = false;
 		UIModule.Instance.PopUpWindow<FriendPreviewUI>();
 	}
@@ -607,7 +661,11 @@ public class FriendPreviewUI : WindowBase
 				if (hasEntry)
 				{
 					FriendPreviewHistoryEntry entry = historyEntries[i];
-					item.SetData(entry.cardSprites, entry.cardNames, entry.description, entry.source, entry.time);
+					item.SetData(entry.cardSprites, entry.cardNames, entry.description, entry.source, entry.time, entry.showSource);
+					FriendPreviewHistoryEntry capturedEntry = entry;
+					item.SetClickAction(capturedEntry.detailRecord != null
+						? () => OpenHistoryDetail(capturedEntry)
+						: null);
 					visibleCount++;
 				}
 				else
@@ -619,6 +677,14 @@ public class FriendPreviewUI : WindowBase
 
 		SetHistoryPanelVisible(true);
 		RequestRebuildHistoryLayout();
+	}
+
+	private void OpenHistoryDetail(FriendPreviewHistoryEntry entry)
+	{
+		if (entry?.detailRecord == null)
+			return;
+
+		TarotDetailedUI.Show(entry.detailRecord, GetDisplayName());
 	}
 
 	private void SetHistoryPanelVisible(bool visible)
@@ -844,7 +910,7 @@ public class FriendPreviewUI : WindowBase
 
 	private void LoadPendingSentRequestsForButton()
 	{
-		if (!currentFromAddFlow || FirestoreManager.Instance == null)
+		if (!currentFromAddFlow || currentFromRequestFlow || FirestoreManager.Instance == null)
 			return;
 
 		int requestId = requestVersion;
@@ -871,6 +937,13 @@ public class FriendPreviewUI : WindowBase
 	{
 		if (uiComponent?.AddButton == null) return;
 
+		if (IsRelationshipInvitationPreview())
+		{
+			uiComponent.AddButton.gameObject.SetActive(true);
+			RefreshRelationshipInvitationButton();
+			return;
+		}
+
 		uiComponent.AddButton.gameObject.SetActive(currentFromAddFlow);
 		if (!currentFromAddFlow)
 			return;
@@ -879,8 +952,26 @@ public class FriendPreviewUI : WindowBase
 		bool hasUid = !string.IsNullOrWhiteSpace(uid);
 		bool isSelf = IsCurrentUserSelf(uid);
 		bool alreadyFriend = IsAcceptedFriend(uid);
-		bool alreadyRequested = hasUid && pendingSentUserIds.Contains(uid);
 		bool blocked = IsBlockedUser(uid);
+
+		if (currentFromRequestFlow)
+		{
+			bool hasInvite = currentInvite != null && !string.IsNullOrWhiteSpace(currentInvite.firebaseUid);
+			bool canAccept = hasInvite && hasUid && !isSelf && !alreadyFriend && !blocked && !isSendingRequest;
+			uiComponent.AddButton.interactable = canAccept;
+			if (uiComponent.AddLabelText != null)
+			{
+				uiComponent.AddLabelText.text = isSendingRequest ? "同意中"
+					: !hasInvite || !hasUid ? "不可添加"
+					: isSelf ? "自己"
+					: alreadyFriend ? "已添加"
+					: blocked ? "已屏蔽"
+					: "同意";
+			}
+			return;
+		}
+
+		bool alreadyRequested = hasUid && pendingSentUserIds.Contains(uid);
 		bool canAdd = hasUid && !isSelf && !alreadyFriend && !alreadyRequested && !blocked && !isSendingRequest;
 
 		uiComponent.AddButton.interactable = canAdd;
@@ -901,6 +992,12 @@ public class FriendPreviewUI : WindowBase
 		if (uiComponent?.inviteBtn == null)
 			return;
 
+		if (IsRelationshipInvitationPreview())
+		{
+			uiComponent.inviteBtn.gameObject.SetActive(false);
+			return;
+		}
+
 		FriendDataManager.FriendData targetFriend = GetRelationshipTargetFriend();
 		bool canShow = targetFriend != null;
 		bool canUse = canShow && RelationshipDivinationFlow.CanUseTwoPersonDivination(targetFriend, false);
@@ -919,9 +1016,61 @@ public class FriendPreviewUI : WindowBase
 		}
 	}
 
+	private void RefreshRelationshipInvitationButton()
+	{
+		if (uiComponent?.AddButton == null)
+			return;
+
+		RelationshipDivinationRecord record = currentRelationshipInvite;
+		string currentUid = RelationshipDivinationFlow.GetCurrentUid();
+		bool hasRecord = record != null;
+		bool expired = hasRecord && RelationshipDivinationFlow.IsInviteExpired(record);
+		bool participant = IsRelationshipParticipant(record, currentUid);
+		bool canReveal = hasRecord && !expired && record.CanCurrentUserReveal(currentUid);
+		bool canOpen = hasRecord && !record.IsCancelled && !expired && participant;
+
+		string label = isAcceptingRelationshipInvite ? "接受中"
+			: !hasRecord ? "不可接受"
+			: record.IsCancelled ? "已取消"
+			: expired ? "已过期"
+			: record.IsCompleted ? "查看结果"
+			: record.IsCurrentUserReceiver(currentUid) && record.receiverJoined && canReveal ? "抽牌"
+			: canReveal && record.IsCurrentUserReceiver(currentUid) ? "接受"
+			: canReveal ? "翻开我的牌"
+			: "进入占卜";
+
+		uiComponent.AddButton.interactable = canOpen && !isAcceptingRelationshipInvite;
+		if (uiComponent.AddLabelText != null)
+			uiComponent.AddLabelText.text = label;
+	}
+
+	private bool IsRelationshipInvitationPreview()
+	{
+		return currentRelationshipInvite != null;
+	}
+
+	private bool IsRelationshipParticipant(RelationshipDivinationRecord record, string currentUid)
+	{
+		return record != null
+			&& (record.isLocalOnly
+				|| record.IsCurrentUserInitiator(currentUid)
+				|| record.IsCurrentUserReceiver(currentUid));
+	}
+
 	private bool CanSubmitAddRequest()
 	{
 		string uid = CurrentUid();
+		if (currentFromRequestFlow)
+		{
+			return currentInvite != null
+				&& !string.IsNullOrWhiteSpace(currentInvite.firebaseUid)
+				&& !string.IsNullOrWhiteSpace(uid)
+				&& !IsCurrentUserSelf(uid)
+				&& !IsAcceptedFriend(uid)
+				&& !IsBlockedUser(uid)
+				&& !isSendingRequest;
+		}
+
 		return !string.IsNullOrWhiteSpace(uid)
 			&& !IsCurrentUserSelf(uid)
 			&& !IsAcceptedFriend(uid)
@@ -1137,6 +1286,18 @@ public class FriendPreviewUI : WindowBase
 	}
 	public void OnAddButtonClick()
 	{
+		if (IsRelationshipInvitationPreview())
+		{
+			AcceptCurrentRelationshipInvitation();
+			return;
+		}
+
+		if (currentFromRequestFlow)
+		{
+			AcceptCurrentFriendRequest();
+			return;
+		}
+
 		if (!CanSubmitAddRequest())
 		{
 			RefreshAddButton();
@@ -1162,6 +1323,121 @@ public class FriendPreviewUI : WindowBase
 
 			RefreshAddButton();
 			ToastManager.ShowToast(success ? $"已发送给 {GetDisplayName()}" : "发送失败，请稍后再试");
+		});
+	}
+
+	private void AcceptCurrentRelationshipInvitation()
+	{
+		RelationshipDivinationRecord record = currentRelationshipInvite;
+		if (record == null || isAcceptingRelationshipInvite)
+		{
+			RefreshAddButton();
+			return;
+		}
+
+		string currentUid = RelationshipDivinationFlow.GetCurrentUid();
+		if (!IsRelationshipParticipant(record, currentUid))
+		{
+			ToastManager.ShowToast("没有权限处理这次邀请");
+			RefreshAddButton();
+			return;
+		}
+
+		if (record.IsCancelled)
+		{
+			ToastManager.ShowToast("这次双人占卜邀请已取消");
+			RefreshAddButton();
+			return;
+		}
+
+		if (RelationshipDivinationFlow.IsInviteExpired(record))
+		{
+			ToastManager.ShowToast("这次双人占卜邀请已过期");
+			RefreshAddButton();
+			return;
+		}
+
+		if (record.IsCompleted || record.receiverJoined || !record.CanCurrentUserReveal(currentUid))
+		{
+			OpenRelationshipInvitation(record);
+			return;
+		}
+
+		RelationshipDivinationFirestore service = RelationshipDivinationFlow.GetOrCreateService();
+		if (service == null)
+		{
+			ToastManager.ShowToast("关系占卜服务初始化中，请稍后再试");
+			return;
+		}
+
+		isAcceptingRelationshipInvite = true;
+		RefreshAddButton();
+		service.JoinInvite(record, updated =>
+		{
+			isAcceptingRelationshipInvite = false;
+			if (updated == null)
+			{
+				ToastManager.ShowToast("接受邀请失败，请稍后再试");
+				RefreshAddButton();
+				return;
+			}
+
+			currentRelationshipInvite = updated;
+			sPendingRelationshipInvite = updated;
+			if (!updated.receiverJoined && !updated.IsCompleted)
+			{
+				RefreshAddButton();
+				return;
+			}
+
+			ToastManager.ShowToast("已接受邀请");
+			OpenRelationshipInvitation(updated);
+		}, false);
+	}
+
+	private void OpenRelationshipInvitation(RelationshipDivinationRecord record)
+	{
+		if (record == null)
+			return;
+
+		FriendDataManager.FriendData friend = currentFriend
+			?? RelationshipDivinationFlow.FindFriendForRecord(record);
+		HideWindow();
+		RelationshipDivinationFlow.ShowRecord(record, friend);
+	}
+
+	private void AcceptCurrentFriendRequest()
+	{
+		if (!CanSubmitAddRequest())
+		{
+			RefreshAddButton();
+			return;
+		}
+
+		FirestoreManager firestore = FirestoreManager.Instance;
+		if (firestore == null || !firestore.IsInitialized)
+		{
+			ToastManager.ShowToast("好友服务初始化中，请稍后再试");
+			return;
+		}
+
+		FriendDataManager.InviteData invite = currentInvite;
+		isSendingRequest = true;
+		RefreshAddButton();
+		ToastManager.ShowToast($"正在接受 {GetDisplayName()} 的好友请求");
+		firestore.AcceptFriendRequest(invite, success =>
+		{
+			isSendingRequest = false;
+			if (success)
+			{
+				currentFriend = FriendDataManager.Instance != null
+					? FriendDataManager.Instance.FindRealFriendByFirebaseUid(invite.firebaseUid)
+					: currentFriend;
+				RefreshInviteButton();
+			}
+
+			RefreshAddButton();
+			ToastManager.ShowToast(success ? "已添加好友" : "接受好友请求失败");
 		});
 	}
 	public void OnViewHistoryBtnClick()
@@ -1369,11 +1645,12 @@ public class FriendPreviewUI : WindowBase
 		public List<Sprite> cardSprites = new List<Sprite>();
 		public string cardNames;
 		public string description;
-		public string source;
-		public string time;
-		public DailyOracleSummaryRecord summary;
-		public DivinationRecordData detailRecord;
-		private DateTime sortTime;
+			public string source;
+			public string time;
+			public bool showSource;
+			public DailyOracleSummaryRecord summary;
+			public DivinationRecordData detailRecord;
+			private DateTime sortTime;
 
 		public DateTime SortTime => sortTime;
 
@@ -1382,13 +1659,14 @@ public class FriendPreviewUI : WindowBase
 			return new FriendPreviewHistoryEntry
 			{
 				cardSprites = new List<Sprite>(),
-				cardNames = FirstNonEmpty(title, PrivateValueText),
-				description = FirstNonEmpty(description, PrivateValueText),
-				source = FirstNonEmpty(source, "占卜历史"),
-				time = time ?? string.Empty,
-				sortTime = DateTime.MinValue
-			};
-		}
+					cardNames = FirstNonEmpty(title, PrivateValueText),
+					description = FirstNonEmpty(description, PrivateValueText),
+					source = FirstNonEmpty(source, "占卜历史"),
+					time = time ?? string.Empty,
+					showSource = false,
+					sortTime = DateTime.MinValue
+				};
+			}
 
 		public static FriendPreviewHistoryEntry FromSummary(DailyOracleSummaryRecord summary)
 		{
@@ -1403,12 +1681,13 @@ public class FriendPreviewUI : WindowBase
 			{
 				cardSprites = sprites,
 				cardNames = cardNames,
-				description = description,
-				source = "今日占卜",
-				time = FormatHistoryDate(summary?.date),
-				summary = summary,
-				detailRecord = BuildDailyDetailRecord(summary, cardNames, description),
-				sortTime = ParseSortTime(summary?.date)
+					description = description,
+					source = "今日占卜",
+					time = FormatHistoryDate(summary?.date),
+					showSource = true,
+					summary = summary,
+					detailRecord = BuildDailyDetailRecord(summary, cardNames, description),
+					sortTime = ParseSortTime(summary?.date)
 			};
 		}
 
@@ -1432,12 +1711,13 @@ public class FriendPreviewUI : WindowBase
 			{
 				cardSprites = sprites,
 				cardNames = cardNames,
-				description = BuildRelationshipDescription(record, cardNames),
-				source = "双人关系占卜",
-				time = FormatHistoryDate(timeValue),
-				detailRecord = record != null ? RelationshipDivinationFlow.BuildDivinationRecord(record) : null,
-				sortTime = ParseSortTime(timeValue)
-			};
+					description = BuildRelationshipDescription(record, cardNames),
+					source = "双人关系占卜",
+					time = FormatHistoryDate(timeValue),
+					showSource = true,
+					detailRecord = record != null ? RelationshipDivinationFlow.BuildDivinationRecord(record) : null,
+					sortTime = ParseSortTime(timeValue)
+				};
 		}
 
 		public static FriendPreviewHistoryEntry FromDivinationRecord(DivinationRecordData record)
@@ -1461,12 +1741,13 @@ public class FriendPreviewUI : WindowBase
 			{
 				cardSprites = sprites,
 				cardNames = cardNames,
-				description = FirstNonEmpty(record?.shortVerdict, record?.judgeContent, record?.question, "已完成一次关系占卜。"),
-				source = "双人关系占卜",
-				time = FormatHistoryDate(record?.createdAt),
-				detailRecord = record,
-				sortTime = ParseSortTime(record?.createdAt)
-			};
+					description = FirstNonEmpty(record?.shortVerdict, record?.judgeContent, record?.question, "已完成一次关系占卜。"),
+					source = "双人关系占卜",
+					time = FormatHistoryDate(record?.createdAt),
+					showSource = true,
+					detailRecord = record,
+					sortTime = ParseSortTime(record?.createdAt)
+				};
 		}
 
 		private static DivinationRecordData BuildDailyDetailRecord(DailyOracleSummaryRecord summary, string cardNames, string description)

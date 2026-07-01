@@ -30,6 +30,7 @@ public class DrawCardUI : WindowBase
 	private const float PostShuffleFanBaseHeightRatio = -0.16f;
 	private const float PostShuffleFanRiseRatio = 0.085f;
 	private const float PostShuffleFanMaxRotation = 10.5f;
+	private const float PostShuffleFanBackgroundAlpha = 0.38f;
 	private const float DeckIntroDuration = 0.38f;
 	private const float DeckChaosDuration = 1.6f;
 	private const float DeckWeaveDuration = 2.15f;
@@ -328,7 +329,7 @@ public class DrawCardUI : WindowBase
 			_flowSequence = null;
 		});
 	}
-
+	//点击后启动洗牌动画链。
 	private void StartShuffleFromIntro()
 	{
 		if (!_isWaitingForShuffleStart || _isAnimating) return;
@@ -338,8 +339,9 @@ public class DrawCardUI : WindowBase
 		StopTapHintPulse();
 		SetIntroCardsInteractable(false);
 		SetPromptText("让牌在你的问题里重新排序", 1f);
-		PlayChaosAnimation(() => PlayWeaveAnimation(() => PlayTripleCutAnimation(() =>
-			PlayGatherAnimation(PlayFanOutFromCurrentPose))));
+		// PlayChaosAnimation(() => PlayWeaveAnimation(() => PlayTripleCutAnimation(() =>
+		// 	PlayGatherAnimation(PlayFanOutFromCurrentPose))));
+		PlayChaosAnimation(() => PlayGatherAnimation(PlayFanOutFromCurrentPose));
 	}
 
 	private void PlayChaosAnimation(Action onComplete)
@@ -511,40 +513,84 @@ public class DrawCardUI : WindowBase
 		SetPromptText("凭直觉选择一个", 1f);
 		_flowSequence?.Kill(false);
 		_flowSequence = DOTween.Sequence();
-		float dealDuration = Mathf.Max(0.1f, uiComponent.dealDuration);
-		float dealGap = Mathf.Max(0f, uiComponent.cardDealGap);
-		int visualCardCount = GetPostShuffleFanVisualCount();
+		float dealDuration = Mathf.Max(0.38f, uiComponent.dealDuration * 1.08f);
+		float dealGap = Mathf.Max(0.055f, uiComponent.cardDealGap);
+		List<int> fanOutOrder = BuildLeftToRightFanOutOrder();
 
-		AnimatePostShuffleFanBackground(visualCardCount, dealDuration);
+		FadeOutShuffleExtraCards(_flowSequence, Mathf.Max(0.18f, dealDuration * 0.72f));
 
-		for (int i = 0; i < _cardImages.Count; i++)
+		for (int orderIndex = 0; orderIndex < fanOutOrder.Count; orderIndex++)
 		{
+			int i = fanOutOrder[orderIndex];
 			Image image = _cardImages[i];
 			if (image == null) continue;
 
 			RectTransform rect = image.rectTransform;
+			DOTween.Kill(image);
+			DOTween.Kill(rect);
+
+			Vector2 sourcePosition = rect.anchoredPosition;
 			Vector2 targetPosition = GetCurrentFanPosition(i);
 			float targetRotation = GetCurrentFanRotation(i);
+			float lift = Mathf.Clamp(_viewportHeight * 0.03f, 28f, 58f);
+			Vector2 stagingPosition = Vector2.Lerp(sourcePosition, targetPosition, 0.54f) + new Vector2(0f, lift);
 			bool visibleInViewport = IsDeckCardInsideViewport(targetPosition, _deckCardScale);
 			SetDeckCardViewportVisible(image, visibleInViewport);
 
-			float startTime = i * dealGap;
-			_flowSequence.Insert(startTime, image.DOFade(1f, dealDuration * 0.55f));
-			_flowSequence.Insert(startTime, rect.DOAnchorPos(targetPosition, dealDuration).SetEase(Ease.OutBack, 1.15f));
-			_flowSequence.Insert(startTime, rect.DORotate(new Vector3(0f, 0f, targetRotation), dealDuration).SetEase(Ease.OutCubic));
-			_flowSequence.Insert(startTime, rect.DOScale(Vector3.one * _deckCardScale, dealDuration).SetEase(Ease.OutBack, 1.05f));
-		}
+			float startTime = orderIndex * dealGap;
+			float liftDuration = dealDuration * 0.42f;
+			float settleDuration = dealDuration - liftDuration;
+			Image capturedImage = image;
+			int capturedOrderIndex = orderIndex;
+			Sequence cardSequence = DOTween.Sequence();
+			cardSequence.Append(rect.DOAnchorPos(stagingPosition, liftDuration).SetEase(Ease.OutCubic));
+			cardSequence.Append(rect.DOAnchorPos(targetPosition, settleDuration).SetEase(Ease.OutQuart));
 
-		RestorePostShuffleFanSiblingOrder();
+			_flowSequence.InsertCallback(startTime, () => BringFanOutCardToTop(capturedImage, capturedOrderIndex));
+			_flowSequence.Insert(startTime, image.DOFade(1f, dealDuration * 0.45f));
+			_flowSequence.Insert(startTime, cardSequence);
+			_flowSequence.Insert(startTime, rect.DORotate(new Vector3(0f, 0f, targetRotation), dealDuration).SetEase(Ease.InOutCubic));
+			_flowSequence.Insert(startTime, rect.DOScale(Vector3.one * (_deckCardScale * 1.025f), liftDuration).SetEase(Ease.OutSine));
+			_flowSequence.Insert(startTime + liftDuration, rect.DOScale(Vector3.one * _deckCardScale, settleDuration).SetEase(Ease.OutCubic));
+		}
 
 		_flowSequence.OnComplete(() =>
 		{
-			RestorePostShuffleFanSiblingOrder();
+			ClearShuffleExtraCards();
+			RestoreCardSiblingOrder();
 			_isChoosing = true;
 			_isAnimating = false;
 			SetCardsInteractable(true);
 			_flowSequence = null;
 		});
+	}
+
+	private List<int> BuildLeftToRightFanOutOrder()
+	{
+		List<int> order = new List<int>(_cardImages.Count);
+		for (int i = 0; i < _cardImages.Count; i++)
+		{
+			if (_cardImages[i] != null)
+				order.Add(i);
+		}
+
+		order.Sort((left, right) =>
+		{
+			float leftX = GetCurrentFanPosition(left).x;
+			float rightX = GetCurrentFanPosition(right).x;
+			int xCompare = leftX.CompareTo(rightX);
+			return xCompare != 0 ? xCompare : left.CompareTo(right);
+		});
+
+		return order;
+	}
+
+	private void BringFanOutCardToTop(Image image, int orderIndex)
+	{
+		if (image == null) return;
+
+		image.rectTransform.SetAsLastSibling();
+		SetDeckCardSortingOrder(image, _cardImages.Count + 30 + orderIndex);
 	}
 
 	private void AnimatePostShuffleFanBackground(int visualCardCount, float dealDuration)
@@ -570,7 +616,7 @@ public class DrawCardUI : WindowBase
 			image.raycastTarget = false;
 
 			float startTime = slot * 0.008f;
-			_flowSequence.Insert(startTime, image.DOFade(0.92f, dealDuration * 0.45f));
+			_flowSequence.Insert(startTime, image.DOFade(PostShuffleFanBackgroundAlpha, dealDuration * 0.45f));
 			_flowSequence.Insert(startTime, rect.DOAnchorPos(targetPosition, dealDuration).SetEase(Ease.OutBack, 1.04f));
 			_flowSequence.Insert(startTime, rect.DORotate(new Vector3(0f, 0f, targetRotation), dealDuration).SetEase(Ease.OutCubic));
 			_flowSequence.Insert(startTime, rect.DOScale(Vector3.one * _deckCardScale, dealDuration).SetEase(Ease.OutBack, 1.02f));
@@ -861,15 +907,13 @@ public class DrawCardUI : WindowBase
 		Outline outline = EnsureSelectedOutline(selectedImage);
 		outline.effectColor = WithAlpha(uiComponent.selectedGlowColor, 0f);
 		ResolveSelectedCardTargetPose(selectedRect, out Vector2 targetPosition, out float targetRotationZ, out float targetScale);
+		float centerScale = ResolveCenterRevealScale(selectedRect, targetScale);
 
 		_flowSequence = DOTween.Sequence();
 		FadeOutShuffleExtraCards(_flowSequence, 0.28f);
-		float selectDuration = Mathf.Max(0.12f, uiComponent.selectDuration);
+		float centerDuration = Mathf.Max(0.12f, uiComponent.centerRevealDuration);
 		float flipHalfDuration = Mathf.Max(0.08f, uiComponent.flipDuration * 0.5f);
 		float reverseRotateDuration = Mathf.Max(0.08f, uiComponent.reverseRotateDuration);
-		float liftDuration = Mathf.Min(0.18f, selectDuration * 0.38f);
-		Vector2 liftPosition = selectedRect.anchoredPosition
-			+ new Vector2(0f, Mathf.Clamp(_viewportHeight * 0.12f, 80f, 170f));
 
 		for (int i = 0; i < _cardImages.Count; i++)
 		{
@@ -885,10 +929,6 @@ public class DrawCardUI : WindowBase
 			_flowSequence.Insert(0f, image.DOFade(0f, 0.22f));
 		}
 
-		_flowSequence.Insert(0f, selectedRect.DOAnchorPos(liftPosition, liftDuration).SetEase(Ease.OutCubic));
-		_flowSequence.Insert(liftDuration * 0.65f, selectedRect.DOAnchorPos(targetPosition, selectDuration).SetEase(Ease.InOutCubic));
-		_flowSequence.Insert(liftDuration * 0.65f, selectedRect.DORotate(new Vector3(0f, 0f, targetRotationZ), selectDuration).SetEase(Ease.InOutCubic));
-		_flowSequence.Insert(liftDuration * 0.65f, selectedRect.DOScale(Vector3.one * targetScale, selectDuration).SetEase(Ease.OutBack, 0.82f));
 		_flowSequence.Insert(0.02f, DOTween.To(
 				() => outline.effectColor,
 				value => outline.effectColor = value,
@@ -896,8 +936,10 @@ public class DrawCardUI : WindowBase
 				0.28f)
 			.SetTarget(outline));
 
-		_flowSequence.AppendCallback(() => PlaySparkBurst(selectedRect));
-		_flowSequence.AppendInterval(0.08f);
+		_flowSequence.Append(selectedRect.DOAnchorPos(targetPosition, centerDuration).SetEase(Ease.InOutCubic));
+		_flowSequence.Join(selectedRect.DORotate(new Vector3(0f, 0f, targetRotationZ), centerDuration).SetEase(Ease.InOutCubic));
+		_flowSequence.Join(selectedRect.DOScale(Vector3.one * centerScale, centerDuration).SetEase(Ease.OutBack, 0.82f));
+		AppendCenterRevealShake(_flowSequence, selectedRect, targetPosition, centerScale, targetRotationZ);
 		_flowSequence.Append(selectedRect.DORotate(new Vector3(0f, 88f, targetRotationZ), flipHalfDuration).SetEase(Ease.InCubic));
 		_flowSequence.AppendCallback(() => RevealFrontCard(selectedImage, card, upright, targetRotationZ));
 		_flowSequence.Append(selectedRect.DORotate(new Vector3(0f, 0f, targetRotationZ), flipHalfDuration).SetEase(Ease.OutCubic));
@@ -908,6 +950,53 @@ public class DrawCardUI : WindowBase
 		if (punchRect != null)
 			_flowSequence.Append(punchRect.DOPunchScale(Vector3.one * 0.035f, 0.3f, 7, 0.65f));
 		_flowSequence.OnComplete(() => EnterResultWaitingState(card, upright));
+	}
+
+	private float ResolveCenterRevealScale(RectTransform selectedRect, float targetScale)
+	{
+		float minRevealScale = Mathf.Max(targetScale, _deckCardScale * 1.35f);
+		RectTransform motionParent = selectedRect != null ? selectedRect.parent as RectTransform : _cardContainer;
+		if (motionParent == null || selectedRect == null)
+			return minRevealScale;
+
+		float sourceWidth = Mathf.Max(1f, selectedRect.rect.width);
+		float sourceHeight = Mathf.Max(1f, selectedRect.rect.height);
+		float fittedScale = Mathf.Min(
+			(motionParent.rect.width * 0.56f) / sourceWidth,
+			(motionParent.rect.height * 0.62f) / sourceHeight);
+
+		float maxScale = Mathf.Max(minRevealScale, uiComponent.centerRevealMaxScale);
+		return Mathf.Max(minRevealScale, Mathf.Min(fittedScale, maxScale));
+	}
+
+	private void AppendCenterRevealShake(Sequence sequence,
+		RectTransform cardRect,
+		Vector2 centerPosition,
+		float centerScale,
+		float centerRotationZ)
+	{
+		if (sequence == null || cardRect == null || uiComponent == null)
+			return;
+
+		float duration = Mathf.Max(0f, uiComponent.centerRevealShakeDuration);
+		float positionStrength = Mathf.Max(0f, uiComponent.centerRevealShakePosition);
+		float rotationStrength = Mathf.Max(0f, uiComponent.centerRevealShakeRotation);
+		if (duration <= 0f || (positionStrength <= 0f && rotationStrength <= 0f))
+			return;
+
+		float[] shakeOffsets = { 1f, -0.86f, 0.72f, -0.56f, 0.4f, -0.26f, 0.14f, 0f };
+		float stepDuration = Mathf.Max(0.018f, duration / shakeOffsets.Length);
+		Vector3 centerScaleVector = Vector3.one * centerScale;
+
+		for (int i = 0; i < shakeOffsets.Length; i++)
+		{
+			float offset = shakeOffsets[i];
+			sequence.Append(cardRect.DOAnchorPos(centerPosition + new Vector2(positionStrength * offset, 0f), stepDuration)
+				.SetEase(Ease.InOutSine));
+			sequence.Join(cardRect.DORotate(new Vector3(0f, 0f, centerRotationZ + rotationStrength * offset), stepDuration)
+				.SetEase(Ease.InOutSine));
+			sequence.Join(cardRect.DOScale(centerScaleVector, stepDuration).SetEase(Ease.InOutSine));
+		}
 	}
 
 	private void DetachSelectedCardFromDeckClip(RectTransform selectedRect)
@@ -1942,14 +2031,10 @@ public class DrawCardUI : WindowBase
 		_viewportHeight = ResolveViewportHeight();
 		ResolveCardScales();
 
-		int visualCardCount = Mathf.Max(cardCount, GetPostShuffleFanVisualCount());
-		_fanWidth = ResolvePostShuffleFanWidth(visualCardCount);
+		_fanWidth = ResolveDeckFanWidth(Mathf.Max(1, cardCount));
 
 		for (int i = 0; i < cardCount; i++)
-		{
-			int visualSlot = GetSelectableFanVisualSlot(i, visualCardCount);
-			_fanPositions.Add(GetFanPositionByVisualSlot(visualSlot, visualCardCount));
-		}
+			_fanPositions.Add(GetFanPositionByIndex(i, cardCount, 0f));
 
 		CalculateDeckScrollBounds();
 	}
@@ -1962,6 +2047,27 @@ public class DrawCardUI : WindowBase
 	private int GetPostShuffleFanVisualCount()
 	{
 		return Mathf.Max(_cardImages.Count, PostShuffleFanVisualCardCount);
+	}
+
+	private float ResolveDeckFanWidth(int cardCount)
+	{
+		if (uiComponent.fanWidth > 0f)
+			return uiComponent.fanWidth;
+
+		if (!uiComponent.useResponsiveFanWidth)
+			return Mathf.Max(uiComponent.minFanWidth, _viewportWidth);
+
+		return Mathf.Max(uiComponent.minFanWidth, _viewportWidth * Mathf.Max(1f, uiComponent.fanViewportWidthMultiplier));
+	}
+
+	private Vector2 GetFanPositionByIndex(int index, int cardCount, float deckOffsetX)
+	{
+		float spacing = cardCount > 1 ? _fanWidth / (cardCount - 1) : _fanWidth;
+		float x = -_fanWidth * 0.5f + spacing * index + deckOffsetX;
+		if (uiComponent.infiniteScroll)
+			x = WrapFanX(x, cardCount);
+
+		return new Vector2(x, GetFanY(x));
 	}
 
 	private int GetSelectableFanVisualSlot(int selectableIndex, int visualCardCount)
@@ -2133,10 +2239,15 @@ public class DrawCardUI : WindowBase
 
 	private float WrapFanX(float x)
 	{
+		return WrapFanX(x, Mathf.Max(1, _fanPositions.Count));
+	}
+
+	private float WrapFanX(float x, int cardCount)
+	{
 		if (_fanWidth <= 1f) return x;
 
-		float halfWidth = _fanWidth * 0.5f;
-		return Mathf.Repeat(x + halfWidth, _fanWidth) - halfWidth;
+		float cycleWidth = ResolveFanCycleWidth(cardCount);
+		return Mathf.Repeat(x + cycleWidth * 0.5f, cycleWidth) - cycleWidth * 0.5f;
 	}
 
 	private float NormalizeDeckOffset(float offset)
@@ -2147,24 +2258,28 @@ public class DrawCardUI : WindowBase
 		if (_fanWidth <= 1f)
 			return offset;
 
-		float halfWidth = _fanWidth * 0.5f;
-		return Mathf.Repeat(offset + halfWidth, _fanWidth) - halfWidth;
+		float cycleWidth = ResolveFanCycleWidth(Mathf.Max(1, _fanPositions.Count));
+		return Mathf.Repeat(offset + cycleWidth * 0.5f, cycleWidth) - cycleWidth * 0.5f;
+	}
+
+	private float ResolveFanCycleWidth(int cardCount)
+	{
+		float spacing = cardCount > 1 ? _fanWidth / (cardCount - 1) : _fanWidth;
+		return Mathf.Max(1f, _fanWidth + spacing);
 	}
 
 	private float GetFanY(float x)
 	{
 		float halfWidth = Mathf.Max(1f, _fanWidth * 0.5f);
 		float normalized = Mathf.Clamp(x / halfWidth, -1f, 1f);
-		float baseY = Mathf.Clamp(_viewportHeight * PostShuffleFanBaseHeightRatio, -155f, -70f);
-		float rise = Mathf.Clamp(_viewportHeight * PostShuffleFanRiseRatio, 68f, 112f);
-		return baseY + rise * (1f - normalized * normalized);
+		return uiComponent.fanHeightOffset + uiComponent.fanRiseOffset * (1f - normalized * normalized);
 	}
 
 	private float GetFanRotation(float x)
 	{
 		float halfWidth = Mathf.Max(1f, _fanWidth * 0.5f);
 		float normalized = Mathf.Clamp(x / halfWidth, -1f, 1f);
-		return -normalized * PostShuffleFanMaxRotation;
+		return -normalized * uiComponent.fanRotation;
 	}
 
 	private float GetDeckSpacing()

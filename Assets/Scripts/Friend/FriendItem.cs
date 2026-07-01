@@ -366,19 +366,7 @@ public class FriendItem : MonoBehaviour
             return;
         }
 
-        FriendPreviewUI.Show(BuildUserSearchResult(requestData));
-    }
-
-    private FirestoreManager.UserSearchResult BuildUserSearchResult(FriendDataManager.InviteData invite)
-    {
-        return new FirestoreManager.UserSearchResult
-        {
-            uid = invite.firebaseUid,
-            displayName = invite.name,
-            email = invite.email,
-            photoUrl = invite.photoUrl,
-            isSelf = false
-        };
+        FriendPreviewUI.Show(requestData);
     }
 
     private void BeginRebind()

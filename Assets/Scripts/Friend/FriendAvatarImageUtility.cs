@@ -2,6 +2,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
@@ -20,16 +22,24 @@ public static class FriendAvatarImageUtility
 
     private const int AvatarSize = 512;
     private const string AvatarFolderName = "FriendAvatars";
+    private const string RemoteAvatarFolderName = "RemoteAvatarCache";
     private const int FallbackAvatarSize = 128;
 
     private static Sprite defaultAvatarSprite;
     private static Texture2D defaultAvatarTexture;
     private static readonly Dictionary<Image, string> avatarTargetTokens = new Dictionary<Image, string>();
+    private static readonly Dictionary<string, Sprite> remoteAvatarByUrl = new Dictionary<string, Sprite>();
+    private static readonly Dictionary<string, Sprite> remoteAvatarByUid = new Dictionary<string, Sprite>();
+    private static readonly Dictionary<string, string> remoteAvatarUrlByUid = new Dictionary<string, string>();
 
     public static Sprite DefaultAvatarSprite
     {
         get
         {
+            Sprite configuredDefault = GameManager.Instance != null ? GameManager.Instance.DefaultHeadSprite : null;
+            if (configuredDefault != null)
+                return configuredDefault;
+
             if (defaultAvatarSprite == null)
                 defaultAvatarSprite = CreateDefaultAvatarSprite();
             return defaultAvatarSprite;
@@ -50,8 +60,9 @@ public static class FriendAvatarImageUtility
     {
         if (sprite != null) return sprite;
         if (localFallback != null) return localFallback;
-        if (fallbackImage != null && fallbackImage.sprite != null) return fallbackImage.sprite;
-        return DefaultAvatarSprite;
+        Sprite defaultSprite = DefaultAvatarSprite;
+        if (defaultSprite != null) return defaultSprite;
+        return fallbackImage != null && fallbackImage.sprite != null ? fallbackImage.sprite : null;
     }
 
     public static Sprite ResolveFriendAvatar(FriendDataManager.FriendData friend, Image fallbackImage = null, Sprite localFallback = null)
@@ -72,6 +83,12 @@ public static class FriendAvatarImageUtility
             }
         }
 
+        if (TryResolveCachedRemoteAvatar(GetFriendAvatarUid(friend), friend.photoUrl, out Sprite cachedRemoteSprite))
+        {
+            friend.headSprite = cachedRemoteSprite;
+            return cachedRemoteSprite;
+        }
+
         return ResolveAvatar(null, fallbackImage, localFallback);
     }
 
@@ -82,6 +99,12 @@ public static class FriendAvatarImageUtility
 
         if (invite.headSprite != null)
             return invite.headSprite;
+
+        if (TryResolveCachedRemoteAvatar(invite.firebaseUid, invite.photoUrl, out Sprite cachedRemoteSprite))
+        {
+            invite.headSprite = cachedRemoteSprite;
+            return cachedRemoteSprite;
+        }
 
         return ResolveAvatar(null, fallbackImage, localFallback);
     }
@@ -176,6 +199,7 @@ public static class FriendAvatarImageUtility
 
         if (loadedSprite != null)
         {
+            CacheRemoteAvatar(userData != null ? userData.FirebaseUid : string.Empty, photoUrl, loadedSprite);
             onComplete?.Invoke(loadedSprite, File.Exists(cachePath) ? cachePath : string.Empty);
         }
         else
@@ -196,13 +220,68 @@ public static class FriendAvatarImageUtility
 
     public static IEnumerator LoadSpriteFromUrlCoroutine(string url, Action<Sprite> onComplete)
     {
+        yield return LoadRemoteAvatarCoroutine(string.Empty, url, onComplete);
+    }
+
+    public static IEnumerator LoadSpriteFromUrlCoroutine(string uid, string url, Action<Sprite> onComplete)
+    {
+        yield return LoadRemoteAvatarCoroutine(uid, url, onComplete);
+    }
+
+    public static IEnumerator PreloadRemoteAvatarCoroutine(string uid, string url, Action<Sprite> onComplete = null)
+    {
+        yield return LoadRemoteAvatarCoroutine(uid, url, onComplete);
+    }
+
+    public static bool TryResolveCachedRemoteAvatar(string uid, string url, out Sprite sprite)
+    {
+        sprite = null;
+
+        string normalizedUid = NormalizeRemoteAvatarKey(uid);
+        string normalizedUrl = NormalizeRemoteAvatarUrl(url);
+        if (!string.IsNullOrEmpty(normalizedUid)
+            && remoteAvatarByUid.TryGetValue(normalizedUid, out sprite)
+            && sprite != null
+            && IsUidAvatarUrlCurrent(normalizedUid, normalizedUrl))
+        {
+            return true;
+        }
+
+        if (string.IsNullOrEmpty(normalizedUrl))
+            return false;
+
+        if (remoteAvatarByUrl.TryGetValue(normalizedUrl, out sprite) && sprite != null)
+        {
+            if (!string.IsNullOrEmpty(normalizedUid))
+                remoteAvatarByUid[normalizedUid] = sprite;
+            return true;
+        }
+
+        if (TryLoadRemoteAvatarFromDisk(normalizedUrl, out sprite))
+        {
+            CacheRemoteAvatar(normalizedUid, normalizedUrl, sprite);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static IEnumerator LoadRemoteAvatarCoroutine(string uid, string url, Action<Sprite> onComplete)
+    {
         if (string.IsNullOrWhiteSpace(url))
         {
             onComplete?.Invoke(null);
             yield break;
         }
 
-        using UnityWebRequest request = UnityWebRequestTexture.GetTexture(url);
+        if (TryResolveCachedRemoteAvatar(uid, url, out Sprite cachedSprite))
+        {
+            onComplete?.Invoke(cachedSprite);
+            yield break;
+        }
+
+        string normalizedUrl = NormalizeRemoteAvatarUrl(url);
+        using UnityWebRequest request = UnityWebRequestTexture.GetTexture(normalizedUrl);
         yield return request.SendWebRequest();
 
         if (request.result != UnityWebRequest.Result.Success)
@@ -213,7 +292,14 @@ public static class FriendAvatarImageUtility
         }
 
         Texture2D texture = DownloadHandlerTexture.GetContent(request);
-        onComplete?.Invoke(TextureToSprite(texture));
+        Sprite sprite = TextureToSprite(texture);
+        if (sprite != null)
+        {
+            CacheRemoteAvatar(uid, normalizedUrl, sprite);
+            SaveRemoteAvatarTexture(normalizedUrl, texture);
+        }
+
+        onComplete?.Invoke(sprite);
     }
 
     public static bool TryLoadSpriteFromPath(string path, out Sprite sprite)
@@ -242,6 +328,103 @@ public static class FriendAvatarImageUtility
             Debug.LogWarning("[FriendAvatarImageUtility] 加载好友头像失败: " + e.Message);
             return false;
         }
+    }
+
+    private static string GetFriendAvatarUid(FriendDataManager.FriendData friend)
+    {
+        if (friend == null) return string.Empty;
+        if (!string.IsNullOrWhiteSpace(friend.firebaseUid)) return friend.firebaseUid;
+        if (!string.IsNullOrWhiteSpace(friend.virtualFriendId)) return friend.virtualFriendId;
+        return friend.id > 0 ? friend.id.ToString() : string.Empty;
+    }
+
+    private static void CacheRemoteAvatar(string uid, string url, Sprite sprite)
+    {
+        if (sprite == null) return;
+
+        string normalizedUrl = NormalizeRemoteAvatarUrl(url);
+        if (!string.IsNullOrEmpty(normalizedUrl))
+            remoteAvatarByUrl[normalizedUrl] = sprite;
+
+        string normalizedUid = NormalizeRemoteAvatarKey(uid);
+        if (!string.IsNullOrEmpty(normalizedUid))
+        {
+            remoteAvatarByUid[normalizedUid] = sprite;
+            if (!string.IsNullOrEmpty(normalizedUrl))
+                remoteAvatarUrlByUid[normalizedUid] = normalizedUrl;
+        }
+    }
+
+    private static bool IsUidAvatarUrlCurrent(string normalizedUid, string normalizedUrl)
+    {
+        if (string.IsNullOrEmpty(normalizedUid))
+            return false;
+
+        if (string.IsNullOrEmpty(normalizedUrl))
+            return true;
+
+        return !remoteAvatarUrlByUid.TryGetValue(normalizedUid, out string cachedUrl)
+            || cachedUrl == normalizedUrl;
+    }
+
+    private static bool TryLoadRemoteAvatarFromDisk(string url, out Sprite sprite)
+    {
+        sprite = null;
+        string normalizedUrl = NormalizeRemoteAvatarUrl(url);
+        if (string.IsNullOrEmpty(normalizedUrl))
+            return false;
+
+        string path = GetRemoteAvatarCachePath(normalizedUrl);
+        return TryLoadSpriteFromPath(path, out sprite);
+    }
+
+    private static void SaveRemoteAvatarTexture(string url, Texture2D texture)
+    {
+        if (texture == null) return;
+
+        string normalizedUrl = NormalizeRemoteAvatarUrl(url);
+        if (string.IsNullOrEmpty(normalizedUrl))
+            return;
+
+        try
+        {
+            string path = GetRemoteAvatarCachePath(normalizedUrl);
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllBytes(path, texture.EncodeToPNG());
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("[FriendAvatarImageUtility] 缓存远程头像失败: " + e.Message);
+        }
+    }
+
+    private static string GetRemoteAvatarCachePath(string url)
+    {
+        string folder = Path.Combine(Application.persistentDataPath, RemoteAvatarFolderName);
+        return Path.Combine(folder, BuildSha256(NormalizeRemoteAvatarUrl(url)) + ".png");
+    }
+
+    private static string NormalizeRemoteAvatarUrl(string url)
+    {
+        return string.IsNullOrWhiteSpace(url) ? string.Empty : url.Trim();
+    }
+
+    private static string NormalizeRemoteAvatarKey(string key)
+    {
+        return string.IsNullOrWhiteSpace(key) ? string.Empty : key.Trim().ToLowerInvariant();
+    }
+
+    private static string BuildSha256(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return string.Empty;
+
+        using SHA256 sha = SHA256.Create();
+        byte[] bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(value));
+        StringBuilder builder = new StringBuilder(bytes.Length * 2);
+        foreach (byte b in bytes)
+            builder.Append(b.ToString("x2"));
+        return builder.ToString();
     }
 
     private static void LoadAndPersistAvatar(string sourcePath, Action<PickedAvatar> onSuccess, Action<string> onError)

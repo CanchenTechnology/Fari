@@ -1026,6 +1026,11 @@ const DIALOG_REPLY_JOB_SCAN_LIMIT = 50;
 const PUSH_CHANNEL_ID = "moonly_reminders";
 const DELETED_FRIEND_RELATIONSHIP_COLLECTION = "deleted_friend_relationships";
 const DELETED_FRIEND_RESTORE_WINDOW_DAYS = 90;
+const DELETED_ACCOUNT_COLLECTION = "deleted_accounts";
+const DELETED_ACCOUNT_SNAPSHOT_COLLECTION = "snapshots";
+const DELETED_ACCOUNT_RESTORE_WINDOW_DAYS = 90;
+const ACCOUNT_ARCHIVE_BATCH_LIMIT = 200;
+const ACCOUNT_RESTORE_BATCH_LIMIT = 450;
 const RELATIONSHIP_DIVINATION_COLLECTION = "relationship_divinations";
 const RELATIONSHIP_INVITE_VALID_HOURS = 24;
 const INVALID_PUSH_TOKEN_CODES = new Set([
@@ -1571,6 +1576,328 @@ async function deleteUserOwnedData(uid) {
   return deleted + 2;
 }
 
+function getDeletedAccountExpiresAt(now = Date.now()) {
+  return admin.firestore.Timestamp.fromMillis(
+    now + DELETED_ACCOUNT_RESTORE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+  );
+}
+
+function getDeletedAccountSnapshotId(pathValue) {
+  return crypto.createHash("sha256").update(String(pathValue || "")).digest("hex");
+}
+
+function serializeAuthProviderData(provider = {}) {
+  return {
+    uid: getAdminScalarText(provider.uid, 220),
+    displayName: getAdminScalarText(provider.displayName, 120),
+    email: getAdminScalarText(provider.email, 160),
+    phoneNumber: getAdminScalarText(provider.phoneNumber, 80),
+    photoURL: getAdminScalarText(provider.photoURL, 1000),
+    providerId: getAdminScalarText(provider.providerId, 120),
+  };
+}
+
+function serializeDeletedAccountAuthRecord(authRecord, decoded = {}) {
+  if (!authRecord) {
+    return {
+      uid: decoded.uid || "",
+      email: getAdminScalarText(decoded.email, 160),
+      emailVerified: decoded.email_verified === true,
+      displayName: getAdminScalarText(decoded.name, 120),
+      photoURL: getAdminScalarText(decoded.picture, 1000),
+      disabled: false,
+      providerData: [],
+      customClaims: {},
+      signInProvider: getAdminScalarText(decoded.firebase?.sign_in_provider, 120),
+    };
+  }
+  return {
+    uid: authRecord.uid,
+    email: getAdminScalarText(authRecord.email, 160),
+    emailVerified: authRecord.emailVerified === true,
+    displayName: getAdminScalarText(authRecord.displayName, 120),
+    phoneNumber: getAdminScalarText(authRecord.phoneNumber, 80),
+    photoURL: getAdminScalarText(authRecord.photoURL, 1000),
+    disabled: authRecord.disabled === true,
+    customClaims: authRecord.customClaims || {},
+    providerData: (authRecord.providerData || []).map(serializeAuthProviderData),
+    metadata: {
+      creationTime: authRecord.metadata?.creationTime || "",
+      lastSignInTime: authRecord.metadata?.lastSignInTime || "",
+      lastRefreshTime: authRecord.metadata?.lastRefreshTime || "",
+    },
+    tokensValidAfterTime: authRecord.tokensValidAfterTime || "",
+    signInProvider: getAdminScalarText(decoded.firebase?.sign_in_provider, 120),
+  };
+}
+
+function buildDeletedAccountSnapshotDoc(docSnap, kind) {
+  return {
+    path: docSnap.ref.path,
+    kind,
+    data: docSnap.data() || {},
+    archivedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+async function archiveAndDeleteDocumentSnapshot(archiveRef, docRef, kind) {
+  const snap = await docRef.get().catch(() => null);
+  if (!snap?.exists) return 0;
+
+  const batch = db.batch();
+  batch.set(
+    archiveRef.collection(DELETED_ACCOUNT_SNAPSHOT_COLLECTION).doc(getDeletedAccountSnapshotId(snap.ref.path)),
+    buildDeletedAccountSnapshotDoc(snap, kind),
+    { merge: true },
+  );
+  batch.delete(docRef);
+  await batch.commit();
+  return 1;
+}
+
+async function archiveAndDeleteQuerySnapshots(archiveRef, query, kind) {
+  let archived = 0;
+  const limit = Math.min(ACCOUNT_ARCHIVE_BATCH_LIMIT, DELETE_BATCH_LIMIT);
+
+  while (true) {
+    const snap = await query.limit(limit).get();
+    if (snap.empty) return archived;
+
+    const batch = db.batch();
+    for (const doc of snap.docs) {
+      batch.set(
+        archiveRef.collection(DELETED_ACCOUNT_SNAPSHOT_COLLECTION).doc(getDeletedAccountSnapshotId(doc.ref.path)),
+        buildDeletedAccountSnapshotDoc(doc, kind),
+        { merge: true },
+      );
+      batch.delete(doc.ref);
+    }
+    await batch.commit();
+    archived += snap.size;
+
+    if (snap.size < limit) return archived;
+  }
+}
+
+async function archiveAndDeleteUserOwnedData(uid, decoded = {}) {
+  const cleanUid = validateDocumentId(uid);
+  const now = Date.now();
+  const deletedAt = admin.firestore.Timestamp.fromMillis(now);
+  const expiresAt = getDeletedAccountExpiresAt(now);
+  const archiveRef = db.collection(DELETED_ACCOUNT_COLLECTION).doc(cleanUid);
+  const userRef = db.collection("users").doc(cleanUid);
+  const publicProfileRef = db.collection("public_profiles").doc(cleanUid);
+  const [authRecord, userSnap, publicProfileSnap] = await Promise.all([
+    getAuthRecordSafely(cleanUid),
+    userRef.get().catch(() => null),
+    publicProfileRef.get().catch(() => null),
+  ]);
+  const userData = userSnap?.exists ? userSnap.data() || {} : {};
+  const publicProfileData = publicProfileSnap?.exists ? publicProfileSnap.data() || {} : {};
+  const authArchive = serializeDeletedAccountAuthRecord(authRecord, decoded);
+  const displayName = getAdminScalarText(
+    userData.displayName
+      || publicProfileData.displayName
+      || authArchive.displayName
+      || authArchive.email
+      || cleanUid,
+    120,
+  );
+  const email = getAdminScalarText(userData.email || publicProfileData.email || authArchive.email, 160);
+
+  await deleteQueryInBatches(archiveRef.collection(DELETED_ACCOUNT_SNAPSHOT_COLLECTION));
+  await archiveRef.set({
+    uid: cleanUid,
+    email,
+    displayName,
+    photoUrl: getAdminScalarText(userData.photoUrl || publicProfileData.photoUrl || authArchive.photoURL, 1000),
+    status: "deleted",
+    auth: authArchive,
+    deletedAt,
+    expiresAt,
+    restoreWindowDays: DELETED_ACCOUNT_RESTORE_WINDOW_DAYS,
+    deletedByUid: cleanUid,
+    deletedByEmail: email,
+    deleteSource: "self_service",
+    schemaVersion: 1,
+    snapshotCount: 0,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  let archivedDocs = 0;
+  let deletedDocs = 0;
+  for (const collectionName of USER_OWNED_SUBCOLLECTIONS) {
+    const count = await archiveAndDeleteQuerySnapshots(
+      archiveRef,
+      userRef.collection(collectionName),
+      `users_subcollection:${collectionName}`,
+    );
+    archivedDocs += count;
+    deletedDocs += count;
+  }
+
+  for (const source of [
+    { query: db.collection("daily_oracle_summaries").where("ownerUid", "==", cleanUid), kind: "daily_oracle_summaries" },
+    { query: db.collection(RELATIONSHIP_DIVINATION_COLLECTION).where("initiatorUid", "==", cleanUid), kind: "relationship_divinations:initiator" },
+    { query: db.collection(RELATIONSHIP_DIVINATION_COLLECTION).where("receiverUid", "==", cleanUid), kind: "relationship_divinations:receiver" },
+    { query: db.collection("feedback").where("uid", "==", cleanUid), kind: "feedback" },
+    { query: db.collection("iap_receipts").where("uid", "==", cleanUid), kind: "iap_receipts" },
+    { query: db.collection("usage_limits").where("uid", "==", cleanUid), kind: "usage_limits" },
+    { query: db.collection("payment_events").where("uid", "==", cleanUid), kind: "payment_events" },
+  ]) {
+    const count = await archiveAndDeleteQuerySnapshots(archiveRef, source.query, source.kind);
+    archivedDocs += count;
+    deletedDocs += count;
+  }
+
+  for (const source of [
+    { ref: publicProfileRef, kind: "public_profiles" },
+    { ref: userRef, kind: "users" },
+  ]) {
+    const count = await archiveAndDeleteDocumentSnapshot(archiveRef, source.ref, source.kind);
+    archivedDocs += count;
+    deletedDocs += count;
+  }
+
+  await archiveRef.set({
+    snapshotCount: archivedDocs,
+    deletedDocs,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  return {
+    archivePath: archiveRef.path,
+    archivedDocs,
+    deletedDocs,
+    expiresAt: serializeTimestamp(expiresAt),
+  };
+}
+
+function serializeDeletedAccountArchive(doc) {
+  const data = doc.data() || {};
+  const expiresAt = data.expiresAt || null;
+  const expiresAtMillis = getAdminTimestampMillis(expiresAt);
+  const status = getAdminScalarText(data.status, 40) || "deleted";
+  return {
+    id: doc.id,
+    uid: getAdminScalarText(data.uid || doc.id, 160),
+    email: getAdminScalarText(data.email || data.auth?.email, 160),
+    displayName: getAdminScalarText(data.displayName || data.auth?.displayName || data.auth?.email || doc.id, 120),
+    photoUrl: getAdminScalarText(data.photoUrl || data.auth?.photoURL, 1000),
+    status,
+    snapshotCount: Number(data.snapshotCount || 0),
+    deletedDocs: Number(data.deletedDocs || 0),
+    deletedAt: serializeTimestamp(data.deletedAt),
+    expiresAt: serializeTimestamp(expiresAt),
+    restoredAt: serializeTimestamp(data.restoredAt),
+    restoredBy: getAdminScalarText(data.restoredBy, 160),
+    restoreReason: getAdminScalarText(data.restoreReason, 500),
+    daysRemaining: Number.isFinite(expiresAtMillis)
+      ? Math.max(0, Math.ceil((expiresAtMillis - Date.now()) / (24 * 60 * 60 * 1000)))
+      : DELETED_ACCOUNT_RESTORE_WINDOW_DAYS,
+    canRestore: status === "deleted" && (!Number.isFinite(expiresAtMillis) || expiresAtMillis > Date.now()),
+  };
+}
+
+function generateTemporaryRestorePassword() {
+  return `${crypto.randomBytes(12).toString("base64url")}Aa1!`;
+}
+
+async function restoreDeletedAccountSnapshots(archiveRef) {
+  let restoredDocs = 0;
+  let lastDoc = null;
+  const limit = ACCOUNT_RESTORE_BATCH_LIMIT;
+
+  while (true) {
+    let query = archiveRef.collection(DELETED_ACCOUNT_SNAPSHOT_COLLECTION)
+      .orderBy(admin.firestore.FieldPath.documentId())
+      .limit(limit);
+    if (lastDoc) query = query.startAfter(lastDoc);
+
+    const snap = await query.get();
+    if (snap.empty) return restoredDocs;
+
+    const batch = db.batch();
+    for (const doc of snap.docs) {
+      const data = doc.data() || {};
+      const path = normalizeFirestorePath(data.path);
+      if (path.split("/").length % 2 !== 0) {
+        throw createHttpError(500, `Archived snapshot path is not a document: ${path}`);
+      }
+      batch.set(db.doc(path), data.data || {});
+    }
+    await batch.commit();
+    restoredDocs += snap.size;
+    lastDoc = snap.docs[snap.docs.length - 1];
+
+    if (snap.size < limit) return restoredDocs;
+  }
+}
+
+async function restoreDeletedAccountAuth(uid, archive, options = {}) {
+  const auth = archive.auth || {};
+  const email = cleanString(options.email || auth.email || archive.email, "", 160).toLowerCase();
+  const password = String(options.password || "");
+  const generatedPassword = !password && email ? generateTemporaryRestorePassword() : "";
+  const restorePassword = password || generatedPassword;
+  if (restorePassword && (restorePassword.length < 6 || restorePassword.length > 128)) {
+    throw createHttpError(400, "恢复密码必须是 6 到 128 个字符");
+  }
+
+  const userPatch = {
+    displayName: cleanString(options.displayName || auth.displayName || archive.displayName || "", "", 120) || undefined,
+    photoURL: cleanString(auth.photoURL || archive.photoUrl || "", "", 1000) || undefined,
+    disabled: false,
+  };
+  if (email) {
+    userPatch.email = email;
+    userPatch.emailVerified = auth.emailVerified === true;
+    if (restorePassword) userPatch.password = restorePassword;
+  }
+  if (auth.phoneNumber) userPatch.phoneNumber = auth.phoneNumber;
+
+  let action = "updated";
+  try {
+    await admin.auth().getUser(uid);
+    await admin.auth().updateUser(uid, userPatch);
+  } catch (error) {
+    if (error?.code !== "auth/user-not-found") throw error;
+    await admin.auth().createUser({ uid, ...userPatch });
+    action = "created";
+  }
+
+  if (auth.customClaims && typeof auth.customClaims === "object" && !Array.isArray(auth.customClaims)) {
+    await admin.auth().setCustomUserClaims(uid, auth.customClaims);
+  }
+
+  return {
+    action,
+    email,
+    temporaryPassword: generatedPassword,
+  };
+}
+
+async function purgeExpiredDeletedAccountArchives(limit = 50) {
+  const now = admin.firestore.Timestamp.now();
+  const snap = await db.collection(DELETED_ACCOUNT_COLLECTION)
+    .where("expiresAt", "<=", now)
+    .limit(Math.max(1, Math.min(Number(limit) || 50, 100)))
+    .get();
+  let purged = 0;
+  let skipped = 0;
+  for (const doc of snap.docs) {
+    const data = doc.data() || {};
+    if ((getAdminScalarText(data.status, 40) || "deleted") !== "deleted") {
+      skipped += 1;
+      continue;
+    }
+    await deleteQueryInBatches(doc.ref.collection(DELETED_ACCOUNT_SNAPSHOT_COLLECTION));
+    await doc.ref.delete();
+    purged += 1;
+  }
+  return { purged, skipped };
+}
+
 async function getMembership(uid) {
   const snap = await db.collection("users").doc(uid).get();
   const data = snap.exists ? snap.data() : {};
@@ -1693,6 +2020,42 @@ function cleanOptionalUrl(value, maxLength = 1000) {
   }
 
   return parsed.toString();
+}
+
+function cleanOptionalAvatarValue(value, maxLength = 900000) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (text.length > maxLength) {
+    throw createHttpError(400, "Avatar image is too large");
+  }
+  if (text.startsWith("data:image/")) {
+    if (!/^data:image\/[a-z0-9.+-]+;base64,/i.test(text)) {
+      throw createHttpError(400, "Avatar data URL is invalid");
+    }
+    return text.replace(/\s/g, "");
+  }
+  return cleanOptionalUrl(text, Math.min(maxLength, 4000));
+}
+
+function getStoredAvatarValue(...values) {
+  for (const value of values) {
+    const text = String(value || "").trim();
+    if (!text) continue;
+    if (text.length > 900000) continue;
+    return text;
+  }
+  return "";
+}
+
+function isHttpImageUrl(value) {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  try {
+    const parsed = new URL(text);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch (error) {
+    return false;
+  }
 }
 
 function normalizeOptionalBirthday(value) {
@@ -9079,12 +9442,11 @@ exports.adminUpdateUserProfile = onRequest(runtime, async (req, res) => {
       throw createHttpError(400, "Display name is required");
     }
 
-    const existingPhotoUrl = getAdminScalarText(
+    const existingPhotoUrl = getStoredAvatarValue(
       existingUser.photoUrl || existingUser.photoURL || existingPublicProfile.photoUrl || authRecord?.photoURL,
-      1000,
     );
     const photoUrl = hasBodyField("photoUrl", "photoURL")
-      ? cleanOptionalUrl(body.photoUrl ?? body.photoURL ?? "", 1000)
+      ? cleanOptionalAvatarValue(body.photoUrl ?? body.photoURL ?? "")
       : existingPhotoUrl;
     const birthday = hasBodyField("birthday")
       ? normalizeOptionalBirthday(body.birthday)
@@ -9104,10 +9466,11 @@ exports.adminUpdateUserProfile = onRequest(runtime, async (req, res) => {
     const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
 
     if (authRecord) {
-      await admin.auth().updateUser(uid, {
-        displayName,
-        photoURL: photoUrl || null,
-      });
+      const authUpdate = { displayName };
+      if (hasBodyField("photoUrl", "photoURL")) {
+        authUpdate.photoURL = isHttpImageUrl(photoUrl) ? photoUrl : null;
+      }
+      await admin.auth().updateUser(uid, authUpdate);
     }
 
     const userData = {
@@ -11067,13 +11430,120 @@ exports.adminDataDelete = onRequest(runtime, async (req, res) => {
   }
 });
 
+exports.adminDeletedAccounts = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "GET")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const source = getAdminRequestSource(req);
+    const limit = getAdminLimit(source.limit, 30, 100);
+    const q = normalizeSearchText(source.q || source.search || "");
+    const includeRestored = parseAdminBoolean(source.includeRestored, false);
+    const snap = await db.collection(DELETED_ACCOUNT_COLLECTION)
+      .orderBy("deletedAt", "desc")
+      .limit(q ? Math.min(limit * 4, 100) : limit)
+      .get();
+    let items = snap.docs.map(serializeDeletedAccountArchive)
+      .filter((item) => includeRestored || item.status === "deleted");
+    if (q) {
+      items = items.filter((item) => [
+        item.uid,
+        item.email,
+        item.displayName,
+      ].some((value) => normalizeSearchText(value).includes(q)));
+    }
+    items = items.slice(0, limit);
+    json(res, 200, {
+      ok: true,
+      items,
+      count: items.length,
+      restoreWindowDays: DELETED_ACCOUNT_RESTORE_WINDOW_DAYS,
+      collectionPath: DELETED_ACCOUNT_COLLECTION,
+    });
+  } catch (error) {
+    console.error("[adminDeletedAccounts]", error);
+    json(res, error.status || 500, { error: error.message || "Load deleted accounts failed" });
+  }
+});
+
+exports.adminRestoreDeletedAccount = onRequest(runtime, async (req, res) => {
+  if (!requireMethod(req, res, "POST")) return;
+  const decoded = await requireAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const uid = validateDocumentId(req.body?.uid || req.body?.id);
+    const archiveRef = db.collection(DELETED_ACCOUNT_COLLECTION).doc(uid);
+    const archiveSnap = await archiveRef.get();
+    if (!archiveSnap.exists) {
+      throw createHttpError(404, "删除账号归档不存在");
+    }
+    const archive = archiveSnap.data() || {};
+    const status = getAdminScalarText(archive.status, 40) || "deleted";
+    if (status !== "deleted") {
+      throw createHttpError(409, "该账号归档已经处理过，不能重复恢复");
+    }
+    const expiresAtMillis = getAdminTimestampMillis(archive.expiresAt);
+    if (Number.isFinite(expiresAtMillis) && expiresAtMillis > 0 && expiresAtMillis <= Date.now()) {
+      throw createHttpError(410, "该账号归档已超过 3 个月恢复期限");
+    }
+
+    const reason = cleanString(req.body?.reason, "管理员恢复三个月内删除的账号", 500);
+    const authResult = await restoreDeletedAccountAuth(uid, archive, {
+      password: req.body?.password,
+      email: req.body?.email,
+      displayName: req.body?.displayName,
+    });
+    const restoredDocs = await restoreDeletedAccountSnapshots(archiveRef);
+    await archiveRef.set({
+      status: "restored",
+      restoredAt: admin.firestore.FieldValue.serverTimestamp(),
+      restoredBy: decoded.uid,
+      restoredByEmail: decoded.email || "",
+      restoreReason: reason,
+      restoredDocs,
+      authRestoreAction: authResult.action,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    await writeAdminAuditLog(decoded, "user.account_restore", {
+      type: "deleted_account",
+      id: uid,
+      uid,
+      path: `${DELETED_ACCOUNT_COLLECTION}/${uid}`,
+    }, {
+      restoredDocs,
+      authAction: authResult.action,
+      email: authResult.email,
+      reason,
+    }, req);
+
+    json(res, 200, {
+      ok: true,
+      uid,
+      restoredDocs,
+      authAction: authResult.action,
+      email: authResult.email,
+      temporaryPassword: authResult.temporaryPassword,
+      bundle: await buildAdminUserBundle(uid, { limit: 12 }),
+    });
+  } catch (error) {
+    console.error("[adminRestoreDeletedAccount]", error);
+    json(res, error.status || 500, {
+      error: error.message || "Restore deleted account failed",
+      code: error.status === 410 ? "deleted-account-archive-expired" : "restore-deleted-account-error",
+    });
+  }
+});
+
 exports.deleteMyAccountData = onRequest(runtime, async (req, res) => {
   if (!requireMethod(req, res, "POST")) return;
   const decoded = await requireAuth(req, res);
   if (!decoded) return;
 
   try {
-    const deletedDocs = await deleteUserOwnedData(decoded.uid);
+    const archive = await archiveAndDeleteUserOwnedData(decoded.uid, decoded);
     let authDeleted = true;
 
     try {
@@ -11086,7 +11556,16 @@ exports.deleteMyAccountData = onRequest(runtime, async (req, res) => {
       }
     }
 
-    json(res, 200, { ok: true, uid: decoded.uid, deletedDocs, authDeleted });
+    json(res, 200, {
+      ok: true,
+      uid: decoded.uid,
+      deletedDocs: archive.deletedDocs,
+      archivedDocs: archive.archivedDocs,
+      archivePath: archive.archivePath,
+      restoreWindowDays: DELETED_ACCOUNT_RESTORE_WINDOW_DAYS,
+      expiresAt: archive.expiresAt,
+      authDeleted,
+    });
   } catch (error) {
     console.error("[deleteMyAccountData]", error);
     json(res, 500, {
@@ -11094,6 +11573,17 @@ exports.deleteMyAccountData = onRequest(runtime, async (req, res) => {
       code: "delete-account-data-failed",
     });
   }
+});
+
+exports.purgeExpiredDeletedAccounts = onSchedule({
+  schedule: "every day 04:40",
+  timeZone: "Asia/Shanghai",
+  region: REGION,
+  timeoutSeconds: 300,
+  memory: "512MiB",
+}, async () => {
+  const result = await purgeExpiredDeletedAccountArchives(50);
+  console.log("[purgeExpiredDeletedAccounts]", result);
 });
 
 exports.aiChat = onRequest({ ...runtime, secrets: boundSecrets("DEEPSEEK_API_KEY") }, async (req, res) => {

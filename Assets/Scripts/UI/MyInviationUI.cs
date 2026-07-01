@@ -27,10 +27,8 @@ public class MyInviationUI : WindowBase
 
 	private const int MaxServiceWaitAttempts = 20;
 	private const string InvitationItemPrefabName = "UserInvitationItem";
-	private static readonly Color ActiveTabTextColor = new Color32(224, 133, 54, 255);
+	private static readonly Color ActiveTabTextColor = new Color32(254, 142, 84, 255);
 	private static readonly Color InactiveTabTextColor = new Color32(226, 226, 230, 255);
-	private static readonly Color ActiveTabBackgroundColor = new Color32(58, 41, 32, 255);
-	private static readonly Color InactiveTabBackgroundColor = new Color32(35, 36, 41, 255);
 	private static readonly Color OnlineTextColor = new Color32(63, 213, 138, 255);
 	private static readonly Color OfflineTextColor = new Color32(150, 145, 154, 255);
 	private static readonly Color AcceptedTextColor = new Color32(63, 213, 138, 255);
@@ -113,11 +111,6 @@ public class MyInviationUI : WindowBase
 			text.fontStyle = active ? FontStyles.Bold : FontStyles.Normal;
 		}
 
-		Image background = button.targetGraphic as Image;
-		if (background == null)
-			background = button.GetComponent<Image>();
-		if (background != null)
-			background.color = active ? ActiveTabBackgroundColor : InactiveTabBackgroundColor;
 	}
 
 	private void LoadCurrentTab()
@@ -305,6 +298,7 @@ public class MyInviationUI : WindowBase
 		SetText(item.divinationType, ResolveDivinationType(record));
 		SetText(item.divinationTime, FormatRecordDate(record));
 		ApplyAvatar(item.avatarImage, friend);
+		BindInfoButton(item, record, friend, showingInitiated);
 
 		if (showingInitiated)
 			ApplyInitiatedStatus(item, record);
@@ -326,9 +320,21 @@ public class MyInviationUI : WindowBase
 
 	private void ApplyReceivedStatus(UserInvitationItem item, RelationshipDivinationRecord record)
 	{
-		if (IsAccepted(record))
+		if (record != null && record.IsCompleted)
 		{
-			ApplyButtonState(item, "Accepted", AcceptedTextColor, false, false, null);
+			ApplyButtonState(item, "View result", AcceptedTextColor, true, true, () => OpenRelationshipRecord(record));
+			return;
+		}
+
+		if (record != null && record.receiverJoined && !record.receiverRevealed)
+		{
+			ApplyButtonState(item, "Continue", ActionTextColor, true, true, () => OpenRelationshipRecord(record));
+			return;
+		}
+
+		if (record != null && record.receiverRevealed)
+		{
+			ApplyButtonState(item, "Waiting", PendingTextColor, false, false, null);
 			return;
 		}
 
@@ -355,6 +361,7 @@ public class MyInviationUI : WindowBase
 			item.btnText.text = text;
 			item.btnText.color = textColor;
 		}
+		ApplyButtonAreaTextLayout(item, showImage);
 
 		if (item.btn == null)
 			return;
@@ -369,30 +376,59 @@ public class MyInviationUI : WindowBase
 			item.btn.onClick.AddListener(action);
 	}
 
+	private void ApplyButtonAreaTextLayout(UserInvitationItem item, bool buttonVisible)
+	{
+		if (item == null) return;
+
+		ApplyRightSideTextLayout(item.btnText, buttonVisible);
+	}
+
+	private void ApplyRightSideTextLayout(TMP_Text text, bool buttonVisible)
+	{
+		if (text == null) return;
+
+		text.enableAutoSizing = buttonVisible;
+		text.alignment = buttonVisible ? TextAlignmentOptions.Center : TextAlignmentOptions.Right;
+	}
+
 	private void OnAcceptInviteClick(RelationshipDivinationRecord record)
 	{
 		if (record == null) return;
+
+		if (record.IsCancelled)
+		{
+			ToastManager.ShowToast("这次双人占卜邀请已取消");
+			LoadCurrentTab();
+			return;
+		}
+
+		if (RelationshipDivinationFlow.IsInviteExpired(record))
+		{
+			ToastManager.ShowToast("这次双人占卜邀请已过期");
+			LoadCurrentTab();
+			return;
+		}
 
 		string readingId = record.readingId ?? "";
 		if (acceptingReadingIds.Contains(readingId))
 			return;
 
+		if (record.IsCompleted || record.receiverJoined || !record.CanCurrentUserReveal(RelationshipDivinationFlow.GetCurrentUid()))
+		{
+			OpenRelationshipRecord(record);
+			return;
+		}
+
 		RelationshipDivinationFirestore service = RelationshipDivinationFlow.GetOrCreateService();
-		if (service == null || !service.IsReady)
+		if (service == null)
 		{
 			ToastManager.ShowToast("关系占卜服务初始化中，请稍后再试");
 			return;
 		}
 
-		if (!record.CanCurrentUserReveal(RelationshipDivinationFlow.GetCurrentUid()))
-		{
-			RefreshInvitationList(false);
-			return;
-		}
-
 		acceptingReadingIds.Add(readingId);
 		RefreshInvitationList(false);
-		service.RevealMyCard(record, updated =>
+		service.JoinInvite(record, updated =>
 		{
 			acceptingReadingIds.Remove(readingId);
 			if (updated == null)
@@ -403,9 +439,55 @@ public class MyInviationUI : WindowBase
 			}
 
 			ReplaceRecord(record, updated);
+			if (!updated.receiverJoined && !updated.IsCompleted)
+			{
+				RefreshInvitationList(false);
+				return;
+			}
+
 			ToastManager.ShowToast("已接受邀请");
-			RefreshInvitationList(false);
+			OpenRelationshipRecord(updated);
 		}, false);
+	}
+
+	private void BindInfoButton(UserInvitationItem item, RelationshipDivinationRecord record, FriendDataManager.FriendData friend, bool showingInitiated)
+	{
+		if (item == null || item.infoBtn == null) return;
+
+		string otherUid = GetOtherUid(record, showingInitiated);
+		bool canOpen = friend != null || !string.IsNullOrWhiteSpace(otherUid);
+		item.infoBtn.gameObject.SetActive(canOpen);
+		item.infoBtn.interactable = canOpen;
+		item.infoBtn.onClick.RemoveAllListeners();
+		if (canOpen)
+			item.infoBtn.onClick.AddListener(() => OnInfoButtonClick(record, showingInitiated, friend));
+	}
+
+	private void OnInfoButtonClick(RelationshipDivinationRecord record, bool showingInitiated, FriendDataManager.FriendData friend)
+	{
+		FriendDataManager.FriendData previewFriend = friend
+			?? FindFriend(GetOtherUid(record, showingInitiated))
+			?? BuildPreviewFriend(record, showingInitiated);
+
+		if (previewFriend == null)
+		{
+			ToastManager.ShowToast("好友资料不完整");
+			return;
+		}
+
+		if (showingInitiated)
+			FriendPreviewUI.Show(previewFriend);
+		else
+			FriendPreviewUI.Show(previewFriend, record);
+	}
+
+	private void OpenRelationshipRecord(RelationshipDivinationRecord record)
+	{
+		if (record == null) return;
+
+		FriendDataManager.FriendData friend = ResolveOtherFriend(record, currentTab == InvitationTab.Initiate);
+		HideWindow();
+		RelationshipDivinationFlow.ShowRecord(record, friend);
 	}
 
 	private void ReplaceRecord(RelationshipDivinationRecord oldRecord, RelationshipDivinationRecord updated)
@@ -439,6 +521,35 @@ public class MyInviationUI : WindowBase
 		return FriendDataManager.Instance.FindRealFriendByFirebaseUid(firebaseUid);
 	}
 
+	private FriendDataManager.FriendData ResolveOtherFriend(RelationshipDivinationRecord record, bool showingInitiated)
+	{
+		return FindFriend(GetOtherUid(record, showingInitiated)) ?? BuildPreviewFriend(record, showingInitiated);
+	}
+
+	private FriendDataManager.FriendData BuildPreviewFriend(RelationshipDivinationRecord record, bool showingInitiated)
+	{
+		string otherUid = GetOtherUid(record, showingInitiated);
+		if (string.IsNullOrWhiteSpace(otherUid))
+			return null;
+
+		return new FriendDataManager.FriendData
+		{
+			firebaseUid = otherUid,
+			name = ResolveOtherName(record, showingInitiated),
+			handle = $"@{otherUid}",
+			info = "双人占卜邀请",
+			relationship = "真实好友",
+			source = "关系占卜邀请",
+			isVirtual = false
+		};
+	}
+
+	private string GetOtherUid(RelationshipDivinationRecord record, bool showingInitiated)
+	{
+		if (record == null) return string.Empty;
+		return showingInitiated ? record.receiverUid : record.initiatorUid;
+	}
+
 	private string ResolveOtherName(RelationshipDivinationRecord record, bool showingInitiated)
 	{
 		if (record == null) return "好友";
@@ -456,8 +567,177 @@ public class MyInviationUI : WindowBase
 	private string ResolveDivinationType(RelationshipDivinationRecord record)
 	{
 		if (record == null || string.IsNullOrWhiteSpace(record.question))
-			return "Relationship development";
-		return record.question;
+			return "关系占卜";
+
+		string direction = ExtractDirection(record.question);
+		string userQuestion = ExtractUserQuestion(record.question);
+		string summary = BuildDivinationSummary(record, direction, userQuestion);
+		if (!string.IsNullOrWhiteSpace(summary))
+			return summary;
+
+		return !string.IsNullOrWhiteSpace(direction) ? TrimSummary(direction, 8) : "关系占卜";
+	}
+
+	private string BuildDivinationSummary(RelationshipDivinationRecord record, string direction, string userQuestion)
+	{
+		string cleanDirection = TrimSummary(direction, 8);
+		string cleanQuestion = CleanQuestionText(record, userQuestion);
+		if (string.IsNullOrWhiteSpace(cleanQuestion))
+			return cleanDirection;
+
+		if (IsGenericRelationshipQuestion(record, cleanQuestion))
+			return !string.IsNullOrWhiteSpace(cleanDirection) ? cleanDirection : "关系发展";
+
+		string keywordSummary = ResolveQuestionKeywordSummary(cleanQuestion);
+		if (!string.IsNullOrWhiteSpace(keywordSummary))
+			return keywordSummary;
+
+		if (!string.IsNullOrWhiteSpace(cleanDirection))
+			return cleanDirection;
+
+		return TrimSummary(cleanQuestion, 8);
+	}
+
+	private string ResolveQuestionKeywordSummary(string question)
+	{
+		if (ContainsAny(question, "复合", "回头", "重来"))
+			return "复合可能";
+		if (ContainsAny(question, "喜欢", "爱", "心意", "在意", "想我", "暧昧"))
+			return "心意确认";
+		if (ContainsAny(question, "吵架", "矛盾", "冲突", "误会", "冷战"))
+			return "冲突化解";
+		if (ContainsAny(question, "沟通", "聊天", "联系", "回复", "回我", "不回"))
+			return "联系沟通";
+		if (ContainsAny(question, "冷淡", "疏远", "距离", "忽冷忽热"))
+			return "关系距离";
+		if (ContainsAny(question, "相处", "建议", "怎么做", "怎么办", "如何做"))
+			return "相处建议";
+		if (ContainsAny(question, "信任", "安全感", "稳定"))
+			return "信任安全";
+		if (ContainsAny(question, "告白", "表白"))
+			return "告白时机";
+		if (ContainsAny(question, "选择", "要不要"))
+			return "关系选择";
+		if (ContainsAny(question, "结局", "结果"))
+			return "关系结果";
+		if (ContainsAny(question, "未来", "接下来", "发展", "走向", "趋势"))
+			return "关系发展";
+
+		return string.Empty;
+	}
+
+	private bool IsGenericRelationshipQuestion(RelationshipDivinationRecord record, string question)
+	{
+		string text = NormalizeSummaryText(question);
+		text = RemoveNameToken(text, record?.initiatorName);
+		text = RemoveNameToken(text, record?.receiverName);
+
+		return text.Contains("关系接下来会如何发展", StringComparison.Ordinal)
+			|| text.Contains("关系接下来会怎样", StringComparison.Ordinal)
+			|| text.Contains("关系会如何发展", StringComparison.Ordinal)
+			|| text.Contains("接下来会如何发展", StringComparison.Ordinal)
+			|| (text.Contains("关系", StringComparison.Ordinal)
+				&& ContainsAny(text, "发展", "趋势", "走向"));
+	}
+
+	private string CleanQuestionText(RelationshipDivinationRecord record, string question)
+	{
+		if (string.IsNullOrWhiteSpace(question))
+			return string.Empty;
+
+		string text = question.Trim();
+		text = RemoveNameToken(text, record?.initiatorName);
+		text = RemoveNameToken(text, record?.receiverName);
+		text = text.Replace("我和", "")
+			.Replace("我与", "")
+			.Replace("和我", "")
+			.Replace("与我", "")
+			.Replace("我们的", "")
+			.Replace("我們的", "")
+			.Replace("这段", "")
+			.Replace("這段", "")
+			.Trim();
+
+		return text.Trim(' ', '，', ',', '。', '.', '？', '?', '！', '!', '：', ':', '·', '-');
+	}
+
+	private string NormalizeSummaryText(string value)
+	{
+		if (string.IsNullOrWhiteSpace(value))
+			return string.Empty;
+
+		return value.Trim()
+			.Replace(" ", "")
+			.Replace("　", "")
+			.Replace("，", "")
+			.Replace(",", "")
+			.Replace("。", "")
+			.Replace("？", "")
+			.Replace("?", "")
+			.Replace("！", "")
+			.Replace("!", "");
+	}
+
+	private string RemoveNameToken(string value, string name)
+	{
+		if (string.IsNullOrWhiteSpace(value) || string.IsNullOrWhiteSpace(name))
+			return value ?? string.Empty;
+
+		return value.Replace(name.Trim(), "");
+	}
+
+	private bool ContainsAny(string value, params string[] keywords)
+	{
+		if (string.IsNullOrWhiteSpace(value) || keywords == null)
+			return false;
+
+		foreach (string keyword in keywords)
+		{
+			if (!string.IsNullOrWhiteSpace(keyword) && value.Contains(keyword, StringComparison.Ordinal))
+				return true;
+		}
+
+		return false;
+	}
+
+	private string ExtractDirection(string question)
+	{
+		if (string.IsNullOrWhiteSpace(question))
+			return string.Empty;
+
+		int start = question.IndexOf('「');
+		int end = question.IndexOf('」');
+		if (start >= 0 && end > start)
+			return question.Substring(start + 1, end - start - 1).Trim();
+
+		if (question.Contains("关系", StringComparison.Ordinal))
+			return "关系发展";
+		return string.Empty;
+	}
+
+	private string ExtractUserQuestion(string question)
+	{
+		if (string.IsNullOrWhiteSpace(question))
+			return string.Empty;
+
+		int directionEnd = question.IndexOf('」');
+		int colon = directionEnd >= 0 ? question.IndexOf('：', directionEnd) : question.IndexOf('：');
+		if (colon < 0)
+			colon = directionEnd >= 0 ? question.IndexOf(':', directionEnd) : question.IndexOf(':');
+		if (colon >= 0 && colon < question.Length - 1)
+			return question.Substring(colon + 1).Trim();
+
+		return question.Trim();
+	}
+
+	private string TrimSummary(string value, int maxLength)
+	{
+		if (string.IsNullOrWhiteSpace(value))
+			return string.Empty;
+
+		string text = value.Trim();
+		int safeLength = Mathf.Max(4, maxLength);
+		return text.Length <= safeLength ? text : text.Substring(0, safeLength - 1) + "…";
 	}
 
 	private string FormatRecordDate(RelationshipDivinationRecord record)

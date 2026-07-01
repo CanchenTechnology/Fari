@@ -447,7 +447,8 @@ public class AllDivinationHistoryUI : WindowBase
 		if (item == null)
 			return;
 
-		item.SetData(entry.cardSprites, entry.cardNames, entry.description, entry.source, entry.time);
+		bool showSource = !IsPlaceholderEntry(entry);
+		item.SetData(entry.cardSprites, entry.cardNames, entry.description, entry.source, entry.time, showSource);
 		item.SetClickAction(entry.detailRecord != null
 			? () => TarotDetailedUI.Show(entry.detailRecord, ResolveOwnerName(entry.ownerName ?? sPendingOwnerName))
 			: null);

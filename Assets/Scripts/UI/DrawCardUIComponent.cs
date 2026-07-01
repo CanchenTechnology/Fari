@@ -55,6 +55,16 @@ public class DrawCardUIComponent:MonoBehaviour
 	public float cardDealGap = 0.045f;
 	[Tooltip("选中牌飞向结果位置的移动时长。")]
 	public float selectDuration = 0.48f;
+	[Tooltip("选中牌飞到中心并放大的时长。")]
+	public float centerRevealDuration = 0.68f;
+	[Tooltip("中心展示牌的最大缩放。")]
+	public float centerRevealMaxScale = 1.15f;
+	[Tooltip("牌背翻开前，中心展示牌轻微抖动的时长。")]
+	public float centerRevealShakeDuration = 0.42f;
+	[Tooltip("牌背翻开前，中心展示牌轻微左右位移抖动的强度。")]
+	public float centerRevealShakePosition = 10f;
+	[Tooltip("牌背翻开前，中心展示牌轻微旋转抖动的角度。")]
+	public float centerRevealShakeRotation = 5f;
 	[Tooltip("选中牌翻转到正面的总时长。")]
 	public float flipDuration = 0.46f;
 	[Tooltip("抽到逆位时，牌完整翻到正面后再旋转 180 度的时长。")]

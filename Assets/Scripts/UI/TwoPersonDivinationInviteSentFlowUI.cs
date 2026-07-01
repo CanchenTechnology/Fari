@@ -97,40 +97,33 @@ public class TwoPersonDivinationInviteSentFlowUI : WindowBase
 			if (success) RelationshipDivinationFlow.HideFlowWindows();
 		});
 	}
-	public void OnCopyInviteLinkButtonClick()
-	{
-		RelationshipDivinationFlow.CopyInviteText(currentRecord);
-	}
-	public void OnFlipMyCardButtonClick()
-	{
-		if (isProcessing || currentRecord == null) return;
-		if (RelationshipDivinationFlow.GetInviteRemaining(currentRecord) <= System.TimeSpan.Zero && !currentRecord.isLocalOnly)
+		public void OnCopyInviteLinkButtonClick()
 		{
-			ToastManager.ShowToast("邀请已过期，请重新发起双人占卜");
-			return;
+			RelationshipDivinationFlow.CopyInviteText(currentRecord);
 		}
-
-		RelationshipDivinationFirestore service = RelationshipDivinationFlow.GetOrCreateService();
-		if (service == null)
+		public void OnFlipMyCardButtonClick()
 		{
-			ToastManager.ShowToast("关系占卜服务初始化中，请稍后再试");
-			return;
-		}
-
-		isProcessing = true;
-		UpdateButtons();
-		service.RevealMyCard(currentRecord, updated =>
-		{
-			isProcessing = false;
-			if (updated == null)
+			if (isProcessing || currentRecord == null) return;
+			if (RelationshipDivinationFlow.GetInviteRemaining(currentRecord) <= System.TimeSpan.Zero && !currentRecord.isLocalOnly)
 			{
-				UpdateButtons();
+				ToastManager.ShowToast("邀请已过期，请重新发起双人占卜");
 				return;
 			}
 
-			RelationshipDivinationFlow.ShowRecord(updated, currentFriend);
-		});
-	}
+			if (RelationshipDivinationFlow.IsMyCardRevealed(currentRecord))
+			{
+				RelationshipDivinationFlow.ShowRecord(currentRecord, currentFriend);
+				return;
+			}
+
+			if (!currentRecord.CanCurrentUserReveal(RelationshipDivinationFlow.GetCurrentUid()))
+			{
+				RelationshipDivinationFlow.ShowRecord(currentRecord, currentFriend);
+				return;
+			}
+
+			DrawMyCardUI.Show(currentRecord, currentFriend);
+		}
 	#endregion
 
 	private void Render()
@@ -148,7 +141,10 @@ public class TwoPersonDivinationInviteSentFlowUI : WindowBase
 
 		RelationshipDivinationFlow.SetButtonText(uiComponent.CancelInviteButton, isReceiver ? "拒绝邀请" : "取消邀请");
 		RelationshipDivinationFlow.SetButtonText(uiComponent.CopyInviteLinkButton, "复制邀请链接");
-		RelationshipDivinationFlow.SetButtonText(uiComponent.FlipMyCardButton, isReceiver ? "接受并翻开我的牌" : "先翻开我的牌");
+			string flipButtonText = RelationshipDivinationFlow.IsMyCardRevealed(currentRecord)
+				? "进入占卜"
+				: isReceiver ? "接受并抽取我的牌" : "先翻开我的牌";
+			RelationshipDivinationFlow.SetButtonText(uiComponent.FlipMyCardButton, flipButtonText);
 
 		if (RelationshipDivinationFlow.IsMyCardRevealed(currentRecord))
 			ApplyCardSprite(uiComponent.MyCardImage, RelationshipDivinationFlow.GetMyPrivateCard(currentRecord));
@@ -188,10 +184,10 @@ public class TwoPersonDivinationInviteSentFlowUI : WindowBase
 		if (uiComponent == null || currentRecord == null) return;
 
 		string uid = RelationshipDivinationFlow.GetCurrentUid();
-		bool expired = RelationshipDivinationFlow.GetInviteRemaining(currentRecord) <= System.TimeSpan.Zero && !currentRecord.isLocalOnly;
-		bool canReveal = !expired && currentRecord.CanCurrentUserReveal(uid);
-		if (uiComponent.FlipMyCardButton != null)
-			uiComponent.FlipMyCardButton.interactable = !isProcessing && canReveal;
+			bool expired = RelationshipDivinationFlow.GetInviteRemaining(currentRecord) <= System.TimeSpan.Zero && !currentRecord.isLocalOnly;
+			bool canReveal = !expired && currentRecord.CanCurrentUserReveal(uid);
+			if (uiComponent.FlipMyCardButton != null)
+				uiComponent.FlipMyCardButton.interactable = !isProcessing && (canReveal || RelationshipDivinationFlow.IsMyCardRevealed(currentRecord));
 		if (uiComponent.CancelInviteButton != null)
 			uiComponent.CancelInviteButton.interactable = !isProcessing && !currentRecord.isLocalOnly && !currentRecord.IsCompleted && !currentRecord.IsCancelled;
 		if (uiComponent.CopyInviteLinkButton != null)

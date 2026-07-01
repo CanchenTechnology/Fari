@@ -184,23 +184,24 @@ public class TwoPersonDivinationUI : WindowBase
 
 	private void RenderCards()
 	{
-		RenderSlot(uiComponent.cardSlotitem1, RelationshipDivinationFlow.GetMyPrivateCard(currentRecord), RelationshipDivinationFlow.IsMyCardRevealed(currentRecord), "我的牌");
-		RenderSlot(uiComponent.cardSlotitem2, currentRecord?.SharedCard, currentRecord != null && (currentRecord.IsCompleted || currentRecord.isLocalOnly), "共同牌");
-		RenderSlot(uiComponent.cardSlotitem3, RelationshipDivinationFlow.GetFriendPrivateCard(currentRecord), RelationshipDivinationFlow.IsFriendCardRevealed(currentRecord), BuildFriendPrivateCardLabel());
+		string friendName = GetFriendDisplayName();
+		RenderSlot(uiComponent.cardSlotitem1, RelationshipDivinationFlow.GetMyPrivateCard(currentRecord), RelationshipDivinationFlow.IsMyCardRevealed(currentRecord), "你");
+		RenderSlot(uiComponent.cardSlotitem2, currentRecord?.SharedCard, currentRecord != null && (currentRecord.IsCompleted || currentRecord.isLocalOnly), "结果");
+		RenderSlot(uiComponent.cardSlotitem3, RelationshipDivinationFlow.GetFriendPrivateCard(currentRecord), RelationshipDivinationFlow.IsFriendCardRevealed(currentRecord), friendName);
 	}
 
-	private void RenderSlot(CardSlotItem slot, RelationshipDivinationCard card, bool isVisible, string hiddenLabel)
+	private void RenderSlot(CardSlotItem slot, RelationshipDivinationCard card, bool isVisible, string label)
 	{
 		if (slot == null)
 			return;
 
 		if (card != null && isVisible)
 		{
-			slot.ShowFace(RelationshipDivinationFlow.LoadCardSprite(card), card.DisplayName, card.IsUpright);
+			slot.ShowFace(RelationshipDivinationFlow.LoadCardSprite(card), label, card.IsUpright);
 			return;
 		}
 
-		slot.ShowBack(null, hiddenLabel);
+		slot.ShowBack(null, label);
 	}
 
 	private void UpdateFlipButton()
@@ -228,13 +229,13 @@ public class TwoPersonDivinationUI : WindowBase
 		{
 			label = "邀请已过期";
 		}
-		else if (currentRecord.CanCurrentUserReveal(RelationshipDivinationFlow.GetCurrentUid()))
-		{
-			label = currentRecord.IsCurrentUserReceiver(RelationshipDivinationFlow.GetCurrentUid())
-				? "接受并翻开我的牌"
-				: "翻开我的牌";
-			interactable = true;
-		}
+			else if (currentRecord.CanCurrentUserReveal(RelationshipDivinationFlow.GetCurrentUid()))
+			{
+				label = currentRecord.IsCurrentUserReceiver(RelationshipDivinationFlow.GetCurrentUid())
+					? "抽取我的牌"
+					: "翻开我的牌";
+				interactable = true;
+			}
 		else if (RelationshipDivinationFlow.IsMyCardRevealed(currentRecord))
 		{
 			label = "等待对方翻牌";
@@ -254,22 +255,21 @@ public class TwoPersonDivinationUI : WindowBase
 			return "双方已完成翻牌";
 		if (RelationshipDivinationFlow.IsInviteExpired(currentRecord))
 			return "邀请已过期";
-		if (currentRecord.CanCurrentUserReveal(RelationshipDivinationFlow.GetCurrentUid()))
-			return currentRecord.IsCurrentUserReceiver(RelationshipDivinationFlow.GetCurrentUid())
-				? "好友邀请你一起占卜"
-				: "邀请已发送，先翻开你的牌";
+			if (currentRecord.CanCurrentUserReveal(RelationshipDivinationFlow.GetCurrentUid()))
+				return currentRecord.IsCurrentUserReceiver(RelationshipDivinationFlow.GetCurrentUid())
+					? "好友已翻开牌，等待你抽牌"
+					: "邀请已发送，先翻开你的牌";
 		if (RelationshipDivinationFlow.IsMyCardRevealed(currentRecord))
 			return "已翻开你的牌，等待好友";
 		return currentRecord.GetStatusText(RelationshipDivinationFlow.GetCurrentUid());
 	}
 
-	private string BuildFriendPrivateCardLabel()
+	private string GetFriendDisplayName()
 	{
 		string uid = RelationshipDivinationFlow.GetCurrentUid();
-		string friendName = currentFriend != null
+		return currentFriend != null
 			? RelationshipDivinationFlow.GetFriendName(currentFriend)
 			: RelationshipDivinationFlow.GetOtherName(currentRecord, uid);
-		return $"{friendName}的牌";
 	}
 
 	private string ExtractDirectionLabel(string question)
